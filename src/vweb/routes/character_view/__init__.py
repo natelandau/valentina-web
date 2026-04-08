@@ -1,0 +1,1 @@
+"""Character view route package."""

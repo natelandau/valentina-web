@@ -1,0 +1,58 @@
+{#def
+    section_name: str = "",
+    category: FullSheetTraitCategory,
+#}
+<div class="bg-base-200/50 rounded-lg p-3 prose" x-data="{ selected: {} }">
+  <h3 class="font-semibold uppercase text-base-content/70 mb-2">
+    {{ category.name | title }}
+  </h3>
+  <table class="table [&_tr>*]:border-none [&_td]:py-0.5 [&_td]:px-1">
+    {# ---- Category-level traits (always visible) ---- #}
+    {% for trait in category.available_traits | sort(attribute="name") %}
+      <tr x-data="{ val: 0 }">
+        <td class="text-lg">{{ trait.name | title }}</td>
+        <td class="text-right">
+          <input type="hidden" name="trait:{{ trait.id }}" :value="val" />
+          <character_manual_create.components.ValuePicker trait_id={{ trait.id }} current_value={{ 0 }} min_value={{ trait.min_value }} max_value={{ trait.max_value }} alpine_var="val" />
+        </td>
+      </tr>
+    {% endfor %}
+    {# ---- Subcategory traits (hidden until selected from dropdown) ---- #}
+    {% for subcategory in category.subcategories if subcategory.available_traits %}
+
+      {% set id_list = subcategory.available_traits | map(attribute="id") | list %}
+
+      <tr x-cloak
+          x-show="{% for tid in id_list %}'{{ tid }}' in selected{{ ' || ' if not loop.last else '' }}{% endfor %}">
+        <td colspan="2" class="text-lg font-semibold pt-2">
+          {{ subcategory.name | title }}
+        </td>
+      </tr>
+      {% for trait in subcategory.available_traits | sort(attribute="name") %}
+
+        {% set avar = "selected['" ~ trait.id ~ "']" %}
+
+        <tr x-cloak x-show="'{{ trait.id }}' in selected">
+          <td class="text-lg">
+            <span class="pl-4">{{ trait.name | title }}</span>
+          </td>
+          <td class="text-right flex flex-wrap items-center justify-end gap-1">
+            <button type="button"
+                    class="btn btn-square btn-xs btn-error btn-dash"
+                    @click="let s = {...selected}; delete s['{{ trait.id }}']; selected = s">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+            <character_manual_create.components.ValuePicker trait_id={{ trait.id }} current_value={{ 0 }} min_value={{ trait.min_value }} max_value={{ trait.max_value }} alpine_var={{ avar }} />
+            <input type="hidden"
+                   name="trait:{{ trait.id }}"
+                   :value="selected['{{ trait.id }}'] || 0"
+                   :disabled="!('{{ trait.id }}' in selected)" />
+          </td>
+        </tr>
+      {% endfor %}
+    {% endfor %}
+    {# ---- Add trait dropdowns ---- #}
+    {# <character_manual_create.components.AddTraitDropdownFlat available_traits={{ category.available_traits }} /> #}
+    <character_manual_create.components.AddTraitDropdownSubCat category={{ category }} />
+  </table>
+</div>

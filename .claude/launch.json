@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "/bin/zsh",
+      "runtimeArgs": [
+        "-i",
+        "-c",
+        "uv run scripts/dev_server.py"
+      ],
+      "port": 8089
+    }
+  ]
+}

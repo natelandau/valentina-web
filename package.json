@@ -1,0 +1,10 @@
+{
+  "name": "valentina-web",
+  "version": "0.1.0",
+  "dependencies": {
+    "@tailwindcss/cli": "^4.2.1",
+    "@tailwindcss/typography": "^0.5.19",
+    "daisyui": "^5.5.19",
+    "tailwindcss": "^4.2.1"
+  }
+}

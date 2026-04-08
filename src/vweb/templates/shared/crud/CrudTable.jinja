@@ -1,0 +1,189 @@
+{#def
+    table_type_name: str,
+    table_type_item_name: str,
+    columns: tuple,
+    fields: tuple,
+    markdown_fields: tuple = (),
+    sortable_fields: tuple = (),
+    items: list,
+    parent_id: str,
+    table_base_url: str,
+    form_base_url: str,
+    table_target_id: str,
+    sort_field: str = "",
+    sort_dir: str = "asc",
+    editable: bool = True,
+    extra_params: str = "",
+#}
+
+<div class="flex justify-between items-center mb-4">
+  <h2 class="card-title">{{ table_type_name }}</h2>
+  {% if editable %}
+    <shared.CommonButton variant="add" extra_class="btn-sm"
+                  hx-get={{ form_base_url ~ "?parent_id=" ~ parent_id ~ extra_params }}
+                  hx-target={{ "#" ~ table_target_id }}
+                  hx-swap="innerHTML">
+      <i class="fa-solid fa-plus"></i> Add {{ table_type_item_name }}
+    </shared.CommonButton>
+  {% endif %}
+</div>
+
+{% if items %}
+  {# Desktop: standard table (hidden below md) #}
+  <div class="hidden md:block">
+    <table class="table table-zebra">
+      <thead>
+        <tr>
+          {% for col in columns %}
+
+            {% set field = fields[loop.index0] %}
+
+            {% if field in sortable_fields %}
+              {% if field == sort_field %}
+
+                {% set next_sort = "-" ~ field if sort_dir == "asc" else field %}
+
+              {% else %}
+
+                {% set next_sort = field %}
+
+              {% endif %}
+              <th>
+                <a class="cursor-pointer select-none inline-flex items-center gap-1"
+                   hx-get="{{ table_base_url }}?parent_id={{ parent_id }}&sort={{ next_sort }}{{ extra_params }}"
+                   hx-target="#{{ table_target_id }}"
+                   hx-swap="innerHTML">
+                  {{ col }}
+                  {% if field == sort_field %}
+                    {% if sort_dir == "asc" %}
+                      <i class="fa-solid fa-sort-up"></i>
+                    {% else %}
+                      <i class="fa-solid fa-sort-down"></i>
+                    {% endif %}
+                  {% endif %}
+                </a>
+              </th>
+            {% else %}
+              <th>{{ col }}</th>
+            {% endif %}
+          {% endfor %}
+          {% if editable %}<th class="w-24"></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+          <tr>
+            {% for field in fields %}
+              {% if loop.first %}
+                <th class="text-md">{{ item[field] | default("", true) }}</th>
+              {% elif field in markdown_fields %}
+                <td class="prose prose-sm">{{ item[field] | default("", true) | from_markdown }}</td>
+              {% else %}
+                <td>{{ item[field] | default("", true) }}</td>
+              {% endif %}
+            {% endfor %}
+            {% if editable %}
+              <td class="flex gap-1 justify-end">
+                <shared.CommonButton variant="edit" extra_class="btn-xs"
+                              hx-get={{ form_base_url ~ "/" ~ item.id ~ "?parent_id=" ~ parent_id ~ extra_params }}
+                              hx-target={{ "#" ~ table_target_id }}
+                              hx-swap="innerHTML"
+                              title="Edit">
+                  <i class="fa-regular fa-pen-to-square"></i>
+                  Edit
+                </shared.CommonButton>
+
+                {% set delete_js = "openDeleteModal('" ~ table_target_id ~ "', '" ~ table_base_url ~ "/" ~ item.id ~ "?parent_id=" ~ parent_id ~ extra_params ~ "')" %}
+                <shared.CommonButton variant="delete" extra_class="btn-xs"
+                              onclick={{ delete_js }}
+                              title="Delete">
+                  <i class="fa-solid fa-trash-can"></i>
+                  Delete
+                </shared.CommonButton>
+              </td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# Mobile: card layout (hidden at md+) #}
+  <div class="flex flex-col gap-3 md:hidden">
+    {% for item in items %}
+      <div class="card card-border bg-base-200/50">
+        <div class="card-body p-4 gap-1">
+          <h3 class="card-title text-lg">{{ item[fields[0]] | default("", true) | title }}</h3>
+
+          {% for field in fields %}
+            {% if not loop.first %}
+              {% if field in markdown_fields %}
+                <div class="prose max-w-none mt-1">{{ item[field] | default("", true) | from_markdown }}</div>
+              {% else %}
+                <p class="text-base-content/70">
+                  <span class="font-medium text-base-content/50">{{ columns[loop.index0] }}:</span>
+                  {{ item[field] | default("", true) }}
+                </p>
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+
+          {% if editable %}
+            <div class="card-actions justify-end mt-2">
+              <shared.CommonButton variant="edit" extra_class="btn-xs"
+                            hx-get={{ form_base_url ~ "/" ~ item.id ~ "?parent_id=" ~ parent_id ~ extra_params }}
+                            hx-target={{ "#" ~ table_target_id }}
+                            hx-swap="innerHTML"
+                            title="Edit">
+                <i class="fa-regular fa-pen-to-square"></i>
+                Edit
+              </shared.CommonButton>
+
+              {% set delete_js = "openDeleteModal('" ~ table_target_id ~ "', '" ~ table_base_url ~ "/" ~ item.id ~ "?parent_id=" ~ parent_id ~ extra_params ~ "')" %}
+              <shared.CommonButton variant="delete" extra_class="btn-xs"
+                            onclick={{ delete_js }}
+                            title="Delete">
+                <i class="fa-solid fa-trash-can"></i>
+                Delete
+              </shared.CommonButton>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="text-base-content/60 italic">No {{ table_type_name | lower }} yet.</p>
+{% endif %}
+
+{% if editable %}
+  {# Delete confirmation modal #}
+  <dialog id="delete-modal-{{ table_target_id }}" class="modal">
+    <div class="modal-box">
+      <h3 class="text-lg font-bold">Confirm Delete</h3>
+      <p class="py-4">
+        Are you sure you want to delete this {{ table_type_item_name | lower }}? This cannot be undone.
+      </p>
+      <div class="modal-action">
+        <shared.CommonButton variant="cancel" onclick="this.closest('dialog').close()">Cancel</shared.CommonButton>
+        <button id="delete-confirm-btn-{{ table_target_id }}"
+                class="btn btn-error"
+                hx-target="#{{ table_target_id }}"
+                hx-swap="innerHTML"
+                onclick="this.closest('dialog').close()">Delete</button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button>close</button>
+    </form>
+  </dialog>
+
+  <script>
+    function openDeleteModal(targetId, deleteUrl) {
+      var btn = document.getElementById('delete-confirm-btn-' + targetId);
+      btn.setAttribute('hx-delete', deleteUrl);
+      htmx.process(btn);
+      document.getElementById('delete-modal-' + targetId).showModal();
+    }
+  </script>
+{% endif %}

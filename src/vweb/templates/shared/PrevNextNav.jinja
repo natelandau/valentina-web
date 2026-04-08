@@ -1,0 +1,32 @@
+{#def
+    prev_label: str = "",
+    prev_hx_url: str = "",
+    prev_push_url: str = "",
+    next_label: str = "",
+    next_hx_url: str = "",
+    next_push_url: str = "",
+    target: str = "",
+    position_label: str = "",
+#}
+
+<div class="flex items-center justify-between mb-3 gap-2 border-b border-base-content/40 pb-3">
+  {% if prev_label %}
+    <shared.CommonButton variant="info" extra_class="btn-sm max-w-[14rem]" hx-get={{ prev_hx_url }} hx-target={{ target }} hx-swap="outerHTML" hx-push-url={{ prev_push_url }}>
+    <i class="fa-solid fa-chevron-left"></i> <span class="truncate">{{ prev_label }}</span>
+    </shared.CommonButton>
+  {% else %}
+    <span></span>
+  {% endif %}
+  {% if position_label %}
+    <span class="text-sm text-base-content/60 tabular-nums hidden sm:inline">
+      {{ position_label }}
+    </span>
+  {% endif %}
+  {% if next_label %}
+    <shared.CommonButton variant="info" extra_class="btn-sm max-w-[14rem]" hx-get={{ next_hx_url }} hx-target={{ target }} hx-swap="outerHTML" hx-push-url={{ next_push_url }}>
+    <span class="truncate">{{ next_label }}</span> <i class="fa-solid fa-chevron-right"></i>
+    </shared.CommonButton>
+  {% else %}
+    <span></span>
+  {% endif %}
+</div>

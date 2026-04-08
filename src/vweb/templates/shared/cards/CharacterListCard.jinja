@@ -1,0 +1,134 @@
+{#def
+    title: str,
+    characters: list,
+    show_campaign: bool = False,
+    show_type: bool = False,
+    show_add_button: bool = False,
+    add_url: str = "",
+    empty_message: str = "No characters found",
+    col_span: int = 0,
+    pagination: int = 0,
+    link_user_profile: bool = False,
+#}
+
+{% set grid_col_span = "col-span-" ~ col_span if col_span > 0 else "" %}
+
+<div class="card bg-base-100 shadow-sm {{ grid_col_span }}">
+  <div class="card-body">
+    <div class="flex items-center justify-between">
+      <h2 class="card-title">{{ title }}</h2>
+      {% if show_add_button %}
+        {% if add_url %}
+          <shared.CommonButton variant="add" extra_class="btn-sm" href={{ add_url }}>+ Add New</shared.CommonButton>
+        {% else %}
+          <shared.CommonButton variant="add" extra_class="btn-sm" disabled={{ true }}>+ Add New</shared.CommonButton>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    {% if characters %}
+      {% if link_user_profile %}
+        {% set user_map = {} %}
+        {% for u in global_context().users %}
+          {% set _ = user_map.update({u.id: u.username}) %}
+        {% endfor %}
+      {% endif %}
+
+      {% if show_campaign %}
+        {% set campaign_map = {} %}
+        {% for c in global_context().campaigns %}
+          {% set _ = campaign_map.update({c.id: c.name}) %}
+        {% endfor %}
+      {% endif %}
+
+      {% if pagination > 0 %}
+        <div x-data="{ currentPage: 1, pageSize: {{ pagination }}, totalItems: {{ characters|length }}, get totalPages() { return Math.ceil(this.totalItems / this.pageSize) }, listHeight: 0 }"
+             x-init="$nextTick(() => { listHeight = $refs.list.offsetHeight })">
+        {% endif %}
+
+        <ul class="list bg-base-100 rounded-box shadow-md"
+            {% if pagination > 0 %}x-ref="list" :style="listHeight ? 'min-height:' + listHeight + 'px' : ''"{% endif %}>
+          {% for character in characters %}
+            <li class="list-row hover:bg-neutral/80 hover:text-neutral-content transition-colors {% if character.type == "STORYTELLER" %}bg-primary/10{% endif %}" {% if pagination > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"
+            {% endif %}
+            >
+            <div class="list-col-grow">
+              <a href="{{ url_for('character_view.character', character_id=character.id) }}">
+                <div class="uppercase font-semibold text-nowrap tracking-wide">
+                  {{ character.name_full }} <span class="font-thin">{{ character.character_class | title }}</span>
+                </div>
+                <div class="text-xs opacity-60">
+                  <div class="flex items-center gap-2 [&>*+*]:before:content-['·'] [&>*+*]:before:mr-2">
+
+                    {% if show_type %}
+                      <span>{{ character.type | title }} Character</span>
+                    {% endif %}
+
+                    {% if link_user_profile %}
+                      <span class="text-xs"><a href="{{ url_for('profile.profile', user_id=character.user_player_id) }}"
+   class="link link-info link-hover">{{ user_map.get(character.user_player_id, "Unknown") }}</a></span>
+
+                    {% endif %}
+
+                    {% if show_campaign %}
+                      <span class="font-semibold">Campaign:</span> {{ campaign_map.get(character.campaign_id, "Unknown") }}
+                    {% endif %}
+                  </div>
+                </div>
+              </a>
+            </div>
+            <div x-data>
+
+              <button class="btn btn-square btn-ghost"
+                      @click="$dispatch('open-dice-roll', { characterId: '{{ character.id }}', characterName: '{{ character.name | normalize_string }}' })">
+                <svg xmlns="http://www.w3.org/2000/svg"
+                     width="24"
+                     height="24"
+                     viewBox="0 0 24 24"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="2"
+                     stroke-linecap="round"
+                     stroke-linejoin="round"
+                     class="lucide lucide-dices-icon lucide-dices">
+                  <rect width="12" height="12" x="2" y="10" rx="2" ry="2" />
+                  <path d="m17.92 14 3.5-3.5a2.24 2.24 0 0 0 0-3l-5-4.92a2.24 2.24 0 0 0-3 0L10 6" />
+                  <path d="M6 18h.01" />
+                  <path d="M10 14h.01" />
+                  <path d="M15 6h.01" />
+                  <path d="M18 9h.01" />
+                </svg>
+              </button>
+              <a href="{{ url_for('character_view.character', character_id=character.id) }}"
+                 class="btn btn-square btn-ghost">
+                <svg xmlns="http://www.w3.org/2000/svg"
+                     width="24"
+                     height="24"
+                     viewBox="0 0 24 24"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="2"
+                     stroke-linecap="round"
+                     stroke-linejoin="round"
+                     class="lucide lucide-square-arrow-up-right-icon lucide-square-arrow-up-right">
+                  <rect width="18" height="18" x="3" y="3" rx="2" />
+                  <path d="M8 8h8v8" />
+                  <path d="m8 16 8-8" />
+                </svg>
+              </a>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+
+      {% if pagination > 0 %}
+        <shared.cards.Pagination />
+      </div>
+    {% endif %}
+
+  {% else %}
+    <p class="text-base-content/60 text-sm">{{ empty_message }}</p>
+  {% endif %}
+
+</div>
+</div>

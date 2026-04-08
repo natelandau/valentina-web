@@ -1,0 +1,24 @@
+{#def
+    category_id: str,
+    post_url: str = "",
+#}
+
+<tr>
+  <td></td>
+  <td class="flex justify-end join">
+    <form hx-post="{{ post_url }}" method="post">
+
+      {% set custom_id = "CUSTOM_" ~ category_id | string %}
+
+      <input type="text"
+             name="{{ custom_id }}"
+             class="input input-sm w-32"
+             placeholder="Add custom ..."
+             aria-describedby="button-addon2">
+      <button class="btn btn-sm btn-outline btn-primary" type="submit">
+        Add
+      </button>
+
+    </form>
+  </td>
+</tr>

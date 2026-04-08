@@ -1,0 +1,209 @@
+{#def
+    campaign,
+    user_xp: int = 0,
+    errors: list = [],
+    pending_sessions: list = [],
+#}
+
+{% set xp_cost = g.global_context.company.settings.character_autogen_xp_cost or 0 %}
+
+{% if errors %}
+  <div role="alert" class="alert alert-error mb-4">
+    <ul>
+      {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+{% if pending_sessions %}
+  <div class="mb-6">
+    <h3 class="text-lg font-semibold mb-2">Pending Sessions</h3>
+    <div class="border border-base-300 rounded-lg overflow-hidden">
+      {% for ps in pending_sessions %}
+
+        {% set classes = ps.characters | map(attribute='character_class') | map('title') | join(', ') %}
+
+        <div class="flex items-center justify-between px-4 py-3 {% if not loop.last %}border-b border-base-300{% endif %}">
+          <div>
+            <span class="font-medium text-sm">{{ classes }}</span>
+            <span class="text-xs text-base-content/60 ml-2">expires {{ ps.expires_at | humanize_date }}</span>
+          </div>
+          <button class="btn btn-sm btn-primary"
+                  hx-get="{{ url_for('character_create.resume_session', campaign_id=campaign.id, session_id=ps.id) }}"
+                  hx-target="#creation-content"
+                  hx-swap="innerHTML">Resume</button>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+  {% if is_storyteller() %}
+    {# Quick Generate card - storyteller only #}
+    <div class="card bg-base-100 shadow-sm">
+      <div class="card-body">
+        <h3 class="card-title text-lg">Quick Generate</h3>
+        <span class="badge badge-neutral badge-sm">Storyteller Only</span>
+        <div class="prose prose-sm max-w-none">
+          <p>
+            Instantly generate a single character with random attributes. This method is restricted to storytellers and works well for quickly populating campaigns with NPCs and storyteller characters.
+          </p>
+          <p>
+            The following attributes are randomly generated but can be customized:
+          </p>
+          <ul>
+            <li>
+              <strong>Character class</strong>
+            </li>
+            <li>
+              <strong>Experience level</strong> - How many dots and traits are granted to the character -
+              {% for level in get_options().characters.autogen_experience_level %}
+                <code>{{ level | replace('_', ' ') | upper }}</code>
+                {% if not loop.last %},{% endif %}
+              {% endfor %}
+            </li>
+            <li>
+              <strong>Skill focus</strong> - How dots of traits are distributed between abilities -
+              {% for focus in get_options().characters.ability_focus %}
+                <code>{{ focus | replace('_', ' ') | upper }}</code>
+                {% if not loop.last %},{% endif %}
+              {% endfor %}
+            </li>
+            <li>
+              <strong>Concept</strong> - A background for the character
+            </li>
+            <li>
+              <strong>Class-specific options</strong> (vampire clan, werewolf tribe/auspice,  etc.)
+            </li>
+          </ul>
+        </div>
+        <form hx-get="{{ url_for('character_create.single_autogen_form', campaign_id=campaign.id) }}"
+              hx-target="#creation-content"
+              hx-swap="innerHTML">
+          <fieldset class="fieldset mt-3">
+            <legend class="fieldset-legend">Character Type *</legend>
+            <select name="character_type" class="select select-bordered w-full" required>
+              <option value="">-- Select Type --</option>
+              {% for t in get_options().characters.character_type if t not in ["DEVELOPER", "NPC"] %}
+                <option value="{{ t }}">{{ t | title }}</option>
+              {% endfor %}
+            </select>
+          </fieldset>
+          <div class="card-actions justify-end mt-4">
+            <shared.CommonButton variant="submit">Generate</shared.CommonButton>
+          </div>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+
+  {# Generation Session card #}
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+      <h3 class="card-title text-lg">Roll a Random Character</h3>
+      <div class="prose prose-sm max-w-none">
+        <p>
+          Generate {{ g.global_context.company.settings.character_autogen_num_choices }} randomly generated characters for you to choose between.
+        </p>
+        <p>For each character, the following steps are taken:</p>
+        <ol>
+          <li>
+            Percentile dice decide the class for each character. Chances are as follows:
+            <ul>
+              {% for x in get_options().autogen.autogen_percentile_chance %}
+
+                {% set class, chance = x.split(": ") %}
+
+                <li>{{ chance }} - {{ class | title }}</li>
+              {% endfor %}
+            </ul>
+          </li>
+          <li>
+            Then a concept is randomly assigned. The concept guides your character's background and grants unique bonuses.
+          </li>
+          <li>Then traits and attributes are randomly assigned.</li>
+          <li>A name and other details are randomly generated.</li>
+        </ol>
+        <p>
+          Once you select one of these characters, you can re-allocate dots, update the name, and otherwise customize your character.
+        </p>
+
+      </div>
+      {% if xp_cost > 0 %}
+        <div role="alert" class="alert alert-info alert-soft">
+          <svg xmlns="http://www.w3.org/2000/svg"
+               fill="none"
+               viewBox="0 0 24 24"
+               class="h-6 w-6 shrink-0 stroke-current">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z">
+            </path>
+          </svg>
+          <div>
+            <h3 class="font-bold">Important:</h3>
+            <div class="text-xs">
+              You will be charged {{ xp_cost }} XP for each group of {{ g.global_context.company.settings.character_autogen_num_choices }} characters you generate.
+            </div>
+            <div class="text-xs">You have {{ user_xp }} XP available.</div>
+          </div>
+        </div>
+      {% endif %}
+      <div class="card-actions justify-end mt-4">
+        {% if xp_cost > 0 and user_xp < xp_cost %}
+          <div class="text-xs text-error mb-1 w-full text-right">
+            Requires {{ xp_cost }} XP (you have {{ user_xp }})
+          </div>
+          <shared.CommonButton variant="submit" disabled={{ true }}>Generate</shared.CommonButton>
+        {% elif xp_cost > 0 %}
+          <shared.CommonButton variant="submit" onclick="document.getElementById('session-confirm-modal').showModal()">Generate</shared.CommonButton>
+        {% else %}
+          <shared.CommonButton variant="submit" hx-post={{ url_for('character_create.multi_autogen', campaign_id=campaign.id) }} hx-target="#creation-content" hx-swap="innerHTML">Generate</shared.CommonButton>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# Manual Creation card #}
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+      <h3 class="card-title text-lg">Manual Creation</h3>
+      <div class="prose prose-sm max-w-none">
+        <p>
+          Build your character from scratch with full control over every detail. Choose your class, fill in profile information, and assign trait values manually.
+        </p>
+        <p>No experience points are spent for manual creation.</p>
+      </div>
+      <div class="card-actions justify-end mt-4">
+
+        {% set manual_url = url_for('character_create.manual_profile', campaign_id=campaign.id) %}
+
+        <shared.CommonButton variant="submit" href={{ manual_url }}>Create</shared.CommonButton>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if xp_cost > 0 %}
+  <dialog id="session-confirm-modal" class="modal">
+    <div class="modal-box">
+      <h3 class="text-lg font-bold">Start Generation Session</h3>
+      <p class="py-4">
+        This will cost <strong>{{ xp_cost }} XP</strong> from your current balance of <strong>{{ user_xp }} XP</strong>.
+        You'll see 3 randomly generated characters to choose from.
+      </p>
+      <div class="modal-action">
+        <shared.CommonButton variant="cancel" onclick="this.closest('dialog').close()">Cancel</shared.CommonButton>
+        <button class="btn btn-primary"
+                hx-post="{{ url_for('character_create.multi_autogen', campaign_id=campaign.id) }}"
+                hx-target="#creation-content"
+                hx-swap="innerHTML"
+                onclick="this.closest('dialog').close()">
+          Confirm
+        </button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button>close</button>
+    </form>
+  </dialog>
+{% endif %}

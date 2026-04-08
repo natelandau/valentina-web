@@ -1,0 +1,42 @@
+{#def
+    table_type_name: str,
+    table_type_item_name: str,
+    post_url: str,
+    table_url: str,
+    table_target_id: str,
+    errors: list = [],
+    is_edit: bool = False,
+#}
+
+<div class="flex justify-between items-center mb-4">
+  <h2 class="card-title">{{ "Edit" if is_edit else "Add" }} {{ table_type_item_name }}</h2>
+</div>
+
+{% if errors %}
+  <div role="alert" class="alert alert-error mb-4">
+    <i class="fa-solid fa-circle-exclamation"></i>
+    <div>
+      <ul>
+        {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+      </ul>
+    </div>
+  </div>
+{% endif %}
+
+<form hx-post="{{ post_url }}"
+      hx-target="#{{ table_target_id }}"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']"
+      class="space-y-4 lg:w-1/2">
+  {{ content }}
+  <div class="flex gap-2 mt-4">
+    <shared.CommonButton variant="submit">
+    <span class="loading loading-spinner htmx-indicator"></span>
+    Submit
+    </shared.CommonButton>
+    <shared.CommonButton variant="cancel"
+                  hx-get={{ table_url }}
+                  hx-target={{ "#" ~ table_target_id }}
+                  hx-swap="innerHTML">Cancel</shared.CommonButton>
+  </div>
+</form>

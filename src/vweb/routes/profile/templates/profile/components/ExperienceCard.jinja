@@ -1,0 +1,25 @@
+{#def
+    user_id: str = "",
+    lifetime_xp: int = 0,
+    lifetime_cool_points: int = 0,
+    experience_rows: list = [],
+#}
+
+<div class="card bg-base-100 shadow-sm h-full">
+  <div class="card-body">
+    <h2 class="card-title">Experience & Cool Points</h2>
+
+    <div class="stats stats-vertical sm:stats-horizontal shadow-sm">
+      <div class="stat">
+        <div class="stat-title">Lifetime XP</div>
+        <div class="stat-value text-primary">{{ "{:,}".format(lifetime_xp) }}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">Lifetime Cool Points</div>
+        <div class="stat-value text-secondary">{{ "{:,}".format(lifetime_cool_points) }}</div>
+      </div>
+    </div>
+
+    <profile.partials.ExperienceTable user_id={{ user_id }} experience_rows={{ experience_rows }} />
+  </div>
+</div>

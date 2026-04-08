@@ -1,0 +1,75 @@
+{# def
+    full_sheet: CharacterFullSheet,
+    dictionary_terms: list[DictionaryTerm] = [],
+#}
+
+<shared.character.SheetProfile character={{ full_sheet.character }} can_edit={{ can_edit_character(full_sheet.character) }} />
+
+{% for section in full_sheet.sections %}
+  <div class="divider text-lg uppercase tracking-wide font-semibold text-base-content/75">
+    {{ section.name | title }}
+  </div>
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    {% for category in section.categories if category.character_traits or category.subcategories %}
+
+      {% set has_subcategory_traits = false %}
+
+      {% for subcategory in category.subcategories if subcategory.character_traits %}
+
+        {% set has_subcategory_traits = true %}
+
+        {% break %}
+      {% endfor %}
+
+      {% if category.show_when_empty or has_subcategory_traits or category.character_traits %}
+
+        <div class="rounded-lg p-3 prose">
+          <h3 class="font-semibold uppercase text-base-content/70 mb-2">
+            {{ category.name | title }}
+          </h3>
+          <table class="table [&_tr>*]:border-none [&_td]:py-0.5 [&_td]:px-1">
+            {% for character_trait in category.character_traits | sort(attribute="trait.name", case_sensitive=false) %}
+              {% if character_trait.value == 0 and not character_trait.trait.show_when_zero %}
+                {% continue %}
+              {% endif %}
+              <tr>
+                <td class="text-lg">
+                  <character_view.components.TermTooltip name={{ character_trait.trait.name }} dictionary_terms={{ dictionary_terms }} />
+                </td>
+
+                <td class="text-right text-bold">
+                  {% if category.name not in ["Gifts", "Rites"] %}
+                    <shared.character.DotRating num={{ character_trait.value }} maximum={{ character_trait.trait.max_value }} />
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+            {% for subcategory in category.subcategories if subcategory.character_traits %}
+              <tr>
+                <td colspan="2" class="text-lg font-semibold pt-2">
+                  <character_view.components.TermTooltip name={{ subcategory.name }} dictionary_terms={{ dictionary_terms }} extra_class="font-normal text-sm" />
+                </td>
+              </tr>
+              {% for character_trait in subcategory.character_traits | sort(attribute="trait.name", case_sensitive=false) %}
+                {% if character_trait.value == 0 and not character_trait.trait.show_when_zero %}
+                  {% continue %}
+                {% endif %}
+
+                <tr>
+                  <td class="text-lg">
+                    <span class="pl-4">
+                      <character_view.components.TermTooltip name={{ character_trait.trait.name }} dictionary_terms={{ dictionary_terms }} />
+                    </span>
+                  </td>
+                  <td class="text-right text-bold">
+                    <shared.character.DotRating num={{ character_trait.value }} maximum={{ character_trait.trait.max_value }} />
+                  </td>
+                </tr>
+              {% endfor %}
+            {% endfor %}
+          </table>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+{% endfor %}

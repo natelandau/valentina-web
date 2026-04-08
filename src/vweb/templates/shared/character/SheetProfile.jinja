@@ -1,0 +1,86 @@
+{# def
+    character: Character,
+    can_edit: bool
+#}
+
+{% set alive_value = "🟢" if character.status == "ALIVE" else "🔴" %}
+
+{% set ns = namespace(user_player_owner=none) %}
+
+{% for user in global_context().users %}
+  {% if user.id == character.user_player_id %}
+
+    {% set ns.user_player_owner = user %}
+
+    {% break %}
+  {% endif %}
+{% endfor %}
+
+{% set profile = [
+  ("Class", character.character_class | title),
+  ("Alive", alive_value),
+  ("Concept", character.concept_name | title if character.concept_name else none),
+  ("Demeanor", character.demeanor | title if character.demeanor else none),
+  ("Nature", character.nature | title if character.nature else none),
+  ("Age", character.age if character.age else none),
+  ("Game Version", character.game_version | title if character.game_version else none),
+] %}
+
+{# djlint:off #}
+{% if ns.user_player_owner %}
+  {% set player_url = url_for('profile.profile', user_id=ns.user_player_owner.id) %}
+  {% set profile = profile + [
+      ("Played by", "<a href='" ~ player_url ~ "' class='link link-hover link-primary'>" ~ ns.user_player_owner.username ~ "</a>"),
+    ] %}
+{% endif %}
+{# djlint:on #}
+
+{% if can_edit %}
+
+  {% set profile = profile + [
+      ("Type", character.type | title ~ " Character"),
+    ] %}
+
+{% endif %}
+
+{% if character.character_class in ["VAMPIRE", "GHOUL"] and character.vampire_attributes %}
+
+  {% set profile = profile + [
+      ("Clan", character.vampire_attributes.clan_name if character.vampire_attributes.clan_name else none),
+      ("Generation", character.vampire_attributes.generation if character.vampire_attributes.generation else none),
+      ("Sire", character.vampire_attributes.sire if character.vampire_attributes.sire else none),
+    ] %}
+
+{% elif character.character_class == "WEREWOLF" and character.werewolf_attributes %}
+
+  {% set profile = profile + [
+      ("Tribe", character.werewolf_attributes.tribe_name if character.werewolf_attributes.tribe_name else none),
+      ("Auspice", character.werewolf_attributes.auspice_name if character.werewolf_attributes.auspice_name else none),
+      ("Pack Name", character.werewolf_attributes.pack_name if character.werewolf_attributes.pack_name else none),
+    ] %}
+
+{% elif character.character_class == "MAGE" and character.mage_attributes %}
+
+  {% set profile = profile + [
+      ("Sphere", character.mage_attributes.sphere if character.mage_attributes.sphere else none),
+      ("Tradition", character.mage_attributes.tradition if character.mage_attributes.tradition else none),
+    ] %}
+
+{% elif character.character_class == "HUNTER" and character.hunter_attributes %}
+
+  {% set profile = profile + [
+      ("Creed", character.hunter_attributes.creed if character.hunter_attributes.creed else none),
+    ] %}
+
+{% endif %}
+
+<dl class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-6 py-3">
+  {% for label, value in profile if value is not none %}
+    <div>
+      <dt class="uppercase text-base-content/60 mb-1">{{ label }}</dt>
+      <dd class="font-medium">
+        {{ value }}
+      </dd>
+    </div>
+  {% endfor %}
+</dl>

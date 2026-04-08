@@ -1,0 +1,290 @@
+{#def
+    character,
+    campaign,
+    roll_context,
+#}
+<div x-data="{ tab: 'traits', customNumDice: 1, customDifficulty: 6, traitsDifficulty: 6, traitsDesperation: 0, quickrollDifficulty: 6, quickrollDesperation: 0, traitOneValue: 0, traitTwoValue: 0, maxDesp: {{ roll_context.campaign_desperation }}, }"
+     class="flex flex-col md:flex-row gap-6 p-4">
+
+  {# Left panel: tabbed forms #}
+  <div class="md:w-80 shrink-0">
+
+    {# Tab bar #}
+    <div class="tabs tabs-border mb-4">
+      <button class="tab"
+              :class="tab === 'traits' ? 'tab-active' : ''"
+              @click="tab = 'traits'">Traits</button>
+      <button class="tab"
+              :class="tab === 'quickroll' ? 'tab-active' : ''"
+              @click="tab = 'quickroll'">Quickroll</button>
+      <button class="tab"
+              :class="tab === 'custom' ? 'tab-active' : ''"
+              @click="tab = 'custom'">Custom</button>
+    </div>
+
+    {# ── Traits tab ── #}
+    <form x-show="tab === 'traits'"
+          x-cloak
+          hx-post="/roll/{{ character.id }}/traits"
+          hx-target="#roll-results"
+          hx-swap="innerHTML"
+          hx-disabled-elt="find button[type='submit']"
+          class="space-y-3">
+
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Trait 1 *</legend>
+        <select name="trait_one_id"
+                required
+                class="select select-bordered w-full"
+                @change="traitOneValue = parseInt($event.target.selectedOptions[0]?.dataset.value || 0)">
+          <option value="" data-value="0">-- Select --</option>
+          {% for ct in roll_context.character_traits | sort(attribute='trait.name') %}
+            <option value="{{ ct.trait.id }}" data-value="{{ ct.value }}">
+              {{ ct.trait.name }} ({{ ct.value }})
+            </option>
+          {% endfor %}
+        </select>
+      </fieldset>
+
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Trait 2</legend>
+        <select name="trait_two_id"
+                class="select select-bordered w-full"
+                @change="traitTwoValue = parseInt($event.target.selectedOptions[0]?.dataset.value || 0)">
+          <option value="" data-value="0">None</option>
+          {% for ct in roll_context.character_traits | sort(attribute='trait.name') %}
+            <option value="{{ ct.trait.id }}" data-value="{{ ct.value }}">
+              {{ ct.trait.name }} ({{ ct.value }})
+            </option>
+          {% endfor %}
+        </select>
+      </fieldset>
+
+      <div class="text-base-content/70 px-1">
+        Pool: <span class="font-semibold text-base-content"
+       x-text="traitOneValue + traitTwoValue">0</span> dice
+      </div>
+
+      <div class="flex gap-3">
+        <fieldset class="fieldset flex-1">
+          <legend class="fieldset-legend">Difficulty</legend>
+          <div class="flex items-center gap-2">
+            <button type="button"
+                    class="btn btn-soft btn-square"
+                    @click="traitsDifficulty = Math.max(1, traitsDifficulty - 1)">-</button>
+            <span class="font-semibold text-lg min-w-[2rem] text-center"
+                  x-text="traitsDifficulty">6</span>
+            <button type="button"
+                    class="btn btn-soft btn-square"
+                    @click="traitsDifficulty = Math.min(10, traitsDifficulty + 1)">+</button>
+          </div>
+          <input type="hidden" name="difficulty" :value="traitsDifficulty" />
+        </fieldset>
+
+        {% if roll_context.campaign_desperation > 0 %}
+          <fieldset class="fieldset flex-1">
+            <legend class="fieldset-legend">Desperation</legend>
+            <div class="flex items-center gap-2">
+              <button type="button"
+                      class="btn btn-soft btn-square"
+                      @click="traitsDesperation = Math.max(0, traitsDesperation - 1)">-</button>
+              <span class="font-semibold text-lg min-w-[2rem] text-center"
+                    x-text="traitsDesperation">0</span>
+              <button type="button"
+                      class="btn btn-soft btn-square"
+                      @click="traitsDesperation = Math.min(maxDesp, traitsDesperation + 1)">
+                +
+              </button>
+              <span class="text-xs text-base-content/50">/ {{ roll_context.campaign_desperation }}</span>
+            </div>
+            <input type="hidden" name="num_desperation_dice" :value="traitsDesperation" />
+          </fieldset>
+        {% endif %}
+      </div>
+
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Comment</legend>
+        <input type="text"
+               name="comment"
+               placeholder="Optional"
+               class="input input-sm input-bordered w-full" />
+      </fieldset>
+
+      <shared.CommonButton variant="submit" extra_class="w-full mt-1">
+      <span class="loading loading-spinner htmx-indicator"></span>
+      Roll
+      </shared.CommonButton>
+    </form>
+
+    {# ── Quickroll tab ── #}
+    <div x-show="tab === 'quickroll'" x-cloak>
+      {% if roll_context.quickrolls %}
+        <form hx-post="/roll/{{ character.id }}/quickroll"
+              hx-target="#roll-results"
+              hx-swap="innerHTML"
+              hx-disabled-elt="find button[type='submit']"
+              class="space-y-3">
+
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Quickroll</legend>
+            <select name="quickroll_id" required class="select select-bordered w-full">
+              <option value="">-- Select --</option>
+              {% for qr in roll_context.quickrolls | sort(attribute='name') %}
+                <option value="{{ qr.id }}">{{ qr.name }}</option>
+              {% endfor %}
+            </select>
+          </fieldset>
+
+          <div class="flex gap-3">
+            <fieldset class="fieldset flex-1">
+              <legend class="fieldset-legend">Difficulty</legend>
+              <div class="flex items-center gap-2">
+                <button type="button"
+                        class="btn btn-soft btn-square"
+                        @click="quickrollDifficulty = Math.max(1, quickrollDifficulty - 1)">
+                  -
+                </button>
+                <span class="font-semibold text-lg min-w-[2rem] text-center"
+                      x-text="quickrollDifficulty">6</span>
+                <button type="button"
+                        class="btn btn-soft btn-square"
+                        @click="quickrollDifficulty = Math.min(10, quickrollDifficulty + 1)">
+                  +
+                </button>
+              </div>
+              <input type="hidden" name="difficulty" :value="quickrollDifficulty" />
+            </fieldset>
+
+            {% if roll_context.campaign_desperation > 0 %}
+              <fieldset class="fieldset flex-1">
+                <legend class="fieldset-legend">Desperation</legend>
+                <div class="flex items-center gap-2">
+                  <button type="button"
+                          class="btn btn-soft btn-square"
+                          @click="quickrollDesperation = Math.max(0, quickrollDesperation - 1)">
+                    -
+                  </button>
+                  <span class="font-semibold text-lg min-w-[2rem] text-center"
+                        x-text="quickrollDesperation">0</span>
+                  <button type="button"
+                          class="btn btn-soft btn-square"
+                          @click="quickrollDesperation = Math.min(maxDesp, quickrollDesperation + 1)">
+                    +
+                  </button>
+                  <span class="text-xs text-base-content/50">/ {{ roll_context.campaign_desperation }}</span>
+                </div>
+                <input type="hidden"
+                       name="num_desperation_dice"
+                       :value="quickrollDesperation" />
+              </fieldset>
+            {% endif %}
+          </div>
+
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Comment</legend>
+            <input type="text"
+                   name="comment"
+                   placeholder="Optional"
+                   class="input input-sm input-bordered w-full" />
+          </fieldset>
+
+          <shared.CommonButton variant="submit" extra_class="w-full mt-1">
+          <span class="loading loading-spinner htmx-indicator"></span>
+          Roll
+          </shared.CommonButton>
+        </form>
+      {% else %}
+        <p class="text-base-content/60 italic py-4">No quickrolls configured.</p>
+      {% endif %}
+    </div>
+
+    {# ── Custom tab ── #}
+    <form x-show="tab === 'custom'"
+          x-cloak
+          hx-post="/roll/{{ character.id }}/custom"
+          hx-target="#roll-results"
+          hx-swap="innerHTML"
+          hx-disabled-elt="find button[type='submit']"
+          class="space-y-3">
+
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Die Size</legend>
+        <div class="join w-full">
+
+          {% for size in get_options().gameplay.dice_size %}
+            <input type="radio"
+                   name="dice_size"
+                   value="{{ size }}"
+                   class="join-item btn flex-1"
+                   aria-label="d{{ size }}"
+                   {{ 'checked' if size == 10 }} />
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <div class="flex gap-3">
+        <fieldset class="fieldset flex-1">
+          <legend class="fieldset-legend"># Dice</legend>
+          <div class="flex items-center gap-2">
+            <button type="button"
+                    class="btn btn-soft btn-square"
+                    @click="customNumDice = Math.max(1, customNumDice - 1)">-</button>
+            <span class="font-semibold text-lg min-w-[2rem] text-center"
+                  x-text="customNumDice">1</span>
+            <button type="button"
+                    class="btn btn-soft btn-square"
+                    @click="customNumDice = Math.min(30, customNumDice + 1)">+</button>
+          </div>
+          <input type="hidden" name="num_dice" :value="customNumDice" />
+        </fieldset>
+
+        <fieldset class="fieldset flex-1">
+          <legend class="fieldset-legend">Difficulty</legend>
+          <div class="flex items-center gap-2">
+            <button type="button"
+                    class="btn btn-soft btn-square"
+                    @click="customDifficulty = Math.max(1, customDifficulty - 1)">-</button>
+            <span class="font-semibold text-lg min-w-[2rem] text-center"
+                  x-text="customDifficulty">6</span>
+            <button type="button"
+                    class="btn btn-soft btn-square"
+                    @click="customDifficulty = Math.min(10, customDifficulty + 1)">+</button>
+          </div>
+          <input type="hidden" name="difficulty" :value="customDifficulty" />
+        </fieldset>
+      </div>
+
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Comment</legend>
+        <input type="text"
+               name="comment"
+               placeholder="Optional"
+               class="input input-sm input-bordered w-full" />
+      </fieldset>
+
+      <shared.CommonButton variant="submit" extra_class="w-full mt-1">
+      <span class="loading loading-spinner htmx-indicator"></span>
+      Roll
+      </shared.CommonButton>
+    </form>
+  </div>
+
+  {# Right panel: results #}
+  <div class="flex-1 min-w-0 self-stretch flex flex-col">
+    <div id="roll-results" class="flex-1 flex flex-col">
+      <div class="dice-results-card bg-base-200 rounded-2xl shadow-inner flex-1 flex items-center justify-center p-6">
+        <div class="text-center text-base-content/40">
+          <svg xmlns="http://www.w3.org/2000/svg"
+               class="w-16 h-16 mx-auto mb-3 opacity-50"
+               fill="none"
+               viewBox="0 0 24 24"
+               stroke-width="1"
+               stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+          </svg>
+          <p class="text-sm font-medium">Roll the dice to see results</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

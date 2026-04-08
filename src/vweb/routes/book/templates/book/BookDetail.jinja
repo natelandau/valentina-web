@@ -1,0 +1,32 @@
+{#def
+    book: object,
+    campaign: object,
+    chapters: list,
+    prev_book: object = None,
+    next_book: object = None,
+    total_books: int = 0,
+    active_section: str = "description",
+    assets: list = [],
+#}
+<shared.PageLayout title={{ book.name }}>
+
+  <book.partials.BookPageHeader book={{ book }} />
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
+    <div class="lg:col-span-2">
+      <book.partials.BookContentCard
+        book={{ book }}
+        campaign={{ campaign }}
+        assets={{ assets }}
+        prev_book={{ prev_book }}
+        next_book={{ next_book }}
+        total_books={{ total_books }}
+        active_section={{ active_section }} />
+    </div>
+
+    <div class="flex flex-col gap-4">
+      <book.partials.ChaptersCard book={{ book }} campaign={{ campaign }} chapters={{ chapters }} />
+    </div>
+  </div>
+
+</shared.PageLayout>

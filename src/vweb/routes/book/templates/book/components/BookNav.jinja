@@ -1,0 +1,18 @@
+{#def
+    book_id: str,
+    campaign_id: str,
+    active_section: str = "description",
+    oob: bool = False,
+#}
+<div role="tablist" id="book-tabs" class="tabs tabs-border" {% if oob %}hx-swap-oob="true"{% endif %}>
+  {% for section in ["description", "notes"] %}
+    <a role="tab"
+       class="tab {{ 'tab-active' if active_section == section else '' }}"
+       hx-get="{{ url_for('book_view.book_detail_section', campaign_id=campaign_id, book_id=book_id, section=section) }}"
+       hx-target="#book-tab-content"
+       hx-swap="innerHTML"
+       hx-push-url="true">
+      {{ "Story" if section == "description" else section | capitalize }}
+    </a>
+  {% endfor %}
+</div>

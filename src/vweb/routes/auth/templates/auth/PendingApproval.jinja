@@ -1,0 +1,20 @@
+<shared.PageLayout title="Pending Approval">
+    <div class="hero min-h-[60vh]">
+        <div class="hero-content text-center">
+            <div class="max-w-md">
+                <h1 class="text-3xl font-bold">Account Pending Approval</h1>
+                <p class="py-6">
+                    Your account has been created but requires approval from an administrator
+                    before you can access the application.
+                </p>
+                <p class="text-sm opacity-60">
+                    Please contact your game's Storyteller or administrator for access.
+                </p>
+                <form method="post" action="{{ url_for('auth.logout') }}" class="mt-6">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                    <button type="submit" class="btn btn-outline btn-sm">Sign Out</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</shared.PageLayout>

@@ -1,0 +1,26 @@
+{#def item=None, form_data=None #}
+<fieldset class="fieldset">
+    <legend class="fieldset-legend">Title</legend>
+    <label class="input w-full">
+        <input type="text"
+               id="title"
+               name="title"
+               value="{{ form_data.get('title', '') if form_data else (item.title if item else '') }}"
+               class="grow"
+               required
+               minlength="3"
+               maxlength="50"
+               placeholder="Note title">
+    </label>
+</fieldset>
+
+<fieldset class="fieldset">
+    <legend class="fieldset-legend">Content</legend>
+    <textarea id="content"
+              name="content"
+              class="textarea w-full"
+              required
+              minlength="3"
+              rows="4"
+              placeholder="Note content">{{ form_data.get('content', '') if form_data else (item.content if item else '') }}</textarea>
+</fieldset>

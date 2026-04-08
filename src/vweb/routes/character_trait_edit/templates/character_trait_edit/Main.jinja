@@ -1,0 +1,67 @@
+{# def
+    current_spend_type: TraitModifyCurrency,
+    character: Character,
+    campaign: Campaign,
+    xp_current: int,
+    xp_total: int,
+    full_sheet: CharacterFullSheet,
+    post_url: str,
+#}
+
+{% set title = character.name ~ " Manage Traits" %}
+
+<shared.PageLayout title={{ title }}>
+
+<div class="bg-base-200 rounded-box p-3 sm:p-4 mb-4">
+  <div class="flex flex-row items-center justify-between gap-3">
+    <div>
+      <h1 class="text-xl sm:text-3xl font-bold">
+        {{ character.name_full }}
+      </h1>
+      <p class="text-xs sm:text-sm text-base-content/60 uppercase tracking-wide">
+        {{ character.character_class | title }}
+      </p>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-1.5">
+      <a href="{{ url_for('character_view.character', character_id=character.id) }}"
+         class="btn btn-sm md:btn-md btn-primary btn-outline">Done Editing</a>
+    </div>
+  </div>
+</div>
+
+<div class="flex items-center justify-center">
+
+  <div class="card lg:w-1/2 bg-base-100 card-lg shadow-sm">
+    <div class="card-body">
+
+      {% if current_spend_type == "NO_COST" %}
+        <p>
+          Storytellers can update any character without needing to spend experience.
+        </p>
+      {% elif current_spend_type == "XP" %}
+        <p>
+          Spend your experience points to update your character.  Any trait values changed downward will have its value added to your experience points.
+        </p>
+        <p>
+          You have <span class="font-bold font-mono">{{ xp_current }}</span> experience points available.
+        </p>
+      {% else %}
+        <p>
+          Spend your starting points to update your character.  Any trait values changed downward will have its value added to your starting points.
+        </p>
+        <p>
+          You have <span class="font-bold font-mono">{{ character.starting_points }}</span> starting points available.
+        </p>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+
+{% for section in full_sheet.sections %}
+  <shared.traits.TraitSection section={{ section }} post_url={{ post_url }} />
+
+{% endfor %}
+
+</shared.PageLayout>

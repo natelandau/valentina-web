@@ -1,0 +1,11 @@
+{#def
+    book: object,
+    oob: bool = False,
+#}
+
+{% set before_title = "Book " ~ "%02d" | format(book.number) %}
+
+<div id="book-page-header"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <shared.PageHeader title={{ book.name }} before_text={{ before_title }}>
+  </shared.PageHeader>
+</div>

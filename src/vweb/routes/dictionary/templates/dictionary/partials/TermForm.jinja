@@ -1,0 +1,85 @@
+{#def term = None, form_data: dict = {}, errors: list = [] #}
+<div class="p-6">
+  <h2 class="text-xl font-bold mb-4">
+    {% if term %}
+      Edit Term
+    {% else %}
+      Add Term
+    {% endif %}
+  </h2>
+
+  {% if errors %}
+    <div class="alert alert-error mb-4" role="alert">
+      <i class="fa-solid fa-circle-exclamation"></i>
+      <ul class="list-disc list-inside text-sm">
+        {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <form {% if term %} hx-post="{{ url_for('dictionary.term_update', term_id=term.id) }}" {% else %} hx-post="{{ url_for('dictionary.term_create') }}" {% endif %}
+        hx-target="#term-detail"
+        hx-swap="innerHTML"
+        hx-disabled-elt="find button[type='submit']"
+        class="flex flex-col gap-4">
+    <div>
+      <label class="label" for="term-name">Term name</label>
+      <input type="text"
+             id="term-name"
+             name="term"
+             placeholder="Term name (3-50 characters)"
+             value="{{ form_data.get('term') or (term.term if term else '') }}"
+             required
+             maxlength="50"
+             class="input input-bordered w-full" />
+    </div>
+
+    <div>
+      <label class="label" for="term-definition">Definition</label>
+      <textarea id="term-definition"
+                name="definition"
+                placeholder="Supports markdown"
+                rows="4"
+                class="textarea textarea-bordered w-full">{{ form_data.get('definition') or (term.definition if term and term.definition else '') }}</textarea>
+    </div>
+
+    <div>
+      <label class="label" for="term-link">Link</label>
+      <input type="url"
+             id="term-link"
+             name="link"
+             placeholder="https://example.com"
+             value="{{ form_data.get('link') or (term.link if term and term.link else '') }}"
+             class="input input-bordered w-full" />
+    </div>
+
+    <div>
+      <label class="label" for="term-synonyms">Synonyms</label>
+      <input type="text"
+             id="term-synonyms"
+             name="synonyms"
+             placeholder="Comma-separated list (e.g. vamp, leech, nosferatu)"
+             value="{{ form_data.get('synonyms') or (term.synonyms | join(', ') if term and term.synonyms else '') }}"
+             class="input input-bordered w-full" />
+      <div class="label">
+        <span class="label-text-alt text-base-content/50">Separate multiple synonyms with commas</span>
+      </div>
+    </div>
+
+    <div class="flex gap-2 justify-end">
+
+      {% set cancel_url = url_for('dictionary.term_detail', term_id=term.id) if term else url_for('dictionary.term_empty') %}
+
+      <shared.CommonButton variant="cancel" extra_class="hidden lg:inline-flex" hx-get={{ cancel_url }} hx-target="#term-detail" hx-swap="innerHTML">Cancel</shared.CommonButton>
+      <shared.CommonButton variant="cancel" extra_class="lg:hidden" href="{{ url_for('dictionary.index') }}">Cancel</shared.CommonButton>
+      <shared.CommonButton variant="submit">
+      {% if term %}
+        Save Changes
+      {% else %}
+        Add Term
+      {% endif %}
+      <span class="loading loading-spinner htmx-indicator"></span>
+      </shared.CommonButton>
+    </div>
+  </form>
+</div>

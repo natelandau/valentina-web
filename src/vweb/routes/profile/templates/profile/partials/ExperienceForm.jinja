@@ -1,0 +1,17 @@
+{#def
+    user_id: str,
+    campaign_id: str,
+    campaign_name: str,
+    form_data: dict = {},
+    errors: list = [],
+#}
+
+<div class="mt-4">
+  <shared.ExperienceForm
+    post_url={{ url_for('profile.add_experience', user_id=user_id, campaign_id=campaign_id) }}
+    cancel_url={{ url_for('profile.experience_card', user_id=user_id) }}
+    target_id="experience-card"
+    campaign_name={{ campaign_name }}
+    form_data={{ form_data }}
+    errors={{ errors }} />
+</div>

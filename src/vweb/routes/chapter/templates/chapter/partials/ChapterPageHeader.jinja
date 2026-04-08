@@ -1,0 +1,19 @@
+{#def
+    chapter: object,
+    book: object,
+    campaign: object,
+    oob: bool = False,
+#}
+
+{% set before_title = "Chapter " ~ "%02d" | format(chapter.number) %}
+
+{% set header_actions %}
+<shared.CommonButton variant="action" href={{ url_for('book_view.book_detail', campaign_id=campaign.id, book_id=book.id) }}>
+<i class="fa-solid fa-chevron-left"></i> Back to Book
+</shared.CommonButton>
+{% endset %}
+
+<div id="chapter-page-header"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <shared.PageHeader title={{ chapter.name }} before_text={{ before_title }} actions={{ header_actions }}>
+  </shared.PageHeader>
+</div>

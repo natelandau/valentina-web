@@ -1,0 +1,22 @@
+{#def
+    campaign,
+    form_options: dict = {},
+    form_data: dict = {},
+    errors: dict = {},
+    mode: str = "create",
+    character_id: str = "",
+#}
+
+<shared.PageLayout title="Manual Character Creation">
+  <shared.PageHeader title="Manual Character Creation" before_text={{ campaign.name }} />
+  <div id="manual-create-content">
+    <character_manual_create.partials.ProfileForm
+        campaign={{ campaign }}
+        form_options={{ form_options }}
+        form_data={{ form_data }}
+        errors={{ errors }}
+        mode={{ mode }}
+        character_id={{ character_id }}
+    />
+  </div>
+</shared.PageLayout>

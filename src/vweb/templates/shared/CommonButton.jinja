@@ -1,0 +1,64 @@
+{#def
+    variant: str,
+    href: str = "",
+    extra_class: str = "",
+    extra_attrs: str = "",
+    btn_type: str = "",
+    disabled: bool = False,
+    tooltip_text: str = "",
+#}
+
+{% set variant_classes = {
+  "submit": "btn btn-success",
+  "cancel": "btn btn-ghost",
+  "delete": "btn btn-error btn-soft",
+  "edit": "btn btn-primary btn-soft",
+  "add": "btn btn-info btn-soft",
+  "action": "btn btn-neutral btn-soft",
+  "diceroll": "btn btn-neutral"
+} %}
+
+{% set base = variant_classes.get(variant, "btn") %}
+
+{% set all_classes = (base ~ " " ~ extra_class) | trim %}
+
+{% if btn_type %}
+
+  {% set resolved_type = btn_type %}
+
+{% elif variant == "submit" %}
+
+  {% set resolved_type = "submit" %}
+
+{% else %}
+
+  {% set resolved_type = "button" %}
+
+{% endif %}
+
+{% if tooltip_text %}
+  <div class="tooltip" data-tip="{{ tooltip_text }}">
+  {% endif %}
+
+  {% if href %}
+    {% if disabled %}
+      <a href="{{ href }}"
+         class="{{ all_classes }} btn-disabled"
+         aria-disabled="true"
+         {{ extra_attrs }}
+         {{ attrs.render() }}>{{ content }}</a>
+    {% else %}
+      <a href="{{ href }}"
+         class="{{ all_classes }}"
+         {{ extra_attrs }}
+         {{ attrs.render() }}>{{ content }}</a>
+    {% endif %}
+  {% else %}
+    <button type="{{ resolved_type }}"
+            class="{{ all_classes }}"
+            {% if disabled %}disabled{% endif %}
+            {{ extra_attrs }}
+            {{ attrs.render() }}>{{ content }}
+    </button>
+  {% endif %}
+  {% if tooltip_text %}</div>{% endif %}

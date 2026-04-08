@@ -1,0 +1,32 @@
+{#def #}
+<dialog id="dice-roll-modal"
+        class="modal"
+        x-data="{ characterId: '', characterName: '' }"
+        @open-dice-roll.window="
+            characterId = $event.detail.characterId;
+            characterName = $event.detail.characterName;
+            $refs.modalContent.setAttribute('hx-get', '/roll/' + characterId);
+            htmx.process($refs.modalContent);
+            htmx.trigger($refs.modalContent, 'loadContent');
+            $el.showModal();
+        ">
+    <div class="modal-box w-11/12 max-w-5xl p-0">
+        <div class="flex items-center justify-between p-4 border-b border-base-300">
+            <h3 class="font-bold text-lg" x-text="'Roll Dice — ' + characterName"></h3>
+            <form method="dialog">
+                <button class="btn btn-sm btn-circle btn-ghost">✕</button>
+            </form>
+        </div>
+        <div x-ref="modalContent"
+             hx-trigger="loadContent"
+             hx-swap="innerHTML"
+             hx-target="this">
+            <div class="flex items-center justify-center min-h-[200px]">
+                <span class="loading loading-spinner loading-lg"></span>
+            </div>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>

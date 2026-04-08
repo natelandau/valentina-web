@@ -1,0 +1,28 @@
+{#def
+    book: object,
+    campaign: object,
+    assets: list = [],
+    prev_book: object = None,
+    next_book: object = None,
+    total_books: int = 0,
+    active_section: str = "description",
+#}
+
+{% set editable = can_manage_campaign() %}
+
+<div id="book-content" class="card bg-base-100 shadow-sm h-full">
+  <div class="card-body">
+    <shared.PrevNextNav prev_label={{ prev_book.name if prev_book else "" }} prev_hx_url={{ url_for('book_view.book_detail_section', campaign_id=campaign.id, book_id=prev_book.id, section='description') if prev_book else "" }} prev_push_url={{ url_for('book_view.book_detail', campaign_id=campaign.id, book_id=prev_book.id) if prev_book else "" }} next_label={{ next_book.name if next_book else "" }} next_hx_url={{ url_for('book_view.book_detail_section', campaign_id=campaign.id, book_id=next_book.id, section='description') if next_book else "" }} next_push_url={{ url_for('book_view.book_detail', campaign_id=campaign.id, book_id=next_book.id) if next_book else "" }} target="#book-content" position_label={{ "Book " ~ book.number ~ " of " ~ total_books if total_books > 1 else "" }} />
+
+    <div>
+      <book.components.BookNav book_id={{ book.id }} campaign_id={{ campaign.id }} active_section={{ active_section }} />
+      <div id="book-tab-content" class="pt-4">
+        {% if active_section == "notes" %}
+          <book.partials.BookNotes book={{ book }} campaign={{ campaign }} />
+        {% else %}
+          <book.partials.BookDescription book={{ book }} campaign={{ campaign }} assets={{ assets }} />
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>

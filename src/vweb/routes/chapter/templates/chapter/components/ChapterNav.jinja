@@ -1,0 +1,20 @@
+{#def
+    chapter_id: str,
+    campaign_id: str,
+    book_id: str,
+    active_section: str = "story",
+    oob: bool = False,
+#}
+<div role="tablist"
+     id="chapter-tabs"
+     class="tabs tabs-border"
+     {% if oob %}hx-swap-oob="true"{% endif %}>
+  {% for section in ["story", "notes"] %}
+    <a role="tab"
+       class="tab {{ 'tab-active' if active_section == section else '' }}"
+       hx-get="{{ url_for('chapter_view.chapter_detail_section', campaign_id=campaign_id, book_id=book_id, chapter_id=chapter_id, section=section) }}"
+       hx-target="#chapter-tab-content"
+       hx-swap="innerHTML"
+       hx-push-url="true">{{ section | capitalize }}</a>
+  {% endfor %}
+</div>

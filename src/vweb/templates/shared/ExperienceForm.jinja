@@ -1,0 +1,56 @@
+{#def
+    post_url: str,
+    cancel_url: str,
+    target_id: str,
+    campaign_name: str,
+    form_data: dict = {},
+    errors: list = [],
+#}
+
+<h3 class="font-semibold mb-2">Add Experience — {{ campaign_name }}</h3>
+
+{% if errors %}
+  <div role="alert" class="alert alert-error mb-4">
+    <i class="fa-solid fa-circle-exclamation"></i>
+    <div>
+      <ul>
+        {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+      </ul>
+    </div>
+  </div>
+{% endif %}
+
+<form hx-post="{{ post_url }}"
+      hx-target="#{{ target_id }}"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']"
+      class="space-y-4 lg:w-1/2">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+  <fieldset class="fieldset">
+    <legend class="fieldset-legend">XP</legend>
+    <input type="number"
+           name="xp"
+           class="input input-bordered w-full"
+           min="0"
+           value="{{ form_data.get('xp', '0') if form_data else '0' }}" />
+  </fieldset>
+
+  <fieldset class="fieldset">
+    <legend class="fieldset-legend">Cool Points</legend>
+    <input type="number"
+           name="cool_points"
+           class="input input-bordered w-full"
+           min="0"
+           value="{{ form_data.get('cool_points', '0') if form_data else '0' }}" />
+  </fieldset>
+
+  <div class="flex gap-2 mt-4">
+    <shared.CommonButton variant="submit" extra_class="btn-sm">
+      <span class="loading loading-spinner htmx-indicator"></span>
+      Submit
+    </shared.CommonButton>
+    {% set cancel_attrs = 'hx-get="' ~ cancel_url ~ '" hx-target="#' ~ target_id ~ '" hx-swap="innerHTML"' %}
+    <shared.CommonButton variant="cancel" extra_class="btn-sm" extra_attrs={{ cancel_attrs }}>Cancel</shared.CommonButton>
+  </div>
+</form>

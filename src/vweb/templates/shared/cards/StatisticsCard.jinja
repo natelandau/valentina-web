@@ -1,0 +1,73 @@
+{# def
+    statistics: RollStatistics,
+    title: str = "Campaign Statistics",
+    col_span: int = 0,
+#}
+
+{% set grid_col_span = "col-span-" ~ col_span if col_span > 0 else "" %}
+
+<div class="card bg-base-100 shadow-sm h-full {{ grid_col_span }}">
+  <div class="card-body">
+    <h2 class="card-title">{{ title }}</h2>
+    <div class="stats stats-vertical lg:stats-horizontal shadow-sm overflow-hidden">
+      <div class="stat">
+        <div class="stat-title">Total Rolls</div>
+        <div class="stat-value">{{ statistics.total_rolls }}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">Avg Diff</div>
+        <div class="stat-value">
+          {{ statistics.average_difficulty | round(1) if statistics.average_difficulty is not none else "N/A" }}
+        </div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">Avg Pool</div>
+        <div class="stat-value">
+          {{ statistics.average_pool | round(1) if statistics.average_pool is not none else "N/A" }}
+        </div>
+      </div>
+      {% if statistics.top_traits %}
+        <div class="stat">
+          <div class="stat-title">Most Used Trait</div>
+          <div class="stat-value">
+            {# NOTE: add truncate class here if the word overflows the container #}
+            {{ statistics.top_traits[0].name }}
+          </div>
+          <div class="stat-desc">
+            {{ statistics.top_traits[0].usage_count }} rolls
+          </div>
+        </div>
+      {% endif %}
+    </div>
+    <div class="stats stats-vertical lg:stats-horizontal shadow-sm">
+      <div class="stat">
+        <div class="stat-title">Critical Successes</div>
+        <div class="stat-value text-success">{{ statistics.criticals }}</div>
+        <div class="stat-desc">
+          {{ statistics.criticals_percentage | round(1) }}%
+        </div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">Successes</div>
+        <div class="stat-value text-success">{{ statistics.successes }}</div>
+        <div class="stat-desc">
+          {{ statistics.success_percentage | round(1) }}%
+        </div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">Failures</div>
+        <div class="stat-value text-error">{{ statistics.failures }}</div>
+        <div class="stat-desc">
+          {{ statistics.failure_percentage | round(1) }}%
+        </div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">Botches</div>
+        <div class="stat-value text-error">{{ statistics.botches }}</div>
+        <div class="stat-desc">
+          {{ statistics.botch_percentage | round(1) }}%
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

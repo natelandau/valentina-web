@@ -1,0 +1,178 @@
+"""Data-access helpers using the global context on Flask's g object."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from flask import abort, g
+
+if TYPE_CHECKING:
+    from vclient.models import CampaignBook, Character
+    from vclient.models.campaigns import Campaign
+    from vclient.models.users import CampaignExperience
+
+
+def get_character_and_campaign(
+    character_id: str,
+) -> tuple[Character | None, Campaign | None]:
+    """Look up a character and its campaign from the company context.
+
+    Args:
+        character_id: The character's unique identifier.
+
+    Returns:
+        A (character, campaign) tuple; either may be None if not found.
+    """
+    character = next((c for c in g.global_context.characters if c.id == character_id), None)
+    if character is None:
+        return None, None
+
+    campaign = next((c for c in g.global_context.campaigns if c.id == character.campaign_id), None)
+    return character, campaign
+
+
+def _get_book_and_campaign(
+    book_id: str,
+) -> tuple[CampaignBook | None, Campaign | None]:
+    """Look up a book and its campaign from the global context.
+
+    Args:
+        book_id: The book's unique identifier.
+
+    Returns:
+        A (book, campaign) tuple; either may be None if not found.
+    """
+    for books in g.global_context.books_by_campaign.values():
+        for book in books:
+            if book.id == book_id:
+                campaign = next(
+                    (c for c in g.global_context.campaigns if c.id == book.campaign_id),
+                    None,
+                )
+                return book, campaign
+    return None, None
+
+
+def fetch_book_or_404(campaign_id: str, book_id: str) -> tuple[CampaignBook, Campaign]:
+    """Look up book and campaign, abort 404 if not found.
+
+    Args:
+        campaign_id: The campaign's unique identifier.
+        book_id: The book's unique identifier.
+
+    Returns:
+        A (book, campaign) tuple.
+
+    Raises:
+        werkzeug.exceptions.NotFound: If the book or campaign is not found,
+            or the campaign ID doesn't match.
+    """
+    book, campaign = _get_book_and_campaign(book_id)
+    if book is None or campaign is None or campaign.id != campaign_id:
+        abort(404)
+    return book, campaign
+
+
+def fetch_campaign_or_404(campaign_id: str) -> Campaign:
+    """Look up a campaign by ID, abort 404 if not found.
+
+    Args:
+        campaign_id: The campaign's unique identifier.
+
+    Returns:
+        The Campaign object.
+
+    Raises:
+        werkzeug.exceptions.NotFound: If the campaign is not found.
+    """
+    campaign = next((c for c in g.global_context.campaigns if c.id == campaign_id), None)
+    if campaign is None:
+        abort(404)
+    return campaign
+
+
+def get_campaign_name(campaign_id: str) -> str:
+    """Look up a campaign name from the global context.
+
+    Args:
+        campaign_id: The campaign's unique identifier.
+
+    Returns:
+        The campaign name, or "Unknown" if not found.
+    """
+    campaign = next((c for c in g.global_context.campaigns if c.id == campaign_id), None)
+    return campaign.name if campaign else "Unknown"
+
+
+def get_user_campaign_experience(user_id: str, campaign_id: str) -> CampaignExperience | None:
+    """Look up a user's experience for a specific campaign.
+
+    Args:
+        user_id: The user's unique identifier.
+        campaign_id: The campaign's unique identifier.
+
+    Returns:
+        The CampaignExperience object if found, None otherwise.
+    """
+    user = next((u for u in g.global_context.users if u.id == user_id), None)
+    if user is None:
+        return None
+    return next(
+        (exp for exp in user.campaign_experience if exp.campaign_id == campaign_id),
+        None,
+    )
+
+
+def validate_and_submit_experience(
+    form_data: dict,
+    user_id: str,
+    campaign_id: str,
+    requesting_user_id: str,
+) -> list[str]:
+    """Validate experience form data and submit to the API if valid.
+
+    Args:
+        form_data: The form data dict with 'xp' and 'cool_points' keys.
+        user_id: The user receiving the experience.
+        campaign_id: The campaign to award experience in.
+        requesting_user_id: The user making the request.
+
+    Returns:
+        A list of validation error strings (empty on success).
+    """
+    from vclient import sync_users_service
+
+    from vweb.lib.global_context import clear_global_context_cache
+
+    errors: list[str] = []
+
+    try:
+        xp_amount = int(form_data.get("xp", "0"))
+    except ValueError:
+        errors.append("XP must be a whole number")
+        xp_amount = 0
+
+    try:
+        cp_amount = int(form_data.get("cool_points", "0"))
+    except ValueError:
+        errors.append("Cool Points must be a whole number")
+        cp_amount = 0
+
+    if not errors and xp_amount == 0 and cp_amount == 0:
+        errors.append("Enter at least one value greater than zero")
+
+    if errors:
+        return errors
+
+    svc = sync_users_service()
+
+    if xp_amount > 0:
+        svc.add_xp(user_id, campaign_id, amount=xp_amount, requesting_user_id=requesting_user_id)
+
+    if cp_amount > 0:
+        svc.add_cool_points(
+            user_id, campaign_id, amount=cp_amount, requesting_user_id=requesting_user_id
+        )
+
+    clear_global_context_cache()
+    return []

@@ -1,0 +1,13 @@
+{#def
+    book: object,
+    campaign: object,
+#}
+
+{% set editable_param = 'true' if can_manage_campaign() else 'false' %}
+
+<div id="crud-book_notes"
+     hx-get="{{ url_for('book_view.book_notes', campaign_id=campaign.id, book_id=book.id) }}?editable={{ editable_param }}"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+  <span class="loading loading-spinner loading-sm"></span>
+</div>

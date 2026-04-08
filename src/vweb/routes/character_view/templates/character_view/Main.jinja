@@ -1,0 +1,92 @@
+{# def
+    character: Character,
+    campaign: Campaign,
+    active_section: str = "sheet",
+    full_sheet: CharacterFullSheet | None = None,
+    notes: list[Note] = [],
+    inventory: list[InventoryItem] = [],
+    assets: list[Asset] = [],
+    statistics: dict = {},
+    concept: CharacterConcept | None = None,
+    dictionary_terms: list[DictionaryTerm] = [],
+#}
+
+{% set can_edit = can_edit_character(character) %}
+
+<shared.PageLayout title={{ character.name }}>
+<div>
+
+  {% set header_actions %}
+
+    <button class="btn btn-sm btn-neutral"
+            x-data
+            @click="$dispatch('open-dice-roll', { characterId: '{{ character.id }}', characterName: '{{ character.name_full }}' })">
+      <i class="fa-solid fa-dice"></i> Roll Dice
+    </button>
+    {% if can_edit %}
+      <shared.CommonButton variant="add" extra_class="btn-sm" href={{ url_for('character_trait_edit.XP', character_id=character.id) }}>
+      <i class="fa-solid fa-bolt"></i> Spend XP
+      </shared.CommonButton>
+      <details class="dropdown dropdown-end">
+        <summary class="btn btn-sm btn-ghost">
+          <i class="fa-solid fa-bars"></i>
+          <span class="inline">More</span>
+        </summary>
+        <ul class="menu dropdown-content bg-base-100 rounded-box z-10 w-56 p-2 shadow-md">
+          <li>
+            <button hx-get="{{ url_for('character_create.manual_profile', campaign_id=campaign.id) }}?character_id={{ character.id }}"
+                    hx-target="#tab-content"
+                    hx-swap="innerHTML">
+              <i class="fa-regular fa-pen-to-square"></i> Edit Profile
+            </button>
+          </li>
+          {% if can_edit and character.starting_points > 0 %}
+            <li>
+              <a href="{{ url_for('character_trait_edit.STARTING_POINTS', character_id=character.id) }}">
+                <i class="fa-solid fa-star"></i> Spend Starting Points
+              </a>
+            </li>
+          {% endif %}
+          {% if can_edit_traits_free(character) %}
+            <li>
+              <a href="{{ url_for('character_trait_edit.NO_COST', character_id=character.id) }}">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Free Trait Edit
+              </a>
+            </li>
+          {% endif %}
+          <li class="border-t border-base-300 mt-1 pt-1">
+            <button class="text-error hover:bg-error/10"
+                    onclick="document.getElementById('character-delete-modal').showModal()">
+              <i class="fa-solid fa-trash-can"></i> Delete Character
+            </button>
+          </li>
+        </ul>
+      </details>
+    {% endif %}
+  {% endset %}
+
+  <shared.PageHeader title={{ character.name_full }} after_text={{ character.character_class | title }} actions={{ header_actions }}>
+  </shared.PageHeader>
+  <character_view.components.CharacterNav character_id={{ character.id }} active_section={{ active_section }} />
+
+  <div id="tab-content" class="bg-base-100 border-base-300 p-6">
+
+    {% if active_section == "sheet" %}
+      <character_view.partials.SheetContent full_sheet={{ full_sheet }} dictionary_terms={{ dictionary_terms }} />
+    {% elif active_section == "info" %}
+      <character_view.partials.InfoContent character={{ character }} />
+    {% elif active_section == "profile" %}
+      <character_view.partials.ProfileContent character={{ character }} concept={{ concept }} dictionary_terms={{ dictionary_terms }} />
+    {% elif active_section == "images" %}
+      <character_view.partials.ImagesContent character={{ character }} assets={{ assets }} />
+    {% elif active_section == "stats" %}
+      <character_view.partials.StatsContent statistics={{ statistics }} />
+    {% endif %}
+
+  </div>
+</div>
+{% if can_edit %}
+  <character_view.components.CharacterDeleteModal character_id={{ character.id }} character_name={{ character.name_full }} />
+{% endif %}
+<shared.diceroll.DiceRollModal />
+</shared.PageLayout>

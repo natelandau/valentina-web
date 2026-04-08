@@ -1,0 +1,62 @@
+{#def
+    campaign_id: str
+#}
+
+{% set current_user = g.requesting_user %}
+
+{% set current_user_experience = user_campaign_experience(current_user.id, campaign_id) %}
+
+{% set exp_attrs = 'hx-get="' ~ url_for('index.experience_form', campaign_id=campaign_id) ~ '" hx-target="#index-experience-card" hx-swap="innerHTML"' %}
+
+<div class="card-body mb-0">
+  <div class="flex items-center justify-between">
+    <div>
+
+      <h2 class="card-title">
+        <a href="{{ url_for('profile.profile', user_id=current_user.id) }}"><shared.UserAvatar user={{ current_user }} /></a> Your Experience
+      </h2>
+    </div>
+    <shared.CommonButton variant="action" extra_class="btn-sm" href={{ url_for('profile.profile', user_id=current_user.id) }}>Your Full Profile
+    <svg xmlns="http://www.w3.org/2000/svg"
+         width="24"
+         height="24"
+         viewBox="0 0 24 24"
+         fill="none"
+         stroke="currentColor"
+         stroke-width="2"
+         stroke-linecap="round"
+         stroke-linejoin="round"
+         class="lucide lucide-square-arrow-up-right-icon lucide-square-arrow-up-right">
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <path d="M8 8h8v8" />
+      <path d="m8 16 8-8" />
+    </svg>
+    </shared.CommonButton>
+  </div>
+  <div class="stats shadow-sm">
+    <div class="stat">
+      <div class="stat-title">Available XP</div>
+      <div class="stat-value text-success">
+        {{ current_user_experience.xp_current if current_user_experience else 0 }}
+      </div>
+      {% if can_grant_experience(current_user.id) %}
+        <div class="stat-actions">
+          <shared.CommonButton variant="add" extra_class="btn-xs" extra_attrs={{ exp_attrs }}>+ Experience</shared.CommonButton>
+        </div>
+      {% endif %}
+    </div>
+    <div class="stat">
+      <div class="stat-title">Total XP</div>
+      <div class="stat-value">
+        {{ current_user_experience.xp_total if current_user_experience else 0 }}
+      </div>
+    </div>
+    <div class="stat">
+      <div class="stat-title">Cool Points</div>
+      <div class="stat-value">
+        {{ current_user_experience.cool_points if current_user_experience else 0 }}
+      </div>
+    </div>
+  </div>
+
+</div>

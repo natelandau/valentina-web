@@ -1,0 +1,102 @@
+{#def
+    campaign,
+    session_id: str,
+    characters_data: list,
+    errors: list = [],
+    expires_at = None,
+#}
+
+{% if errors %}
+  <div role="alert" class="alert alert-error mb-4">
+    <ul>
+      {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+{# Instructions #}
+<div role="alert" class="alert alert-success my-6">
+  <svg xmlns="http://www.w3.org/2000/svg"
+       class="h-6 w-6 shrink-0 stroke-current"
+       fill="none"
+       viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+  <div class="text-lg">
+    <h3 class="font-bold">
+      Created {{ characters_data | length }} characters
+    </h3>
+    <div>
+      Review each character option using the tabs below, then select the one you'd like to keep.
+    </div>
+    <div>
+      You can leave this page and return to finish your selection from the character creation page before the session expires.
+    </div>
+  </div>
+
+</div>
+
+{# Tab navigation #}
+
+<div class="mx-4 md:mx-6 lg:mx-8"
+     x-data="{ selectedCharId: '{{ characters_data[0].character.id if characters_data else '' }}', selectedCharName: '{{ characters_data[0].character.name_full if characters_data else '' }}' }">
+
+  <div class="tabs tabs-lift lg:tabs-lg">
+    {% for item in characters_data %}
+      <input type="radio"
+             name="character_tabs"
+             class="tab"
+             aria-label="{{ loop.index }}. {{ item.character.name_full or 'Character ' ~ loop.index }}"
+             {% if loop.first %}checked="checked"{% endif %}
+             @change="selectedCharId = '{{ item.character.id }}'; selectedCharName = '{{ item.character.name_full or 'Character ' ~ loop.index }}'" />
+      <div class="tab-content bg-base-100 border-base-300 p-6">
+
+        <character_view.partials.SheetContent full_sheet={{ item.full_sheet }} can_edit={{ False }} />
+
+      </div>
+    {% endfor %}
+  </div>
+
+  {# Footer with Back and Select buttons #}
+  <div class="flex gap-2 mt-6 justify-end sticky bottom-4 bg-base-300 p-4 rounded-lg shadow-lg">
+    <shared.CommonButton variant="cancel" onclick="document.getElementById('back-confirm-modal').showModal()">Back</shared.CommonButton>
+    <form hx-post="{{ url_for('character_create.multi_autogen_finalize', campaign_id=campaign.id) }}"
+          hx-target="#creation-content"
+          hx-swap="innerHTML"
+          hx-disabled-elt="button[type='submit']">
+      <input type="hidden" name="session_id" value="{{ session_id }}" />
+      <input type="hidden"
+             name="selected_character_id"
+             x-bind:value="selectedCharId" />
+      <shared.CommonButton variant="submit"><span x-text="'Select ' + selectedCharName"></span></shared.CommonButton>
+    </form>
+  </div>
+</div>
+
+{# Back confirmation modal #}
+<dialog id="back-confirm-modal" class="modal">
+  <div class="modal-box">
+    <h3 class="text-lg font-bold">Are you sure?</h3>
+    <p class="py-4">
+      You can resume this session from the character creation page.
+      {% if expires_at %}
+        It expires {{ expires_at | humanize_date }}.
+      {% endif %}
+    </p>
+    <div class="modal-action">
+      <form method="dialog">
+        <button class="btn">Cancel</button>
+      </form>
+      <button class="btn btn-warning"
+              hx-get="{{ url_for('character_create.selection_cards', campaign_id=campaign.id) }}"
+              hx-target="#creation-content"
+              hx-swap="innerHTML"
+              onclick="document.getElementById('back-confirm-modal').close()">
+        Confirm
+      </button>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button>close</button>
+  </form>
+</dialog>

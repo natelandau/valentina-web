@@ -1,0 +1,1 @@
+"""Authentication route package."""

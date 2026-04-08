@@ -1,0 +1,67 @@
+{#def
+    errors: list = [],
+    form_data: dict = {},
+    campaign = None
+#}
+
+{% if campaign %}
+    {% set modal_title = "Edit Campaign" %}
+    {% set form_action = url_for('campaign.update', campaign_id=campaign.id) %}
+    {% set submit_label = "Save" %}
+    {% set name_value = form_data.get('name', campaign.name) %}
+    {% set desc_value = form_data.get('description', campaign.description or '') %}
+{% else %}
+    {% set modal_title = "Create New Campaign" %}
+    {% set form_action = url_for('campaign.create') %}
+    {% set submit_label = "Create" %}
+    {% set name_value = form_data.get('name', '') %}
+    {% set desc_value = form_data.get('description', '') %}
+{% endif %}
+
+<div class="flex items-center justify-between border-b border-base-300 pb-4 mb-4">
+    <h3 class="font-bold text-lg">{{ modal_title }}</h3>
+    <button type="button"
+            class="btn btn-sm btn-circle btn-ghost"
+            onclick="this.closest('dialog').close()">&#10005;</button>
+</div>
+
+{% if errors %}
+    <div class="alert alert-error mb-4">
+        <ul>
+            {% for error in errors %}
+                <li>{{ error }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+{% endif %}
+
+<form hx-post="{{ form_action }}"
+      hx-target="#campaign-create-modal .modal-box"
+      hx-swap="innerHTML">
+    <fieldset class="fieldset">
+        <legend class="fieldset-legend">Name *</legend>
+        <label class="input w-full">
+            <input type="text"
+                   name="name"
+                   placeholder="Enter campaign name"
+                   class="grow"
+                   required
+                   minlength="3"
+                   maxlength="50"
+                   value="{{ name_value }}" />
+        </label>
+    </fieldset>
+
+    <fieldset class="fieldset mt-4">
+        <legend class="fieldset-legend">Description</legend>
+        <textarea name="description"
+                  class="textarea w-full"
+                  placeholder="Enter campaign description (optional)"
+                  rows="3">{{ desc_value }}</textarea>
+    </fieldset>
+
+    <div class="modal-action">
+        <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="submit" class="btn btn-primary">{{ submit_label }}</button>
+    </div>
+</form>

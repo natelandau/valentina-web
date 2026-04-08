@@ -1,0 +1,61 @@
+{% set ctx = global_context() %}
+{% set active_campaign_id = request.view_args.get("campaign_id", "") if request.view_args else "" %}
+<div class="drawer-side">
+  <label for="my-drawer-2" aria-label="close sidebar" class="drawer-overlay"></label>
+  <ul class="menu bg-base-200 min-h-full w-80 p-4" tabindex="-1">
+
+    <li>
+      <a>Campaigns</a>
+      <ul class="p-2">
+        {% for c in ctx.campaigns | sort(attribute="name") %}
+          <li>
+            <a href="{{ url_for('campaign.campaign', campaign_id=c.id) }}"
+               class="{% if c.id == active_campaign_id %}active{% endif %}">
+              {{ c.name }}
+            </a>
+          </li>
+        {% endfor %}
+        {% if not ctx.campaigns and not can_manage_campaign() %}
+          <li><span class="text-base-content/60 px-2">No campaigns</span></li>
+        {% endif %}
+        {% if can_manage_campaign() %}
+          <li>
+            <a onclick="document.getElementById('campaign-create-modal').showModal()">
+              + Add New Campaign
+            </a>
+          </li>
+        {% endif %}
+      </ul>
+    </li>
+    <li>
+      <a href="{{ url_for('dictionary.index') }}"
+         class="{% if request.path.startswith('/dictionary') %}active{% endif %}">
+        <i class="fa-solid fa-book"></i> Dictionary
+      </a>
+    </li>
+    {% if requesting_user() and is_admin() %}
+      <li>
+        <a href="{{ url_for('settings.settings') }}"
+           class="{% if request.path.startswith('/settings') %}active{% endif %}">
+          <i class="fa-solid fa-gear"></i> Settings
+        </a>
+      </li>
+    {% endif %}
+    <li>
+      <div class="divider mt-1 mb-1"></div>
+
+      <shared.UserAvatar user={{ requesting_user() }} size="w-12" />
+
+      <ul class="p-2">
+        <li>
+          <a href="{{ url_for('profile.profile', user_id=requesting_user().id) }}" class="justify-between">Profile</a>
+        </li>
+        <li>
+          <a onclick="document.getElementById('logout-form').submit()">Logout</a>
+        </li>
+      </ul>
+      <shared.LogoutForm />
+
+    </li>
+  </ul>
+</div>

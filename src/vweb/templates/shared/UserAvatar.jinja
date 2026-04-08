@@ -1,0 +1,36 @@
+{#def
+    user,
+    size="w-10"
+#}
+
+{% if user.discord_profile and user.discord_profile.avatar_url %}
+
+  {% set avatar_url = user.discord_profile.avatar_url %}
+
+{% elif user.github_profile and user.github_profile.avatar_url %}
+
+  {% set avatar_url = user.github_profile.avatar_url %}
+
+{% elif user.google_profile and user.google_profile.avatar_url %}
+
+  {% set avatar_url = user.google_profile.avatar_url %}
+
+{% else %}
+
+  {% set avatar_url = none %}
+
+{% endif %}
+
+{% if avatar_url %}
+  <div class="avatar {{ size }}">
+    <img alt="{{ user.name_first }} {{ user.name_last }}"
+         src="{{ avatar_url }}"
+         class="rounded-full" />
+  </div>
+{% else %}
+  <div class="avatar avatar-placeholder">
+    <div class="bg-neutral text-neutral-content {{ size }} rounded-full">
+      <span>{{ (user.name_first or user.username)[0] | upper }}{{ user.name_last[0] | upper if user.name_last else "" }}</span>
+    </div>
+  </div>
+{% endif %}

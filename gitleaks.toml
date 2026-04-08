@@ -1,0 +1,12 @@
+title = "Custom Gitleaks configuration"
+
+# [paths]
+# ignore = ['''(^|/)tests/fixtures/endpoints''']
+
+[extend]
+    useDefault = true
+
+[allowlist]
+    description = "ignore # nosec lines"
+    regexTarget = "line"
+    regexes     = ['''# nosec''']

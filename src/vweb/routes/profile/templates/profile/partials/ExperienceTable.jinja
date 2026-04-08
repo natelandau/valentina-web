@@ -1,0 +1,42 @@
+{#def
+    user_id: str = "",
+    experience_rows: list = [],
+#}
+
+{% set show_grant = can_grant_experience(user_id) %}
+
+{% if experience_rows %}
+  <div class="overflow-x-auto mt-4">
+    <table class="table table">
+      <thead>
+        <tr>
+          <th>Campaign</th>
+          <th class="text-right">Available XP</th>
+          <th class="text-right">Total XP</th>
+          <th class="text-right">Cool Points</th>
+          {% if show_grant %}<th class="text-right"></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in experience_rows %}
+          <tr>
+            <td class="font-semibold">{{ row.campaign_name }}</td>
+            <td class="text-right font-mono">{{ row.xp_current }}</td>
+            <td class="text-right font-mono">{{ row.xp_total }}</td>
+            <td class="text-right font-mono">{{ row.cool_points }}</td>
+            {% if show_grant %}
+              <td class="text-right">
+
+                {% set exp_attrs = 'hx-get="' ~ url_for('profile.experience_form', user_id=user_id, campaign_id=row.campaign_id) ~ '" hx-target="#experience-card" hx-swap="innerHTML"' %}
+
+                <shared.CommonButton variant="add" extra_class="btn-xs" extra_attrs={{ exp_attrs }}><i class="fa-solid fa-plus"></i> Experience</shared.CommonButton>
+              </td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <p class="text-base-content/60 mt-2">No campaign experience yet</p>
+{% endif %}

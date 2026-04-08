@@ -1,0 +1,21 @@
+{#def
+    name: str,
+    dictionary_terms: list = [],
+    extra_class: str = "",
+#}
+
+{% set has_term = False %}
+
+{% for term in dictionary_terms if term.term | lower == name | lower or name | lower in term.synonyms %}
+  <div class="tooltip tooltip-neutral">
+    <div class="tooltip-content {{ extra_class }}">
+      {{ term.definition.split("\n#")[0] | from_markdown }}
+    </div>
+
+    {% set has_term = True %}
+
+    {% break %}
+  {% endfor %}
+
+  {{ name | title }}
+  {% if has_term %}</div>{% endif %}

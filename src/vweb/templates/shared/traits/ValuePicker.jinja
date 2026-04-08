@@ -1,0 +1,38 @@
+{#def
+    trait_id: str,
+    current_value: int,
+    min_value: int,
+    max_value: int,
+    show_delete: bool = False,
+    post_url: str = "",
+#}
+
+<div class="flex flex-wrap gap-y-0.5 justify-end">
+  {% if show_delete %}
+    <button class="btn btn-square btn-xs btn-error btn-dash"
+            name="{{ trait_id }}"
+            value="DELETE"
+            hx-trigger="click"
+            hx-post="{{ post_url }}">
+      <i class="fa-solid fa-trash"></i>
+    </button>
+  {% endif %}
+
+  {% for row in range(min_value, max_value + 1) | batch(10) %}
+    <div class="join">
+      {% for i in row %}
+        {% if i == current_value %}
+          <button class="btn btn-square btn-xs btn-primary btn-outline btn-active">
+            {{ i }}
+          </button>
+        {% else %}
+          <button class="btn btn-square btn-xs btn-primary btn-outline"
+                  name="{{ trait_id }}"
+                  value="{{ i }}"
+                  hx-trigger="click"
+                  hx-post="{{ post_url }}">{{ i }}</button>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endfor %}
+</div>

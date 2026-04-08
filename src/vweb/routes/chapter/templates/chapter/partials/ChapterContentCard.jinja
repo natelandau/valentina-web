@@ -1,0 +1,31 @@
+{#def
+    chapter: object,
+    book: object,
+    campaign: object,
+    assets: list = [],
+    prev_chapter: object = None,
+    next_chapter: object = None,
+    total_chapters: int = 0,
+    active_section: str = "story",
+#}
+
+{% set editable = can_manage_campaign() %}
+
+<div id="chapter-story" class="lg:w-2/3 mx-auto">
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+      <shared.PrevNextNav prev_label={{ prev_chapter.name if prev_chapter else "" }} prev_hx_url={{ url_for('chapter_view.chapter_detail_section', campaign_id=campaign.id, book_id=book.id, chapter_id=prev_chapter.id, section='story') if prev_chapter else "" }} prev_push_url={{ url_for('chapter_view.chapter_detail', campaign_id=campaign.id, book_id=book.id, chapter_id=prev_chapter.id) if prev_chapter else "" }} next_label={{ next_chapter.name if next_chapter else "" }} next_hx_url={{ url_for('chapter_view.chapter_detail_section', campaign_id=campaign.id, book_id=book.id, chapter_id=next_chapter.id, section='story') if next_chapter else "" }} next_push_url={{ url_for('chapter_view.chapter_detail', campaign_id=campaign.id, book_id=book.id, chapter_id=next_chapter.id) if next_chapter else "" }} target="#chapter-story" position_label={{ "Chapter " ~ chapter.number ~ " of " ~ total_chapters if total_chapters > 1 else "" }} />
+
+      <div>
+        <chapter.components.ChapterNav chapter_id={{ chapter.id }} campaign_id={{ campaign.id }} book_id={{ book.id }} active_section={{ active_section }} />
+        <div id="chapter-tab-content" class="pt-4">
+          {% if active_section == "notes" %}
+            <chapter.partials.ChapterNotes chapter={{ chapter }} book={{ book }} campaign={{ campaign }} />
+          {% else %}
+            <chapter.partials.ChapterStory chapter={{ chapter }} book={{ book }} campaign={{ campaign }} assets={{ assets }} />
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

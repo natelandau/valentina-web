@@ -1,0 +1,32 @@
+{#def
+    title: str = "",
+    before_text: str = "",
+    after_text: str = "",
+    actions: str = ""
+#}
+
+<div class="bg-base-200 rounded-box p-3 sm:p-4">
+  <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+    <div class="min-w-0">
+      <div class="join items-baseline">
+        {% if before_text %}
+          <div class="text-3xl font-thin opacity-50 tabular-nums text-nowrap join-item pr-2">
+            {{ before_text }}
+          </div>
+        {% endif %}
+        <h1 class="text-xl sm:text-3xl font-bold join-item">{{ title }}</h1>
+        {% if after_text %}
+          <div class="text-3xl font-thin opacity-50 tabular-nums text-nowrap join-item pl-2">
+            {{ after_text }}
+          </div>
+        {% endif %}
+      </div>
+      {{ content }}
+    </div>
+    {% if actions %}
+      <div class="flex flex-wrap items-center gap-1.5 shrink-0">
+        {{ actions }}
+      </div>
+    {% endif %}
+  </div>
+</div>

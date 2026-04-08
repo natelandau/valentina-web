@@ -1,0 +1,29 @@
+---
+services:
+  vweb:
+    build: .
+    image: valentina-web:latest
+    restart: unless-stopped
+    ports:
+      - "8089:8089"
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      VWEB_HOST: 0.0.0.0
+      VWEB_PORT: 8089
+      VWEB_REDIS__URL: redis://:redispassword@redis:6379/0
+    env_file:
+      - .env.secret
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:alpine
+    restart: always
+    command: redis-server --save 20 1 --loglevel warning --requirepass redispassword
+    attach: false
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:

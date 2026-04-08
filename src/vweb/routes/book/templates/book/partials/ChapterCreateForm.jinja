@@ -1,0 +1,66 @@
+{#def
+    book: object,
+    campaign: object,
+    errors: list = [],
+    form_data: object = None,
+#}
+<div id="book-chapters-card" class="card bg-base-100 shadow-sm">
+  <div class="card-body">
+    <h2 class="card-title">Add Chapter</h2>
+
+    {% if errors %}
+      <div class="mb-2">
+        {% for error in errors %}
+          <div class="alert alert-error alert-sm mb-1">{{ error }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <form hx-post="{{ url_for('chapter_view.chapter_create', campaign_id=campaign.id, book_id=book.id) }}"
+          hx-target="#book-chapters-card"
+          hx-swap="outerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Name</legend>
+          <label class="input w-full">
+            <input type="text"
+                   name="name"
+                   value="{{ form_data.name if form_data else '' }}"
+                   class="grow"
+                   required
+                   minlength="1"
+                   maxlength="100"
+                   placeholder="Chapter name">
+          </label>
+        </fieldset>
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Number</legend>
+          <label class="input w-full">
+            <input type="number"
+                   name="number"
+                   value="{{ form_data.number if form_data else '' }}"
+                   class="grow"
+                   min="1">
+          </label>
+        </fieldset>
+      </div>
+
+      <fieldset class="fieldset mb-4">
+        <legend class="fieldset-legend">Description</legend>
+        <textarea name="description"
+                  class="textarea w-full"
+                  rows="4"
+                  placeholder="Chapter description (optional)...">{{ form_data.description if form_data else '' }}</textarea>
+      </fieldset>
+
+      <div class="flex gap-2 justify-end">
+        <shared.CommonButton variant="cancel" hx-get={{ url_for('book_view.book_detail', campaign_id=campaign.id, book_id=book.id) }} hx-target="#book-chapters-card" hx-swap="outerHTML" hx-select="#book-chapters-card">
+        Cancel
+        </shared.CommonButton>
+        <shared.CommonButton variant="submit">Create</shared.CommonButton>
+      </div>
+    </form>
+  </div>
+</div>

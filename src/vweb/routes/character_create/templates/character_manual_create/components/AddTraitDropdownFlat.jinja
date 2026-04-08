@@ -1,0 +1,21 @@
+{#def
+    available_traits: list[Trait],
+#}
+{% if available_traits %}
+  <tr>
+    <td></td>
+    <td class="flex justify-end">
+      <select class="select select-sm w-32 mt-2"
+              @change="if ($event.target.value) { selected[$event.target.value] = {{ available_traits[0].min_value }}; $event.target.value = ''; }">
+        <option disabled selected value="">Add New</option>
+        {% for trait in available_traits | sort(attribute="name") %}
+          <option value="{{ trait.id }}"
+                  x-show="!('{{ trait.id }}' in selected)"
+                  :disabled="'{{ trait.id }}' in selected">
+            {{ trait.name | title }}
+          </option>
+        {% endfor %}
+      </select>
+    </td>
+  </tr>
+{% endif %}

@@ -1,0 +1,13 @@
+{#def code: int, title: str, message: str #}
+<shared.PageLayout title={{ title }}>
+  <div class="hero min-h-[60vh]">
+    <div class="hero-content text-center">
+      <div class="max-w-md">
+        <h1 class="text-8xl font-bold text-base-content/20">{{ code }}</h1>
+        <h2 class="text-2xl font-bold mt-4">{{ title }}</h2>
+        <p class="py-6 text-base-content/70">{{ message }}</p>
+        <a class="btn btn-primary" href="{{ url_for('index.index') }}">Go Home</a>
+      </div>
+    </div>
+  </div>
+</shared.PageLayout>

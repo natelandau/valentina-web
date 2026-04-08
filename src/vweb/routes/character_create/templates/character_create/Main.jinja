@@ -1,0 +1,12 @@
+{#def
+    campaign,
+    user_xp: int = 0,
+    pending_sessions: list = [],
+#}
+
+<shared.PageLayout title="Add Character">
+<shared.PageHeader title="Add Character" before_text={{ campaign.name }} />
+<div id="creation-content">
+  <character_create.partials.SelectionCards campaign={{ campaign }} user_xp={{ user_xp }} pending_sessions={{ pending_sessions }} />
+</div>
+</shared.PageLayout>

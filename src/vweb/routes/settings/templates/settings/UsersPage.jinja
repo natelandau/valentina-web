@@ -1,0 +1,36 @@
+{#def pending, approved, pending_count=0 #}
+<shared.PageLayout title="User Management">
+  <div class="max-w-3xl mx-auto p-4">
+    <settings.components.SettingsTabs active="users" pending_count={{ pending_count }} />
+    <h1 class="text-2xl font-bold mb-4">User Management</h1>
+
+    {% if pending %}
+      <div class="card bg-base-100 shadow-sm mb-6">
+        <div class="card-body">
+          <h2 class="card-title">
+            Pending Approval
+            <span class="badge badge-warning">{{ pending|length }}</span>
+          </h2>
+          <div id="pending-users">
+            {% for u in pending %}
+              <settings.components.PendingUserRow user={{ u }} />
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="card bg-base-100 shadow-sm">
+      <div class="card-body">
+        <h2 class="card-title">Users</h2>
+        <div id="approved-users">
+          {% for u in approved %}
+            <settings.components.ApprovedUserRow user={{ u }} />
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div id="merge-modal-slot"></div>
+  </div>
+</shared.PageLayout>

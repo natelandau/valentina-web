@@ -1,0 +1,25 @@
+{#def #}
+
+<div class="flex justify-end mt-2" x-show="totalPages > 1" x-cloak>
+  <div class="join">
+    <button class="join-item btn btn-sm"
+            :disabled="currentPage === 1"
+            aria-label="Previous page"
+            @click="currentPage = Math.max(1, currentPage - 1)">
+      <i class="fa-solid fa-chevron-left"></i>
+    </button>
+    <template x-for="p in totalPages" :key="p">
+      <button class="join-item btn btn-sm"
+              :class="p === currentPage && 'btn-active'"
+              :aria-label="'Page ' + p"
+              @click="currentPage = p"
+              x-text="p"></button>
+    </template>
+    <button class="join-item btn btn-sm"
+            :disabled="currentPage === totalPages"
+            aria-label="Next page"
+            @click="currentPage = Math.min(totalPages, currentPage + 1)">
+      <i class="fa-solid fa-chevron-right"></i>
+    </button>
+  </div>
+</div>

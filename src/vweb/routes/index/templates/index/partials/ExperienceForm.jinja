@@ -1,0 +1,19 @@
+{#def
+    user_id: str,
+    campaign_id: str,
+    campaign_name: str,
+    form_data: dict = {},
+    errors: list = [],
+#}
+
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body">
+    <shared.ExperienceForm
+      post_url={{ url_for('index.add_experience', campaign_id=campaign_id) }}
+      cancel_url={{ url_for('index.experience_card', campaign_id=campaign_id) }}
+      target_id="index-experience-card"
+      campaign_name={{ campaign_name }}
+      form_data={{ form_data }}
+      errors={{ errors }} />
+  </div>
+</div>

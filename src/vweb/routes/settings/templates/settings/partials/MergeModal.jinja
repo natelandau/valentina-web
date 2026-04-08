@@ -1,0 +1,36 @@
+{#def pending_user, candidates #}
+<dialog class="modal modal-open">
+  <div class="modal-box">
+    <h3 class="font-bold text-lg">
+      Merge {{ pending_user.name_first }} {{ pending_user.name_last or "" }} into existing user
+    </h3>
+    <div class="my-4 text-sm text-base-content/70">
+      <div><strong>Email:</strong> {{ pending_user.email }}</div>
+      <div><strong>ID:</strong> {{ pending_user.id }}</div>
+    </div>
+    <form hx-post="{{ url_for('settings.merge_user', user_id=pending_user.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Merge into</legend>
+        <select name="target_user_id" class="select w-full" required>
+          <option value="" disabled selected>Choose an existing user…</option>
+          {% for u in candidates %}
+            <option value="{{ u.id }}">
+              {{ u.name_first }} {{ u.name_last or "" }} — {{ u.email }}
+            </option>
+          {% endfor %}
+        </select>
+      </fieldset>
+      <p class="text-sm text-warning my-4">
+        The pending user's OAuth identity will be attached to the selected user.
+        Next time they log in, they will land in the existing account. This cannot be undone.
+      </p>
+      <div class="modal-action">
+        <button type="button"
+                class="btn btn-ghost"
+                onclick="this.closest('dialog').remove()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Merge</button>
+      </div>
+    </form>
+  </div>
+</dialog>

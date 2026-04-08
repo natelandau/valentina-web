@@ -1,0 +1,18 @@
+{#def num: int = 0, maximum: int = 5 #}
+
+{%- set effective_num = num if num is not none else 0 -%}
+{%- set effective_max = maximum if maximum is not none else 5 -%}
+{%- set effective_max = [effective_num, effective_max] | max -%}
+{%- set dots_per_row = 10 -%}
+<div class="inline-flex flex-col gap-0.5">
+  {%- for row_start in range(0, effective_max, dots_per_row) %}
+  <span class="inline-flex flex-wrap gap-0.5 leading-none">
+    {%- for i in range(row_start, [row_start + dots_per_row, effective_max] | min) %}
+      {%- if i < effective_num %}<i class="fa-solid fa-circle"></i>
+    {% else %}
+      <i class="fa-regular fa-circle"></i>
+    {% endif %}
+    {%- endfor %}
+  </span>
+  {%- endfor %}
+</div>

@@ -1,0 +1,337 @@
+{#def
+    campaign,
+    form_options: dict = {},
+    form_data: dict = {},
+    errors: dict = {},
+    mode: str = "create",
+    character_id: str = "",
+#}
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body">
+
+    {% if errors.get('_general') %}
+      <div role="alert" class="alert alert-error mb-4">
+        <i class="fa-solid fa-circle-exclamation"></i>
+        <span>{{ errors['_general'] }}</span>
+      </div>
+    {% endif %}
+
+    {% if mode == "edit" %}
+      {% set post_url = url_for('character_create.manual_profile', campaign_id=campaign.id) ~ '?character_id=' ~ character_id %}
+      {% set target_id = "#tab-content" %}
+    {% else %}
+      {% set post_url = url_for('character_create.manual_profile', campaign_id=campaign.id) %}
+      {% set target_id = "#manual-create-content" %}
+    {% endif %}
+
+    <form hx-post="{{ post_url }}"
+          hx-target="{{ target_id }}"
+          hx-swap="innerHTML"
+          hx-disabled-elt="button[type='submit']"
+          x-data="{ charClass: '{{ form_data.get('character_class', '') }}', gameVersion: '{{ form_data.get('game_version', '') }}' }"
+          x-effect="if (charClass === 'HUNTER') { gameVersion = 'V5' }">
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {# Name fields #}
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">First Name *</legend>
+          <label class="validator input w-full {% if errors.get('name_first') %}input-error{% endif %}">
+            <input type="text"
+                   name="name_first"
+                   class="grow"
+                   value="{{ form_data.get('name_first', '') }}"
+                   required
+                   minlength="3" />
+          </label>
+          {% if errors.get('name_first') %}
+            <p class="text-error text-sm mt-1">{{ errors['name_first'] }}</p>
+          {% endif %}
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Last Name *</legend>
+          <label class="validator input w-full {% if errors.get('name_last') %}input-error{% endif %}">
+            <input type="text"
+                   name="name_last"
+                   class="grow"
+                   value="{{ form_data.get('name_last', '') }}"
+                   required
+                   minlength="3" />
+          </label>
+          {% if errors.get('name_last') %}
+            <p class="text-error text-sm mt-1">{{ errors['name_last'] }}</p>
+          {% endif %}
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Nickname</legend>
+          <label class="input w-full">
+            <input type="text"
+                   name="name_nick"
+                   class="grow"
+                   value="{{ form_data.get('name_nick', '') }}"
+                   minlength="3"
+                   maxlength="50" />
+          </label>
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Age</legend>
+          <label class="input w-full">
+            <input type="number"
+                   name="age"
+                   class="grow"
+                   value="{{ form_data.get('age', '') }}"
+                   min="0" />
+          </label>
+        </fieldset>
+
+        {# Game Version #}
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Game Version *</legend>
+          {% if mode == "edit" %}
+            <select class="select w-full" disabled>
+              <option selected>{{ form_data.get('game_version', '') }}</option>
+            </select>
+            <input type="hidden" name="game_version" value="{{ form_data.get('game_version', '') }}" />
+          {% else %}
+            <select name="game_version"
+                    class="validator select w-full {% if errors.get('game_version') %}select-error{% endif %}"
+                    required
+                    x-model="gameVersion">
+              <option value="">-- Select Version --</option>
+              {% for v in get_options().characters.game_version %}
+                <option value="{{ v }}"
+                        :hidden="charClass === 'HUNTER' && '{{ v }}' !== 'V5'"
+                        :disabled="charClass === 'HUNTER' && '{{ v }}' !== 'V5'">
+                  {{ v }}
+                </option>
+              {% endfor %}
+            </select>
+            {% if errors.get('game_version') %}
+              <p class="text-error text-sm mt-1">{{ errors['game_version'] }}</p>
+            {% endif %}
+          {% endif %}
+        </fieldset>
+
+        {# Character Class #}
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Character Class *</legend>
+          <select name="character_class"
+                  class="validator select w-full {% if errors.get('character_class') %}select-error{% endif %}"
+                  required
+                  x-model="charClass">
+            <option value="">-- Select Class --</option>
+            {% for c in get_options().characters.character_class %}
+              <option value="{{ c }}">{{ c | title }}</option>
+            {% endfor %}
+          </select>
+          {% if errors.get('character_class') %}
+            <p class="text-error text-sm mt-1">{{ errors['character_class'] }}</p>
+          {% endif %}
+        </fieldset>
+
+        {# Character Type — storyteller/admin only #}
+        {% if is_storyteller() %}
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Character Type</legend>
+            <select name="character_type" class="select w-full">
+              {% for t in get_options().characters.character_type %}
+                <option value="{{ t }}"
+                        {% if form_data.get("character_type", "PLAYER") == t %}selected{% endif %}>
+                  {{ t | title }}
+                </option>
+              {% endfor %}
+            </select>
+          </fieldset>
+        {% endif %}
+
+        {# Concept #}
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Concept</legend>
+          <select name="concept_id" class="select w-full">
+            <option value="">-- None --</option>
+            {% for concept in form_options.get("concepts", []) %}
+              <option value="{{ concept.id }}"
+                      {% if form_data.get("concept_id") == concept.id %}selected{% endif %}>
+                {{ concept.name | title }}
+              </option>
+            {% endfor %}
+          </select>
+        </fieldset>
+
+        {# Demeanor & Nature #}
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Demeanor</legend>
+          <label class="input w-full">
+            <input type="text"
+                   name="demeanor"
+                   class="grow"
+                   value="{{ form_data.get('demeanor', '') }}"
+                   minlength="3"
+                   maxlength="50" />
+          </label>
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Nature</legend>
+          <label class="input w-full">
+            <input type="text"
+                   name="nature"
+                   class="grow"
+                   value="{{ form_data.get('nature', '') }}"
+                   minlength="3"
+                   maxlength="50" />
+          </label>
+        </fieldset>
+
+        {# Biography — full width #}
+        <fieldset class="fieldset md:col-span-2">
+          <legend class="fieldset-legend">Biography</legend>
+          <textarea name="biography" class="textarea w-full" rows="3" minlength="3">{{ form_data.get('biography', '') }}</textarea>
+        </fieldset>
+      </div>
+
+      {# Class-specific fields #}
+      <div class="mt-4 border border-base-300 rounded-lg p-4"
+           x-cloak
+           x-show="charClass === 'VAMPIRE' || charClass === 'GHOUL'">
+        <h4 class="font-semibold text-sm uppercase text-base-content/60 mb-3">
+          Vampire Options
+        </h4>
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Vampire Clan *</legend>
+          <select name="vampire_clan_id"
+                  class="validator select w-full {% if errors.get('vampire_clan_id') %}select-error{% endif %}"
+                  :required="charClass === 'VAMPIRE' || charClass === 'GHOUL'">
+            <option value="">-- Select Clan --</option>
+            {% for clan in form_options.get("vampire_clans", []) %}
+              <option value="{{ clan.id }}"
+                      :hidden="gameVersion && !'{{ clan.game_versions | join(",") }}'.split(',').includes(gameVersion)"
+                      :disabled="gameVersion && !'{{ clan.game_versions | join(",") }}'.split(',').includes(gameVersion)"
+                      {% if form_data.get("vampire_clan_id") == clan.id %}selected{% endif %}>
+                {{ clan.name | title }}
+              </option>
+            {% endfor %}
+          </select>
+          {% if errors.get('vampire_clan_id') %}
+            <p class="text-error text-sm mt-1">{{ errors['vampire_clan_id'] }}</p>
+          {% endif %}
+        </fieldset>
+      </div>
+
+      <div class="mt-4 border border-base-300 rounded-lg p-4"
+           x-cloak
+           x-show="charClass === 'WEREWOLF'">
+        <h4 class="font-semibold text-sm uppercase text-base-content/60 mb-3">
+          Werewolf Options
+        </h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Werewolf Tribe *</legend>
+            <select name="werewolf_tribe_id"
+                    class="validator select w-full {% if errors.get('werewolf_tribe_id') %}select-error{% endif %}"
+                    :required="charClass === 'WEREWOLF'">
+              <option value="">-- Select Tribe --</option>
+              {% for tribe in form_options.get("werewolf_tribes", []) %}
+                <option value="{{ tribe.id }}"
+                        :hidden="gameVersion && !'{{ tribe.game_versions | join(",") }}'.split(',').includes(gameVersion)"
+                        :disabled="gameVersion && !'{{ tribe.game_versions | join(",") }}'.split(',').includes(gameVersion)"
+                        {% if form_data.get("werewolf_tribe_id") == tribe.id %}selected{% endif %}>
+                  {{ tribe.name | title }}
+                </option>
+              {% endfor %}
+            </select>
+            {% if errors.get('werewolf_tribe_id') %}
+              <p class="text-error text-sm mt-1">
+                {{ errors['werewolf_tribe_id'] }}
+              </p>
+            {% endif %}
+          </fieldset>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Werewolf Auspice</legend>
+            <select name="werewolf_auspice_id" class="select w-full">
+              <option value="">-- None --</option>
+              {% for auspice in form_options.get("werewolf_auspices", []) %}
+                <option value="{{ auspice.id }}"
+                        :hidden="gameVersion && !'{{ auspice.game_versions | join(",") }}'.split(',').includes(gameVersion)"
+                        :disabled="gameVersion && !'{{ auspice.game_versions | join(",") }}'.split(',').includes(gameVersion)"
+                        {% if form_data.get("werewolf_auspice_id") == auspice.id %}selected{% endif %}>
+                  {{ auspice.name | title }}
+                </option>
+              {% endfor %}
+            </select>
+          </fieldset>
+        </div>
+      </div>
+
+      <div class="mt-4 border border-base-300 rounded-lg p-4"
+           x-cloak
+           x-show="charClass === 'HUNTER'">
+        <h4 class="font-semibold text-sm uppercase text-base-content/60 mb-3">
+          Hunter Options
+        </h4>
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Creed *</legend>
+          <select name="creed"
+                  class="validator select w-full {% if errors.get('creed') %}select-error{% endif %}"
+                  :required="charClass === 'HUNTER'">
+            <option value="">-- Select Creed --</option>
+            {% for c in get_options().characters.hunter_creed %}
+              <option value="{{ c }}"
+                      {% if form_data.get("creed") == c %}selected{% endif %}>
+                {{ c | title }}
+              </option>
+            {% endfor %}
+          </select>
+          {% if errors.get('creed') %}
+            <p class="text-error text-sm mt-1">{{ errors['creed'] }}</p>
+          {% endif %}
+        </fieldset>
+      </div>
+
+      <div class="mt-4 border border-base-300 rounded-lg p-4"
+           x-cloak
+           x-show="charClass === 'MAGE'">
+        <h4 class="font-semibold text-sm uppercase text-base-content/60 mb-3">
+          Mage Options
+        </h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Sphere</legend>
+            <label class="input w-full">
+              <input type="text"
+                     name="sphere"
+                     class="grow"
+                     value="{{ form_data.get('sphere', '') }}" />
+            </label>
+          </fieldset>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Tradition</legend>
+            <label class="input w-full">
+              <input type="text"
+                     name="tradition"
+                     class="grow"
+                     value="{{ form_data.get('tradition', '') }}" />
+            </label>
+          </fieldset>
+        </div>
+      </div>
+
+      {# Buttons #}
+      <div class="flex gap-2 mt-6 justify-end">
+        {% if mode == "edit" %}
+          <shared.CommonButton variant="cancel" hx-get={{ url_for('character_view.character', character_id=character_id, section='sheet') }} hx-target="#tab-content" hx-swap="innerHTML">Cancel</shared.CommonButton>
+          <shared.CommonButton variant="submit">
+            <span class="loading loading-spinner htmx-indicator"></span>
+            Save
+          </shared.CommonButton>
+        {% else %}
+          <a href="{{ url_for('character_create.selection_page', campaign_id=campaign.id) }}"
+             class="btn">Back</a>
+          <shared.CommonButton variant="submit">Continue to Traits</shared.CommonButton>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>

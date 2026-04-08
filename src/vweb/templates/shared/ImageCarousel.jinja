@@ -1,0 +1,57 @@
+{#def
+    assets: list = [],
+    delete_urls: dict = {},
+    editable: bool = False,
+    carousel_id: str = "image-carousel",
+    swap_target: str = "",
+#}
+{#
+  swap_target must be the DOM id of the container the caller's delete endpoint
+  re-renders on success. Per-slide delete buttons wire their hx-target to
+  "#{{ swap_target }}" with outerHTML, so the caller must keep this in sync
+  with its own partial's root id.
+#}
+{% if assets %}
+  <div id="{{ carousel_id }}" class="carousel w-full rounded-box">
+    {% for asset in assets %}
+      <div id="{{ carousel_id }}-slide{{ loop.index }}"
+           class="carousel-item w-full flex-col">
+        <div class="relative flex justify-center bg-base-200 rounded-box overflow-hidden w-full">
+          <img src="{{ asset.public_url }}"
+               alt="{{ asset.original_filename }}"
+               class="max-h-[calc(100vh-18rem)] max-w-full object-contain" />
+          {% if assets | length > 1 %}
+            <div class="absolute left-5 right-5 top-1/2 flex -translate-y-1/2 transform justify-between">
+              <a href="#{{ carousel_id }}-slide{{ loop.index - 1 if loop.index > 1 else assets | length }}"
+                 class="btn btn-circle btn-sm opacity-70 hover:opacity-100"><i class="fa-solid fa-chevron-left"></i></a>
+              <a href="#{{ carousel_id }}-slide{{ loop.index + 1 if loop.index < assets | length else 1 }}"
+                 class="btn btn-circle btn-sm opacity-70 hover:opacity-100"><i class="fa-solid fa-chevron-right"></i></a>
+            </div>
+          {% endif %}
+        </div>
+        <div class="flex justify-between items-center mt-2 px-1">
+          {% if assets | length > 1 %}
+            <div class="flex gap-2">
+              {% for sibling in assets %}
+                <a href="#{{ carousel_id }}-slide{{ loop.index }}" class="btn btn-xs">{{ loop.index }}</a>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div></div>
+          {% endif %}
+          {% if editable %}
+            <button class="btn btn-error btn-soft btn-xs"
+                    hx-delete="{{ delete_urls.get(asset.id, '') }}"
+                    hx-target="#{{ swap_target }}"
+                    hx-swap="outerHTML"
+                    hx-select="#{{ swap_target }}"
+                    hx-confirm="Delete this image? This cannot be undone."
+                    aria-label="Delete image">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}

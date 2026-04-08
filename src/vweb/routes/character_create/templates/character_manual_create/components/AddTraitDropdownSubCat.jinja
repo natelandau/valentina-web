@@ -1,0 +1,27 @@
+{#def
+    category: FullSheetTraitCategory,
+#}
+{% set has_available = category.subcategories | selectattr("available_traits") | list %}
+{% if has_available %}
+  <tr>
+    <td></td>
+    <td class="flex justify-end">
+      <select class="select select-sm w-32 mt-2"
+              @change="if ($event.target.value) { selected[$event.target.value] = {{ category.subcategories[0].available_traits[0].min_value }}; $event.target.value = ''; }">
+        <option disabled selected value="">Add New</option>
+        {% for subcategory in category.subcategories if subcategory.available_traits %}
+          <optgroup label="{{ subcategory.name | title }}"
+                    class="font-semibold pt-2 border-t border-base-content/20 mt-2">
+            {% for trait in subcategory.available_traits %}
+              <option value="{{ trait.id }}"
+                      x-show="!('{{ trait.id }}' in selected)"
+                      :disabled="'{{ trait.id }}' in selected">
+                {{ trait.name | title }}
+              </option>
+            {% endfor %}
+          </optgroup>
+        {% endfor %}
+      </select>
+    </td>
+  </tr>
+{% endif %}

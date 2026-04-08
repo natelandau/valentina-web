@@ -1,0 +1,25 @@
+{#def
+    chapter: object,
+    book: object,
+    campaign: object,
+    prev_chapter: object = None,
+    next_chapter: object = None,
+    total_chapters: int = 0,
+    active_section: str = "story",
+    assets: list = [],
+#}
+<shared.PageLayout title={{ chapter.name }}>
+
+  <chapter.partials.ChapterPageHeader chapter={{ chapter }} book={{ book }} campaign={{ campaign }} />
+
+  <chapter.partials.ChapterContentCard
+    chapter={{ chapter }}
+    book={{ book }}
+    campaign={{ campaign }}
+    assets={{ assets }}
+    prev_chapter={{ prev_chapter }}
+    next_chapter={{ next_chapter }}
+    total_chapters={{ total_chapters }}
+    active_section={{ active_section }} />
+
+</shared.PageLayout>

@@ -1,0 +1,52 @@
+{#def
+    book: object,
+    campaign: object,
+    assets: list = [],
+#}
+
+{% set editable = can_manage_campaign() %}
+
+<div class="prose max-w-none flex items-center justify-between">
+  <h2 class="card-title">{{ book.name }}</h2>
+
+  {% if editable %}
+
+    {% set upload_url = url_for('book_view.book_image_upload', campaign_id=campaign.id, book_id=book.id) %}
+
+    <div class="flex justify-end mb-3">
+      <shared.CommonButton variant="edit" extra_class="btn-sm mr-2" hx-get={{ url_for('book_view.book_detail_action', campaign_id=campaign.id, book_id=book.id, action='edit') }} hx-target="#book-content" hx-swap="outerHTML">
+      <i class="fa-solid fa-pen-to-square"></i> Edit Book
+      </shared.CommonButton>
+
+      <form hx-post="{{ upload_url }}"
+            hx-target="#book-content"
+            hx-swap="outerHTML"
+            hx-encoding="multipart/form-data"
+            hx-disabled-elt="find button"
+            x-data="{ maxSize: {{ MAX_IMAGE_SIZE }}, maxSizeMb: {{ MAX_IMAGE_SIZE // 1024 // 1024 }} }">
+        <input type="file"
+               name="image"
+               accept="image/jpeg,image/png,image/webp,image/gif"
+               class="hidden"
+               x-ref="fileInput"
+               @change="if ($refs.fileInput.files[0]?.size > maxSize) { alert('File is too large. Maximum size is ' + maxSizeMb + ' MB.'); $refs.fileInput.value = ''; return; } $el.closest('form').requestSubmit();" />
+        <shared.CommonButton variant="add" extra_class="btn-sm" btn_type="button" @click="$refs.fileInput.click()">
+        <i class="fa-solid fa-plus"></i> Add Image
+        </shared.CommonButton>
+      </form>
+    </div>
+  {% endif %}
+
+</div>
+<div class="prose max-w-none">
+  {% set delete_urls = {} %}
+  {% for asset in assets %}
+    {% set _ = delete_urls.update({asset.id: url_for('book_view.book_image_delete', campaign_id=campaign.id, book_id=book.id, asset_id=asset.id)}) %}
+  {% endfor %}
+  <shared.ImageCarousel assets={{ assets }} delete_urls={{ delete_urls }} editable={{ editable }} carousel_id="book-carousel" swap_target="book-content" />
+  {% if book.description %}
+    {{ book.description | from_markdown | link_terms("html") }}
+  {% else %}
+    <p class="text-base-content/50 italic">No description.</p>
+  {% endif %}
+</div>

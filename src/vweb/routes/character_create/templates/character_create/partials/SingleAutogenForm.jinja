@@ -1,0 +1,129 @@
+{#def
+    campaign,
+    character_classes: list = [],
+    experience_levels: list = [],
+    skill_focuses: list = [],
+    concepts: list = [],
+    vampire_clans: list = [],
+    werewolf_tribes: list = [],
+    werewolf_auspices: list = [],
+    errors: list = [],
+    form_data: dict = {},
+#}
+
+{% if errors %}
+<div role="alert" class="alert alert-error mb-4">
+  <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form hx-post="{{ url_for('character_create.single_autogen_form', campaign_id=campaign.id) }}"
+      hx-target="#creation-content"
+      hx-swap="innerHTML"
+      hx-disabled-elt="button[type='submit']">
+
+  <input type="hidden" name="character_type" value="{{ form_data.get('character_type', '') }}" />
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    {# Character Class — optional #}
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Character Class</legend>
+      <select name="character_class" id="character-class-select" class="select select-bordered w-full"
+              onchange="toggleClassFields(this.value)">
+        <option value="">Random</option>
+        {% for c in character_classes %}
+          <option value="{{ c }}" {% if form_data.get("character_class") == c %}selected{% endif %}>{{ c | title }}</option>
+        {% endfor %}
+      </select>
+    </fieldset>
+
+    {# Experience Level — optional #}
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Experience Level</legend>
+      <select name="experience_level" class="select select-bordered w-full">
+        <option value="">Random</option>
+        {% for level in experience_levels %}
+          <option value="{{ level }}" {% if form_data.get("experience_level") == level %}selected{% endif %}>{{ level | title }}</option>
+        {% endfor %}
+      </select>
+    </fieldset>
+
+    {# Skill Focus — optional #}
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Skill Focus</legend>
+      <select name="skill_focus" class="select select-bordered w-full">
+        <option value="">Random</option>
+        {% for focus in skill_focuses %}
+          <option value="{{ focus }}" {% if form_data.get("skill_focus") == focus %}selected{% endif %}>{{ focus | replace("_", " ") | title }}</option>
+        {% endfor %}
+      </select>
+    </fieldset>
+
+    {# Concept — optional #}
+    <fieldset class="fieldset md:col-span-2">
+      <legend class="fieldset-legend">Concept</legend>
+      <select name="concept_id" class="select select-bordered w-full">
+        <option value="">Random</option>
+        {% for concept in concepts %}
+          <option value="{{ concept.id }}" {% if form_data.get("concept_id") == concept.id %}selected{% endif %}>{{ concept.name | title }}</option>
+        {% endfor %}
+      </select>
+    </fieldset>
+  </div>
+
+  {# Class-specific options #}
+  <div id="vampire-fields" class="mt-4 border border-base-300 rounded-lg p-4" style="display: none;">
+    <h4 class="font-semibold text-sm uppercase text-base-content/60 mb-3">Vampire Options</h4>
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Vampire Clan</legend>
+      <select name="vampire_clan_id" class="select select-bordered w-full">
+        <option value="">Random</option>
+        {% for clan in vampire_clans %}
+          <option value="{{ clan.id }}" {% if form_data.get("vampire_clan_id") == clan.id %}selected{% endif %}>{{ clan.name | title }}</option>
+        {% endfor %}
+      </select>
+    </fieldset>
+  </div>
+
+  <div id="werewolf-fields" class="mt-4 border border-base-300 rounded-lg p-4" style="display: none;">
+    <h4 class="font-semibold text-sm uppercase text-base-content/60 mb-3">Werewolf Options</h4>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Werewolf Tribe</legend>
+        <select name="werewolf_tribe_id" class="select select-bordered w-full">
+          <option value="">Random</option>
+          {% for tribe in werewolf_tribes %}
+            <option value="{{ tribe.id }}" {% if form_data.get("werewolf_tribe_id") == tribe.id %}selected{% endif %}>{{ tribe.name | title }}</option>
+          {% endfor %}
+        </select>
+      </fieldset>
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Werewolf Auspice</legend>
+        <select name="werewolf_auspice_id" class="select select-bordered w-full">
+          <option value="">Random</option>
+          {% for auspice in werewolf_auspices %}
+            <option value="{{ auspice.id }}" {% if form_data.get("werewolf_auspice_id") == auspice.id %}selected{% endif %}>{{ auspice.name | title }}</option>
+          {% endfor %}
+        </select>
+      </fieldset>
+    </div>
+  </div>
+
+  {# Buttons #}
+  <div class="flex gap-2 mt-6 justify-end">
+    <shared.CommonButton variant="cancel"
+                  hx-get={{ url_for('character_create.selection_cards', campaign_id=campaign.id) }}
+                  hx-target="#creation-content"
+                  hx-swap="innerHTML">Back</shared.CommonButton>
+    <shared.CommonButton variant="submit">Generate Character</shared.CommonButton>
+  </div>
+</form>
+
+<script>
+function toggleClassFields(value) {
+  document.getElementById('vampire-fields').style.display = value === 'VAMPIRE' ? 'block' : 'none';
+  document.getElementById('werewolf-fields').style.display = value === 'WEREWOLF' ? 'block' : 'none';
+}
+// Run on load in case form_data has a class pre-selected
+toggleClassFields(document.getElementById('character-class-select')?.value || '');
+</script>

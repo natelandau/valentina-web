@@ -1,0 +1,30 @@
+{#def user #}
+<div id="pending-user-{{ user.id }}" class="flex items-center gap-3 py-2 border-b border-base-300">
+  <shared.UserAvatar user={{ user }} size="w-10" />
+  <div class="grow">
+    <div class="font-medium">{{ user.name_first }} {{ user.name_last or "" }}</div>
+    <div class="text-sm text-base-content/70">{{ user.email }}</div>
+  </div>
+  <form class="flex items-center gap-2"
+        hx-post="{{ url_for('settings.approve_user', user_id=user.id) }}"
+        hx-target="#pending-user-{{ user.id }}"
+        hx-swap="outerHTML">
+    <select name="role" class="select select-sm">
+      <option value="PLAYER" selected>Player</option>
+      <option value="STORYTELLER">Storyteller</option>
+      <option value="ADMIN">Admin</option>
+    </select>
+    <button type="submit" class="btn btn-sm btn-primary">Approve</button>
+  </form>
+  <button class="btn btn-sm btn-outline"
+          hx-get="{{ url_for('settings.merge_form', user_id=user.id) }}"
+          hx-target="#merge-modal-slot"
+          hx-swap="innerHTML">Merge…</button>
+  <button class="btn btn-sm btn-error btn-outline"
+          hx-post="{{ url_for('settings.deny_user', user_id=user.id) }}"
+          hx-target="#pending-user-{{ user.id }}"
+          hx-swap="outerHTML"
+          hx-confirm="Deny {{ user.name_first }}? This cannot be undone.">
+    Deny
+  </button>
+</div>

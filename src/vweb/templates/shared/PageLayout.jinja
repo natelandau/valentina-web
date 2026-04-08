@@ -1,0 +1,93 @@
+{#def
+    title="",
+    body_attrs="",
+    head_extra="",
+    scripts_extra=""
+#}
+
+<!DOCTYPE html>
+<html lang="en" data-theme="emerald">
+  <head>
+    <script src="{{ static_url('js/theme.js') }}"></script>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Raleway:ital,wght@0,100..900;1,100..900&family=Roboto+Mono:ital,wght@0,100..700;1,100..700&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap"
+          rel="stylesheet">
+
+    <link rel="stylesheet" href="{{ static_url('css/style.css') }}">
+    <link rel="icon"
+          href="{{ static_url('img/favicon.svg') }}"
+          type="image/svg+xml">
+    <link rel="icon"
+          href="{{ static_url('img/favicon-32x32.png') }}"
+          type="image/png"
+          sizes="32x32">
+    <link rel="apple-touch-icon"
+          href="{{ static_url('img/apple-touch-icon.png') }}"
+          type="image/png"
+          sizes="180x180">
+    {{ head_extra }}
+    <title>{{ app_name }}
+      {% if title %}: {{ title }}{% endif %}
+    </title>
+  </head>
+  <body hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'
+        {{ body_attrs }}
+        class="bg-base-200">
+    <div class="drawer">
+      <input id="my-drawer-2" type="checkbox" class="drawer-toggle" />
+      <div class="drawer-content flex flex-col min-h-screen">
+        <!-- Navbar -->
+        <div class="navbar bg-neutral text-neutral-content w-full shadow-sm">
+          <div class="flex-none lg:hidden">
+            <label for="my-drawer-2"
+                   aria-label="open sidebar"
+                   class="btn btn-square btn-ghost">
+              <svg xmlns="http://www.w3.org/2000/svg"
+                   fill="none"
+                   viewBox="0 0 24 24"
+                   class="inline-block h-6 w-6 stroke-current">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16">
+                </path>
+              </svg>
+            </label>
+          </div>
+          <!-- /Mobile Menu Button -->
+          <div class="mx-2 flex-1 px-2 navbar-start">
+            <a class="btn btn-ghost text-xl" href="{{ url_for('index.index') }}">{{ app_name }}</a>
+          </div>
+          {% if global_context() %}<shared.layout.NavMenuTop />{% endif %}
+        </div>
+
+        <!-- Page content here -->
+
+        <main class="flex-1">
+          <shared.layout.FlashMessage />
+
+          <div class="p-4 gap-4">{{ content }}</div>
+        </main>
+
+        <shared.layout.GlobalFooter />
+      </div>
+
+      {# ------------------ Sidebar ------------------ #}
+
+      {% if global_context() %}<shared.layout.NavMenuSidebar />{% endif %}
+
+    </div>
+
+    {% if global_context() and can_manage_campaign() %}<shared.layout.CampaignCreateModal />{% endif %}
+
+    {# ------------------ Bottom of the page ------------------ #}
+    <script src="https://unpkg.com/htmx.org@2.0.4"
+            integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+"
+            crossorigin="anonymous"></script>
+    <script defer src="https://unpkg.com/alpinejs@3/dist/cdn.min.js"></script>
+    <script src="https://kit.fontawesome.com/29b83b145f.js"
+            crossorigin="anonymous"></script>
+    <script src="{{ static_url('js/dice-tumble.js') }}"></script>
+    {{ scripts_extra }}
+  </body>
+</html>

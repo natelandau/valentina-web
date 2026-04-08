@@ -1,0 +1,66 @@
+{#def
+    user,
+    form_data: dict = {},
+    errors: list = [],
+#}
+
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body">
+    <h2 class="card-title">Edit Profile</h2>
+
+    {% if errors %}
+      <div class="alert alert-error">
+        <ul>
+          {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <form hx-post="{{ url_for('profile.profile', user_id=user.id) }}"
+          hx-target="#profile-edit-form"
+          hx-swap="innerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">First Name</legend>
+        <input type="text"
+               name="name_first"
+               class="input input-bordered w-full"
+               value="{{ form_data.get('name_first', '') if form_data else (user.name_first or '') }}" />
+      </fieldset>
+
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Last Name</legend>
+        <input type="text"
+               name="name_last"
+               class="input input-bordered w-full"
+               value="{{ form_data.get('name_last', '') if form_data else (user.name_last or '') }}" />
+      </fieldset>
+
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Username *</legend>
+        <input type="text"
+               name="username"
+               class="input input-bordered w-full"
+               required
+               value="{{ form_data.get('username', '') if form_data else user.username }}" />
+      </fieldset>
+
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Email *</legend>
+        <input type="email"
+               name="email"
+               class="input input-bordered w-full"
+               required
+               value="{{ form_data.get('email', '') if form_data else user.email }}" />
+      </fieldset>
+
+      <div class="flex gap-2 mt-4">
+        <shared.CommonButton variant="submit" extra_class="btn-sm">Save</shared.CommonButton>
+        <shared.CommonButton variant="cancel" extra_class="btn-sm" onclick="document.getElementById('profile-edit-form').innerHTML = ''">
+        Cancel
+        </shared.CommonButton>
+      </div>
+    </form>
+  </div>
+</div>

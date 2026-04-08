@@ -1,0 +1,91 @@
+{#def
+    user,
+    user_characters: list = [],
+    statistics = None,
+    lifetime_xp: int = 0,
+    lifetime_cool_points: int = 0,
+    experience_rows: list = [],
+    character_count: int = 0,
+#}
+
+{% set is_own_profile = is_self(user.id) %}
+
+{% set display_name = (user.name_first ~ " " ~ user.name_last) if user.name_first and user.name_last else user.username %}
+
+{% set edit_btn %}
+
+  {% if is_own_profile %}
+
+    {% set edit_attrs = 'hx-get="' ~ url_for('profile.edit_profile', user_id=user.id) ~ '" hx-target="#profile-edit-form" hx-swap="innerHTML"' %}
+
+    <shared.CommonButton variant="edit" extra_class="btn-sm" extra_attrs={{ edit_attrs }}>
+    <i class="fa-regular fa-pen-to-square"></i>
+    Edit Profile
+    </shared.CommonButton>
+  {% endif %}
+{% endset %}
+
+<shared.PageLayout title={{ user.username }}>
+<div class="flex items-start gap-4">
+  <shared.UserAvatar user={{ user }} size="w-16" />
+  <div class="flex-1">
+    <shared.PageHeader title={{ user.username }} actions={{ edit_btn }}>
+    <div class="flex flex-wrap items-center gap-2 mt-1 text-sm opacity-70">
+      {% if user.name_first and user.name_last %}
+        <span>{{ user.name_first }} {{ user.name_last }}</span>
+        <span>&middot;</span>
+      {% endif %}
+      <span class="badge badge-sm badge-outline">{{ user.role }}</span>
+      <span>&middot;</span>
+      <span>Joined {{ user.date_created | humanize_date }}</span>
+      <span>&middot;</span>
+      <span>{{ character_count }} character{{ "s" if character_count != 1 else "" }}</span>
+    </div>
+    </shared.PageHeader>
+  </div>
+</div>
+
+<!-- Edit form target (empty until Edit Profile clicked) -->
+<div id="profile-edit-form" class="mt-4"></div>
+
+<!-- Experience & Statistics cards -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
+  <div id="experience-card" class="h-full">
+    <profile.components.ExperienceCard user_id={{ user.id }} lifetime_xp={{ lifetime_xp }} lifetime_cool_points={{ lifetime_cool_points }} experience_rows={{ experience_rows }} />
+  </div>
+
+  {% if statistics and statistics.total_rolls > 0 %}
+    <shared.cards.StatisticsCard statistics={{ statistics }} title={{ user.username ~ "'s Roll Statistics" }} />
+  {% else %}
+    <div class="card bg-base-100 shadow-sm h-full">
+      <div class="card-body">
+        <h2 class="card-title">{{ user.username }}'s Roll Statistics</h2>
+        <p class="text-base-content/60">No rolls recorded yet</p>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+<!-- Quickrolls CRUD table -->
+<div class="mt-6">
+
+  {% set editable_param = "true" if is_own_profile else "false" %}
+
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+      <div id="crud-quickrolls"
+           hx-get="{{ url_for("profile.quickrolls", user_id=user.id) }}?editable={{ editable_param }}"
+           hx-trigger="load"
+           hx-swap="innerHTML">
+        <span class="loading loading-spinner loading-md"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Characters list -->
+<div class="mt-6">
+  <shared.cards.CharacterListCard title="Characters" characters={{ user_characters }} show_campaign={{ true }} show_type={{ true }} empty_message="No characters yet" />
+</div>
+<shared.diceroll.DiceRollModal />
+</shared.PageLayout>

@@ -1,0 +1,44 @@
+{#def item=None, form_data=None #}
+
+{% set all_traits = get_all_traits() %}
+{% set sorted_traits = all_traits.values() | sort(attribute='name') %}
+
+{% set trait_one_value = form_data.get('trait_one_id', '') if form_data else (item.trait_ids[0] if item and item.trait_ids | length > 0 else '') %}
+{% set trait_two_value = form_data.get('trait_two_id', '') if form_data else (item.trait_ids[1] if item and item.trait_ids | length > 1 else '') %}
+
+<fieldset class="fieldset">
+  <legend class="fieldset-legend">Name *</legend>
+  <input type="text"
+         name="name"
+         class="input input-bordered w-full"
+         required
+         value="{{ form_data.get('name', '') if form_data else (item.name if item else '') }}" />
+</fieldset>
+
+<fieldset class="fieldset">
+  <legend class="fieldset-legend">Description</legend>
+  <input type="text"
+         name="description"
+         class="input input-bordered w-full"
+         value="{{ form_data.get('description', '') if form_data else (item.description if item and item.description else '') }}" />
+</fieldset>
+
+<fieldset class="fieldset">
+  <legend class="fieldset-legend">Trait 1</legend>
+  <select name="trait_one_id" class="select select-bordered w-full" required>
+    <option value="">-- Select a trait --</option>
+    {% for trait in sorted_traits %}
+      <option value="{{ trait.id }}" {% if trait.id == trait_one_value %}selected{% endif %}>{{ trait.name }}</option>
+    {% endfor %}
+  </select>
+</fieldset>
+
+<fieldset class="fieldset">
+  <legend class="fieldset-legend">Trait 2</legend>
+  <select name="trait_two_id" class="select select-bordered w-full">
+    <option value="">-- Select a trait --</option>
+    {% for trait in sorted_traits %}
+      <option value="{{ trait.id }}" {% if trait.id == trait_two_value %}selected{% endif %}>{{ trait.name }}</option>
+    {% endfor %}
+  </select>
+</fieldset>

@@ -1,0 +1,120 @@
+{#def
+    diceroll = None,
+    difficulty = 6,
+    error = "",
+#}
+
+{# ── Determine background tint based on result ── #}
+{% if diceroll and diceroll.result %}
+  {% set result_type = diceroll.result.total_result_type %}
+  {% if result_type in ('CRITICAL', 'SUCCESS') %}
+    {% set bg_class = "bg-success/5" %}
+  {% elif result_type in ('BOTCH', 'FAILURE') %}
+    {% set bg_class = "bg-error/5" %}
+  {% else %}
+    {% set bg_class = "bg-base-200" %}
+  {% endif %}
+{% else %}
+  {% set bg_class = "bg-base-200" %}
+{% endif %}
+
+{# ── Shared wrapper: rounded card that fills the results panel ── #}
+<div class="dice-results-card {{ bg_class }} rounded-2xl shadow-inner flex-1 flex items-center justify-center p-6 transition-colors duration-500">
+
+{% if error %}
+  <div class="text-center">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 mx-auto mb-3 text-error/60" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+    </svg>
+    <p class="text-error font-semibold">{{ error }}</p>
+  </div>
+
+{% elif not diceroll or not diceroll.result %}
+  <div class="text-center text-base-content/40">
+    <svg xmlns="http://www.w3.org/2000/svg" class="w-16 h-16 mx-auto mb-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke-width="1" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+    </svg>
+    <p class="text-sm font-medium">Roll the dice to see results</p>
+  </div>
+
+{% else %}
+  {% set r = diceroll.result %}
+
+  <div class="flex flex-col items-center justify-center gap-4 w-full animate-[fadeInScale_0.3s_ease-out]">
+
+    {# ── Result type badge ── #}
+    {% if r.total_result_type == 'CRITICAL' %}
+      <div class="text-center">
+        <span class="inline-block text-3xl font-black tracking-widest text-success bg-success/15 px-6 py-2 rounded-xl border-2 border-success/30 animate-[glowSuccess_2s_ease-in-out_infinite]">
+          CRITICAL SUCCESS
+        </span>
+      </div>
+    {% elif r.total_result_type == 'BOTCH' %}
+      <div class="text-center">
+        <span class="inline-block text-3xl font-black tracking-widest text-error bg-error/15 px-6 py-2 rounded-xl border-2 border-error/30 animate-[glowError_2s_ease-in-out_infinite]">
+          BOTCH
+        </span>
+      </div>
+    {% elif r.total_result_type == 'SUCCESS' %}
+      <div class="text-center">
+        <span class="inline-block text-2xl font-extrabold tracking-wide text-success">SUCCESS</span>
+      </div>
+    {% elif r.total_result_type == 'FAILURE' %}
+      <div class="text-center">
+        <span class="inline-block text-2xl font-extrabold tracking-wide text-error">FAILURE</span>
+      </div>
+    {% else %}
+      <div class="text-center">
+        <span class="inline-block text-2xl font-extrabold tracking-wide text-neutral">{{ r.total_result_type }}</span>
+      </div>
+    {% endif %}
+
+    {# ── Humanized result ── #}
+    <p class="text-lg font-semibold text-base-content/80">{{ r.total_result_humanized }}</p>
+
+    {# ── Divider ── #}
+    <div class="w-16 border-t border-base-content/15"></div>
+
+    {# ── Player dice ── #}
+    {% if r.player_roll %}
+      <div class="text-center w-full">
+        <p class="text-[0.65rem] font-semibold text-base-content/60 uppercase tracking-[0.2em] mb-2">Player Dice</p>
+        <div class="flex flex-wrap justify-center gap-2">
+          {% for die in r.player_roll %}
+            <span class="dice-tumble die-neutral inline-flex items-center justify-center w-11 h-11 rounded-lg text-base font-bold border shadow-sm opacity-0 animate-[dieAppear_0.3s_ease-out_forwards]"
+                  style="animation-delay: {{ loop.index0 * 80 }}ms"
+                  data-value="{{ die }}"
+                  data-delay="{{ loop.index0 * 80 }}"
+                  data-result="{{ 'success' if die >= difficulty else 'failure' }}">?</span>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+    {# ── Desperation dice ── #}
+    {% if r.desperation_roll %}
+      {% set desp_offset = (r.player_roll | length if r.player_roll else 0) %}
+      <div class="text-center w-full">
+        <p class="text-[0.65rem] font-semibold text-base-content/60 uppercase tracking-[0.2em] mb-2">Desperation Dice</p>
+        <div class="flex flex-wrap justify-center gap-2">
+          {% for die in r.desperation_roll %}
+            <span class="dice-tumble die-neutral inline-flex items-center justify-center w-11 h-11 rounded-lg text-base font-bold border shadow-sm opacity-0 animate-[dieAppear_0.3s_ease-out_forwards]"
+                  style="animation-delay: {{ (desp_offset + loop.index0) * 80 }}ms"
+                  data-value="{{ die }}"
+                  data-delay="{{ (desp_offset + loop.index0) * 80 }}"
+                  data-result="{{ 'success' if die >= difficulty else 'failure' }}">?</span>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+    {# ── Comment ── #}
+    {% if diceroll.comment %}
+      <p class="text-xs text-base-content/50 italic mt-1">&ldquo;{{ diceroll.comment }}&rdquo;</p>
+    {% endif %}
+
+  </div>
+
+{% endif %}
+
+</div>

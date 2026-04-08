@@ -1,0 +1,44 @@
+{#def
+    section_name: str = "",
+    category: FullSheetTraitCategory,
+    post_url: str = "",
+#}
+<div class="bg-base-200/50 rounded-lg p-3 prose">
+  <h3 class="font-semibold uppercase text-base-content/70 mb-2">
+    {{ category.name | title }}
+  </h3>
+  <table class="table [&_tr>*]:border-none [&_td]:py-0.5 [&_td]:px-1">
+    {# ---- Character traits ---- #}
+    {% for trait in category.character_traits | sort(attribute="trait.name", case_sensitive=false) %}
+      <tr>
+        <td class="text-lg">{{ trait.trait.name | title }}</td>
+        <td class="text-right text-2xl text-bold justify-end">
+          <shared.traits.ValuePicker trait_id={{ trait.id }} current_value={{ trait.value }} min_value={{ trait.trait.min_value }} max_value={{ trait.trait.max_value }} show_delete={{ False }} post_url={{ post_url }} />
+        </td>
+      </tr>
+    {% endfor %}
+    {% for subcategory in category.subcategories if subcategory.character_traits %}
+      <tr>
+        <td colspan="2" class="text-lg font-semibold pt-2">
+          {{ subcategory.name | title }}
+        </td>
+      </tr>
+      {% for trait in subcategory.character_traits | sort(attribute="trait.name", case_sensitive=false) %}
+        <tr>
+          <td class="text-lg">
+            <span class="pl-4">{{ trait.trait.name | title }}</span>
+          </td>
+          <td class="text-right text-2xl text-bold justify-end ">
+            <shared.traits.ValuePicker trait_id={{ trait.id }} current_value={{ trait.value }} min_value={{ trait.trait.min_value }} max_value={{ trait.trait.max_value }} show_delete={{ False }} post_url={{ post_url }} />
+          </td>
+        </tr>
+      {% endfor %}
+    {% endfor %}
+    {# ---- /Character traits ---- #}
+    {# ---- Add traits ---- #}
+    <shared.traits.AddTraitDropdownFlat available_traits={{ category.available_traits }} post_url={{ post_url }} />
+    <shared.traits.AddTraitDropdownSubCat category={{ category }} post_url={{ post_url }} />
+    <shared.traits.AddCustomTrait category_id={{ category.id }} post_url={{ post_url }} />
+    {# ---- /Add traits ---- #}
+  </table>
+</div>

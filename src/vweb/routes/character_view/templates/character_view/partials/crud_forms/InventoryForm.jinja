@@ -1,0 +1,36 @@
+{#def item=None, form_data=None #}
+<fieldset class="fieldset">
+    <legend class="fieldset-legend">Name</legend>
+    <label class="input w-full">
+        <input type="text"
+               id="name"
+               name="name"
+               value="{{ form_data.get('name', '') if form_data else (item.name if item else '') }}"
+               class="grow"
+               required
+               placeholder="Item name">
+    </label>
+</fieldset>
+
+<fieldset class="fieldset">
+    <legend class="fieldset-legend">Type</legend>
+    <select id="type"
+            name="type"
+            class="select w-full"
+            required>
+        <option value="" disabled {{ 'selected' if not (form_data and form_data.get('type')) and not (item and item.type) else '' }}>Select a type</option>
+        {% set current_type = form_data.get('type', '') if form_data else (item.type if item else '') %}
+        {% for opt in get_options().characters.inventory_item_type %}
+        <option value="{{ opt }}" {{ 'selected' if current_type == opt else '' }}>{{ opt | capitalize }}</option>
+        {% endfor %}
+    </select>
+</fieldset>
+
+<fieldset class="fieldset">
+    <legend class="fieldset-legend">Description</legend>
+    <textarea id="description"
+              name="description"
+              class="textarea w-full"
+              rows="3"
+              placeholder="Item description (optional)">{{ form_data.get('description', '') if form_data else (item.description if item else '') }}</textarea>
+</fieldset>

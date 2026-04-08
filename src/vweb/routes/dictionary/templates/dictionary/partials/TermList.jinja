@@ -1,0 +1,59 @@
+{#def terms: list = [], active_term_id: str = "", oob: bool = False #}
+<div id="term-list" {% if oob %}hx-swap-oob="true"{% endif %}>
+  {% if not terms %}
+    <div class="p-4 text-center text-base-content/60 text-sm">
+      No terms found
+    </div>
+  {% else %}
+    <div class="overflow-y-auto" style="max-height: calc(100vh - 10rem);">
+      <table class="table table-pin-rows table-sm bg-base-200">
+
+        {% set ns = namespace(current_letter="") %}
+
+        {% for term in terms %}
+
+          {% set first_letter = term.term[0] | upper %}
+
+          {% if first_letter != ns.current_letter %}
+            {% if ns.current_letter %}</tbody>{% endif %}
+
+          {% set ns.current_letter = first_letter %}
+
+          <thead>
+            <tr>
+              <th class="text-primary font-bold">{{ first_letter }}</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% endif %}
+          <tr class="{% if term.id == active_term_id %}bg-primary/10 border-l-2 border-primary{% endif %} hover cursor-pointer">
+            <td>
+              {% if term.definition is none and term.link %}
+                <a href="{{ term.link }}"
+                   target="_blank"
+                   rel="noopener"
+                   class="flex items-center justify-between gap-1">
+                  <span>{{ term.term | title }}</span>
+                  <i class="fa-solid fa-arrow-up-right-from-square text-primary text-xs"></i>
+                </a>
+              {% else %}
+
+                {% set detail_url = url_for('dictionary.term_detail', term_id=term.id) %}
+
+                <a href="{{ detail_url }}" class="block lg:hidden">{{ term.term }}</a>
+                <a hx-get="{{ detail_url }}"
+                   hx-target="#term-detail"
+                   hx-swap="innerHTML"
+                   hx-push-url="true"
+                   class="hidden lg:block cursor-pointer">
+                  {{ term.term | title }}
+                </a>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+</div>

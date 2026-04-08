@@ -1,0 +1,33 @@
+{#def
+    campaign,
+    full_sheet = None,
+    back_url: str = "",
+    errors: list = [],
+#}
+
+{% if errors %}
+  <div role="alert" class="alert alert-error mb-4">
+    <ul>
+      {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+    </ul>
+  </div>
+{% endif %}
+<div class="lg:col-span-2 card bg-base-100 shadow-sm">
+  <div class="card-body">
+    <form id="manual-traits-form"
+          hx-post="{{ url_for('character_create.manual_finalize', campaign_id=campaign.id) }}"
+          hx-disabled-elt="button[type='submit']">
+
+      {% if full_sheet %}
+        {% for section in full_sheet.sections %}
+          <character_manual_create.components.TraitSection section={{ section }} />
+        {% endfor %}
+      {% endif %}
+
+      <div class="flex gap-2 mt-6 justify-end">
+        <shared.CommonButton variant="cancel" hx-get={{ back_url }} hx-target="#manual-create-content" hx-swap="innerHTML">Back</shared.CommonButton>
+        <shared.CommonButton variant="submit">Create Character</shared.CommonButton>
+      </div>
+    </form>
+  </div>
+</div>

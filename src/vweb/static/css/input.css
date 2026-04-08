@@ -1,0 +1,176 @@
+@import "tailwindcss";
+@source "../templates/**/*.jinja";
+@source inline("link link-hover link-primary link-accent link-info link-success link-warning link-error link-neutral link-secondary");
+@plugin "@tailwindcss/typography";
+
+@theme {
+    --font-sans: "Inter", sans-serif;
+    --font-mono: "Roboto Mono", monospace;
+}
+
+
+@plugin "daisyui/theme" {
+  name: "valentina-light";
+  default: false;
+  prefersdark: false;
+  color-scheme: "light";
+  --color-base-100: oklch(98% 0 0);
+  --color-base-200: oklch(97% 0 0);
+  --color-base-300: oklch(92% 0 0);
+  --color-base-content: oklch(20% 0 0);
+  --color-primary: oklch(74% 0.16 232.661);
+  --color-primary-content: oklch(29% 0.066 243.157);
+  --color-secondary: oklch(70% 0.022 261.325);
+  --color-secondary-content: oklch(13% 0.028 261.692);
+  --color-accent: oklch(70% 0.165 254.624);
+  --color-accent-content: oklch(28% 0.091 267.935);
+  --color-neutral: oklch(37% 0.034 259.733);
+  --color-neutral-content: oklch(98% 0.002 247.839);
+  --color-info: oklch(62% 0.214 259.815);
+  --color-info-content: oklch(97% 0.014 254.604);
+  --color-success: oklch(72% 0.219 149.579);
+  --color-success-content: oklch(98% 0.018 155.826);
+  --color-warning: oklch(70% 0.213 47.604);
+  --color-warning-content: oklch(98% 0.016 73.684);
+  --color-error: oklch(64% 0.246 16.439);
+  --color-error-content: oklch(96% 0.015 12.422);
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.3125rem;
+  --size-field: 0.28125rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+/*
+@plugin "daisyui/theme" {
+  name: "light";
+  default: false;
+  prefersdark: false;
+  color-scheme: "light";
+  --color-base-100: oklch(98% 0 0);
+  --color-base-200: oklch(97% 0 0);
+  --color-base-300: oklch(92% 0 0);
+  --color-base-content: oklch(20% 0 0);
+  --color-primary: oklch(58% 0.158 241.966);
+  --color-primary-content: oklch(97% 0.013 236.62);
+  --color-secondary: oklch(62% 0.194 149.214);
+  --color-secondary-content: oklch(98% 0.018 155.826);
+  --color-accent: oklch(0% 0 0);
+  --color-accent-content: oklch(100% 0 0);
+  --color-neutral: oklch(37% 0 0);
+  --color-neutral-content: oklch(98% 0 0);
+  --color-info: oklch(78% 0.154 211.53);
+  --color-info-content: oklch(30% 0.056 229.695);
+  --color-success: oklch(84% 0.238 128.85);
+  --color-success-content: oklch(27% 0.072 132.109);
+  --color-warning: oklch(75% 0.183 55.934);
+  --color-warning-content: oklch(26% 0.079 36.259);
+  --color-error: oklch(70% 0.191 22.216);
+  --color-error-content: oklch(25% 0.092 26.042);
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.3125rem;
+  --size-field: 0.28125rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+} */
+
+
+
+@plugin "daisyui" {
+  themes: emerald --default, dark --prefersdark, dim, nord, emerald, corporate;
+}
+
+/* Let daisyUI .link classes override @tailwindcss/typography prose link styles */
+.prose .link {
+  color: currentColor;
+  font-weight: inherit;
+  text-decoration-line: underline;
+}
+.prose .link-primary { color: var(--color-primary); }
+.prose .link-secondary { color: var(--color-secondary); }
+.prose .link-accent { color: var(--color-accent); }
+.prose .link-info { color: var(--color-info); }
+.prose .link-success { color: var(--color-success); }
+.prose .link-warning { color: var(--color-warning); }
+.prose .link-error { color: var(--color-error); }
+.prose .link-neutral { color: var(--color-neutral); }
+.prose .link-hover {
+  text-decoration-line: none;
+}
+.prose .link-hover:hover {
+  text-decoration-line: underline;
+}
+
+/* Hide Alpine.js elements until initialization */
+[x-cloak] { display: none !important; }
+
+/* Override htmx's default opacity-based indicator with display-based so hidden indicators take no space */
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator { display: inline-block; }
+
+/* Dice roll results card dot grid pattern */
+.dice-results-card {
+  background-image: radial-gradient(circle, oklch(from var(--color-base-content) l c h / 0.06) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+/* Dice roll result entry animation */
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Dice roll staggered die appearance */
+@keyframes dieAppear {
+  from { opacity: 0; transform: translateY(6px) scale(0.8); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Dice roll result color states (applied by JS after tumble) */
+.die-neutral {
+  background: oklch(from var(--color-base-300) l c h / 1);
+  color: oklch(from var(--color-base-content) l c h / 0.6);
+  border-color: oklch(from var(--color-base-content) l c h / 0.1);
+}
+.die-success {
+  background: oklch(from var(--color-success) l c h / 0.15);
+  color: var(--color-success);
+  border-color: oklch(from var(--color-success) l c h / 0.25);
+}
+.die-failure {
+  background: oklch(from var(--color-error) l c h / 0.15);
+  color: var(--color-error);
+  border-color: oklch(from var(--color-error) l c h / 0.25);
+}
+
+/* Dice roll individual die glow for 1s and 10s */
+.die-glow-success {
+  animation: glowDieSuccess 2s ease-in-out infinite;
+}
+.die-glow-error {
+  animation: glowDieError 2s ease-in-out infinite;
+}
+@keyframes glowDieSuccess {
+  0%, 100% { box-shadow: 0 0 4px 0 oklch(72% 0.219 149.579 / 0.25); }
+  50% { box-shadow: 0 0 12px 3px oklch(72% 0.219 149.579 / 0.4); }
+}
+@keyframes glowDieError {
+  0%, 100% { box-shadow: 0 0 4px 0 oklch(64% 0.246 16.439 / 0.25); }
+  50% { box-shadow: 0 0 12px 3px oklch(64% 0.246 16.439 / 0.4); }
+}
+
+/* Dice roll critical/botch glow pulse */
+@keyframes glowSuccess {
+  0%, 100% { box-shadow: 0 0 8px 0 oklch(72% 0.219 149.579 / 0.2); }
+  50% { box-shadow: 0 0 20px 4px oklch(72% 0.219 149.579 / 0.35); }
+}
+@keyframes glowError {
+  0%, 100% { box-shadow: 0 0 8px 0 oklch(64% 0.246 16.439 / 0.2); }
+  50% { box-shadow: 0 0 20px 4px oklch(64% 0.246 16.439 / 0.35); }
+}

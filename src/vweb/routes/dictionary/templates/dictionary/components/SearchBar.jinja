@@ -1,0 +1,27 @@
+{#def #}
+<div class="relative">
+  <input type="search"
+         name="search"
+         placeholder="Search terms..."
+         class="input input-bordered input-sm w-full"
+         hx-get="{{ url_for('dictionary.search') }}"
+         hx-include="[name=include_synonyms]"
+         hx-trigger="input changed delay:500ms, keyup[key=='Enter']"
+         hx-target="#term-list"
+         hx-indicator="#search-indicator"
+         autocomplete="off">
+  <span id="search-indicator"
+        class="htmx-indicator loading loading-spinner loading-xs absolute right-3 top-1/2 -translate-y-1/2"></span>
+</div>
+<label class="label gap-2 cursor-pointer justify-start mt-3">
+  <input type="checkbox"
+         name="include_synonyms"
+         checked
+         class="toggle toggle-success toggle-xs"
+         hx-get="{{ url_for('dictionary.search') }}"
+         hx-include="[name=search]"
+         hx-trigger="change"
+         hx-target="#term-list"
+         hx-indicator="#search-indicator">
+  <span class="label-text text-xs">Include synonyms</span>
+</label>

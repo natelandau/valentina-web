@@ -1,0 +1,24 @@
+{#def
+    available_traits: list[Trait],
+    post_url: str = "",
+#}
+{% if available_traits %}
+  <tr>
+    <td></td>
+    <td class="flex justify-end">
+      <form hx-post="{{ post_url }}" method="post">
+        <div class="join">
+          <select name="ADD_UNASSIGNED" class="select select-sm w-32">
+            <option disabled selected>Add New Trait</option>
+            {% for trait in available_traits | sort(attribute="name") %}
+              <option value="{{ trait.id }}">{{ trait.name | title }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn btn-sm btn-outline btn-primary" type="submit">
+            Add
+          </button>
+        </div>
+      </form>
+    </td>
+  </tr>
+{% endif %}

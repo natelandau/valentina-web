@@ -1,0 +1,253 @@
+{#def company, errors, form_values, pending_count=0 #}
+{# Field-value resolver: prefer submitted form_values on re-render, otherwise current company. #}
+{%- macro field_val(name, default="") -%}
+  {%- if form_values is not none -%}{{ form_values.get(name, default) }}{%- else -%}{{ default }}{%- endif -%}
+  {%- endmacro -%}
+
+  {%- set s = company.settings or none -%}
+  {%- set name_val = field_val("name", company.name or "") -%}
+  {%- set email_val = field_val("email", company.email or "") -%}
+  {%- set desc_val = field_val("description", company.description or "") -%}
+  {%- set xp_cost_val = field_val("character_autogen_xp_cost", (s.character_autogen_xp_cost if s and s.character_autogen_xp_cost is not none else "")) -%}
+  {%- set num_choices_val = field_val("character_autogen_num_choices", (s.character_autogen_num_choices if s and s.character_autogen_num_choices is not none else "")) -%}
+  {%- set perm_manage_val = field_val("permission_manage_campaign", (s.permission_manage_campaign if s and s.permission_manage_campaign else "")) -%}
+  {%- set perm_grant_xp_val = field_val("permission_grant_xp", (s.permission_grant_xp if s and s.permission_grant_xp else "")) -%}
+  {%- set perm_free_trait_val = field_val("permission_free_trait_changes", (s.permission_free_trait_changes if s and s.permission_free_trait_changes else "")) -%}
+  {%- set perm_recoup_xp_val = field_val("permission_recoup_xp", (s.permission_recoup_xp if s and s.permission_recoup_xp else "")) -%}
+
+  <shared.PageLayout title="Company Settings">
+  <div class="max-w-3xl mx-auto p-4">
+    <settings.components.SettingsTabs active="company" pending_count={{ pending_count }} />
+    <h1 class="text-2xl font-bold mb-4">Company Settings</h1>
+
+    {% if errors %}
+      <div class="alert alert-error mb-4">
+        <span>Please fix the errors below.</span>
+      </div>
+    {% endif %}
+
+    <form method="post"
+          action="{{ url_for('settings.settings') }}"
+          class="space-y-6">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+      <div class="card bg-base-100 shadow-sm">
+        <div class="card-body space-y-4">
+          <h2 class="card-title">Company Info</h2>
+
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Company Name</legend>
+            <label class="input w-full">
+              <input type="text"
+                     name="name"
+                     value="{{ name_val }}"
+                     minlength="3"
+                     maxlength="50"
+                     required
+                     class="grow" />
+            </label>
+            <p class="label">
+              The display name of your company, shown across the app.
+            </p>
+            {% if errors.get("name") %}
+              <p class="label text-error">{{ errors["name"] }}</p>
+            {% endif %}
+          </fieldset>
+
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Email</legend>
+            <label class="input w-full">
+              <input type="email" name="email" value="{{ email_val }}" class="grow" />
+            </label>
+            <p class="label">Primary contact email for company notifications.</p>
+            {% if errors.get("email") %}
+              <p class="label text-error">{{ errors["email"] }}</p>
+            {% endif %}
+          </fieldset>
+
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Description</legend>
+            <textarea name="description" class="textarea w-full" rows="3">{{ desc_val }}</textarea>
+            <p class="label">Short summary shown on the company profile.</p>
+            {% if errors.get("description") %}
+              <p class="label text-error">{{ errors["description"] }}</p>
+            {% endif %}
+          </fieldset>
+        </div>
+      </div>
+
+      <div class="card bg-base-100 shadow-sm">
+        <div class="card-body space-y-4">
+          <h2 class="card-title">Character Autogen</h2>
+
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Autogen XP Cost</legend>
+            <label class="input w-full">
+              <input type="number"
+                     name="character_autogen_xp_cost"
+                     value="{{ xp_cost_val }}"
+                     min="0"
+                     class="grow" />
+            </label>
+            <p class="label">
+              XP cost charged when a player uses character auto-generation.
+            </p>
+            {% if errors.get("character_autogen_xp_cost") %}
+              <p class="label text-error">
+                {{ errors["character_autogen_xp_cost"] }}
+              </p>
+            {% endif %}
+          </fieldset>
+
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Number of Choices</legend>
+            <label class="input w-full">
+              <input type="number"
+                     name="character_autogen_num_choices"
+                     value="{{ num_choices_val }}"
+                     min="0"
+                     class="grow" />
+            </label>
+            <p class="label">
+              Number of auto-generated character options presented to players.
+            </p>
+            {% if errors.get("character_autogen_num_choices") %}
+              <p class="label text-error">
+                {{ errors["character_autogen_num_choices"] }}
+              </p>
+            {% endif %}
+          </fieldset>
+        </div>
+      </div>
+
+      <div class="card bg-base-100 shadow-sm">
+        <div class="card-body space-y-4">
+          <h2 class="card-title">Permissions</h2>
+
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Manage Campaign</legend>
+            <select name="permission_manage_campaign" class="select w-full">
+              <option value="UNRESTRICTED"
+                      {% if perm_manage_val == "UNRESTRICTED" %}selected{% endif %}>
+                Unrestricted
+              </option>
+              <option value="STORYTELLER"
+                      {% if perm_manage_val == "STORYTELLER" %}selected{% endif %}>
+                Storyteller and Admin
+              </option>
+            </select>
+            <p class="label">
+              Who can create and manage and edit campaigns.
+              <br>
+              &nbsp;&nbsp;- Unrestricted: Any player can create and manage and edit campaigns
+              <br>
+              &nbsp;&nbsp;- Storyteller and Admin: Only storytellers and admins can create and manage and edit campaigns
+            </p>
+            {% if errors.get("permission_manage_campaign") %}
+              <p class="label text-error">
+                {{ errors["permission_manage_campaign"] }}
+              </p>
+            {% endif %}
+          </fieldset>
+
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Grant XP</legend>
+            <select name="permission_grant_xp" class="select w-full">
+              <option value="UNRESTRICTED"
+                      {% if perm_grant_xp_val == "UNRESTRICTED" %}selected{% endif %}>
+                Unrestricted
+              </option>
+              <option value="PLAYER"
+                      {% if perm_grant_xp_val == "PLAYER" %}selected{% endif %}>
+                Player
+              </option>
+              <option value="STORYTELLER"
+                      {% if perm_grant_xp_val == "STORYTELLER" %}selected{% endif %}>
+                Storyteller and Admin
+              </option>
+            </select>
+            <p class="label">
+              Who can grant XP to players.
+              <br>
+              &nbsp;&nbsp;- Unrestricted = any player can grant XP to any player
+              <br>
+              &nbsp;&nbsp;- Player = players can grant XP to themselves only
+              <br>
+              &nbsp;&nbsp;- Storyteller and Admin = only storytellers and admins can grant XP
+            </p>
+            {% if errors.get("permission_grant_xp") %}
+              <p class="label text-error">{{ errors["permission_grant_xp"] }}</p>
+            {% endif %}
+          </fieldset>
+
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Free Trait Changes</legend>
+            <select name="permission_free_trait_changes" class="select w-full">
+              <option value="UNRESTRICTED"
+                      {% if perm_free_trait_val == "UNRESTRICTED" %}selected{% endif %}>
+                Unrestricted
+              </option>
+              <option value="WITHIN_24_HOURS"
+                      {% if perm_free_trait_val == "WITHIN_24_HOURS" %}selected{% endif %}>
+                Within 24 hours
+              </option>
+              <option value="STORYTELLER"
+                      {% if perm_free_trait_val == "STORYTELLER" %}selected{% endif %}>
+                Storyteller only
+              </option>
+            </select>
+            <p class="label">
+              When trait changes can be made by players without spending XP. Useful for touching up characters after initial creation.
+              <br>
+              &nbsp;&nbsp;- Unrestricted: Any player can make trait changes without spending XP
+              <br>
+              &nbsp;&nbsp;- Within 24 hours: Players can make trait changes within 24 hours of the last change
+              <br>
+              &nbsp;&nbsp;- Storyteller and Admin: Only storytellers and admins can make trait changes
+            </p>
+            {% if errors.get("permission_free_trait_changes") %}
+              <p class="label text-error">
+                {{ errors["permission_free_trait_changes"] }}
+              </p>
+            {% endif %}
+          </fieldset>
+
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Recoup XP</legend>
+            <select name="permission_recoup_xp" class="select w-full">
+              <option value="UNRESTRICTED"
+                      {% if perm_recoup_xp_val == "UNRESTRICTED" %}selected{% endif %}>
+                Unrestricted
+              </option>
+              <option value="WITHIN_SESSION"
+                      {% if perm_recoup_xp_val == "WITHIN_SESSION" %}selected{% endif %}>
+                Within current session
+              </option>
+              <option value="DENIED"
+                      {% if perm_recoup_xp_val == "DENIED" %}selected{% endif %}>
+                Denied
+              </option>
+            </select>
+            <p class="label">
+              Recouping XP by lowering traits can be exploited by players. This permission setting is used to prevent this.
+              <br>
+              &nbsp;&nbsp;- Unrestricted: Any player can recoup XP at any time
+              <br>
+              &nbsp;&nbsp;- Within current session: Players may recoup XP by lowering traits within a 1 hour window of raising them
+              <br>
+              &nbsp;&nbsp;- Denied: Players cannot recoup XP by lowering traits at any time
+            </p>
+            {% if errors.get("permission_recoup_xp") %}
+              <p class="label text-error">{{ errors["permission_recoup_xp"] }}</p>
+            {% endif %}
+          </fieldset>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-2">
+        <a href="{{ url_for('settings.settings') }}" class="btn btn-ghost">Cancel</a>
+        <button type="submit" class="btn btn-primary">Save Settings</button>
+      </div>
+    </form>
+  </div>
+  </shared.PageLayout>
