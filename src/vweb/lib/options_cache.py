@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from flask import session
 from vclient import sync_options_service
 
 from vweb.constants import CACHE_OPTIONS_TTL
@@ -153,7 +154,7 @@ def get_options() -> ApiOptions:
     if cached is not None:
         return cached
 
-    raw = sync_options_service().get_options()
+    raw = sync_options_service(company_id=session["company_id"]).get_options()
     result = _parse_options(raw)
     cache.set(_CACHE_OPTIONS_KEY, result, timeout=CACHE_OPTIONS_TTL)
     return result

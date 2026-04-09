@@ -155,7 +155,7 @@ def fetch_form_options() -> dict:
     if cached is not None:
         return cached
 
-    bp_svc = sync_character_blueprint_service()
+    bp_svc = sync_character_blueprint_service(company_id=session["company_id"])
     opts = get_options().characters
     result = {
         "character_classes": opts.character_class,

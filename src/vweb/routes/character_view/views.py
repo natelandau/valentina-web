@@ -71,7 +71,9 @@ class CharacterView(MethodView):
             case "profile":
                 svc = CharacterSheetService(character, user)
                 data["concept"] = (
-                    sync_character_blueprint_service().get_concept(concept_id=character.concept_id)
+                    sync_character_blueprint_service(company_id=session["company_id"]).get_concept(
+                        concept_id=character.concept_id
+                    )
                     if character.concept_id
                     else None
                 )

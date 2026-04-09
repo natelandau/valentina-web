@@ -163,7 +163,7 @@ class TestFinalizeSession:
 class TestFetchFormOptions:
     """Tests for fetch_form_options()."""
 
-    def test_returns_all_dropdown_data(self, mocker) -> None:
+    def test_returns_all_dropdown_data(self, app, mocker) -> None:
         """Verify fetch_form_options returns enum lists and blueprint data."""
         # Given mocked blueprint service, cache, and options
         mock_bp_service = MagicMock()
@@ -199,7 +199,11 @@ class TestFetchFormOptions:
         from vweb.routes.character_create.autogen_services import fetch_form_options
 
         # When fetching options
-        result = fetch_form_options()
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            result = fetch_form_options()
 
         # Then enum lists and blueprint data are returned
         assert result["concepts"] == concepts

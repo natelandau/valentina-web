@@ -136,7 +136,10 @@ class TestGetOptions:
         self, app: Flask, mock_cache_store: dict, mock_options_svc: MagicMock
     ) -> None:
         """Verify get_options calls the API when the cache is empty."""
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             result = get_options()
 
         assert isinstance(result, ApiOptions)
@@ -154,7 +157,10 @@ class TestGetOptions:
         self, app: Flask, mock_cache_store: dict, mock_options_svc: MagicMock
     ) -> None:
         """Verify get_options returns cached value without calling the API again."""
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             first = get_options()
             second = get_options()
 
@@ -165,7 +171,10 @@ class TestGetOptions:
         self, app: Flask, mock_cache_store: dict, mock_options_svc: MagicMock
     ) -> None:
         """Verify the cached value is stored under the expected key."""
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             get_options()
 
         assert "api_options" in mock_cache_store
@@ -185,7 +194,10 @@ class TestClearOptionsCache:
         }
         mock_options_svc.get_options.side_effect = [SAMPLE_RAW, raw_v2]
 
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             first = get_options()
             assert len(first.characters.character_class) == 6
 
