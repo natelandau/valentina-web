@@ -6,6 +6,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import httpx
+from authlib.integrations.base_client.errors import OAuthError
 from flask import Blueprint, flash, redirect, request, session, url_for
 from flask.views import MethodView
 from vclient import sync_companies_service, sync_users_service
@@ -131,7 +132,12 @@ class DiscordCallbackView(MethodView):
 
     def get(self) -> Response:
         """Exchange authorization code for token and resolve user identity."""
-        token = oauth.discord.authorize_access_token()
+        try:
+            token = oauth.discord.authorize_access_token()
+        except OAuthError:
+            flash("Discord login was cancelled or denied.", "error")
+            return redirect(url_for("index.index"))
+
         resp = oauth.discord.get("users/@me", token=token)
         discord_data = resp.json()
 
@@ -180,7 +186,12 @@ class GitHubCallbackView(MethodView):
 
     def get(self) -> Response:
         """Exchange authorization code for token and resolve user identity."""
-        token = oauth.github.authorize_access_token()
+        try:
+            token = oauth.github.authorize_access_token()
+        except OAuthError:
+            flash("GitHub login was cancelled or denied.", "error")
+            return redirect(url_for("index.index"))
+
         resp = oauth.github.get("user", token=token)
         github_data = resp.json()
 
@@ -217,7 +228,12 @@ class GoogleCallbackView(MethodView):
 
     def get(self) -> Response:
         """Exchange authorization code for token and resolve user identity."""
-        token = oauth.google.authorize_access_token()
+        try:
+            token = oauth.google.authorize_access_token()
+        except OAuthError:
+            flash("Google login was cancelled or denied.", "error")
+            return redirect(url_for("index.index"))
+
         google_data = token["userinfo"]
 
         result = _safe_lookup(
