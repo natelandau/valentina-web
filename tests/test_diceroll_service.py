@@ -83,6 +83,10 @@ class TestGetRollContext:
 
         # When get_roll_context is called inside a request context
         with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             g.requesting_user = user
             result = get_roll_context(character=character, campaign=campaign)
 
@@ -107,6 +111,10 @@ class TestGetRollContext:
 
         # When get_roll_context is called
         with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             g.requesting_user = user
             result = get_roll_context(character=character, campaign=campaign)
 

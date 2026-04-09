@@ -164,7 +164,7 @@ def validate_and_submit_experience(
     if errors:
         return errors
 
-    svc = sync_users_service()
+    svc = sync_users_service(company_id=session["company_id"])
 
     if xp_amount > 0:
         svc.add_xp(user_id, campaign_id, amount=xp_amount, requesting_user_id=requesting_user_id)

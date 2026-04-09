@@ -39,7 +39,7 @@ class ProfileView(MethodView):
         user_characters = [ch for ch in ctx.characters if ch.user_player_id == user_id]
 
         # Fetch statistics
-        svc = sync_users_service()
+        svc = sync_users_service(company_id=session["company_id"])
         statistics = svc.get_statistics(user_id)
 
         experience_rows, lifetime_xp, lifetime_cool_points = _build_experience_rows(user_id)
@@ -84,7 +84,7 @@ class ProfileView(MethodView):
                 errors=errors,
             )
 
-        svc = sync_users_service()
+        svc = sync_users_service(company_id=session["company_id"])
         update_request = UserUpdate(
             name_first=form_data.get("name_first", "").strip() or None,
             name_last=form_data.get("name_last", "").strip() or None,

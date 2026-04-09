@@ -41,7 +41,11 @@ class TestListItems:
 
     def test_two_traits_resolved(self, app, mock_user_svc, mock_get_all_traits) -> None:
         """Verify list_items resolves both trait names from the blueprint cache."""
-        with app.test_request_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             # Given a quickroll with two trait IDs
             qr = _make_quickroll(
                 id="qr-1", name="Attack", description="Quick attack", trait_ids=["t1", "t2"]
@@ -67,7 +71,11 @@ class TestListItems:
 
     def test_one_trait_resolved(self, app, mock_user_svc, mock_get_all_traits) -> None:
         """Verify list_items handles a quickroll with only one trait."""
-        with app.test_request_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             # Given a quickroll with one trait ID
             qr = _make_quickroll(id="qr-2", name="Dodge", trait_ids=["t1"])
             mock_user_svc.list_all_quickrolls.return_value = [qr]
@@ -86,7 +94,11 @@ class TestListItems:
 
     def test_zero_traits(self, app, mock_user_svc, mock_get_all_traits) -> None:
         """Verify list_items handles a quickroll with no traits."""
-        with app.test_request_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             # Given a quickroll with no trait IDs
             qr = _make_quickroll(id="qr-3", name="Empty", trait_ids=[])
             mock_user_svc.list_all_quickrolls.return_value = [qr]
@@ -103,7 +115,11 @@ class TestListItems:
 
     def test_unknown_trait_returns_dash(self, app, mock_user_svc, mock_get_all_traits) -> None:
         """Verify trait resolution falls back to dash when trait ID is not found."""
-        with app.test_request_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             # Given a quickroll with an unknown trait ID
             qr = _make_quickroll(id="qr-5", name="Broken", trait_ids=["bad-id"])
             mock_user_svc.list_all_quickrolls.return_value = [qr]
@@ -123,7 +139,11 @@ class TestCrudOperations:
 
     def test_create_item_delegates_to_service(self, app, mock_user_svc) -> None:
         """Verify create_item calls the service with correct arguments."""
-        with app.test_request_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             handler = QuickrollHandler("user-1")
 
             # When creating a quickroll
@@ -146,7 +166,11 @@ class TestCrudOperations:
 
     def test_create_item_omits_empty_description(self, app, mock_user_svc) -> None:
         """Verify create_item sets description to None when empty."""
-        with app.test_request_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             handler = QuickrollHandler("user-1")
 
             # When creating with empty description
@@ -158,7 +182,11 @@ class TestCrudOperations:
 
     def test_create_item_filters_empty_trait_ids(self, app, mock_user_svc) -> None:
         """Verify create_item excludes empty trait ID strings."""
-        with app.test_request_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             handler = QuickrollHandler("user-1")
 
             # When creating with one empty trait ID
@@ -176,7 +204,11 @@ class TestCrudOperations:
 
     def test_update_item_delegates_to_service(self, app, mock_user_svc) -> None:
         """Verify update_item calls the service with correct arguments."""
-        with app.test_request_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             handler = QuickrollHandler("user-1")
 
             # When updating a quickroll
@@ -199,7 +231,11 @@ class TestCrudOperations:
 
     def test_delete_item_delegates_to_service(self, app, mock_user_svc) -> None:
         """Verify delete_item calls the service with correct IDs."""
-        with app.test_request_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             handler = QuickrollHandler("user-1")
 
             # When deleting a quickroll
@@ -210,7 +246,11 @@ class TestCrudOperations:
 
     def test_get_item_delegates_to_service(self, app, mock_user_svc) -> None:
         """Verify get_item calls the service with correct IDs."""
-        with app.test_request_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             handler = QuickrollHandler("user-1")
 
             # When getting a quickroll

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from flask import session
 from vclient import sync_users_service
 from vclient.models import QuickrollCreate, QuickrollUpdate
 
@@ -38,7 +39,7 @@ class QuickrollHandler:
 
     def __init__(self, parent_id: str) -> None:
         self._parent_id = parent_id
-        self._svc = sync_users_service()
+        self._svc = sync_users_service(company_id=session["company_id"])
 
     def list_items(self) -> list[QuickrollDisplay]:
         """Fetch all quickrolls for the user, resolving trait IDs to display names."""

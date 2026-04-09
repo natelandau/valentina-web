@@ -43,7 +43,11 @@ class TestListPendingAndApproved:
         # When partitioning with the self id excluded
         from vweb.routes.settings.services import list_pending_and_approved
 
-        with app.test_request_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             result_pending, result_approved = list_pending_and_approved(self_id)
 
         # Then "self" is gone from both lists
@@ -71,7 +75,11 @@ class TestPendingUserCount:
         # When asking for the pending count
         from vweb.routes.settings.services import pending_user_count
 
-        with app.test_request_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             count = pending_user_count("admin-id")
 
         # Then the count is 3

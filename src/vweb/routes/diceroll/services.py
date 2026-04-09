@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from flask import g
+from flask import g, session
 from vclient import sync_character_traits_service, sync_dicerolls_service, sync_users_service
 
 if TYPE_CHECKING:
@@ -60,7 +60,7 @@ def get_roll_context(*, character: Character, campaign: Campaign) -> RollContext
     user_id = g.requesting_user.id
 
     traits = get_character_traits(character=character)
-    quickrolls = sync_users_service().list_all_quickrolls(user_id)
+    quickrolls = sync_users_service(company_id=session["company_id"]).list_all_quickrolls(user_id)
 
     return RollContext(
         character_traits=traits,

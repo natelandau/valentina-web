@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from flask import session
 from vclient import sync_dictionary_service
 
 from vweb.constants import CACHE_DICTIONARY_KEY, CACHE_DICTIONARY_TTL
@@ -30,7 +31,7 @@ def get_all_terms() -> list[DictionaryTerm]:
     if cached is not None:
         return cached
 
-    terms = sync_dictionary_service().list_all()
+    terms = sync_dictionary_service(company_id=session["company_id"]).list_all()
     terms.sort(key=lambda t: t.term.lower())
     cache.set(CACHE_DICTIONARY_KEY, terms, timeout=CACHE_DICTIONARY_TTL)
     return terms
