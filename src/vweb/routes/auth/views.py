@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
-from flask import Blueprint, redirect, session, url_for
+import httpx
+from flask import Blueprint, flash, redirect, session, url_for
 from flask.views import MethodView
+from vclient.exceptions import APIError
+from werkzeug.wrappers.response import Response
 
 from vweb import catalog
 from vweb.extensions import oauth
@@ -16,9 +20,43 @@ from vweb.routes.auth.services import (
 )
 
 if TYPE_CHECKING:
-    from werkzeug.wrappers.response import Response
+    from collections.abc import Callable
+
+    from vclient.models.users import User
 
 bp = Blueprint("auth", __name__)
+
+logger = logging.getLogger(__name__)
+
+
+def _resolve_user_or_fail(
+    resolver: Callable[[dict], User], data: dict, provider: str
+) -> User | Response:
+    """Call an OAuth user resolver, catching transport/API errors.
+
+    The valentina API is a hard dependency of login; when it is unreachable the
+    raw httpx/vclient errors would otherwise kill the gunicorn worker. Log the
+    failure with enough context to debug, flash a friendly message, and send
+    the user back to the landing page.
+
+    Args:
+        resolver: The `resolve_or_create_*_user` function to invoke.
+        data: OAuth provider data to pass through to the resolver.
+        provider: Human-readable provider name for logging and flash messages.
+
+    Returns:
+        The resolved User on success, or a redirect Response on failure.
+    """
+    try:
+        return resolver(data)
+    except (httpx.HTTPError, APIError):
+        logger.exception("%s OAuth callback failed: API unreachable", provider)
+        flash(
+            f"We couldn't reach the Valentina API to complete your {provider} login. "
+            "Please try again in a few minutes.",
+            "error",
+        )
+        return redirect(url_for("index.index"))
 
 
 class DiscordLoginView(MethodView):
@@ -39,7 +77,10 @@ class DiscordCallbackView(MethodView):
         resp = oauth.discord.get("users/@me", token=token)
         discord_data = resp.json()
 
-        user = resolve_or_create_discord_user(discord_data)
+        result = _resolve_user_or_fail(resolve_or_create_discord_user, discord_data, "Discord")
+        if isinstance(result, Response):
+            return result
+        user = result
 
         session["user_id"] = user.id
         session.permanent = True
@@ -93,7 +134,10 @@ class GitHubCallbackView(MethodView):
                     github_data["email"] = entry["email"]
                     break
 
-        user = resolve_or_create_github_user(github_data)
+        result = _resolve_user_or_fail(resolve_or_create_github_user, github_data, "GitHub")
+        if isinstance(result, Response):
+            return result
+        user = result
 
         session["user_id"] = user.id
         session.permanent = True
@@ -121,7 +165,10 @@ class GoogleCallbackView(MethodView):
         token = oauth.google.authorize_access_token()
         google_data = token["userinfo"]
 
-        user = resolve_or_create_google_user(google_data)
+        result = _resolve_user_or_fail(resolve_or_create_google_user, google_data, "Google")
+        if isinstance(result, Response):
+            return result
+        user = result
 
         session["user_id"] = user.id
         session.permanent = True
