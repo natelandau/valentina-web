@@ -64,6 +64,7 @@ class TestBookNotesHandlerOperations:
             from flask import session
 
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
             handler = BookNotesHandler("book-123", campaign_id="camp-456")
 
             handler.list_items()
@@ -76,6 +77,7 @@ class TestBookNotesHandlerOperations:
             from flask import session
 
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
 
             notes = NoteFactory.batch(3)
             mock_svc.list_all_notes.return_value = notes
@@ -92,6 +94,7 @@ class TestBookNotesHandlerOperations:
             from flask import session
 
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
             handler = BookNotesHandler("book-123", campaign_id="camp-456")
 
             handler.create_item({"title": "  My Title  ", "content": "  My Content  "})
@@ -108,6 +111,7 @@ class TestBookNotesHandlerOperations:
             from flask import session
 
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
             handler = BookNotesHandler("book-123", campaign_id="camp-456")
 
             handler.delete_item("note-789")
@@ -120,6 +124,7 @@ class TestBookNotesHandlerOperations:
             from flask import session
 
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
             handler = BookNotesHandler("book-123", campaign_id="camp-456")
 
             handler.get_item("note-789")
@@ -132,6 +137,7 @@ class TestBookNotesHandlerOperations:
             from flask import session
 
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
             handler = BookNotesHandler("book-123", campaign_id="camp-456")
 
             handler.update_item("note-789", {"title": "  Updated  ", "content": "  New  "})
@@ -149,6 +155,7 @@ class TestBookNotesHandlerOperations:
             from flask import session
 
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
 
             with pytest.raises(ValueError, match="campaign_id is required"):
                 BookNotesHandler("book-123")
@@ -159,6 +166,7 @@ class TestBookNotesHandlerOperations:
             from flask import session
 
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
 
             handler = BookNotesHandler("book-999", campaign_id="camp-direct")
 

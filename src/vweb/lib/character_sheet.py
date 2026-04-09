@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from flask import session
 from vclient import sync_characters_service
 
 from vweb.constants import CACHE_CHARACTER_FULL_SHEET_PREFIX, CACHE_CHARACTER_FULL_SHEET_TTL
@@ -36,7 +37,9 @@ class CharacterSheetService:
             return full_sheet
 
         full_sheet = sync_characters_service(
-            user_id=self.requesting_user.id, campaign_id=self.character.campaign_id
+            user_id=self.requesting_user.id,
+            campaign_id=self.character.campaign_id,
+            company_id=session["company_id"],
         ).get_full_sheet(self.character.id, include_available_traits=include_available_traits)
 
         cache.set(cache_key, full_sheet, timeout=CACHE_CHARACTER_FULL_SHEET_TTL)

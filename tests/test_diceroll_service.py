@@ -144,6 +144,9 @@ class TestPerformCustomRoll:
 
         # When perform_custom_roll is called
         with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             g.requesting_user = user
             result = perform_custom_roll(
                 character=character,
@@ -173,6 +176,9 @@ class TestPerformCustomRoll:
 
         # When perform_custom_roll is called without a comment
         with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             g.requesting_user = user
             result = perform_custom_roll(
                 character=character,
@@ -210,6 +216,9 @@ class TestPerformTraitRoll:
 
         # When perform_trait_roll is called with one trait
         with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             g.requesting_user = user
             result = perform_trait_roll(
                 character=character,
@@ -242,6 +251,9 @@ class TestPerformTraitRoll:
 
         # When perform_trait_roll is called with two traits
         with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             g.requesting_user = user
             result = perform_trait_roll(
                 character=character,
@@ -270,6 +282,9 @@ class TestPerformTraitRoll:
 
         # When perform_trait_roll is called with a non-existent trait_one_id
         with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             g.requesting_user = user
             with pytest.raises(ValueError, match="trait-missing"):
                 perform_trait_roll(
@@ -295,6 +310,9 @@ class TestPerformTraitRoll:
 
         # When perform_trait_roll is called with a bad trait_two_id
         with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             g.requesting_user = user
             with pytest.raises(ValueError, match="trait-missing-two"):
                 perform_trait_roll(
@@ -327,6 +345,9 @@ class TestPerformTraitRoll:
 
         # When perform_trait_roll is called
         with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             g.requesting_user = user
             perform_trait_roll(
                 character=character,
@@ -361,6 +382,9 @@ class TestPerformTraitRoll:
 
         # When perform_trait_roll is called with desperation dice
         with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             g.requesting_user = user
             perform_trait_roll(
                 character=character,
@@ -398,6 +422,9 @@ class TestPerformQuickroll:
 
         # When perform_quickroll is called
         with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             g.requesting_user = user
             result = perform_quickroll(
                 character=character,
@@ -429,6 +456,9 @@ class TestPerformQuickroll:
 
         # When perform_quickroll is called with extra parameters
         with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             g.requesting_user = user
             result = perform_quickroll(
                 character=character,

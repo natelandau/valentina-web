@@ -146,7 +146,9 @@ class CampaignCreateView(MethodView):
                 form_data={"name": name, "description": description},
             )
 
-        service = sync_campaigns_service(user_id=g.requesting_user.id)
+        service = sync_campaigns_service(
+            user_id=g.requesting_user.id, company_id=session["company_id"]
+        )
         new_campaign = service.create(CampaignCreate(name=name, description=description or None))
         clear_global_context_cache(session["company_id"], session["user_id"])
 
@@ -190,7 +192,9 @@ class CampaignUpdateView(MethodView):
                 campaign=campaign,
             )
 
-        service = sync_campaigns_service(user_id=g.requesting_user.id)
+        service = sync_campaigns_service(
+            user_id=g.requesting_user.id, company_id=session["company_id"]
+        )
         service.update(campaign_id, CampaignUpdate(name=name, description=description or None))
         clear_global_context_cache(session["company_id"], session["user_id"])
 
@@ -222,7 +226,9 @@ class CampaignDeleteView(MethodView):
 
         fetch_campaign_or_404(campaign_id)
 
-        service = sync_campaigns_service(user_id=g.requesting_user.id)
+        service = sync_campaigns_service(
+            user_id=g.requesting_user.id, company_id=session["company_id"]
+        )
         service.delete(campaign_id)
         clear_global_context_cache(session["company_id"], session["user_id"])
         session.pop("last_campaign_id", None)

@@ -193,7 +193,10 @@ class CharacterTraitsView(MethodView):
         )
 
         api_svc = sync_character_traits_service(
-            user_id=requesting_user.id, campaign_id=campaign.id, character_id=character.id
+            user_id=requesting_user.id,
+            campaign_id=campaign.id,
+            character_id=character.id,
+            company_id=session["company_id"],
         )
         sheet_svc = CharacterSheetService(character=character, requesting_user=requesting_user)
         sheet_svc.clear_cache()

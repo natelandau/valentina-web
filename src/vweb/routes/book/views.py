@@ -70,7 +70,10 @@ def _render_book_card(  # noqa: PLR0913
 def _load_sorted_chapters(user_id: str, campaign_id: str, book_id: str) -> list[CampaignChapter]:
     """Fetch all chapters for a book, sorted by number."""
     chapters = sync_chapters_service(
-        user_id=user_id, campaign_id=campaign_id, book_id=book_id
+        user_id=user_id,
+        campaign_id=campaign_id,
+        book_id=book_id,
+        company_id=session["company_id"],
     ).list_all()
     chapters.sort(key=lambda c: c.number)
     return chapters
@@ -117,7 +120,9 @@ class BookDetailView(MethodView):
         # Only the description tab renders the image carousel; skip the asset
         # fetch when the notes tab is requested to avoid an extra API call.
         assets: list[Asset] = (
-            sync_books_service(user_id=user_id, campaign_id=campaign_id).list_all_assets(book.id)
+            sync_books_service(
+                user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
+            ).list_all_assets(book.id)
             if active_section == "description"
             else []
         )
@@ -229,7 +234,9 @@ class BookDetailView(MethodView):
                 form_data=request.form,
             )
 
-        svc = sync_books_service(user_id=user_id, campaign_id=campaign_id)
+        svc = sync_books_service(
+            user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
+        )
         updated_book = svc.update(book_id, name=name, description=description)
         if number != book.number:
             updated_book = svc.renumber(book_id, number)
@@ -259,7 +266,9 @@ class BookImageUploadView(MethodView):
             abort(403)
 
         user_id = session.get("user_id", "")
-        svc = sync_books_service(user_id=user_id, campaign_id=campaign_id)
+        svc = sync_books_service(
+            user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
+        )
 
         assets = upload_and_append_asset(
             svc=svc, parent_id=book_id, file=request.files.get("image")
@@ -287,7 +296,9 @@ class BookImageDeleteView(MethodView):
             abort(403)
 
         user_id = session.get("user_id", "")
-        svc = sync_books_service(user_id=user_id, campaign_id=campaign_id)
+        svc = sync_books_service(
+            user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
+        )
 
         handle_image_delete(svc=svc, parent_id=book_id, asset_id=asset_id)
 

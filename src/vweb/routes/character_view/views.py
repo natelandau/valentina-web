@@ -80,12 +80,16 @@ class CharacterView(MethodView):
                 pass
             case "images":
                 char_svc = sync_characters_service(
-                    user_id=user.id, campaign_id=character.campaign_id
+                    user_id=user.id,
+                    campaign_id=character.campaign_id,
+                    company_id=session["company_id"],
                 )
                 data["assets"] = char_svc.list_all_assets(character.id)
             case "stats":
                 char_svc = sync_characters_service(
-                    user_id=user.id, campaign_id=character.campaign_id
+                    user_id=user.id,
+                    campaign_id=character.campaign_id,
+                    company_id=session["company_id"],
                 )
                 data["statistics"] = char_svc.get_statistics(character.id)
 
@@ -201,7 +205,9 @@ class CharacterDeleteView(MethodView):
             return make_response("", 403)
 
         user = g.requesting_user
-        char_svc = sync_characters_service(user_id=user.id, campaign_id=character.campaign_id)
+        char_svc = sync_characters_service(
+            user_id=user.id, campaign_id=character.campaign_id, company_id=session["company_id"]
+        )
         char_svc.delete(character_id)
         clear_global_context_cache(session["company_id"], session["user_id"])
 
@@ -235,7 +241,9 @@ class ImageUploadView(MethodView):
             return make_response("", 403)
 
         user = g.requesting_user
-        char_svc = sync_characters_service(user_id=user.id, campaign_id=character.campaign_id)
+        char_svc = sync_characters_service(
+            user_id=user.id, campaign_id=character.campaign_id, company_id=session["company_id"]
+        )
 
         assets = upload_and_append_asset(
             svc=char_svc, parent_id=character_id, file=request.files.get("image")
@@ -277,7 +285,9 @@ class ImageDeleteView(MethodView):
             return make_response("", 403)
 
         user = g.requesting_user
-        char_svc = sync_characters_service(user_id=user.id, campaign_id=character.campaign_id)
+        char_svc = sync_characters_service(
+            user_id=user.id, campaign_id=character.campaign_id, company_id=session["company_id"]
+        )
 
         handle_image_delete(svc=char_svc, parent_id=character_id, asset_id=asset_id)
 
