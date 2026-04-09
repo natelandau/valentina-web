@@ -11,6 +11,7 @@ from flask import (
     make_response,
     redirect,
     request,
+    session,
     url_for,
 )
 from flask.views import MethodView
@@ -202,7 +203,7 @@ class CharacterDeleteView(MethodView):
         user = g.requesting_user
         char_svc = sync_characters_service(user_id=user.id, campaign_id=character.campaign_id)
         char_svc.delete(character_id)
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
 
         return Response("", status=200, headers={"HX-Redirect": "/"})
 

@@ -61,6 +61,14 @@ class TestUnapprovedRedirect:
         client = app.test_client()
         with client.session_transaction() as sess:
             sess["user_id"] = "test-user-id"
+            sess["company_id"] = "test-company-id"
+            sess["companies"] = {
+                "test-company-id": {
+                    "user_id": "test-user-id",
+                    "company_name": "Test",
+                    "role": "UNAPPROVED",
+                },
+            }
 
         # When accessing a protected route
         response = client.get("/characters/some-id")
@@ -83,6 +91,14 @@ class TestUnapprovedRedirect:
         client = app.test_client()
         with client.session_transaction() as sess:
             sess["user_id"] = "test-user-id"
+            sess["company_id"] = "test-company-id"
+            sess["companies"] = {
+                "test-company-id": {
+                    "user_id": "test-user-id",
+                    "company_name": "Test",
+                    "role": "UNAPPROVED",
+                },
+            }
 
         response = client.get("/pending-approval")
         assert response.status_code == 200

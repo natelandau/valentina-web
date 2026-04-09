@@ -148,7 +148,7 @@ class CampaignCreateView(MethodView):
 
         service = sync_campaigns_service(user_id=g.requesting_user.id)
         new_campaign = service.create(CampaignCreate(name=name, description=description or None))
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
 
         redirect_url = url_for("campaign.campaign", campaign_id=new_campaign.id)
         return Response("", status=200, headers={"HX-Redirect": redirect_url})
@@ -192,7 +192,7 @@ class CampaignUpdateView(MethodView):
 
         service = sync_campaigns_service(user_id=g.requesting_user.id)
         service.update(campaign_id, CampaignUpdate(name=name, description=description or None))
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
 
         redirect_url = url_for("campaign.campaign", campaign_id=campaign_id)
         return Response("", status=200, headers={"HX-Redirect": redirect_url})
@@ -224,7 +224,7 @@ class CampaignDeleteView(MethodView):
 
         service = sync_campaigns_service(user_id=g.requesting_user.id)
         service.delete(campaign_id)
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
         session.pop("last_campaign_id", None)
 
         return Response("", status=200, headers={"HX-Redirect": "/"})

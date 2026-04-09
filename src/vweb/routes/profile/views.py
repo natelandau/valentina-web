@@ -93,7 +93,7 @@ class ProfileView(MethodView):
             requesting_user_id=session["user_id"],
         )
         svc.update(user_id, request=update_request)
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
 
         response = make_response("")
         response.headers["HX-Redirect"] = url_for("profile.profile", user_id=user_id)

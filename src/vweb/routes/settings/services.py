@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from flask import session
 from vclient import sync_users_service
 
 from vweb.lib.global_context import clear_global_context_cache
@@ -51,7 +52,7 @@ def approve(user_id: str, role: str, requesting_user_id: str) -> User:
         msg = "Cannot approve with role UNAPPROVED."
         raise ValueError(msg)
     user = sync_users_service().approve_user(user_id, role, requesting_user_id)  # ty:ignore[invalid-argument-type]
-    clear_global_context_cache()
+    clear_global_context_cache(session["company_id"], session["user_id"])
     return user
 
 
@@ -66,14 +67,14 @@ def change_role(user_id: str, role: str, requesting_user_id: str) -> User:
         msg = "Cannot change role to UNAPPROVED."
         raise ValueError(msg)
     user = sync_users_service().update(user_id, requesting_user_id=requesting_user_id, role=role)
-    clear_global_context_cache()
+    clear_global_context_cache(session["company_id"], session["user_id"])
     return user
 
 
 def deny(user_id: str, requesting_user_id: str) -> None:
     """Deny a pending user so they can no longer access the company."""
     sync_users_service().deny_user(user_id, requesting_user_id)
-    clear_global_context_cache()
+    clear_global_context_cache(session["company_id"], session["user_id"])
 
 
 def merge(
@@ -87,5 +88,5 @@ def merge(
         secondary_user_id=secondary_user_id,
         requesting_user_id=requesting_user_id,
     )
-    clear_global_context_cache()
+    clear_global_context_cache(session["company_id"], session["user_id"])
     return user

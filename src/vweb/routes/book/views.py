@@ -233,7 +233,7 @@ class BookDetailView(MethodView):
         updated_book = svc.update(book_id, name=name, description=description)
         if number != book.number:
             updated_book = svc.renumber(book_id, number)
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
 
         assets = svc.list_all_assets(book_id)
         prev_book, next_book, total_books = _load_adjacent_books(campaign_id, updated_book.number)

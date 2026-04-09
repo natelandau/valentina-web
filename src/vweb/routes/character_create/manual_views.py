@@ -227,7 +227,7 @@ class ManualProfileView(MethodView):
             errors = {"_general": e.detail or e.message or "Failed to update profile"}
             return self._render_edit_form(campaign, character_id, form_data, errors)
 
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
         flash("Profile updated successfully", "success")
         return Response(
             "",
@@ -456,7 +456,7 @@ class ManualFinalizeView(MethodView):
             )
 
         _clear_temp_session()
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
         flash("Character created successfully!", "success")
         redirect_url = url_for("character_view.character", character_id=temp_char_id)
         return Response("", status=200, headers={"HX-Redirect": redirect_url})

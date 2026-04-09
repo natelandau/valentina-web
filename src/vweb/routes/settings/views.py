@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from flask import Blueprint, flash, g, make_response, redirect, request, url_for
+from flask import Blueprint, flash, g, make_response, redirect, request, session, url_for
 from flask.views import MethodView
 from pydantic import ValidationError
 from vclient import sync_companies_service
@@ -150,7 +150,7 @@ class SettingsView(MethodView):
             return page, 400
 
         sync_companies_service().update(company_id, request=update)
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
         flash("Settings updated.", "success")
         return redirect(url_for("settings.settings"))
 

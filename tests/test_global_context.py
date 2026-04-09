@@ -344,6 +344,14 @@ def test_hook_retries_on_user_not_found(app, mocker) -> None:
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = "test-user-id"
+        sess["company_id"] = "test-company-id"
+        sess["companies"] = {
+            "test-company-id": {
+                "user_id": "test-user-id",
+                "company_name": "Test",
+                "role": "PLAYER",
+            },
+        }
     response = client.get("/")
 
     # Then the hook retried and the request succeeded
@@ -367,6 +375,14 @@ def test_hook_redirects_when_user_not_found_after_retry(app, mocker) -> None:
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = "test-user-id"
+        sess["company_id"] = "test-company-id"
+        sess["companies"] = {
+            "test-company-id": {
+                "user_id": "test-user-id",
+                "company_name": "Test",
+                "role": "PLAYER",
+            },
+        }
     response = client.get("/character/some-id")
 
     # Then the user is redirected to the landing page

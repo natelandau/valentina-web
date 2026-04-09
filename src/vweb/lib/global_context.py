@@ -54,7 +54,10 @@ def _fetch_global_data(company_id: str, user_id: str) -> GlobalContext:
     books_by_campaign: dict[str, list[CampaignBook]] = {}
     if campaigns:
         char_results = [
-            sync_characters_service(user_id=user_id, campaign_id=c.id).list_all() for c in campaigns
+            sync_characters_service(
+                user_id=user_id, campaign_id=c.id, company_id=company_id
+            ).list_all()
+            for c in campaigns
         ]
         characters_by_campaign = {
             c.id: chars for c, chars in zip(campaigns, char_results, strict=True)
@@ -62,7 +65,8 @@ def _fetch_global_data(company_id: str, user_id: str) -> GlobalContext:
         characters = [char for chars in char_results for char in chars]
 
         book_results = [
-            sync_books_service(user_id=user_id, campaign_id=c.id).list_all() for c in campaigns
+            sync_books_service(user_id=user_id, campaign_id=c.id, company_id=company_id).list_all()
+            for c in campaigns
         ]
         books_by_campaign = {c.id: books for c, books in zip(campaigns, book_results, strict=True)}
 

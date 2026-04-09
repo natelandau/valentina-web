@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from flask import abort, g
+from flask import abort, g, session
 
 if TYPE_CHECKING:
     from vclient.models import CampaignBook, Character
@@ -174,5 +174,5 @@ def validate_and_submit_experience(
             user_id, campaign_id, amount=cp_amount, requesting_user_id=requesting_user_id
         )
 
-    clear_global_context_cache()
+    clear_global_context_cache(session["company_id"], session["user_id"])
     return []

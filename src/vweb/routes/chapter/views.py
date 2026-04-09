@@ -201,7 +201,7 @@ class ChapterDetailView(MethodView):
 
         ch_svc = sync_chapters_service(user_id=user_id, campaign_id=campaign_id, book_id=book_id)
         ch_svc.delete(chapter_id)
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
 
         chapters = ch_svc.list_all()
         chapters.sort(key=lambda c: c.number)
@@ -277,7 +277,7 @@ class ChapterEditView(MethodView):
         updated = ch_svc.update(chapter_id, name=name, description=description)
         if number != chapter.number:
             updated = ch_svc.renumber(chapter_id, number)
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
 
         assets = ch_svc.list_all_assets(chapter_id)
         prev_ch, next_ch, total_chapters = _adjacent_chapters(ch_svc.list_all(), chapter_id)
@@ -343,7 +343,7 @@ class ChapterCreateView(MethodView):
 
         ch_svc = sync_chapters_service(user_id=user_id, campaign_id=campaign_id, book_id=book_id)
         ch_svc.create(name=name, number=number, description=description)
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
 
         chapters = ch_svc.list_all()
         chapters.sort(key=lambda c: c.number)

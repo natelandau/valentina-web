@@ -49,16 +49,17 @@ def _hook_inject_global_context() -> Response | None:
         return None
 
     user_id = session.get("user_id")
-    if not user_id:
+    company_id = session.get("company_id")
+    if not user_id or not company_id:
         return None
 
-    ctx = load_global_context()
+    ctx = load_global_context(company_id, user_id)
     g.global_context = ctx
 
     requesting_user = next((u for u in ctx.users if u.id == user_id), None)
     if requesting_user is None:
-        clear_global_context_cache()
-        ctx = load_global_context()
+        clear_global_context_cache(company_id, user_id)
+        ctx = load_global_context(company_id, user_id)
         g.global_context = ctx
         requesting_user = next((u for u in ctx.users if u.id == user_id), None)
 
