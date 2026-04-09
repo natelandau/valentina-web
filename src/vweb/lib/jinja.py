@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import humanize
 import jinjax
@@ -15,11 +15,27 @@ from markupsafe import Markup, escape
 
 import vweb
 from vweb.config import get_settings
-from vweb.constants import STATIC_PATH, TEMPLATES_PATH
+from vweb.constants import MAX_IMAGE_SIZE, STATIC_PATH, TEMPLATES_PATH
+from vweb.lib.blueprint_cache import get_all_traits
+from vweb.lib.guards import (
+    can_edit_character,
+    can_edit_traits_free,
+    can_grant_experience,
+    can_manage_campaign,
+    is_admin,
+    is_self,
+    is_storyteller,
+)
+from vweb.lib.options_cache import get_options
 from vweb.routes.dictionary.cache import get_all_terms
 
 if TYPE_CHECKING:
+    from flask import Flask
+    from vclient.models import User
     from vclient.models.users import CampaignExperience
+
+    from vweb.config import Settings
+    from vweb.lib.global_context import GlobalContext
 
 
 def from_markdown(value: str) -> Markup:
@@ -233,3 +249,49 @@ def register_jinjax_catalog() -> jinjax.Catalog:
     catalog.jinja_env.lstrip_blocks = True
 
     return catalog
+
+
+def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
+    """Set up Jinja2 globals and sync the JinjaX catalog environment.
+
+    Args:
+        app: The Flask application instance.
+        s: The application settings.
+        catalog: The JinjaX catalog to sync with Flask's Jinja environment.
+    """
+    app.jinja_env.add_extension("jinja2.ext.loopcontrols")
+    jinja_globals = cast("dict[str, Any]", app.jinja_env.globals)
+    jinja_globals["catalog"] = catalog
+    jinja_globals["app_name"] = s.app_name
+    jinja_globals["version"] = vweb.__version__
+    jinja_globals["static_url"] = static_url
+    jinja_globals["oauth_discord_enabled"] = bool(s.oauth.discord.client_id)
+    jinja_globals["oauth_github_enabled"] = bool(s.oauth.github.client_id)
+    jinja_globals["oauth_google_enabled"] = bool(s.oauth.google.client_id)
+
+    def _get_global_context() -> GlobalContext | None:
+        return g.get("global_context")
+
+    jinja_globals["global_context"] = _get_global_context
+
+    def _get_requesting_user() -> User | None:
+        return g.get("requesting_user")
+
+    jinja_globals["requesting_user"] = _get_requesting_user
+    jinja_globals["get_all_traits"] = get_all_traits
+    jinja_globals["get_options"] = get_options
+    jinja_globals["MAX_IMAGE_SIZE"] = MAX_IMAGE_SIZE
+    jinja_globals["is_admin"] = is_admin
+    jinja_globals["is_storyteller"] = is_storyteller
+    jinja_globals["is_self"] = is_self
+    jinja_globals["can_manage_campaign"] = can_manage_campaign
+    jinja_globals["can_grant_experience"] = can_grant_experience
+    jinja_globals["can_edit_traits_free"] = can_edit_traits_free
+    jinja_globals["can_edit_character"] = can_edit_character
+
+    # Sync Flask's Jinja2 environment into the catalog's environment so
+    # JinjaX components have access to url_for, config, and other app globals
+    catalog.jinja_env.globals.update(app.jinja_env.globals)
+    catalog.jinja_env.filters.update(app.jinja_env.filters)
+    catalog.jinja_env.tests.update(app.jinja_env.tests)
+    catalog.jinja_env.extensions.update(app.jinja_env.extensions)
