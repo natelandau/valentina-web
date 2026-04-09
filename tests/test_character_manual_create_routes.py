@@ -37,7 +37,7 @@ class TestManualProfileView:
         # Given a campaign in global context
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         _mock_form_options(mocker)
 
         # When requesting the profile form
@@ -62,7 +62,7 @@ class TestManualProfileView:
         # Given a PLAYER user
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         _mock_form_options(mocker)
 
         # When requesting the profile form
@@ -77,7 +77,7 @@ class TestManualProfileView:
         # Given a STORYTELLER user
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         _mock_form_options(mocker)
 
         # When requesting the profile form
@@ -92,7 +92,7 @@ class TestManualProfileView:
         # Given a campaign
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         _mock_form_options(mocker)
 
         # When requesting with query params
@@ -114,7 +114,7 @@ class TestManualTraitsView:
         # Given a campaign in global context
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         csrf = get_csrf(client)
 
         # When posting to the traits stub URL
@@ -134,7 +134,7 @@ class TestManualTraitsView:
         # Given a campaign
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         _mock_form_options(mocker)
         csrf = get_csrf(client)
 
@@ -160,7 +160,7 @@ class TestManualTraitsView:
         # Given a campaign
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         _mock_form_options(mocker)
         csrf = get_csrf(client)
 
@@ -187,7 +187,7 @@ class TestManualTraitsView:
         # Given a campaign
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         _mock_form_options(mocker)
         csrf = get_csrf(client)
 
@@ -220,7 +220,7 @@ class TestManualFinalizeView:
         # Given a campaign and a temp character in session
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         temp_char = CharacterFactory.build(id="new-manual-char", campaign_id=campaign.id)
         fake_vclient.set_response(
@@ -263,7 +263,7 @@ class TestManualFinalizeView:
         # Given a campaign but no temp character in session
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         csrf = get_csrf(client)
 
         # When submitting the finalize form without a temp character
@@ -288,7 +288,7 @@ class TestManualFinalizeView:
         # Given a campaign and a failing API
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         temp_char = CharacterFactory.build(id="new-manual-char", campaign_id=campaign.id)
         full_sheet = CharacterFullSheetFactory.build(id="new-manual-char")
@@ -341,7 +341,7 @@ class TestProfileEditMode:
 
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         _mock_form_options(mocker)
 
         character = CharacterFactory.build(
@@ -370,7 +370,7 @@ class TestProfileEditMode:
 
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         _mock_form_options(mocker)
 
         character = CharacterFactory.build(
@@ -395,7 +395,7 @@ class TestProfileEditMode:
 
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         _mock_form_options(mocker)
 
         character = CharacterFactory.build(
@@ -429,7 +429,7 @@ class TestProfileEditMode:
         """Verify validation error in edit mode re-renders form with errors."""
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         _mock_form_options(mocker)
 
         csrf = get_csrf(client)
@@ -456,7 +456,7 @@ class TestProfileEditMode:
 
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         _mock_form_options(mocker)
 
         fake_vclient.set_error(

@@ -25,7 +25,7 @@ class TestSelectionPageView:
         # Given a campaign in global context
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         mocker.patch(
             "vweb.routes.character_create.picker_views.list_sessions",
             return_value=[],
@@ -54,7 +54,7 @@ class TestSelectionCardsView:
         # Given a campaign in global context
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         mocker.patch(
             "vweb.routes.character_create.picker_views.list_sessions",
             return_value=[],
@@ -75,7 +75,7 @@ class TestSingleAutogenFormView:
         # Given a privileged user and mocked form options
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         mocker.patch(
             "vweb.routes.character_create.picker_views.fetch_form_options",
             return_value={
@@ -103,7 +103,7 @@ class TestSingleAutogenFormView:
         # Given a PLAYER user
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         # When requesting the form
         response = client.get(f"/campaign/{campaign.id}/characters/new/single-autogen")
@@ -120,7 +120,7 @@ class TestSingleAutogenSubmit:
         # Given a privileged user and valid form data
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         new_char = CharacterFactory.build(id="new-char-id")
         mock_generate = mocker.patch(
@@ -147,7 +147,7 @@ class TestSingleAutogenSubmit:
         # Given a privileged user
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         mocker.patch(
             "vweb.routes.character_create.picker_views.fetch_form_options",
             return_value={
@@ -179,7 +179,7 @@ class TestSingleAutogenSubmit:
         # Given a PLAYER user
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         csrf = get_csrf(client)
 
         # When submitting the form
@@ -200,7 +200,7 @@ class TestMultiAutogenView:
         # Given a user with a valid campaign
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         session_response = ChargenSessionResponseFactory.build()
         mocker.patch(
@@ -232,7 +232,7 @@ class TestMultiAutogenView:
         # Given a user and a failing API call
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         mocker.patch(
             "vweb.routes.character_create.autogen_views.start_session",
             side_effect=APIError("Insufficient XP"),
@@ -263,7 +263,7 @@ class TestMultiAutogenFinalizeView:
         # Given a valid session and selected character
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         new_char = CharacterFactory.build(id="selected-char-id")
         mock_finalize = mocker.patch(
@@ -299,7 +299,7 @@ class TestMultiAutogenFinalizeView:
         # Given a failing finalize call
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         mocker.patch(
             "vweb.routes.character_create.autogen_views.finalize_session",
             side_effect=APIError("Session expired"),
@@ -330,7 +330,7 @@ class TestAddCharacterButtonIntegration:
         # Given a campaign with a privileged user
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         # When visiting the campaign page
         response = client.get(f"/campaign/{campaign.id}")
@@ -348,7 +348,7 @@ class TestPendingSessionsOnSelectionCards:
         # Given a campaign and active sessions
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         future = datetime.now(tz=UTC) + timedelta(hours=1)
         sessions = ChargenSessionResponseFactory.batch(2, expires_at=future)
@@ -368,7 +368,7 @@ class TestPendingSessionsOnSelectionCards:
         # Given a campaign with no active sessions
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         mocker.patch(
             "vweb.routes.character_create.picker_views.list_sessions",
             return_value=[],
@@ -385,7 +385,7 @@ class TestPendingSessionsOnSelectionCards:
         # Given one expired and one active session
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         expired = ChargenSessionResponseFactory.build(
             expires_at=datetime.now(tz=UTC) - timedelta(minutes=5),
@@ -416,7 +416,7 @@ class TestResumeSessionView:
         # Given a campaign and a valid session
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         session_response = ChargenSessionResponseFactory.build(
             id="sess-abc",
@@ -448,7 +448,7 @@ class TestResumeSessionView:
         # Given a campaign and an expired/missing session
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         mocker.patch(
             "vweb.routes.character_create.autogen_views.get_session",
             side_effect=APIError("Session expired"),
@@ -473,7 +473,7 @@ class TestMultiAutogenPassesExpiresAt:
         # Given a user with a valid campaign
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         future = datetime.now(tz=UTC) + timedelta(hours=1)
         session_response = ChargenSessionResponseFactory.build(expires_at=future)

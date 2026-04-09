@@ -79,7 +79,7 @@ class TestCampaignView:
             books_by_campaign={campaign.id: []},
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         # When visiting the campaign page
         response = client.get(f"/campaign/{campaign.id}")
@@ -117,7 +117,7 @@ class TestCampaignView:
             books_by_campaign={campaign.id: []},
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         # When visiting the campaign page
         response = client.get(f"/campaign/{campaign.id}")
@@ -134,7 +134,7 @@ class TestCampaignEditFormView:
         # Given a STORYTELLER user
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         # When requesting the edit form
         response = client.get(f"/campaign/{campaign.id}/edit-form")
@@ -148,7 +148,7 @@ class TestCampaignEditFormView:
         """Verify players cannot access the edit form."""
         # Given a PLAYER user
         ctx = build_global_context(user_role="PLAYER")
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         # When requesting the edit form
         campaign = ctx.campaigns[0]
@@ -161,7 +161,7 @@ class TestCampaignEditFormView:
         """Verify 404 is returned for a non-existent campaign."""
         # Given a STORYTELLER user (must be privileged to reach the 404 path)
         ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         # When requesting the edit form for a nonexistent campaign
         response = client.get("/campaign/nonexistent-id/edit-form")
@@ -177,7 +177,7 @@ class TestCampaignCreateView:
         """Verify successful creation returns HX-Redirect."""
         # Given a STORYTELLER user and a mocked campaign service
         ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         new_campaign = CampaignFactory.build(name="New Campaign")
         mock_service = mocker.MagicMock()
         mock_service.create.return_value = new_campaign
@@ -201,7 +201,7 @@ class TestCampaignCreateView:
         """Verify players cannot create campaigns."""
         # Given a PLAYER user
         ctx = build_global_context(user_role="PLAYER")
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         # When attempting to create a campaign
         csrf = get_csrf(client)
@@ -221,7 +221,7 @@ class TestCampaignCreateView:
 
         # Given a STORYTELLER user and a mocked catalog object
         ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         mock_catalog = mocker.MagicMock()
         mock_catalog.render.return_value = "<div>Name must be at least 3 characters.</div>"
         mocker.patch("vweb.routes.campaign.views.catalog", mock_catalog)
@@ -243,7 +243,7 @@ class TestCampaignCreateView:
 
         # Given a STORYTELLER user and a mocked catalog object
         ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         mock_catalog = mocker.MagicMock()
         mock_catalog.render.return_value = "<div>Name must be at least 3 characters.</div>"
         mocker.patch("vweb.routes.campaign.views.catalog", mock_catalog)
@@ -277,7 +277,7 @@ class TestNavbarCampaignDropdown:
             books_by_campaign={camp1.id: [], camp2.id: []},
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         # When visiting a campaign page
         response = client.get(f"/campaign/{camp1.id}")
@@ -301,7 +301,7 @@ class TestNavbarCampaignDropdown:
             books_by_campaign={campaign.id: []},
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         # When visiting a campaign page
         response = client.get(f"/campaign/{campaign.id}")
@@ -326,7 +326,7 @@ class TestNavbarCampaignDropdown:
             books_by_campaign={campaign.id: []},
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         # When visiting a campaign page
         response = client.get(f"/campaign/{campaign.id}")
@@ -344,7 +344,7 @@ class TestCampaignUpdateView:
         # Given a STORYTELLER user and a mocked campaign service
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         mock_service = mocker.MagicMock()
         mock_service.update.return_value = campaign
         mocker.patch("vweb.routes.campaign.views.sync_campaigns_service", return_value=mock_service)
@@ -371,7 +371,7 @@ class TestCampaignUpdateView:
         # Given a STORYTELLER user and a mocked catalog
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         mock_catalog = mocker.MagicMock()
         mock_catalog.render.return_value = "<div>Name must be at least 3 characters.</div>"
         mocker.patch("vweb.routes.campaign.views.catalog", mock_catalog)
@@ -393,7 +393,7 @@ class TestCampaignUpdateView:
         # Given a PLAYER user
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         # When attempting to update a campaign
         csrf = get_csrf(client)
@@ -410,7 +410,7 @@ class TestCampaignUpdateView:
         """Verify 404 is returned for a non-existent campaign."""
         # Given a STORYTELLER user
         ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         # When attempting to update a nonexistent campaign
         csrf = get_csrf(client)
@@ -432,7 +432,7 @@ class TestCampaignDeleteView:
         # Given a STORYTELLER user and a mocked campaign service
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         mock_service = mocker.MagicMock()
         mocker.patch("vweb.routes.campaign.views.sync_campaigns_service", return_value=mock_service)
         mocker.patch("vweb.routes.campaign.views.clear_global_context_cache")
@@ -462,7 +462,7 @@ class TestCampaignDeleteView:
         # Given a PLAYER user
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         # When attempting to delete a campaign
         csrf = get_csrf(client)
@@ -478,7 +478,7 @@ class TestCampaignDeleteView:
         """Verify 404 is returned for a non-existent campaign."""
         # Given a STORYTELLER user
         ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.app.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
         # When attempting to delete a nonexistent campaign
         csrf = get_csrf(client)

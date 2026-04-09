@@ -4,112 +4,23 @@ from __future__ import annotations
 
 import atexit
 from datetime import timedelta
-from typing import TYPE_CHECKING
 
-from flask import Flask, g, redirect, request, session, url_for
-from flask_talisman import Talisman
+from flask import Flask
 from flask_wtf.csrf import CSRFProtect
 from vclient import SyncVClient
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from vweb.config import Settings, get_settings
 from vweb.constants import STATIC_PATH, TEMPLATES_PATH
-from vweb.extensions import cache, oauth
+from vweb.extensions import cache
 from vweb.lib.errors import register_error_handlers
-from vweb.lib.global_context import clear_global_context_cache, load_global_context
+from vweb.lib.hooks import register_before_request_hooks
 from vweb.lib.jinja import configure_jinja, register_jinjax_catalog
 from vweb.lib.log_config import instantiate_logger
-
-if TYPE_CHECKING:
-    from werkzeug.wrappers.response import Response
+from vweb.lib.oauth_setup import register_oauth_providers
+from vweb.lib.security import configure_security
 
 catalog = register_jinjax_catalog()
-
-
-_PUBLIC_PATH_PREFIXES = ("/auth/", "/static")
-
-
-def _hook_remove_trailing_slash() -> Response | None:
-    """Redirect trailing-slash URLs to their canonical form."""
-    rp: str = request.path
-    if rp != "/" and rp.endswith("/"):
-        return redirect(rp[:-1], 301)
-
-    return None
-
-
-def _hook_refresh_session() -> None:
-    """Refresh permanent session expiry on each visit."""
-    if request.path.startswith("/static"):
-        return
-
-    session.modified = True
-
-
-def _hook_require_auth() -> Response | None:
-    """Redirect unauthenticated users to the landing page."""
-    if request.path == "/" or request.path.startswith(_PUBLIC_PATH_PREFIXES):
-        return None
-
-    if not session.get("user_id"):
-        return redirect(url_for("index.index"))
-
-    return None
-
-
-def _hook_inject_global_context() -> Response | None:
-    """Load cached global context and resolve the requesting user for template access."""
-    if request.path.startswith(_PUBLIC_PATH_PREFIXES) or request.path == "/pending-approval":
-        return None
-
-    user_id = session.get("user_id")
-    if not user_id:
-        return None
-
-    ctx = load_global_context()
-    g.global_context = ctx
-
-    requesting_user = next((u for u in ctx.users if u.id == user_id), None)
-    if requesting_user is None:
-        clear_global_context_cache()
-        ctx = load_global_context()
-        g.global_context = ctx
-        requesting_user = next((u for u in ctx.users if u.id == user_id), None)
-
-    if requesting_user is None:
-        session.clear()
-        return redirect(url_for("index.index"))
-
-    g.requesting_user = requesting_user
-    return None
-
-
-def _hook_redirect_unapproved() -> Response | None:
-    """Redirect unapproved users to the pending approval page."""
-    requesting_user = g.get("requesting_user")
-    if not requesting_user:
-        return None
-
-    if requesting_user.role == "UNAPPROVED" and request.path not in (
-        "/pending-approval",
-        "/",
-    ):
-        return redirect(url_for("auth.pending_approval"))
-
-    return None
-
-
-def _register_before_request_hooks(app: Flask) -> None:
-    """Register before-request hooks on the app.
-
-    Args:
-        app: The Flask application instance.
-    """
-    app.before_request(_hook_remove_trailing_slash)
-    app.before_request(_hook_refresh_session)
-    app.before_request(_hook_require_auth)
-    app.before_request(_hook_inject_global_context)
-    app.before_request(_hook_redirect_unapproved)
 
 
 def _configure_cache_and_session(app: Flask, s: Settings) -> None:
@@ -140,7 +51,7 @@ def _configure_cache_and_session(app: Flask, s: Settings) -> None:
         Session(app)
 
 
-def create_app(settings_override: Settings | None = None) -> Flask:  # noqa: PLR0915
+def create_app(settings_override: Settings | None = None) -> Flask:
     """Create and configure the Flask application.
 
     Args:
@@ -168,84 +79,8 @@ def create_app(settings_override: Settings | None = None) -> Flask:  # noqa: PLR
     CSRFProtect(app)
     _configure_cache_and_session(app, s)
 
-    oauth.init_app(app)
-    if s.oauth.discord.client_id:
-        oauth.register(
-            name="discord",
-            client_id=s.oauth.discord.client_id,
-            client_secret=s.oauth.discord.client_secret,
-            access_token_url="https://discord.com/api/oauth2/token",  # noqa: S106
-            authorize_url="https://discord.com/oauth2/authorize",
-            api_base_url="https://discord.com/api/v10/",
-            client_kwargs={"scope": "identify email"},
-        )
-
-    if s.oauth.github.client_id:
-        oauth.register(
-            name="github",
-            client_id=s.oauth.github.client_id,
-            client_secret=s.oauth.github.client_secret,
-            access_token_url="https://github.com/login/oauth/access_token",  # noqa: S106
-            authorize_url="https://github.com/login/oauth/authorize",
-            api_base_url="https://api.github.com/",
-            client_kwargs={"scope": "user:email read:user"},
-        )
-
-    if s.oauth.google.client_id:
-        oauth.register(
-            name="google",
-            client_id=s.oauth.google.client_id,
-            client_secret=s.oauth.google.client_secret,
-            server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-            client_kwargs={"scope": "openid email profile"},
-        )
-
-    script_src = [
-        "'self'",
-        "'unsafe-eval'",
-        "unpkg.com",
-        "kit.fontawesome.com",
-        "ka-f.fontawesome.com",
-    ]
-    if s.env == "development":
-        script_src.append("'unsafe-inline'")
-
-    csp = {
-        "default-src": "'self'",
-        "script-src": script_src,
-        "style-src": [
-            "'self'",
-            "'unsafe-inline'",
-            "ka-f.fontawesome.com",
-            "fonts.googleapis.com",
-        ],
-        "font-src": [
-            "'self'",
-            "ka-f.fontawesome.com",
-            "fonts.gstatic.com",
-        ],
-        "img-src": [
-            "'self'",
-            "data:",
-            "cdn.discordapp.com",
-            "cdn.valentina-noir.com",
-            "avatars.githubusercontent.com",
-            "lh3.googleusercontent.com",
-            "img.daisyui.com",
-            "cdn.midjourney.com",
-        ],
-        "connect-src": [
-            "'self'",
-            "ka-f.fontawesome.com",
-        ],
-    }
-    Talisman(
-        app,
-        force_https=s.env == "production",
-        session_cookie_secure=s.env == "production",
-        session_cookie_http_only=True,
-        content_security_policy=csp,
-    )
+    register_oauth_providers(app, s)
+    configure_security(app, s)
 
     if s.env == "development":
         from flask_debugtoolbar import DebugToolbarExtension
@@ -300,7 +135,7 @@ def create_app(settings_override: Settings | None = None) -> Flask:  # noqa: PLR
     atexit.register(_cleanup)
 
     configure_jinja(app, s, catalog)
-    _register_before_request_hooks(app)
+    register_before_request_hooks(app)
     register_error_handlers(app)
 
     return app

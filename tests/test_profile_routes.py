@@ -60,8 +60,8 @@ def _mock_profile_api(mocker, profile_context) -> MagicMock:
 
     Override the autouse _mock_api fixture to provide a two-user GlobalContext.
     """
-    mocker.patch("vweb.app.load_global_context", return_value=profile_context)
-    mocker.patch("vweb.app.clear_global_context_cache")
+    mocker.patch("vweb.lib.hooks.load_global_context", return_value=profile_context)
+    mocker.patch("vweb.lib.hooks.clear_global_context_cache")
     mocker.patch(
         "vweb.routes.campaign.views.get_campaign_statistics",
         return_value=RollStatisticsFactory.build(),
