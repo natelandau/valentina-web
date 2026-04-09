@@ -1,19 +1,33 @@
-// Apply saved theme before paint to prevent FOUC
-(function() {
+// Must run synchronously in <head> (before DOMContentLoaded) to set data-theme before paint.
+(function () {
+  var LIGHT = "valentina-light";
+  var DARK = "dim";
   var saved = localStorage.getItem("theme");
-  if (saved) document.documentElement.setAttribute("data-theme", saved);
-})();
+  var darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
-// Sync the theme select dropdown and persist changes
-document.addEventListener("DOMContentLoaded", function() {
-  var sel = document.getElementById("theme-select");
-  if (!sel) return;
+  if (saved) {
+    document.documentElement.setAttribute("data-theme", saved);
+  } else if (darkQuery.matches) {
+    document.documentElement.setAttribute("data-theme", DARK);
+  }
 
-  var saved = localStorage.getItem("theme");
-  if (saved) sel.value = saved;
+  document.addEventListener("DOMContentLoaded", function () {
+    var toggle = document.getElementById("theme-toggle");
+    if (!toggle) return;
 
-  sel.addEventListener("change", function() {
-    localStorage.setItem("theme", this.value);
-    document.documentElement.setAttribute("data-theme", this.value);
+    toggle.checked = document.documentElement.getAttribute("data-theme") === DARK;
+
+    toggle.addEventListener("change", function () {
+      var theme = this.checked ? DARK : LIGHT;
+      localStorage.setItem("theme", theme);
+    });
+
+    // Follow OS preference changes when the user hasn't made an explicit choice
+    darkQuery.addEventListener("change", function (e) {
+      if (localStorage.getItem("theme") !== null) return;
+      var theme = e.matches ? DARK : LIGHT;
+      document.documentElement.setAttribute("data-theme", theme);
+      toggle.checked = e.matches;
+    });
   });
-});
+})();
