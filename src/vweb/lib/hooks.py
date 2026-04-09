@@ -12,7 +12,8 @@ if TYPE_CHECKING:
     from flask import Flask
     from werkzeug.wrappers.response import Response
 
-_PUBLIC_PATH_PREFIXES = ("/auth/", "/static", "/select-compan")
+_PUBLIC_PATH_PREFIXES = ("/auth/", "/static")
+_COMPANY_SELECTION_PATHS = ("/select-companies", "/select-company")
 
 
 def _hook_remove_trailing_slash() -> Response | None:
@@ -45,7 +46,11 @@ def _hook_require_auth() -> Response | None:
 
 def _hook_inject_global_context() -> Response | None:
     """Load cached global context and resolve the requesting user for template access."""
-    if request.path.startswith(_PUBLIC_PATH_PREFIXES) or request.path == "/pending-approval":
+    if (
+        request.path.startswith(_PUBLIC_PATH_PREFIXES)
+        or request.path == "/pending-approval"
+        or request.path in _COMPANY_SELECTION_PATHS
+    ):
         return None
 
     user_id = session.get("user_id")

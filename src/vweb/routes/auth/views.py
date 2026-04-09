@@ -66,6 +66,9 @@ def _handle_login_result(
     profile_updater: Callable[[str, str, dict], None],
 ) -> Response:
     """Branch on lookup results to set session state and redirect appropriately."""
+    session.pop("pending_profile_update", None)
+    session.pop("pending_oauth", None)
+
     if not results:
         # New user with no existing accounts — store OAuth data and pick companies
         session["pending_oauth"] = {
@@ -251,7 +254,6 @@ class SelectCompaniesView(MethodView):
         provider = pending["provider"]
         data = pending["data"]
 
-        # Build the registration DTO based on provider
         if provider == "discord":
             from vclient.models.users import DiscordProfileUpdate
 
@@ -283,7 +285,7 @@ class SelectCompaniesView(MethodView):
                     profile_url=data.get("html_url"),
                 ),
             )
-        else:
+        elif provider == "google":
             from vclient.models.users import GoogleProfile
 
             register_dto = UserRegisterDTO(
@@ -302,8 +304,13 @@ class SelectCompaniesView(MethodView):
                 name_first=data.get("given_name") or None,
                 name_last=data.get("family_name") or None,
             )
+        else:
+            flash("Unsupported authentication provider.", "error")
+            return redirect(url_for("index.index"))
 
-        # Register in each selected company
+        all_companies = sync_companies_service().list_all()
+        company_names = {c.id: c.name for c in all_companies}
+
         companies_mapping: dict[str, dict[str, str]] = {}
         first_company_id = None
         first_user_id = None
@@ -315,7 +322,7 @@ class SelectCompaniesView(MethodView):
                 )
                 companies_mapping[company_id] = {
                     "user_id": user.id,
-                    "company_name": company_id,
+                    "company_name": company_names.get(company_id, company_id),
                     "role": user.role,
                 }
                 if first_company_id is None:
@@ -325,6 +332,7 @@ class SelectCompaniesView(MethodView):
                 logger.exception("Failed to register user in company %s", company_id)
 
         if not companies_mapping:
+            session.pop("pending_oauth", None)
             flash("Registration failed. Please try again.", "error")
             return redirect(url_for("index.index"))
 

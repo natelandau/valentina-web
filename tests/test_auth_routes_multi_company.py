@@ -195,6 +195,12 @@ class TestSelectCompaniesView:
         mock_svc.register.return_value = new_user
         mocker.patch("vweb.routes.auth.views.sync_users_service", return_value=mock_svc)
 
+        # Given a mock companies service for name lookup
+        mock_company = CompanyFactory.build(id="comp-1", name="Test Company")
+        mock_companies_svc = MagicMock()
+        mock_companies_svc.list_all.return_value = [mock_company]
+        mocker.patch("vweb.routes.auth.views.sync_companies_service", return_value=mock_companies_svc)
+
         # Given a CSRF token
         csrf_token = get_csrf(client)
 

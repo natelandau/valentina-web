@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from flask import g
 from loguru import logger
 from vclient import (
     sync_books_service,
@@ -145,8 +146,6 @@ def get_campaign_statistics(campaign_id: str) -> RollStatistics:
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
-
-    from flask import g
 
     user_id = g.requesting_user.id
     company_id = g.global_context.company.id
