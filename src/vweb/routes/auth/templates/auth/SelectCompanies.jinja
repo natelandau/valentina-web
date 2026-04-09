@@ -1,0 +1,33 @@
+{#def companies: list #}
+<shared.PageLayout title="Select Companies">
+    <div class="hero min-h-[60vh]">
+        <div class="hero-content text-center">
+            <div class="max-w-lg">
+                <h1 class="text-3xl font-bold mb-2">Join a Company</h1>
+                <p class="mb-6 text-base-content/70">
+                    Select the companies you'd like to join. An administrator will review your request.
+                </p>
+                <form method="post" action="{{ url_for('auth.select_companies') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                    <div class="space-y-3 text-left mb-6">
+                        {% for company in companies %}
+                            <label class="flex items-center gap-3 p-3 rounded-lg border border-base-300 hover:bg-base-200 cursor-pointer">
+                                <input type="checkbox" name="company_ids" value="{{ company.id }}" class="checkbox checkbox-primary" />
+                                <span class="font-medium">{{ company.name }}</span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                    {% if companies %}
+                        <button type="submit" class="btn btn-primary">Apply</button>
+                    {% else %}
+                        <p class="text-base-content/60">No companies are available at this time.</p>
+                    {% endif %}
+                </form>
+                <form method="post" action="{{ url_for('auth.logout') }}" class="mt-4">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                    <button type="submit" class="btn btn-outline btn-sm">Sign Out</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</shared.PageLayout>

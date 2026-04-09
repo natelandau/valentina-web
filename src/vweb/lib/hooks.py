@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from flask import Flask
     from werkzeug.wrappers.response import Response
 
-_PUBLIC_PATH_PREFIXES = ("/auth/", "/static")
+_PUBLIC_PATH_PREFIXES = ("/auth/", "/static", "/select-compan")
 
 
 def _hook_remove_trailing_slash() -> Response | None:

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 import humanize
 import jinjax
-from flask import g, url_for
+from flask import g, session, url_for
 from markdown2 import markdown
 from markupsafe import Markup, escape
 
@@ -288,6 +288,12 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
     jinja_globals["can_grant_experience"] = can_grant_experience
     jinja_globals["can_edit_traits_free"] = can_edit_traits_free
     jinja_globals["can_edit_character"] = can_edit_character
+
+    def _approved_company_count() -> int:
+        companies = session.get("companies", {})
+        return sum(1 for data in companies.values() if data.get("role") != "UNAPPROVED")
+
+    jinja_globals["approved_company_count"] = _approved_company_count
 
     # Sync Flask's Jinja2 environment into the catalog's environment so
     # JinjaX components have access to url_for, config, and other app globals
