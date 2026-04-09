@@ -108,7 +108,7 @@ class SettingsView(MethodView):
 
     def get(self) -> str:
         """Render the company settings page with current company values pre-populated."""
-        company_id = "PLACEHOLDER"
+        company_id = session["company_id"]
         company = sync_companies_service().get(company_id)
         return catalog.render(
             "settings.SettingsPage",
@@ -120,7 +120,7 @@ class SettingsView(MethodView):
 
     def post(self) -> Response | tuple[str, int]:
         """Validate the form and update the company."""
-        company_id = "PLACEHOLDER"
+        company_id = session["company_id"]
         form = request.form.to_dict()
 
         errors: dict[str, str] = {}
