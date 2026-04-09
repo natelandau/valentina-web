@@ -114,8 +114,7 @@ class TestSettingsTabs:
         body = response.get_data(as_text=True)
         assert response.status_code == 200
         assert 'href="/settings/users"' in body
-        assert "badge" in body
-        assert ">2<" in body
+        assert "animate-ping" in body
 
 
 class TestSettingsGet:

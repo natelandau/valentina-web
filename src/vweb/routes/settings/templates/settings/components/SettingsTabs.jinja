@@ -8,7 +8,10 @@
      href="{{ url_for('settings.users') }}">
     Users
     {% if pending_count > 0 %}
-      <span class="badge badge-sm badge-warning ml-2">{{ pending_count }}</span>
+      <div class="inline-grid *:[grid-area:1/1] ml-2">
+        <div class="status status-error animate-ping"></div>
+        <div class="status status-error"></div>
+      </div>
     {% endif %}
   </a>
 </div>
