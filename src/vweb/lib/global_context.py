@@ -33,28 +33,28 @@ class GlobalContext:
     resources_modified_at: str = ""
 
 
-def _fetch_global_data() -> GlobalContext:
+def _fetch_global_data(company_id: str, user_id: str) -> GlobalContext:
     """Fetch all global company data from the API.
+
+    Args:
+        company_id: The company to fetch data for.
+        user_id: The user whose perspective determines visible campaigns/characters/books.
 
     Returns:
         GlobalContext populated with fresh API data.
     """
-    admin_id = "PLACEHOLDER"
-    company_id = "PLACEHOLDER"
-
     logger.debug("Fetching global company data")
 
     company = sync_companies_service().get(company_id)
-    users = sync_users_service().list_all()
-    campaigns = sync_campaigns_service(user_id=admin_id).list_all()
+    users = sync_users_service(company_id=company_id).list_all()
+    campaigns = sync_campaigns_service(user_id=user_id, company_id=company_id).list_all()
 
     characters_by_campaign: dict[str, list[Character]] = {}
     characters: list[Character] = []
     books_by_campaign: dict[str, list[CampaignBook]] = {}
     if campaigns:
         char_results = [
-            sync_characters_service(user_id=admin_id, campaign_id=c.id).list_all()
-            for c in campaigns
+            sync_characters_service(user_id=user_id, campaign_id=c.id).list_all() for c in campaigns
         ]
         characters_by_campaign = {
             c.id: chars for c, chars in zip(campaigns, char_results, strict=True)
@@ -62,7 +62,7 @@ def _fetch_global_data() -> GlobalContext:
         characters = [char for chars in char_results for char in chars]
 
         book_results = [
-            sync_books_service(user_id=admin_id, campaign_id=c.id).list_all() for c in campaigns
+            sync_books_service(user_id=user_id, campaign_id=c.id).list_all() for c in campaigns
         ]
         books_by_campaign = {c.id: books for c, books in zip(campaigns, book_results, strict=True)}
 
@@ -83,18 +83,16 @@ def _ts_key(company_id: str) -> str:
     return f"global_timestamp:{company_id}"
 
 
-def _ctx_key(company_id: str) -> str:
-    return f"global_ctx:{company_id}"
-
-
-def load_global_context() -> GlobalContext:
+def load_global_context(company_id: str, user_id: str) -> GlobalContext:
     """Load global context with company-level timestamp invalidation.
+
+    Args:
+        company_id: The company to load context for.
+        user_id: The user whose perspective determines visible data.
 
     Returns:
         GlobalContext with current company data.
     """
-    company_id = "PLACEHOLDER"
-
     ts_key = _ts_key(company_id)
     api_timestamp = cache.get(ts_key)
     if api_timestamp is None:
@@ -104,27 +102,30 @@ def load_global_context() -> GlobalContext:
         )
         cache.set(ts_key, api_timestamp, timeout=120)
 
-    ctx_key = _ctx_key(company_id)
+    ctx_key = f"global_ctx:{company_id}:{user_id}"
     cached = cache.get(ctx_key)
     if cached is not None:
         cached_timestamp, cached_global_context = cached
         if cached_timestamp == api_timestamp:
             return cached_global_context
 
-    global_context = _fetch_global_data()
+    global_context = _fetch_global_data(company_id, user_id)
     cache.set(ctx_key, (global_context.resources_modified_at, global_context))
     return global_context
 
 
-def clear_global_context_cache() -> None:
+def clear_global_context_cache(company_id: str, user_id: str) -> None:
     """Clear global context caches. Call after mutations or for testing.
 
     Only deletes global context keys — does not affect blueprint, character trait,
     or campaign stats caches.
+
+    Args:
+        company_id: The company whose context to clear.
+        user_id: The user whose cached context to clear.
     """
-    company_id = "PLACEHOLDER"
     cache.delete(_ts_key(company_id))
-    cache.delete(_ctx_key(company_id))
+    cache.delete(f"global_ctx:{company_id}:{user_id}")
 
 
 def get_campaign_statistics(campaign_id: str) -> RollStatistics:
@@ -141,7 +142,12 @@ def get_campaign_statistics(campaign_id: str) -> RollStatistics:
     if cached is not None:
         return cached
 
-    admin_id = "PLACEHOLDER"
-    stats = sync_campaigns_service(user_id=admin_id).get_statistics(campaign_id)
+    from flask import g
+
+    user_id = g.requesting_user.id
+    company_id = g.global_context.company.id
+    stats = sync_campaigns_service(user_id=user_id, company_id=company_id).get_statistics(
+        campaign_id
+    )
     cache.set(cache_key, stats, timeout=30)
     return stats
