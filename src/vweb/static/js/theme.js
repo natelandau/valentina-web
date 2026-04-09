@@ -1,19 +1,37 @@
-// Apply saved theme before paint to prevent FOUC
-(function() {
+// Apply saved theme before paint to prevent FOUC.
+// Must run synchronously before DOMContentLoaded — loaded in <head> of PageLayout.jinja.
+(function () {
+  var LIGHT = "valentina-light";
+  var DARK = "dim";
   var saved = localStorage.getItem("theme");
-  if (saved) document.documentElement.setAttribute("data-theme", saved);
+
+  if (saved) {
+    document.documentElement.setAttribute("data-theme", saved);
+  } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    document.documentElement.setAttribute("data-theme", DARK);
+  }
 })();
 
-// Sync the theme select dropdown and persist changes
-document.addEventListener("DOMContentLoaded", function() {
-  var sel = document.getElementById("theme-select");
-  if (!sel) return;
+// After DOM is ready: sync the toggle checkbox and wire up persistence + OS listener.
+document.addEventListener("DOMContentLoaded", function () {
+  var LIGHT = "valentina-light";
+  var DARK = "dim";
+  var toggle = document.getElementById("theme-toggle");
+  if (!toggle) return;
 
-  var saved = localStorage.getItem("theme");
-  if (saved) sel.value = saved;
+  var activeTheme = document.documentElement.getAttribute("data-theme");
+  toggle.checked = activeTheme === DARK;
 
-  sel.addEventListener("change", function() {
-    localStorage.setItem("theme", this.value);
-    document.documentElement.setAttribute("data-theme", this.value);
+  toggle.addEventListener("change", function () {
+    var theme = this.checked ? DARK : LIGHT;
+    localStorage.setItem("theme", theme);
+  });
+
+  // Follow OS preference changes when the user hasn't made an explicit choice
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function (e) {
+    if (localStorage.getItem("theme") !== null) return;
+    var theme = e.matches ? DARK : LIGHT;
+    document.documentElement.setAttribute("data-theme", theme);
+    toggle.checked = e.matches;
   });
 });
