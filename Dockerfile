@@ -35,7 +35,7 @@ ENV UV_COMPILE_BYTECODE=1
 WORKDIR /app
 
 # Cache dependency install separately from project install
-COPY uv.lock pyproject.toml README.md ./
+COPY uv.lock pyproject.toml README.md LICENSE ./
 RUN uv sync --locked --no-dev --no-cache --no-install-project
 
 # Install the project itself
