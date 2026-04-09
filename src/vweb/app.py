@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import atexit
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
 from flask import Flask
 from flask_wtf.csrf import CSRFProtect
 from vclient import SyncVClient
 from werkzeug.middleware.proxy_fix import ProxyFix
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from _typeshed.wsgi import StartResponse, WSGIApplication, WSGIEnvironment
+
 
 from vweb.config import Settings, get_settings
 from vweb.constants import STATIC_PATH, TEMPLATES_PATH
@@ -21,6 +28,25 @@ from vweb.lib.oauth_setup import register_oauth_providers
 from vweb.lib.security import configure_security
 
 catalog = register_jinjax_catalog()
+
+
+class _CloudflareIPMiddleware:
+    """Prefer Cloudflare's CF-Connecting-IP header for the real client IP.
+
+    Cloudflare sets this header to the true client address regardless of how many
+    proxies sit between it and the application. When present it overwrites
+    REMOTE_ADDR so that ``request.remote_addr`` returns the real IP. When absent
+    the inner middleware (typically ProxyFix) determines the address instead.
+    """
+
+    def __init__(self, app: WSGIApplication) -> None:
+        self._app = app
+
+    def __call__(self, environ: WSGIEnvironment, start_response: StartResponse) -> Iterable[bytes]:
+        cf_ip = environ.get("HTTP_CF_CONNECTING_IP")
+        if cf_ip:
+            environ["REMOTE_ADDR"] = cf_ip
+        return self._app(environ, start_response)
 
 
 def _configure_cache_and_session(app: Flask, s: Settings) -> None:
@@ -69,9 +95,12 @@ def create_app(settings_override: Settings | None = None) -> Flask:
         static_folder=str(STATIC_PATH),
     )
 
-    # Reverse proxies terminates TLS and forwards X-Forwarded-*.
-    # Without this, url_for(_external=True) builds http:// URLs and OAuth callbacks break.
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)  # ty:ignore[invalid-assignment]
+    # Cloudflare → Railway → Flask: two reverse proxies terminate TLS.
+    # ProxyFix with x_for=2 resolves the real client IP from X-Forwarded-For as a fallback;
+    # _CloudflareIPMiddleware overrides REMOTE_ADDR with CF-Connecting-IP when present.
+    app.wsgi_app = _CloudflareIPMiddleware(  # ty:ignore[invalid-assignment]
+        ProxyFix(app.wsgi_app, x_for=2, x_proto=1, x_host=1)
+    )
 
     app.secret_key = s.secret_key
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
