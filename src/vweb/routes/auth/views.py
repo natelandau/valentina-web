@@ -134,7 +134,8 @@ class DiscordCallbackView(MethodView):
         """Exchange authorization code for token and resolve user identity."""
         try:
             token = oauth.discord.authorize_access_token()
-        except OAuthError:
+        except OAuthError as exc:
+            logger.warning("Discord OAuth error: %s", exc)
             flash("Discord login was cancelled or denied.", "error")
             return redirect(url_for("index.index"))
 
@@ -188,7 +189,8 @@ class GitHubCallbackView(MethodView):
         """Exchange authorization code for token and resolve user identity."""
         try:
             token = oauth.github.authorize_access_token()
-        except OAuthError:
+        except OAuthError as exc:
+            logger.warning("GitHub OAuth error: %s", exc)
             flash("GitHub login was cancelled or denied.", "error")
             return redirect(url_for("index.index"))
 
@@ -230,7 +232,8 @@ class GoogleCallbackView(MethodView):
         """Exchange authorization code for token and resolve user identity."""
         try:
             token = oauth.google.authorize_access_token()
-        except OAuthError:
+        except OAuthError as exc:
+            logger.warning("Google OAuth error: %s", exc)
             flash("Google login was cancelled or denied.", "error")
             return redirect(url_for("index.index"))
 

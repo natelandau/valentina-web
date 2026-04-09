@@ -35,7 +35,11 @@ def _hook_refresh_session() -> None:
 
 def _hook_require_auth() -> Response | None:
     """Redirect unauthenticated users to the landing page."""
-    if request.path == "/" or request.path.startswith(_PUBLIC_PATH_PREFIXES):
+    if (
+        request.path == "/"
+        or request.path.startswith(_PUBLIC_PATH_PREFIXES)
+        or request.path in _COMPANY_SELECTION_PATHS
+    ):
         return None
 
     if not session.get("user_id"):
