@@ -10,6 +10,7 @@ from flask import Flask, g, redirect, request, session, url_for
 from flask_talisman import Talisman
 from flask_wtf.csrf import CSRFProtect
 from vclient import SyncVClient
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import vweb
 from vweb.config import Settings, get_settings
@@ -216,6 +217,10 @@ def create_app(settings_override: Settings | None = None) -> Flask:  # noqa: PLR
         template_folder=str(TEMPLATES_PATH),
         static_folder=str(STATIC_PATH),
     )
+
+    # Reverse proxies terminates TLS and forwards X-Forwarded-*.
+    # Without this, url_for(_external=True) builds http:// URLs and OAuth callbacks break.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)  # ty:ignore[invalid-assignment]
 
     app.secret_key = s.secret_key
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
