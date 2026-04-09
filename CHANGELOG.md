@@ -1,3 +1,9 @@
+## v0.3.1 (2026-04-09)
+
+### Fix
+
+- **security**: resolve real client IP (#9)
+
 ## v0.3.0 (2026-04-09)
 
 ### Feat
