@@ -17,7 +17,7 @@ from vweb.lib.jinja import htmx_response
 from vweb.routes.book.views_notes import BookNotesTableView
 
 if TYPE_CHECKING:
-    from vclient.models import Asset, Campaign, CampaignBook
+    from vclient.models import Asset, Campaign, CampaignBook, CampaignChapter
 
 
 SECTIONS = ("description", "notes")
@@ -67,10 +67,19 @@ def _render_book_card(  # noqa: PLR0913
     )
 
 
-def _card_with_header_response(card_html: str, book: CampaignBook) -> str:
-    """Return an HTMX response pairing the book card with an OOB PageHeader swap."""
+def _load_sorted_chapters(user_id: str, campaign_id: str, book_id: str) -> list[CampaignChapter]:
+    """Fetch all chapters for a book, sorted by number."""
+    chapters = sync_chapters_service(
+        user_id=user_id, campaign_id=campaign_id, book_id=book_id
+    ).list_all()
+    chapters.sort(key=lambda c: c.number)
+    return chapters
+
+
+def _card_with_header_response(card_html: str, book: CampaignBook, *extra_oob: str) -> str:
+    """Return an HTMX response pairing the book card with OOB PageHeader swap and extras."""
     header = catalog.render("book.partials.BookPageHeader", book=book, oob=True)
-    return htmx_response(card_html, header)
+    return htmx_response(card_html, header, *extra_oob)
 
 
 bp = Blueprint("book_view", __name__)
@@ -127,7 +136,15 @@ class BookDetailView(MethodView):
                 total_books=total_books,
                 active_section=active_section,
             )
-            return _card_with_header_response(card, book)
+            chapters = _load_sorted_chapters(user_id, campaign_id, book_id)
+            chapters_html = catalog.render(
+                "book.partials.ChaptersCard",
+                book=book,
+                campaign=campaign,
+                chapters=chapters,
+                oob=True,
+            )
+            return _card_with_header_response(card, book, chapters_html)
 
         if is_htmx and section is not None:
             content = self._render_section(active_section, book, campaign, assets=assets)
@@ -142,10 +159,7 @@ class BookDetailView(MethodView):
             return htmx_response(content, nav, header)
 
         prev_book, next_book, total_books = _load_adjacent_books(campaign_id, book.number)
-        chapters = sync_chapters_service(
-            user_id=user_id, campaign_id=campaign_id, book_id=book_id
-        ).list_all()
-        chapters.sort(key=lambda c: c.number)
+        chapters = _load_sorted_chapters(user_id, campaign_id, book_id)
 
         return catalog.render(
             "book.BookDetail",
