@@ -11,7 +11,7 @@
 
 @plugin "daisyui/theme" {
   name: "valentina-light";
-  default: false;
+  default: true;
   prefersdark: false;
   color-scheme: "light";
   --color-base-100: oklch(98% 0 0);
@@ -44,47 +44,11 @@
   --noise: 0;
 }
 
-/*
-@plugin "daisyui/theme" {
-  name: "light";
-  default: false;
-  prefersdark: false;
-  color-scheme: "light";
-  --color-base-100: oklch(98% 0 0);
-  --color-base-200: oklch(97% 0 0);
-  --color-base-300: oklch(92% 0 0);
-  --color-base-content: oklch(20% 0 0);
-  --color-primary: oklch(58% 0.158 241.966);
-  --color-primary-content: oklch(97% 0.013 236.62);
-  --color-secondary: oklch(62% 0.194 149.214);
-  --color-secondary-content: oklch(98% 0.018 155.826);
-  --color-accent: oklch(0% 0 0);
-  --color-accent-content: oklch(100% 0 0);
-  --color-neutral: oklch(37% 0 0);
-  --color-neutral-content: oklch(98% 0 0);
-  --color-info: oklch(78% 0.154 211.53);
-  --color-info-content: oklch(30% 0.056 229.695);
-  --color-success: oklch(84% 0.238 128.85);
-  --color-success-content: oklch(27% 0.072 132.109);
-  --color-warning: oklch(75% 0.183 55.934);
-  --color-warning-content: oklch(26% 0.079 36.259);
-  --color-error: oklch(70% 0.191 22.216);
-  --color-error-content: oklch(25% 0.092 26.042);
-  --radius-selector: 0.5rem;
-  --radius-field: 0.5rem;
-  --radius-box: 0.5rem;
-  --size-selector: 0.3125rem;
-  --size-field: 0.28125rem;
-  --border: 1px;
-  --depth: 1;
-  --noise: 0;
-} */
-
-
-
 @plugin "daisyui" {
-  themes: emerald --default, dark --prefersdark, dim, nord, emerald, corporate;
+  themes: valentina-light --default, dim --prefersdark;
 }
+
+@custom-variant dark (&:where([data-theme=dim], [data-theme=dim] *));
 
 /* Let daisyUI .link classes override @tailwindcss/typography prose link styles */
 .prose .link {
