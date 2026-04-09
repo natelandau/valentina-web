@@ -11,7 +11,6 @@ from vclient import sync_companies_service
 from vclient.models.companies import CompanySettings, CompanyUpdate
 
 from vweb import catalog
-from vweb.config import get_settings
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import is_admin, is_self
 from vweb.lib.jinja import htmx_response
@@ -109,7 +108,7 @@ class SettingsView(MethodView):
 
     def get(self) -> str:
         """Render the company settings page with current company values pre-populated."""
-        company_id = get_settings().api.default_company_id
+        company_id = "PLACEHOLDER"
         company = sync_companies_service().get(company_id)
         return catalog.render(
             "settings.SettingsPage",
@@ -121,7 +120,7 @@ class SettingsView(MethodView):
 
     def post(self) -> Response | tuple[str, int]:
         """Validate the form and update the company."""
-        company_id = get_settings().api.default_company_id
+        company_id = "PLACEHOLDER"
         form = request.form.to_dict()
 
         errors: dict[str, str] = {}

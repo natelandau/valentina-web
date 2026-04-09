@@ -124,7 +124,6 @@ def create_app(settings_override: Settings | None = None) -> Flask:
         retry_delay=s.api.retry_delay,
         auto_retry_rate_limit=s.api.auto_retry_rate_limit,
         auto_idempotency_keys=s.api.auto_idempotency_keys,
-        default_company_id=s.api.default_company_id,
     )
 
     def _cleanup() -> None:

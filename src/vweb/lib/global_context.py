@@ -14,7 +14,6 @@ from vclient import (
     sync_users_service,
 )
 
-from vweb.config import get_settings
 from vweb.extensions import cache
 
 if TYPE_CHECKING:
@@ -40,9 +39,8 @@ def _fetch_global_data() -> GlobalContext:
     Returns:
         GlobalContext populated with fresh API data.
     """
-    settings = get_settings()
-    admin_id = settings.api.server_admin_user_id
-    company_id = settings.api.default_company_id
+    admin_id = "PLACEHOLDER"
+    company_id = "PLACEHOLDER"
 
     logger.debug("Fetching global company data")
 
@@ -95,7 +93,7 @@ def load_global_context() -> GlobalContext:
     Returns:
         GlobalContext with current company data.
     """
-    company_id = get_settings().api.default_company_id
+    company_id = "PLACEHOLDER"
 
     ts_key = _ts_key(company_id)
     api_timestamp = cache.get(ts_key)
@@ -124,7 +122,7 @@ def clear_global_context_cache() -> None:
     Only deletes global context keys — does not affect blueprint, character trait,
     or campaign stats caches.
     """
-    company_id = get_settings().api.default_company_id
+    company_id = "PLACEHOLDER"
     cache.delete(_ts_key(company_id))
     cache.delete(_ctx_key(company_id))
 
@@ -143,7 +141,7 @@ def get_campaign_statistics(campaign_id: str) -> RollStatistics:
     if cached is not None:
         return cached
 
-    admin_id = get_settings().api.server_admin_user_id
+    admin_id = "PLACEHOLDER"
     stats = sync_campaigns_service(user_id=admin_id).get_statistics(campaign_id)
     cache.set(cache_key, stats, timeout=30)
     return stats

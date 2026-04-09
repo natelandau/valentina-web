@@ -14,8 +14,6 @@ from vclient.models.users import (
     UserUpdate,
 )
 
-from vweb.config import get_settings
-
 if TYPE_CHECKING:
     from vclient.models.users import User
 
@@ -111,8 +109,7 @@ def resolve_or_create_discord_user(discord_data: dict) -> User:
     Returns:
         The resolved or newly created user.
     """
-    settings = get_settings()
-    svc = sync_users_service(company_id=settings.api.default_company_id)
+    svc = sync_users_service(company_id="PLACEHOLDER")
     profile = _build_discord_profile(discord_data)
 
     all_users: list[User] = svc.list_all()
@@ -175,8 +172,7 @@ def resolve_or_create_github_user(github_data: dict) -> User:
     Returns:
         The resolved or newly created user.
     """
-    settings = get_settings()
-    svc = sync_users_service(company_id=settings.api.default_company_id)
+    svc = sync_users_service(company_id="PLACEHOLDER")
     profile = _build_github_profile(github_data)
 
     all_users: list[User] = svc.list_all()
@@ -241,8 +237,7 @@ def resolve_or_create_google_user(google_data: dict) -> User:
     Returns:
         The resolved or newly created user.
     """
-    settings = get_settings()
-    svc = sync_users_service(company_id=settings.api.default_company_id)
+    svc = sync_users_service(company_id="PLACEHOLDER")
     profile = _build_google_profile(google_data)
 
     all_users: list[User] = svc.list_all()

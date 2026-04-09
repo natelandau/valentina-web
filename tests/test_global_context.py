@@ -44,9 +44,8 @@ def _fake_vclient_data(fake_vclient) -> None:
 
 
 @pytest.fixture
-def mock_cache_store(mocker, test_settings) -> dict:
+def mock_cache_store(mocker) -> dict:
     """Provide a dict-backed cache mock for global_context."""
-    mocker.patch("vweb.lib.global_context.get_settings", return_value=test_settings)
     return make_cache_store_mock(mocker, "vweb.lib.global_context.cache")
 
 
@@ -129,7 +128,7 @@ def test_load_global_context_refetches_on_new_timestamp(
     with app.app_context():
         clear_global_context_cache()
         first = load_global_context()
-        mock_cache_store.pop("global_timestamp:test-company-id", None)
+        mock_cache_store.pop("global_timestamp:PLACEHOLDER", None)
         second = load_global_context()
 
     # Then _fetch_global_data is called twice (data was refreshed)

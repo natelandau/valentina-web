@@ -187,7 +187,7 @@ class TestSettingsGet:
         client.get("/settings")
         mock_companies_svc.get.assert_called_once()
         called_with = mock_companies_svc.get.call_args[0][0]
-        assert called_with == "test-company-id"
+        assert called_with == "PLACEHOLDER"
 
 
 class TestSettingsPostSuccess:
@@ -253,7 +253,7 @@ class TestSettingsPostSuccess:
 
         mock_companies_svc.update.assert_called_once()
         args, kwargs = mock_companies_svc.update.call_args
-        assert args[0] == "test-company-id"
+        assert args[0] == "PLACEHOLDER"
         update_req: CompanyUpdate = kwargs["request"]
         assert isinstance(update_req, CompanyUpdate)
         assert update_req.name == "New Name"
