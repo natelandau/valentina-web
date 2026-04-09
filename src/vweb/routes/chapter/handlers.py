@@ -27,4 +27,5 @@ class ChapterNotesHandler(BaseNotesHandler):
             user_id=session.get("user_id", ""),
             campaign_id=campaign_id,
             book_id=book_id,
+            company_id=session["company_id"],
         )

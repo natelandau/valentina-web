@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from flask import session
 from vclient import sync_character_blueprint_service
 
 from vweb.extensions import cache
@@ -26,7 +27,9 @@ def get_all_subcategories() -> dict[str, TraitSubcategory]:
     cached: dict[str, TraitSubcategory] | None = cache.get(_CACHE_BLUEPRINT_ALL_SHEET_SECTIONS_KEY)
     if cached is not None:
         return cached
-    subcategories = sync_character_blueprint_service().list_all_subcategories()
+    subcategories = sync_character_blueprint_service(
+        company_id=session["company_id"]
+    ).list_all_subcategories()
     result = {sc.id: sc for sc in subcategories}
     cache.set(_CACHE_BLUEPRINT_ALL_SHEET_SECTIONS_KEY, result, timeout=_CACHE_BLUEPRINT_TTL)
     return result
@@ -50,7 +53,7 @@ def get_all_traits() -> dict[str, Trait]:
     if cached is not None:
         return cached
 
-    traits = sync_character_blueprint_service().list_all_traits()
+    traits = sync_character_blueprint_service(company_id=session["company_id"]).list_all_traits()
     result = {t.id: t for t in traits}
     cache.set(_CACHE_BLUEPRINT_ALL_TRAITS_KEY, result, timeout=_CACHE_BLUEPRINT_TTL)
     return result

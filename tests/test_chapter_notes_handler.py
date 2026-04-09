@@ -63,6 +63,7 @@ class TestChapterNotesHandlerInit:
             from flask import session
 
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
 
             with pytest.raises(ValueError, match="campaign_id and book_id are required"):
                 ChapterNotesHandler("chapter-123", book_id="book-456")
@@ -73,6 +74,7 @@ class TestChapterNotesHandlerInit:
             from flask import session
 
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
 
             with pytest.raises(ValueError, match="campaign_id and book_id are required"):
                 ChapterNotesHandler("chapter-123", campaign_id="camp-456")
@@ -83,6 +85,7 @@ class TestChapterNotesHandlerInit:
             from flask import session
 
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
 
             with pytest.raises(ValueError, match="campaign_id and book_id are required"):
                 ChapterNotesHandler("chapter-123")
@@ -97,6 +100,7 @@ class TestChapterNotesHandlerOperations:
             from flask import session
 
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
             handler = ChapterNotesHandler("chapter-123", campaign_id="camp-456", book_id="book-789")
 
             handler.list_items()
@@ -109,6 +113,7 @@ class TestChapterNotesHandlerOperations:
             from flask import session
 
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
             handler = ChapterNotesHandler("chapter-123", campaign_id="camp-456", book_id="book-789")
 
             handler.get_item("note-111")
@@ -121,6 +126,7 @@ class TestChapterNotesHandlerOperations:
             from flask import session
 
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
             handler = ChapterNotesHandler("chapter-123", campaign_id="camp-456", book_id="book-789")
 
             handler.create_item({"title": "  My Title  ", "content": "  My Content  "})
@@ -137,6 +143,7 @@ class TestChapterNotesHandlerOperations:
             from flask import session
 
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
             handler = ChapterNotesHandler("chapter-123", campaign_id="camp-456", book_id="book-789")
 
             handler.update_item("note-111", {"title": "  Updated  ", "content": "  New  "})
@@ -154,6 +161,7 @@ class TestChapterNotesHandlerOperations:
             from flask import session
 
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
             handler = ChapterNotesHandler("chapter-123", campaign_id="camp-456", book_id="book-789")
 
             handler.delete_item("note-111")
@@ -168,6 +176,7 @@ class TestChapterNotesHandlerOperations:
             from flask import session
 
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
 
             with patch(
                 "vweb.routes.chapter.handlers.sync_chapters_service", return_value=MagicMock()
@@ -178,4 +187,5 @@ class TestChapterNotesHandlerOperations:
                     user_id="test-user-id",
                     campaign_id="camp-456",
                     book_id="book-789",
+                    company_id="test-company-id",
                 )

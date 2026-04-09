@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from flask import abort, render_template, request
+from flask import abort, render_template, request, session
 from flask.views import MethodView
 from loguru import logger
 from vclient.exceptions import APIError
@@ -265,7 +265,7 @@ class CrudTableView(MethodView):
                 form_data=form_data,
             )
 
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
         return self._render_refetch()
 
     def delete(self, item_id: str | None = None, **kwargs: str) -> str:  # noqa: ARG002
@@ -280,5 +280,5 @@ class CrudTableView(MethodView):
         except APIError:
             logger.exception("Delete operation failed")
 
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
         return self._render_refetch()

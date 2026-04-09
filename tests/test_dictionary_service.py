@@ -98,7 +98,7 @@ def mock_svc(mocker: MockerFixture) -> MagicMock:
 class TestCreateTerm:
     """Tests for create_term."""
 
-    def test_creates_term_via_api(self, mock_svc: MagicMock) -> None:
+    def test_creates_term_via_api(self, app, mock_svc: MagicMock) -> None:
         """Verify create_term calls the API with parsed form data."""
         form_data = {
             "term": "Auspex",
@@ -106,7 +106,12 @@ class TestCreateTerm:
             "link": "https://example.com",
             "synonyms": "sight, vision",
         }
-        create_term(form_data)
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
+            create_term(form_data)
 
         mock_svc.create.assert_called_once()
         call_arg = mock_svc.create.call_args[1]["request"]
@@ -116,10 +121,15 @@ class TestCreateTerm:
         assert call_arg.link == "https://example.com"
         assert call_arg.synonyms == ["sight", "vision"]
 
-    def test_empty_optional_fields(self, mock_svc: MagicMock) -> None:
+    def test_empty_optional_fields(self, app, mock_svc: MagicMock) -> None:
         """Verify empty optional fields are passed as None."""
         form_data = {"term": "Auspex", "definition": "", "link": "", "synonyms": ""}
-        create_term(form_data)
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
+            create_term(form_data)
 
         call_arg = mock_svc.create.call_args[1]["request"]
         assert call_arg.definition is None
@@ -130,10 +140,15 @@ class TestCreateTerm:
 class TestUpdateTerm:
     """Tests for update_term."""
 
-    def test_updates_term_via_api(self, mock_svc: MagicMock) -> None:
+    def test_updates_term_via_api(self, app, mock_svc: MagicMock) -> None:
         """Verify update_term calls the API with parsed form data."""
         form_data = {"term": "Auspex", "definition": "Updated.", "link": "", "synonyms": "a, b"}
-        update_term("term-1", form_data)
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
+            update_term("term-1", form_data)
 
         mock_svc.update.assert_called_once()
         args = mock_svc.update.call_args
@@ -147,8 +162,13 @@ class TestUpdateTerm:
 class TestDeleteTerm:
     """Tests for delete_term."""
 
-    def test_deletes_term_via_api(self, mock_svc: MagicMock) -> None:
+    def test_deletes_term_via_api(self, app, mock_svc: MagicMock) -> None:
         """Verify delete_term calls the API."""
-        delete_term("term-1")
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
+            delete_term("term-1")
 
         mock_svc.delete.assert_called_once_with("term-1")

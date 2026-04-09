@@ -25,4 +25,5 @@ class BookNotesHandler(BaseNotesHandler):
         self._svc = sync_books_service(
             user_id=session.get("user_id", ""),
             campaign_id=campaign_id,
+            company_id=session["company_id"],
         )

@@ -44,9 +44,8 @@ def _fake_vclient_data(fake_vclient) -> None:
 
 
 @pytest.fixture
-def mock_cache_store(mocker, test_settings) -> dict:
+def mock_cache_store(mocker) -> dict:
     """Provide a dict-backed cache mock for global_context."""
-    mocker.patch("vweb.lib.global_context.get_settings", return_value=test_settings)
     return make_cache_store_mock(mocker, "vweb.lib.global_context.cache")
 
 
@@ -54,7 +53,7 @@ def mock_cache_store(mocker, test_settings) -> dict:
 def test_fetch_global_data_returns_global_context(app) -> None:
     """Verify _fetch_global_data returns a populated GlobalContext."""
     with app.app_context():
-        result = _fetch_global_data()
+        result = _fetch_global_data("test-company-id", "test-user-id")
 
     assert isinstance(result, GlobalContext)
     assert result.company.name == "Test Company"
@@ -64,7 +63,7 @@ def test_fetch_global_data_returns_global_context(app) -> None:
 def test_fetch_global_data_returns_timestamp(app) -> None:
     """Verify _fetch_global_data stores the company's resources_modified_at as ISO string."""
     with app.app_context():
-        result = _fetch_global_data()
+        result = _fetch_global_data("test-company-id", "test-user-id")
 
     assert result.resources_modified_at == "2026-01-01T00:00:00+00:00"
 
@@ -89,9 +88,9 @@ def test_load_global_context_returns_cached_on_same_timestamp(
 
     # When load_global_context is called twice
     with app.app_context():
-        clear_global_context_cache()
-        first = load_global_context()
-        second = load_global_context()
+        clear_global_context_cache("test-company-id", "test-user-id")
+        first = load_global_context("test-company-id", "test-user-id")
+        second = load_global_context("test-company-id", "test-user-id")
 
     # Then _fetch_global_data is called only once
     assert first is second
@@ -127,10 +126,10 @@ def test_load_global_context_refetches_on_new_timestamp(
 
     # When load_global_context is called, timestamp expires, then called again
     with app.app_context():
-        clear_global_context_cache()
-        first = load_global_context()
+        clear_global_context_cache("test-company-id", "test-user-id")
+        first = load_global_context("test-company-id", "test-user-id")
         mock_cache_store.pop("global_timestamp:test-company-id", None)
-        second = load_global_context()
+        second = load_global_context("test-company-id", "test-user-id")
 
     # Then _fetch_global_data is called twice (data was refreshed)
     assert first is not second
@@ -157,14 +156,14 @@ def test_clear_global_context_cache_deletes_only_global_keys(
 
     with app.app_context():
         # Given global context is loaded and an unrelated key exists
-        load_global_context()
+        load_global_context("test-company-id", "test-user-id")
         mock_cache_store["bp_all_traits"] = {"some": "data"}
 
         # When clear_global_context_cache is called
-        clear_global_context_cache()
+        clear_global_context_cache("test-company-id", "test-user-id")
 
         # Then global context requires a re-fetch
-        load_global_context()
+        load_global_context("test-company-id", "test-user-id")
         assert mock_fetch.call_count == 2
 
         # And unrelated cache keys are preserved
@@ -234,7 +233,7 @@ def test_fetch_global_data_returns_all_characters_unfiltered(app, fake_vclient) 
 
     # When fetching global data
     with app.app_context():
-        result = _fetch_global_data()
+        result = _fetch_global_data("test-company-id", "test-user-id")
 
     # Then both characters are returned
     assert len(result.characters) == 2
@@ -246,9 +245,9 @@ def test_fetch_global_data_returns_all_characters_unfiltered(app, fake_vclient) 
 @pytest.mark.usefixtures("mock_cache_store")
 def test_get_campaign_statistics_returns_stats(app, mocker) -> None:
     """Verify get_campaign_statistics fetches and returns campaign statistics."""
-    from vclient.testing import RollStatisticsFactory
+    from vclient.testing import CompanyFactory, RollStatisticsFactory, UserFactory
 
-    from vweb.lib.global_context import get_campaign_statistics
+    from vweb.lib.global_context import GlobalContext, get_campaign_statistics
 
     # Given a mocked campaigns service returning stats
     expected_stats = RollStatisticsFactory.build()
@@ -257,7 +256,15 @@ def test_get_campaign_statistics_returns_stats(app, mocker) -> None:
     mocker.patch("vweb.lib.global_context.sync_campaigns_service", return_value=mock_svc)
 
     # When fetching campaign statistics
-    with app.app_context():
+    with app.test_request_context():
+        from flask import g
+
+        g.requesting_user = UserFactory.build(id="test-user-id")
+        g.global_context = GlobalContext(
+            company=CompanyFactory.build(id="test-company-id"),
+            users=[],
+            campaigns=[],
+        )
         result = get_campaign_statistics("camp-1")
 
     # Then the stats are returned
@@ -267,9 +274,9 @@ def test_get_campaign_statistics_returns_stats(app, mocker) -> None:
 @pytest.mark.usefixtures("mock_cache_store")
 def test_get_campaign_statistics_caches_result(app, mocker) -> None:
     """Verify get_campaign_statistics returns cached result on second call."""
-    from vclient.testing import RollStatisticsFactory
+    from vclient.testing import CompanyFactory, RollStatisticsFactory, UserFactory
 
-    from vweb.lib.global_context import get_campaign_statistics
+    from vweb.lib.global_context import GlobalContext, get_campaign_statistics
 
     # Given a mocked campaigns service
     expected_stats = RollStatisticsFactory.build()
@@ -278,7 +285,15 @@ def test_get_campaign_statistics_caches_result(app, mocker) -> None:
     mocker.patch("vweb.lib.global_context.sync_campaigns_service", return_value=mock_svc)
 
     # When fetching stats twice
-    with app.app_context():
+    with app.test_request_context():
+        from flask import g
+
+        g.requesting_user = UserFactory.build(id="test-user-id")
+        g.global_context = GlobalContext(
+            company=CompanyFactory.build(id="test-company-id"),
+            users=[],
+            campaigns=[],
+        )
         first = get_campaign_statistics("camp-1")
         second = get_campaign_statistics("camp-1")
 
@@ -296,7 +311,7 @@ def test_fetch_global_data_returns_books_by_campaign(app, fake_vclient) -> None:
 
     # When fetching global data
     with app.app_context():
-        result = _fetch_global_data()
+        result = _fetch_global_data("test-company-id", "test-user-id")
 
     # Then books_by_campaign contains the campaign's books
     assert len(result.books_by_campaign) == 1
@@ -329,6 +344,14 @@ def test_hook_retries_on_user_not_found(app, mocker) -> None:
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = "test-user-id"
+        sess["company_id"] = "test-company-id"
+        sess["companies"] = {
+            "test-company-id": {
+                "user_id": "test-user-id",
+                "company_name": "Test",
+                "role": "PLAYER",
+            },
+        }
     response = client.get("/")
 
     # Then the hook retried and the request succeeded
@@ -352,6 +375,14 @@ def test_hook_redirects_when_user_not_found_after_retry(app, mocker) -> None:
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = "test-user-id"
+        sess["company_id"] = "test-company-id"
+        sess["companies"] = {
+            "test-company-id": {
+                "user_id": "test-user-id",
+                "company_name": "Test",
+                "role": "PLAYER",
+            },
+        }
     response = client.get("/character/some-id")
 
     # Then the user is redirected to the landing page

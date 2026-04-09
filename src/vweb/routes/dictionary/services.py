@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
+from flask import session
 from vclient import sync_dictionary_service
 from vclient.models import DictionaryTermCreate, DictionaryTermUpdate
 
@@ -77,7 +78,7 @@ def create_term(form_data: dict[str, str]) -> DictionaryTerm:
         link=form_data.get("link", "").strip() or None,
         synonyms=parse_synonyms(form_data.get("synonyms", "")),
     )
-    return sync_dictionary_service().create(request=request_body)
+    return sync_dictionary_service(company_id=session["company_id"]).create(request=request_body)
 
 
 def update_term(term_id: str, form_data: dict[str, str]) -> DictionaryTerm:
@@ -96,7 +97,9 @@ def update_term(term_id: str, form_data: dict[str, str]) -> DictionaryTerm:
         link=form_data.get("link", "").strip() or None,
         synonyms=parse_synonyms(form_data.get("synonyms", "")),
     )
-    return sync_dictionary_service().update(term_id, request=request_body)
+    return sync_dictionary_service(company_id=session["company_id"]).update(
+        term_id, request=request_body
+    )
 
 
 def delete_term(term_id: str) -> None:
@@ -105,4 +108,4 @@ def delete_term(term_id: str) -> None:
     Args:
         term_id: The ID of the term to delete.
     """
-    sync_dictionary_service().delete(term_id)
+    sync_dictionary_service(company_id=session["company_id"]).delete(term_id)

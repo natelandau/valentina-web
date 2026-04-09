@@ -40,7 +40,11 @@ class TestGetAllTerms:
         mock_dict_svc.list_all.return_value = terms
 
         # When fetching all terms
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             result = get_all_terms()
 
         # Then the result is a sorted list of 3 terms and the API was called once
@@ -54,7 +58,11 @@ class TestGetAllTerms:
         terms = DictionaryTermFactory.batch(3)
         mock_dict_svc.list_all.return_value = terms
 
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             first = get_all_terms()
             second = get_all_terms()
 
@@ -68,7 +76,11 @@ class TestGetAllTerms:
         mock_dict_svc.list_all.return_value = []
 
         # When fetching all terms
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             result = get_all_terms()
 
         # Then the result is an empty list
@@ -85,7 +97,11 @@ class TestGetAllTerms:
         mock_dict_svc.list_all.return_value = terms
 
         # When fetching all terms
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             result = get_all_terms()
 
         # Then the result is sorted alphabetically
@@ -102,7 +118,11 @@ class TestGetTerm:
         mock_dict_svc.list_all.return_value = [term]
 
         # When looking up by ID
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             result = get_term("term-1")
 
         # Then the term is returned
@@ -114,7 +134,11 @@ class TestGetTerm:
         mock_dict_svc.list_all.return_value = [DictionaryTermFactory.build(id="other")]
 
         # When looking up an unknown ID
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             result = get_term("nonexistent")
 
         # Then None is returned
@@ -131,7 +155,11 @@ class TestClearDictionaryCache:
         terms_v2 = DictionaryTermFactory.batch(3)
         mock_dict_svc.list_all.side_effect = [terms_v1, terms_v2]
 
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             first = get_all_terms()
             assert len(first) == 2
 
@@ -159,7 +187,11 @@ class TestSearchTerms:
         mock_dict_svc.list_all.return_value = terms
 
         # When searching for a substring
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             result = search_terms("aus")
 
         # Then only matching terms are returned
@@ -173,7 +205,11 @@ class TestSearchTerms:
         mock_dict_svc.list_all.return_value = [term]
 
         # When searching with uppercase
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             result = search_terms("AUS")
 
         # Then the term is found
@@ -187,7 +223,11 @@ class TestSearchTerms:
         mock_dict_svc.list_all.return_value = terms
 
         # When searching with empty string
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             result = search_terms("")
 
         # Then all terms are returned
@@ -203,7 +243,11 @@ class TestSearchTerms:
         mock_dict_svc.list_all.return_value = terms
 
         # When searching for a non-matching string
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             result = search_terms("zzz")
 
         # Then an empty list is returned
@@ -223,7 +267,11 @@ class TestSearchTermsSynonyms:
         mock_dict_svc.list_all.return_value = terms
 
         # When searching for the synonym text
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             result = search_terms("heightened", include_synonyms=True)
 
         # Then the parent term is returned
@@ -241,7 +289,11 @@ class TestSearchTermsSynonyms:
         mock_dict_svc.list_all.return_value = terms
 
         # When searching with synonyms disabled
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             result = search_terms("heightened", include_synonyms=False)
 
         # Then no results are returned
@@ -256,7 +308,11 @@ class TestSearchTermsSynonyms:
         mock_dict_svc.list_all.return_value = terms
 
         # When searching with synonyms disabled
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             result = search_terms("aus", include_synonyms=False)
 
         # Then the term is still found by name
@@ -272,7 +328,11 @@ class TestSearchTermsSynonyms:
         mock_dict_svc.list_all.return_value = terms
 
         # When searching with empty query and synonyms disabled
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             result = search_terms("", include_synonyms=False)
 
         # Then all terms are returned
@@ -287,7 +347,11 @@ class TestSearchTermsSynonyms:
         mock_dict_svc.list_all.return_value = terms
 
         # When searching
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             result = search_terms("aus", include_synonyms=True)
 
         # Then the term appears exactly once
@@ -300,7 +364,11 @@ class TestSearchTermsSynonyms:
         mock_dict_svc.list_all.return_value = terms
 
         # When searching with lowercase
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "test-user-id"
             result = search_terms("monster", include_synonyms=True)
 
         # Then the term is found

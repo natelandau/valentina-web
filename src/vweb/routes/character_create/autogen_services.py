@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
+from flask import session
 from vclient import sync_character_autogen_service, sync_character_blueprint_service
 
 from vweb.constants import CACHE_BLUEPRINT_TTL
@@ -50,7 +51,9 @@ def generate_single(  # noqa: PLR0913
     Returns:
         The newly generated Character.
     """
-    svc = sync_character_autogen_service(user_id=user_id, campaign_id=campaign_id)
+    svc = sync_character_autogen_service(
+        user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
+    )
     return svc.generate_character(
         character_type=cast("CharacterType", character_type),
         character_class=cast("CharacterClass", character_class) if character_class else None,
@@ -75,7 +78,9 @@ def start_session(*, user_id: str, campaign_id: str) -> ChargenSessionResponse:
     Returns:
         A ChargenSessionResponse with session_id and 3 generated characters.
     """
-    svc = sync_character_autogen_service(user_id=user_id, campaign_id=campaign_id)
+    svc = sync_character_autogen_service(
+        user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
+    )
     return svc.start_chargen_session()
 
 
@@ -97,7 +102,9 @@ def finalize_session(
     Returns:
         The finalized Character.
     """
-    svc = sync_character_autogen_service(user_id=user_id, campaign_id=campaign_id)
+    svc = sync_character_autogen_service(
+        user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
+    )
     return svc.finalize_chargen_session(
         session_id=session_id,
         selected_character_id=selected_character_id,
@@ -114,7 +121,9 @@ def list_sessions(*, user_id: str, campaign_id: str) -> list[ChargenSessionRespo
     Returns:
         All active chargen sessions for the user/campaign.
     """
-    svc = sync_character_autogen_service(user_id=user_id, campaign_id=campaign_id)
+    svc = sync_character_autogen_service(
+        user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
+    )
     return svc.list_all()
 
 
@@ -129,7 +138,9 @@ def get_session(*, user_id: str, campaign_id: str, session_id: str) -> ChargenSe
     Returns:
         The chargen session matching the given session_id.
     """
-    svc = sync_character_autogen_service(user_id=user_id, campaign_id=campaign_id)
+    svc = sync_character_autogen_service(
+        user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
+    )
     return svc.get(session_id)
 
 
@@ -144,7 +155,7 @@ def fetch_form_options() -> dict:
     if cached is not None:
         return cached
 
-    bp_svc = sync_character_blueprint_service()
+    bp_svc = sync_character_blueprint_service(company_id=session["company_id"])
     opts = get_options().characters
     result = {
         "character_classes": opts.character_class,

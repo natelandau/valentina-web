@@ -50,6 +50,11 @@
         <li>
           <a href="{{ url_for('profile.profile', user_id=requesting_user().id) }}" class="justify-between">Profile</a>
         </li>
+        {% if approved_company_count() >= 2 %}
+          <li>
+            <a href="{{ url_for('auth.select_company') }}">Switch Company</a>
+          </li>
+        {% endif %}
         <li>
           <a onclick="document.getElementById('logout-form').submit()">Logout</a>
         </li>

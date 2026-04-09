@@ -43,8 +43,6 @@ class APISettings(BaseModel):
 
     base_url: str
     api_key: str
-    default_company_id: str
-    server_admin_user_id: str
     timeout: float = Field(default=10.0)
     max_retries: int = Field(default=5)
     retry_delay: float = Field(default=1.0)

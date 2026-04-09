@@ -75,8 +75,6 @@ The most important variables:
 | `VWEB_SECRET_KEY`                    | Flask session secret. Must be changed for production.                                       |
 | `VWEB_API__BASE_URL`                 | URL of the Valentina API.                                                                   |
 | `VWEB_API__API_KEY`                  | API key for the Valentina API.                                                              |
-| `VWEB_API__DEFAULT_COMPANY_ID`       | Default company ID used by the API client.                                                  |
-| `VWEB_API__SERVER_ADMIN_USER_ID`     | API user ID used as `requesting_user_id` when creating accounts via OAuth.                  |
 | `VWEB_REDIS__URL`                    | Redis connection URL.                                                                       |
 | `VWEB_OAUTH__DISCORD__CLIENT_ID`     | Discord OAuth client ID.                                                                    |
 | `VWEB_OAUTH__DISCORD__CLIENT_SECRET` | Discord OAuth client secret.                                                                |

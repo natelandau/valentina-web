@@ -30,6 +30,7 @@ class CharacterInventoryHandler:
         self._svc = sync_characters_service(
             user_id=session.get("user_id", ""),
             campaign_id=character.campaign_id,
+            company_id=session["company_id"],
         )
 
     def list_items(self) -> list[InventoryItem]:

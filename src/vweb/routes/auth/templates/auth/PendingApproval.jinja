@@ -1,3 +1,4 @@
+{#def companies: dict = {} #}
 <shared.PageLayout title="Pending Approval">
     <div class="hero min-h-[60vh]">
         <div class="hero-content text-center">
@@ -7,6 +8,18 @@
                     Your account has been created but requires approval from an administrator
                     before you can access the application.
                 </p>
+                {% if companies %}
+                    <div class="space-y-2 mb-4 text-left">
+                        {% for company_id, data in companies.items() %}
+                            <div class="flex items-center justify-between p-3 rounded-lg border border-base-300">
+                                <span class="font-medium">{{ data.company_name }}</span>
+                                <span class="badge {% if data.role == 'UNAPPROVED' %}badge-warning{% else %}badge-success{% endif %} badge-sm">
+                                    {{ data.role }}
+                                </span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
                 <p class="text-sm opacity-60">
                     Please contact your game's Storyteller or administrator for access.
                 </p>

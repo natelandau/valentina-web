@@ -58,8 +58,6 @@ def test_settings() -> Settings:
         api=APISettings(
             base_url="http://localhost:8080",
             api_key="test-api-key",
-            default_company_id="test-company-id",
-            server_admin_user_id="test-owner-id",
         ),
     )
 
@@ -80,10 +78,18 @@ def app(test_settings) -> Flask:
 
 @pytest.fixture
 def client(app) -> FlaskClient:
-    """Create a test client with a pre-seeded session user_id."""
+    """Create a test client with a pre-seeded multi-company session."""
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = "test-user-id"
+        sess["company_id"] = "test-company-id"
+        sess["companies"] = {
+            "test-company-id": {
+                "user_id": "test-user-id",
+                "company_name": "Test Company",
+                "role": "PLAYER",
+            },
+        }
     return client
 
 

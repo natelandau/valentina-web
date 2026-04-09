@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from flask import Blueprint, flash, g, make_response, redirect, request, url_for
+from flask import Blueprint, flash, g, make_response, redirect, request, session, url_for
 from flask.views import MethodView
 from pydantic import ValidationError
 from vclient import sync_companies_service
 from vclient.models.companies import CompanySettings, CompanyUpdate
 
 from vweb import catalog
-from vweb.config import get_settings
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import is_admin, is_self
 from vweb.lib.jinja import htmx_response
@@ -109,7 +108,7 @@ class SettingsView(MethodView):
 
     def get(self) -> str:
         """Render the company settings page with current company values pre-populated."""
-        company_id = get_settings().api.default_company_id
+        company_id = session["company_id"]
         company = sync_companies_service().get(company_id)
         return catalog.render(
             "settings.SettingsPage",
@@ -121,7 +120,7 @@ class SettingsView(MethodView):
 
     def post(self) -> Response | tuple[str, int]:
         """Validate the form and update the company."""
-        company_id = get_settings().api.default_company_id
+        company_id = session["company_id"]
         form = request.form.to_dict()
 
         errors: dict[str, str] = {}
@@ -151,7 +150,7 @@ class SettingsView(MethodView):
             return page, 400
 
         sync_companies_service().update(company_id, request=update)
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
         flash("Settings updated.", "success")
         return redirect(url_for("settings.settings"))
 

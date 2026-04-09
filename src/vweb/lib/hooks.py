@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from werkzeug.wrappers.response import Response
 
 _PUBLIC_PATH_PREFIXES = ("/auth/", "/static")
+_COMPANY_SELECTION_PATHS = ("/select-companies", "/select-company")
 
 
 def _hook_remove_trailing_slash() -> Response | None:
@@ -34,7 +35,11 @@ def _hook_refresh_session() -> None:
 
 def _hook_require_auth() -> Response | None:
     """Redirect unauthenticated users to the landing page."""
-    if request.path == "/" or request.path.startswith(_PUBLIC_PATH_PREFIXES):
+    if (
+        request.path == "/"
+        or request.path.startswith(_PUBLIC_PATH_PREFIXES)
+        or request.path in _COMPANY_SELECTION_PATHS
+    ):
         return None
 
     if not session.get("user_id"):
@@ -45,20 +50,25 @@ def _hook_require_auth() -> Response | None:
 
 def _hook_inject_global_context() -> Response | None:
     """Load cached global context and resolve the requesting user for template access."""
-    if request.path.startswith(_PUBLIC_PATH_PREFIXES) or request.path == "/pending-approval":
+    if (
+        request.path.startswith(_PUBLIC_PATH_PREFIXES)
+        or request.path == "/pending-approval"
+        or request.path in _COMPANY_SELECTION_PATHS
+    ):
         return None
 
     user_id = session.get("user_id")
-    if not user_id:
+    company_id = session.get("company_id")
+    if not user_id or not company_id:
         return None
 
-    ctx = load_global_context()
+    ctx = load_global_context(company_id, user_id)
     g.global_context = ctx
 
     requesting_user = next((u for u in ctx.users if u.id == user_id), None)
     if requesting_user is None:
-        clear_global_context_cache()
-        ctx = load_global_context()
+        clear_global_context_cache(company_id, user_id)
+        ctx = load_global_context(company_id, user_id)
         g.global_context = ctx
         requesting_user = next((u for u in ctx.users if u.id == user_id), None)
 

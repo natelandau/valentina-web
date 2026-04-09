@@ -11,6 +11,7 @@ from flask import (
     make_response,
     redirect,
     request,
+    session,
     url_for,
 )
 from flask.views import MethodView
@@ -192,11 +193,14 @@ class CharacterTraitsView(MethodView):
         )
 
         api_svc = sync_character_traits_service(
-            user_id=requesting_user.id, campaign_id=campaign.id, character_id=character.id
+            user_id=requesting_user.id,
+            campaign_id=campaign.id,
+            character_id=character.id,
+            company_id=session["company_id"],
         )
         sheet_svc = CharacterSheetService(character=character, requesting_user=requesting_user)
         sheet_svc.clear_cache()
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
 
         for trait_id, value in request.form.items():
             if value == "DELETE":

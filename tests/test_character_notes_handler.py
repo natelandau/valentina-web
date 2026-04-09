@@ -90,6 +90,7 @@ class TestCharacterNotesHandlerOperations:
 
             g.global_context = mock_global_context
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
             handler = CharacterNotesHandler("char-123")
 
             # When listing items
@@ -108,6 +109,7 @@ class TestCharacterNotesHandlerOperations:
 
             g.global_context = mock_global_context
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
             handler = CharacterNotesHandler("char-123")
 
             # When creating an item with padded whitespace
@@ -130,6 +132,7 @@ class TestCharacterNotesHandlerOperations:
 
             g.global_context = mock_global_context
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
             handler = CharacterNotesHandler("char-123")
 
             # When deleting an item
@@ -148,6 +151,7 @@ class TestCharacterNotesHandlerOperations:
 
             g.global_context = mock_global_context
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
             handler = CharacterNotesHandler("char-123")
 
             # When getting a single item
@@ -166,6 +170,7 @@ class TestCharacterNotesHandlerOperations:
 
             g.global_context = mock_global_context
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
             handler = CharacterNotesHandler("char-123")
 
             # When updating with padded whitespace
@@ -187,6 +192,7 @@ class TestCharacterNotesHandlerOperations:
 
             g.global_context = mock_global_context
             session["user_id"] = "test-user-id"
+            session["company_id"] = "test-company-id"
             mock_global_context.characters = []
 
             # When/Then constructing with an unknown character ID raises ValueError

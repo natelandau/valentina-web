@@ -19,7 +19,10 @@ class TestValidateProfile:
         }
 
         # When validating the profile
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             from vweb.routes.character_create.profile import validate_profile
 
             errors = validate_profile(form_data)
@@ -38,7 +41,10 @@ class TestValidateProfile:
         }
 
         # When validating
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             from vweb.routes.character_create.profile import validate_profile
 
             errors = validate_profile(form_data)
@@ -57,7 +63,10 @@ class TestValidateProfile:
         }
 
         # When validating
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             from vweb.routes.character_create.profile import validate_profile
 
             errors = validate_profile(form_data)
@@ -76,7 +85,10 @@ class TestValidateProfile:
         }
 
         # When validating
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             from vweb.routes.character_create.profile import validate_profile
 
             errors = validate_profile(form_data)
@@ -95,7 +107,10 @@ class TestValidateProfile:
         }
 
         # When validating
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             from vweb.routes.character_create.profile import validate_profile
 
             errors = validate_profile(form_data)
@@ -114,7 +129,10 @@ class TestValidateProfile:
         }
 
         # When validating
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             from vweb.routes.character_create.profile import validate_profile
 
             errors = validate_profile(form_data)
@@ -133,7 +151,10 @@ class TestValidateProfile:
         }
 
         # When validating
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             from vweb.routes.character_create.profile import validate_profile
 
             errors = validate_profile(form_data)

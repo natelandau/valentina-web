@@ -35,7 +35,10 @@ class TestGetAllTraits:
         mock_bp_svc.list_all_traits.return_value = traits
 
         # When fetching all traits
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             result = get_all_traits()
 
         # Then the result is a dict keyed by trait ID
@@ -50,7 +53,10 @@ class TestGetAllTraits:
         traits = TraitFactory.batch(2)
         mock_bp_svc.list_all_traits.return_value = traits
 
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             first = get_all_traits()
             second = get_all_traits()
 
@@ -64,7 +70,10 @@ class TestGetAllTraits:
         mock_bp_svc.list_all_traits.return_value = []
 
         # When fetching all traits
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             result = get_all_traits()
 
         # Then the result is an empty dict
@@ -81,7 +90,10 @@ class TestGetTrait:
         mock_bp_svc.list_all_traits.return_value = [trait]
 
         # When looking up by ID
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             result = get_trait("trait-1")
 
         # Then the trait is returned
@@ -93,7 +105,10 @@ class TestGetTrait:
         mock_bp_svc.list_all_traits.return_value = [TraitFactory.build(id="other")]
 
         # When looking up an unknown ID
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             result = get_trait("nonexistent")
 
         # Then None is returned
@@ -110,7 +125,10 @@ class TestClearBlueprintCache:
         traits_v2 = TraitFactory.batch(3)
         mock_bp_svc.list_all_traits.side_effect = [traits_v1, traits_v2]
 
-        with app.app_context():
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
             first = get_all_traits()
             assert len(first) == 2
 

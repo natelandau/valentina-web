@@ -2,7 +2,19 @@
 
 from unittest.mock import MagicMock
 
-from vclient.testing import UserFactory
+from vclient.models import UserLookupResult
+
+
+def _make_lookup_result(**kwargs) -> UserLookupResult:
+    """Build a UserLookupResult with sensible defaults."""
+    defaults = {
+        "company_id": "comp-1",
+        "company_name": "Test Company",
+        "user_id": "resolved-user-id",
+        "role": "PLAYER",
+    }
+    defaults.update(kwargs)
+    return UserLookupResult(**defaults)
 
 
 class TestDiscordLoginView:
@@ -43,9 +55,13 @@ class TestDiscordCallbackView:
         mock_discord.get.return_value = mock_resp
         mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
 
-        # Given a resolved user with PLAYER role
-        user = UserFactory.build(id="resolved-user-id", role="PLAYER")
-        mocker.patch("vweb.routes.auth.views.resolve_or_create_discord_user", return_value=user)
+        # Given a single approved lookup result
+        result = _make_lookup_result()
+        mocker.patch(
+            "vweb.routes.auth.views.lookup_user_companies",
+            return_value=[result],
+        )
+        mocker.patch("vweb.routes.auth.views.update_discord_profile")
 
         # When the callback is hit
         response = client.get("/auth/discord/callback")
@@ -53,6 +69,7 @@ class TestDiscordCallbackView:
         # Then session has user_id and response redirects to /
         with client.session_transaction() as sess:
             assert sess["user_id"] == "resolved-user-id"
+            assert sess["company_id"] == "comp-1"
         assert response.status_code == 302
         assert response.location == "/"
 
@@ -71,9 +88,12 @@ class TestDiscordCallbackView:
         mock_discord.get.return_value = mock_resp
         mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
 
-        # Given a resolved user with UNAPPROVED role
-        user = UserFactory.build(id="unapproved-user-id", role="UNAPPROVED")
-        mocker.patch("vweb.routes.auth.views.resolve_or_create_discord_user", return_value=user)
+        # Given a single unapproved lookup result
+        result = _make_lookup_result(user_id="unapproved-user-id", role="UNAPPROVED")
+        mocker.patch(
+            "vweb.routes.auth.views.lookup_user_companies",
+            return_value=[result],
+        )
 
         # When the callback is hit
         response = client.get("/auth/discord/callback")
@@ -94,8 +114,12 @@ class TestDiscordCallbackView:
         mock_discord.get.return_value = mock_resp
         mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
 
-        user = UserFactory.build(role="PLAYER")
-        mocker.patch("vweb.routes.auth.views.resolve_or_create_discord_user", return_value=user)
+        result = _make_lookup_result()
+        mocker.patch(
+            "vweb.routes.auth.views.lookup_user_companies",
+            return_value=[result],
+        )
+        mocker.patch("vweb.routes.auth.views.update_discord_profile")
 
         # When the callback is hit
         client.get("/auth/discord/callback")
@@ -103,6 +127,31 @@ class TestDiscordCallbackView:
         # Then the session is marked as permanent
         with client.session_transaction() as sess:
             assert sess.permanent is True
+
+    def test_callback_new_user_redirects_to_select_companies(self, client, mocker):
+        """Verify Discord callback redirects new users to company selection."""
+        # Given a mock OAuth flow
+        mock_discord = MagicMock()
+        mock_discord.authorize_access_token.return_value = {"access_token": "fake"}
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"id": "new", "username": "u", "email": "e@e.com"}
+        mock_discord.get.return_value = mock_resp
+        mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
+
+        # Given no lookup results (new user)
+        mocker.patch(
+            "vweb.routes.auth.views.lookup_user_companies",
+            return_value=[],
+        )
+
+        # When the callback is hit
+        response = client.get("/auth/discord/callback")
+
+        # Then redirect to select-companies with pending_oauth in session
+        assert response.status_code == 302
+        assert response.location == "/select-companies"
+        with client.session_transaction() as sess:
+            assert sess["pending_oauth"]["provider"] == "discord"
 
 
 class TestGitHubLoginView:
@@ -143,9 +192,13 @@ class TestGitHubCallbackView:
         mock_github.get.return_value = mock_resp
         mocker.patch("vweb.routes.auth.views.oauth", github=mock_github)
 
-        # Given a resolved user with PLAYER role
-        user = UserFactory.build(id="resolved-user-id", role="PLAYER")
-        mocker.patch("vweb.routes.auth.views.resolve_or_create_github_user", return_value=user)
+        # Given a single approved lookup result
+        result = _make_lookup_result()
+        mocker.patch(
+            "vweb.routes.auth.views.lookup_user_companies",
+            return_value=[result],
+        )
+        mocker.patch("vweb.routes.auth.views.update_github_profile")
 
         # When the callback is hit
         response = client.get("/auth/github/callback")
@@ -171,9 +224,12 @@ class TestGitHubCallbackView:
         mock_github.get.return_value = mock_resp
         mocker.patch("vweb.routes.auth.views.oauth", github=mock_github)
 
-        # Given a resolved user with UNAPPROVED role
-        user = UserFactory.build(id="unapproved-user-id", role="UNAPPROVED")
-        mocker.patch("vweb.routes.auth.views.resolve_or_create_github_user", return_value=user)
+        # Given a single unapproved lookup result
+        result = _make_lookup_result(user_id="unapproved-user-id", role="UNAPPROVED")
+        mocker.patch(
+            "vweb.routes.auth.views.lookup_user_companies",
+            return_value=[result],
+        )
 
         # When the callback is hit
         response = client.get("/auth/github/callback")
@@ -194,8 +250,12 @@ class TestGitHubCallbackView:
         mock_github.get.return_value = mock_resp
         mocker.patch("vweb.routes.auth.views.oauth", github=mock_github)
 
-        user = UserFactory.build(role="PLAYER")
-        mocker.patch("vweb.routes.auth.views.resolve_or_create_github_user", return_value=user)
+        result = _make_lookup_result()
+        mocker.patch(
+            "vweb.routes.auth.views.lookup_user_companies",
+            return_value=[result],
+        )
+        mocker.patch("vweb.routes.auth.views.update_github_profile")
 
         # When the callback is hit
         client.get("/auth/github/callback")
@@ -221,18 +281,20 @@ class TestGitHubCallbackView:
         mock_github.get.side_effect = [user_resp, emails_resp]
         mocker.patch("vweb.routes.auth.views.oauth", github=mock_github)
 
-        # Given a resolved user
-        user = UserFactory.build(role="PLAYER")
-        mock_resolve = mocker.patch(
-            "vweb.routes.auth.views.resolve_or_create_github_user", return_value=user
+        # Given a single approved lookup result
+        result = _make_lookup_result()
+        mock_lookup = mocker.patch(
+            "vweb.routes.auth.views.lookup_user_companies",
+            return_value=[result],
         )
+        mocker.patch("vweb.routes.auth.views.update_github_profile")
 
         # When the callback is hit
         client.get("/auth/github/callback")
 
-        # Then resolve is called with the primary verified email populated
-        github_data = mock_resolve.call_args[0][0]
-        assert github_data["email"] == "primary@example.com"
+        # Then lookup is called with the primary verified email populated
+        call_kwargs = mock_lookup.call_args[1]
+        assert call_kwargs["email"] == "primary@example.com"
 
 
 class TestGoogleLoginView:
@@ -274,9 +336,13 @@ class TestGoogleCallbackView:
         mock_google.authorize_access_token.return_value = mock_token
         mocker.patch("vweb.routes.auth.views.oauth", google=mock_google)
 
-        # Given a resolved user with PLAYER role
-        user = UserFactory.build(id="resolved-user-id", role="PLAYER")
-        mocker.patch("vweb.routes.auth.views.resolve_or_create_google_user", return_value=user)
+        # Given a single approved lookup result
+        result = _make_lookup_result()
+        mocker.patch(
+            "vweb.routes.auth.views.lookup_user_companies",
+            return_value=[result],
+        )
+        mocker.patch("vweb.routes.auth.views.update_google_profile")
 
         # When the callback is hit
         response = client.get("/auth/google/callback")
@@ -302,9 +368,12 @@ class TestGoogleCallbackView:
         mock_google.authorize_access_token.return_value = mock_token
         mocker.patch("vweb.routes.auth.views.oauth", google=mock_google)
 
-        # Given a resolved user with UNAPPROVED role
-        user = UserFactory.build(id="unapproved-user-id", role="UNAPPROVED")
-        mocker.patch("vweb.routes.auth.views.resolve_or_create_google_user", return_value=user)
+        # Given a single unapproved lookup result
+        result = _make_lookup_result(user_id="unapproved-user-id", role="UNAPPROVED")
+        mocker.patch(
+            "vweb.routes.auth.views.lookup_user_companies",
+            return_value=[result],
+        )
 
         # When the callback is hit
         response = client.get("/auth/google/callback")
@@ -325,8 +394,12 @@ class TestGoogleCallbackView:
         }
         mocker.patch("vweb.routes.auth.views.oauth", google=mock_google)
 
-        user = UserFactory.build(role="PLAYER")
-        mocker.patch("vweb.routes.auth.views.resolve_or_create_google_user", return_value=user)
+        result = _make_lookup_result()
+        mocker.patch(
+            "vweb.routes.auth.views.lookup_user_companies",
+            return_value=[result],
+        )
+        mocker.patch("vweb.routes.auth.views.update_google_profile")
 
         # When the callback is hit
         client.get("/auth/google/callback")

@@ -23,8 +23,6 @@ class TestSettingsValidation:
             api=APISettings(
                 base_url="http://localhost:8080",
                 api_key="test-api-key",
-                default_company_id="test-company-id",
-                server_admin_user_id="test-owner-id",
             ),
         )
         assert settings.env == "development"
@@ -40,8 +38,6 @@ class TestSettingsValidation:
                 api=APISettings(
                     base_url="http://localhost:8080",
                     api_key="test-api-key",
-                    default_company_id="test-company-id",
-                    server_admin_user_id="test-owner-id",
                 ),
             )
 
@@ -55,8 +51,6 @@ class TestSettingsValidation:
             api=APISettings(
                 base_url="http://localhost:8080",
                 api_key="test-api-key",
-                default_company_id="test-company-id",
-                server_admin_user_id="test-owner-id",
             ),
         )
         assert settings.redis.url == "redis://localhost:6379/0"
@@ -70,8 +64,6 @@ class TestSettingsValidation:
             api=APISettings(
                 base_url="http://localhost:8080",
                 api_key="test-api-key",
-                default_company_id="test-company-id",
-                server_admin_user_id="test-owner-id",
             ),
         )
         assert settings.env == "production"
@@ -87,8 +79,6 @@ class TestSettingsValidation:
                 api=APISettings(
                     base_url="http://localhost:8080",
                     api_key="test-api-key",
-                    default_company_id="test-company-id",
-                    server_admin_user_id="test-owner-id",
                 ),
             )
 
@@ -97,8 +87,6 @@ class TestSettingsValidation:
         settings = APISettings(
             base_url="http://localhost:8080",
             api_key="test-api-key",
-            default_company_id="test-company-id",
-            server_admin_user_id="test-owner-id",
         )
         assert not hasattr(settings, "default_user_id")
 
@@ -111,14 +99,28 @@ class TestSettingsValidation:
             api=APISettings(
                 base_url="http://localhost:8080",
                 api_key="test-api-key",
-                default_company_id="test-company-id",
-                server_admin_user_id="test-owner-id",
             ),
         )
         assert isinstance(settings.oauth, OAuthSettings)
         assert isinstance(settings.oauth.discord, OAuthProviderSettings)
         assert settings.oauth.discord.client_id == ""
         assert settings.oauth.discord.client_secret == ""
+
+    def test_settings_without_company_fields(self) -> None:
+        """Verify Settings constructs without default_company_id or server_admin_user_id."""
+        s = Settings(
+            _env_file=None,
+            app_name="Test",
+            env="development",
+            secret_key="test",  # noqa: S106
+            api=APISettings(
+                base_url="http://localhost",
+                api_key="test-key",
+            ),
+        )
+        assert s.api.base_url == "http://localhost"
+        assert not hasattr(s.api, "default_company_id")
+        assert not hasattr(s.api, "server_admin_user_id")
 
     def test_oauth_settings_accepts_custom_values(self) -> None:
         """Verify OAuthSettings accepts custom Discord credentials."""

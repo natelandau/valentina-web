@@ -71,7 +71,11 @@ class ManualProfileView(MethodView):
         character_id = request.args.get("character_id")
 
         if character_id:
-            svc = sync_characters_service(user_id=session["user_id"], campaign_id=campaign_id)
+            svc = sync_characters_service(
+                user_id=session["user_id"],
+                campaign_id=campaign_id,
+                company_id=session["company_id"],
+            )
             character = svc.get(character_id)
             form_data = character_to_form_data(character)
             mode = "edit"
@@ -87,7 +91,9 @@ class ManualProfileView(MethodView):
             if temp_char_id:
                 try:
                     svc = sync_characters_service(
-                        user_id=session["user_id"], campaign_id=campaign_id
+                        user_id=session["user_id"],
+                        campaign_id=campaign_id,
+                        company_id=session["company_id"],
                     )
                     character = svc.get(temp_char_id)
                     form_data = character_to_form_data(character)
@@ -192,7 +198,11 @@ class ManualProfileView(MethodView):
 
         char_type = cast("CharacterType", form_data.get("character_type") or "PLAYER")
 
-        svc = sync_characters_service(user_id=session["user_id"], campaign_id=campaign.id)
+        svc = sync_characters_service(
+            user_id=session["user_id"],
+            campaign_id=campaign.id,
+            company_id=session["company_id"],
+        )
         try:
             update_payload = CharacterUpdate(
                 character_class=character_class,
@@ -227,7 +237,7 @@ class ManualProfileView(MethodView):
             errors = {"_general": e.detail or e.message or "Failed to update profile"}
             return self._render_edit_form(campaign, character_id, form_data, errors)
 
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
         flash("Profile updated successfully", "success")
         return Response(
             "",
@@ -277,7 +287,11 @@ class ManualProfileView(MethodView):
         nature = form_data.get("nature") or None
         concept_id = form_data.get("concept_id") or None
 
-        svc = sync_characters_service(user_id=session["user_id"], campaign_id=campaign_id)
+        svc = sync_characters_service(
+            user_id=session["user_id"],
+            campaign_id=campaign_id,
+            company_id=session["company_id"],
+        )
         temp_char_id = session.get("temp_character_id")
 
         try:
@@ -423,22 +437,27 @@ class ManualFinalizeView(MethodView):
         try:
             if trait_items:
                 traits_svc = sync_character_traits_service(
-                    user_id=user_id, campaign_id=campaign_id, character_id=temp_char_id
+                    user_id=user_id,
+                    campaign_id=campaign_id,
+                    character_id=temp_char_id,
+                    company_id=session["company_id"],
                 )
                 result = traits_svc.bulk_assign(trait_items)
                 if result.failed:
                     failed_names = [f.trait_id for f in result.failed]
                     flash(f"Some traits failed to assign: {', '.join(failed_names)}", "warning")
 
-            char_svc = sync_characters_service(user_id=user_id, campaign_id=campaign_id)
+            char_svc = sync_characters_service(
+                user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
+            )
             char_svc.update(temp_char_id, CharacterUpdate(is_temporary=False))
         except APIError as exc:
             logger.exception("Failed to finalize character")
             flash(str(exc), "error")
 
-            character = sync_characters_service(user_id=user_id, campaign_id=campaign_id).get(
-                temp_char_id
-            )
+            character = sync_characters_service(
+                user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
+            ).get(temp_char_id)
             sheet_svc = CharacterSheetService(
                 character=character, requesting_user=g.requesting_user
             )
@@ -456,7 +475,7 @@ class ManualFinalizeView(MethodView):
             )
 
         _clear_temp_session()
-        clear_global_context_cache()
+        clear_global_context_cache(session["company_id"], session["user_id"])
         flash("Character created successfully!", "success")
         redirect_url = url_for("character_view.character", character_id=temp_char_id)
         return Response("", status=200, headers={"HX-Redirect": redirect_url})
