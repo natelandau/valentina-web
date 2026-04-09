@@ -2,6 +2,7 @@
     book: object,
     campaign: object,
     chapters: list,
+    oob: bool = False,
 #}
 {% set chapter_urls = {} %}
 {% for ch in chapters %}
@@ -10,4 +11,4 @@
 
 {% set add_attrs = 'hx-get="' ~ url_for('chapter_view.chapter_create', campaign_id=campaign.id, book_id=book.id) ~ '" hx-target="#book-chapters-card" hx-swap="outerHTML"' %}
 
-<shared.cards.NumberedListCard title="Chapters" items={{ chapters }} pagination={{ 5 }} item_urls={{ chapter_urls }} card_id="book-chapters-card" empty_message="No chapters yet." editable={{ can_manage_campaign() }} add_button_label="Add Chapter" add_button_attrs={{ add_attrs }} />
+<shared.cards.NumberedListCard title="Chapters" items={{ chapters }} pagination={{ 5 }} item_urls={{ chapter_urls }} card_id="book-chapters-card" empty_message="No chapters yet." editable={{ can_manage_campaign() }} add_button_label="Add Chapter" add_button_attrs={{ add_attrs }} oob={{ oob }} />

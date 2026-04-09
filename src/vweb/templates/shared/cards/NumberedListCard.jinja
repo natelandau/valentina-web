@@ -9,11 +9,13 @@
     editable: bool = False,
     col_span: int = 0,
     pagination: int = 0,
+    oob: bool = False,
 #}
 
 {% set grid_col_span = "col-span-" ~ col_span if col_span > 0 else "" %}
 
 <div {% if card_id %}id="{{ card_id }}"{% endif %}
+     {% if oob %}hx-swap-oob="true"{% endif %}
      class="card bg-base-100 shadow-sm {{ grid_col_span }}">
   <div class="card-body">
     <div class="flex items-center justify-between">
