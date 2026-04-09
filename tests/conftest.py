@@ -124,8 +124,8 @@ def fake_vclient(app):
 @pytest.fixture(autouse=True)
 def _mock_api(mocker, mock_global_context) -> None:
     """Prevent before_request hooks and route handlers from calling the real API."""
-    mocker.patch("vweb.app.load_global_context", return_value=mock_global_context)
-    mocker.patch("vweb.app.clear_global_context_cache")
+    mocker.patch("vweb.lib.hooks.load_global_context", return_value=mock_global_context)
+    mocker.patch("vweb.lib.hooks.clear_global_context_cache")
     mocker.patch(
         "vweb.routes.campaign.views.get_campaign_statistics",
         return_value=RollStatisticsFactory.build(),

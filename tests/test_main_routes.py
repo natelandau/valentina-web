@@ -45,7 +45,7 @@ def test_index_redirects_to_session_campaign(client, mocker) -> None:
         books_by_campaign={older.id: [], newer.id: []},
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )
-    mocker.patch("vweb.app.load_global_context", return_value=ctx)
+    mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
     # Given the older campaign is in the session
     with client.session_transaction() as sess:
@@ -80,7 +80,7 @@ def test_index_defaults_to_most_recent_campaign(client, mocker) -> None:
         books_by_campaign={older.id: [], newer.id: []},
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )
-    mocker.patch("vweb.app.load_global_context", return_value=ctx)
+    mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
     # When visiting the index (no session campaign)
     response = client.get("/")
@@ -108,7 +108,7 @@ def test_index_no_campaigns_shows_empty_state(client, mocker) -> None:
         campaigns=[],
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )
-    mocker.patch("vweb.app.load_global_context", return_value=ctx)
+    mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
     # When visiting the index
     response = client.get("/")

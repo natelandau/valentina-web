@@ -47,7 +47,7 @@ class TestSettingsAccessControl:
         mocker,  # type: ignore[name-defined]
     ) -> None:
         """Verify admin GET returns 200 with the settings page rendered."""
-        mocker.patch("vweb.app.load_global_context", return_value=admin_context)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
         company = CompanyFactory.build()
         svc = MagicMock()
         svc.get.return_value = company
@@ -68,7 +68,7 @@ class TestSettingsAccessControl:
         mocker,  # type: ignore[name-defined]
     ) -> None:
         """Verify non-admin GET is redirected to / with an error flash."""
-        mocker.patch("vweb.app.load_global_context", return_value=player_context)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=player_context)
         response = client.get("/settings")
         assert response.status_code == 302
         assert response.headers["Location"].endswith("/")
@@ -90,7 +90,7 @@ class TestSettingsTabs:
         """Verify the Users tab badge reflects the unapproved user count."""
         # Given an admin user and two pending users
         mock_global_context.users[0].role = "ADMIN"
-        mocker.patch("vweb.app.load_global_context", return_value=mock_global_context)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=mock_global_context)
 
         company = CompanyFactory.build()
         companies_svc = MagicMock()
@@ -145,7 +145,7 @@ class TestSettingsGet:
         )
         svc = MagicMock()
         svc.get.return_value = company
-        mocker.patch("vweb.app.load_global_context", return_value=admin_context)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
         mocker.patch(
             "vweb.routes.settings.views.sync_companies_service",
             return_value=svc,
@@ -210,7 +210,7 @@ class TestSettingsPostSuccess:
         svc = MagicMock()
         svc.get.return_value = company
         svc.update.return_value = company
-        mocker.patch("vweb.app.load_global_context", return_value=admin_context)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
         mocker.patch(
             "vweb.routes.settings.views.sync_companies_service",
             return_value=svc,
@@ -340,7 +340,7 @@ class TestSettingsPostValidation:
         svc = MagicMock()
         svc.get.return_value = company
         svc.update.return_value = company
-        mocker.patch("vweb.app.load_global_context", return_value=admin_context)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
         mocker.patch(
             "vweb.routes.settings.views.sync_companies_service",
             return_value=svc,
@@ -459,7 +459,7 @@ class TestSettingsNavLink:
         """Verify admin users see the /settings link in navigation."""
         from vclient.testing import RollStatisticsFactory
 
-        mocker.patch("vweb.app.load_global_context", return_value=admin_context)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
         mock_users_svc = MagicMock()
         mock_users_svc.get_statistics.return_value = RollStatisticsFactory.build()
         mocker.patch("vweb.routes.profile.views.sync_users_service", return_value=mock_users_svc)
@@ -475,7 +475,7 @@ class TestSettingsNavLink:
         """Verify non-admin users do not see the /settings link in navigation."""
         from vclient.testing import RollStatisticsFactory
 
-        mocker.patch("vweb.app.load_global_context", return_value=player_context)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=player_context)
         mock_users_svc = MagicMock()
         mock_users_svc.get_statistics.return_value = RollStatisticsFactory.build()
         mocker.patch("vweb.routes.profile.views.sync_users_service", return_value=mock_users_svc)

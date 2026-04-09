@@ -14,7 +14,7 @@ from vweb import catalog
 from vweb.lib.global_context import clear_global_context_cache
 
 if TYPE_CHECKING:
-    from vweb.lib.crud_handler import CrudHandler
+    from vweb.lib.crud.handler import CrudHandler
 
 
 @dataclass(frozen=True)

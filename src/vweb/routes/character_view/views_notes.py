@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from vweb.lib.crud_view import Column, CrudTableView
+from vweb.lib.crud.view import Column, CrudTableView
 from vweb.routes.character_view.handlers_notes import CharacterNotesHandler
 
 

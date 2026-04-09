@@ -15,15 +15,15 @@ from vclient.models import CharacterCreate, CharacterTraitAdd, CharacterUpdate
 
 from vweb import catalog
 from vweb.lib.api import fetch_campaign_or_404
-from vweb.lib.character_profile import (
-    build_class_attrs,
-    character_to_form_data,
-    validate_profile,
-)
 from vweb.lib.character_sheet import CharacterSheetService
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.routes.character_create import bp
 from vweb.routes.character_create.autogen_services import fetch_form_options
+from vweb.routes.character_create.profile import (
+    build_class_attrs,
+    character_to_form_data,
+    validate_profile,
+)
 
 if TYPE_CHECKING:
     from vclient.constants import CharacterClass, CharacterType, GameVersion

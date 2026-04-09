@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING, Any
 
 from flask import abort, request
 
-from vweb.lib.crud_view import Column, CrudTableView
+from vweb.lib.crud.view import Column, CrudTableView
 from vweb.lib.guards import is_self
 from vweb.routes.profile.handlers import QuickrollHandler
 
 if TYPE_CHECKING:
-    from vweb.lib.crud_handler import CrudHandler
+    from vweb.lib.crud.handler import CrudHandler
 
 
 class QuickrollsTableView(CrudTableView):

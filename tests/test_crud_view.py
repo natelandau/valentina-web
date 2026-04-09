@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vweb.lib.crud_view import Column, CrudTableView
+from vweb.lib.crud.view import Column, CrudTableView
 
 
 class TestColumn:

@@ -175,7 +175,7 @@ def test_before_request_sets_g_global_context(client, mocker, mock_global_contex
     """Verify the before_request hook populates g.global_context for normal requests."""
     # Given a mocked load_global_context that returns a real GlobalContext
     mocker.patch(
-        "vweb.app.load_global_context",
+        "vweb.lib.hooks.load_global_context",
         return_value=mock_global_context,
     )
 
@@ -191,7 +191,7 @@ def test_before_request_sets_g_global_context(client, mocker, mock_global_contex
 def test_before_request_skips_static(app, mocker) -> None:
     """Verify the before_request hook does not call load_global_context for static paths."""
     # Given a mocked load_global_context
-    mock_load = mocker.patch("vweb.app.load_global_context")
+    mock_load = mocker.patch("vweb.lib.hooks.load_global_context")
 
     # When a static file request is made
     with app.test_request_context("/static/css/style.css"):
@@ -208,7 +208,7 @@ def test_before_request_skips_static(app, mocker) -> None:
 def test_before_request_skips_without_user_id(app, mocker) -> None:
     """Verify the before_request hook skips when no user_id is in session."""
     # Given a mocked load_global_context
-    mock_load = mocker.patch("vweb.app.load_global_context")
+    mock_load = mocker.patch("vweb.lib.hooks.load_global_context")
 
     # When a request is made without user_id in session
     with app.test_request_context("/"):
@@ -320,10 +320,10 @@ def test_hook_retries_on_user_not_found(app, mocker) -> None:
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )
     mock_load = mocker.patch(
-        "vweb.app.load_global_context",
+        "vweb.lib.hooks.load_global_context",
         side_effect=[ctx_without_user, ctx_with_user],
     )
-    mocker.patch("vweb.app.clear_global_context_cache")
+    mocker.patch("vweb.lib.hooks.clear_global_context_cache")
 
     # When a request is made with a session user_id
     client = app.test_client()
@@ -345,8 +345,8 @@ def test_hook_redirects_when_user_not_found_after_retry(app, mocker) -> None:
         campaigns=[],
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )
-    mocker.patch("vweb.app.load_global_context", return_value=ctx_no_user)
-    mocker.patch("vweb.app.clear_global_context_cache")
+    mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx_no_user)
+    mocker.patch("vweb.lib.hooks.clear_global_context_cache")
 
     # When a request is made to a protected route
     client = app.test_client()

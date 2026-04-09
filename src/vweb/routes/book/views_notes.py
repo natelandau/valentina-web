@@ -6,11 +6,11 @@ from typing import TYPE_CHECKING, Any
 
 from flask import abort, request
 
-from vweb.lib.crud_view import Column, CrudTableView
+from vweb.lib.crud.view import Column, CrudTableView
 from vweb.routes.book.handlers import BookNotesHandler
 
 if TYPE_CHECKING:
-    from vweb.lib.crud_handler import CrudHandler
+    from vweb.lib.crud.handler import CrudHandler
 
 
 class BookNotesTableView(CrudTableView):
