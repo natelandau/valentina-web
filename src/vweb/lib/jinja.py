@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 import humanize
 import jinjax
-from flask import g, session, url_for
+from flask import Response, g, session, url_for
 from markdown2 import markdown
 from markupsafe import Markup, escape
 
@@ -198,6 +198,18 @@ def static_url(filename: str) -> str:
         version = vweb.__version__
 
     return f"{base}?v={version}"
+
+
+def hx_redirect(url: str) -> Response:
+    """Return an empty 200 response with an ``HX-Redirect`` header.
+
+    Args:
+        url: The URL to redirect to.
+
+    Returns:
+        A Flask Response that tells HTMX to perform a client-side redirect.
+    """
+    return Response("", status=200, headers={"HX-Redirect": url})
 
 
 def htmx_response(*parts: str) -> Markup:
