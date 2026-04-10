@@ -17,7 +17,7 @@
       </li>
     {% endif %}
     <li>
-      <details>
+      <details x-data @click.outside="$el.removeAttribute('open')">
         <summary>Campaigns</summary>
         <ul class="p-2 bg-base-100 text-base-content z-1 w-max right-0">
           {% for c in ctx.campaigns | sort(attribute="name") %}
@@ -45,7 +45,7 @@
       </details>
     </li>
     <li>
-      <details>
+      <details x-data @click.outside="$el.removeAttribute('open')">
         <summary class="list-none cursor-pointer">
           <shared.UserAvatar user={{ requesting_user() }} size="w-10" />
         </summary>
