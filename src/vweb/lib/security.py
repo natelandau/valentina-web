@@ -29,8 +29,6 @@ def configure_security(app: Flask, s: Settings) -> None:
         "kit.fontawesome.com",
         "ka-f.fontawesome.com",
     ]
-    if s.env == "development":
-        script_src.append("'unsafe-inline'")
 
     csp = {
         "default-src": "'self'",

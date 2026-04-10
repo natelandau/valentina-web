@@ -22,7 +22,7 @@
     <h3 class="font-bold text-lg">{{ modal_title }}</h3>
     <button type="button"
             class="btn btn-sm btn-circle btn-ghost"
-            onclick="this.closest('dialog').close()">&#10005;</button>
+            x-data @click="$el.closest('dialog').close()">&#10005;</button>
 </div>
 
 {% if errors %}
@@ -61,7 +61,7 @@
     </fieldset>
 
     <div class="modal-action">
-        <button type="button" class="btn" onclick="this.closest('dialog').close()">Cancel</button>
+        <button type="button" class="btn" x-data @click="$el.closest('dialog').close()">Cancel</button>
         <button type="submit" class="btn btn-primary">{{ submit_label }}</button>
     </div>
 </form>

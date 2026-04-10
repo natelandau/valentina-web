@@ -93,13 +93,14 @@
                   Edit
                 </shared.CommonButton>
 
-                {% set delete_js = "openDeleteModal('" ~ table_target_id ~ "', '" ~ table_base_url ~ "/" ~ item.id ~ "?parent_id=" ~ parent_id ~ extra_params ~ "')" %}
-                <shared.CommonButton variant="delete" extra_class="btn-xs"
-                              onclick={{ delete_js }}
-                              title="Delete">
+                {% set delete_url = table_base_url ~ "/" ~ item.id ~ "?parent_id=" ~ parent_id ~ extra_params %}
+                {# djlint:off #}
+                <button type="button" class="btn btn-error btn-soft btn-xs" title="Delete"
+                        hx-on:click="var btn = document.getElementById('delete-confirm-btn-{{ table_target_id }}'); btn.setAttribute('hx-delete', '{{ delete_url }}'); htmx.process(btn); document.getElementById('delete-modal-{{ table_target_id }}').showModal()">
                   <i class="fa-solid fa-trash-can"></i>
                   Delete
-                </shared.CommonButton>
+                </button>
+                {# djlint:on #}
               </td>
             {% endif %}
           </tr>
@@ -139,13 +140,14 @@
                 Edit
               </shared.CommonButton>
 
-              {% set delete_js = "openDeleteModal('" ~ table_target_id ~ "', '" ~ table_base_url ~ "/" ~ item.id ~ "?parent_id=" ~ parent_id ~ extra_params ~ "')" %}
-              <shared.CommonButton variant="delete" extra_class="btn-xs"
-                            onclick={{ delete_js }}
-                            title="Delete">
+              {% set delete_url = table_base_url ~ "/" ~ item.id ~ "?parent_id=" ~ parent_id ~ extra_params %}
+              {# djlint:off #}
+              <button type="button" class="btn btn-error btn-soft btn-xs" title="Delete"
+                      hx-on:click="var btn = document.getElementById('delete-confirm-btn-{{ table_target_id }}'); btn.setAttribute('hx-delete', '{{ delete_url }}'); htmx.process(btn); document.getElementById('delete-modal-{{ table_target_id }}').showModal()">
                 <i class="fa-solid fa-trash-can"></i>
                 Delete
-              </shared.CommonButton>
+              </button>
+              {# djlint:on #}
             </div>
           {% endif %}
         </div>
@@ -165,25 +167,16 @@
         Are you sure you want to delete this {{ table_type_item_name | lower }}? This cannot be undone.
       </p>
       <div class="modal-action">
-        <shared.CommonButton variant="cancel" onclick="this.closest('dialog').close()">Cancel</shared.CommonButton>
+        <button type="button" class="btn btn-ghost" hx-on:click="this.closest('dialog').close()">Cancel</button>
         <button id="delete-confirm-btn-{{ table_target_id }}"
                 class="btn btn-error"
                 hx-target="#{{ table_target_id }}"
                 hx-swap="innerHTML"
-                onclick="this.closest('dialog').close()">Delete</button>
+                hx-on:click="this.closest('dialog').close()">Delete</button>
       </div>
     </div>
     <form method="dialog" class="modal-backdrop">
       <button>close</button>
     </form>
   </dialog>
-
-  <script>
-    function openDeleteModal(targetId, deleteUrl) {
-      var btn = document.getElementById('delete-confirm-btn-' + targetId);
-      btn.setAttribute('hx-delete', deleteUrl);
-      htmx.process(btn);
-      document.getElementById('delete-modal-' + targetId).showModal();
-    }
-  </script>
 {% endif %}

@@ -10,10 +10,10 @@
             Are you sure you want to delete <strong>{{ character_name }}</strong>? This cannot be undone.
         </p>
         <div class="modal-action">
-            <shared.CommonButton variant="cancel" onclick="this.closest('dialog').close()">Cancel</shared.CommonButton>
+            <shared.CommonButton variant="cancel" x-data @click="$el.closest('dialog').close()">Cancel</shared.CommonButton>
             <button class="btn btn-error"
                     hx-delete="{{ url_for('character_view.delete', character_id=character_id) }}"
-                    onclick="this.closest('dialog').close()">Delete</button>
+                    x-data @click="$el.closest('dialog').close()">Delete</button>
         </div>
     </div>
     <form method="dialog" class="modal-backdrop">

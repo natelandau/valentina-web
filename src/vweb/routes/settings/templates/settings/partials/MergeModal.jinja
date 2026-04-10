@@ -28,7 +28,7 @@
       <div class="modal-action">
         <button type="button"
                 class="btn btn-ghost"
-                onclick="this.closest('dialog').remove()">Cancel</button>
+                x-data @click="$el.closest('dialog').remove()">Cancel</button>
         <button type="submit" class="btn btn-primary">Merge</button>
       </div>
     </form>

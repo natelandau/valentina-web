@@ -110,7 +110,7 @@
 
         <shared.CommonButton variant="edit" tooltip_text={{ tooltip_text }} disabled={{ term.source_type is not none }} extra_attrs={{ edit_attrs }}>Edit</shared.CommonButton>
         {# djlint:off #}
-          <shared.CommonButton variant="delete" disabled={{ term.source_type is not none }}  btn_type="button" onclick={{ "document.getElementById('delete-term-modal').showModal()" }} tooltip_text={{ tooltip_text }}>Delete</shared.CommonButton>
+          <shared.CommonButton variant="delete" disabled={{ term.source_type is not none }} btn_type="button" x-data @click="document.getElementById('delete-term-modal').showModal()" tooltip_text={{ tooltip_text }}>Delete</shared.CommonButton>
         {# djlint:on #}
       </div>
     </div>
