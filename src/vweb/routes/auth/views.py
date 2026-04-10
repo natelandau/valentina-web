@@ -416,7 +416,7 @@ bp.add_url_rule("/auth/github", view_func=GitHubLoginView.as_view("github_login"
 bp.add_url_rule("/auth/github/callback", view_func=GitHubCallbackView.as_view("github_callback"))
 bp.add_url_rule("/auth/google", view_func=GoogleLoginView.as_view("google_login"))
 bp.add_url_rule("/auth/google/callback", view_func=GoogleCallbackView.as_view("google_callback"))
-bp.add_url_rule("/auth/logout", view_func=LogoutView.as_view("logout"))
+bp.add_url_rule("/auth/logout", view_func=LogoutView.as_view("logout"), methods=["POST"])
 bp.add_url_rule("/pending-approval", view_func=PendingApprovalView.as_view("pending_approval"))
 bp.add_url_rule(
     "/select-companies",
