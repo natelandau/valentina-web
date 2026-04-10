@@ -70,6 +70,8 @@ class Settings(BaseSettings):
     port: int = 8089
 
     access_log: str = "-"
+    access_log_ip_header: str | None = None
+    trusted_proxy_depth: int = 1
     workers: int = Field(default_factory=_default_workers)
 
     redis: RedisSettings = Field(default_factory=RedisSettings)
