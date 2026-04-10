@@ -39,6 +39,15 @@ def register_error_handlers(app: Flask) -> None:
             message="The page you're looking for doesn't exist or has been moved.",
         ), 404
 
+    @app.errorhandler(400)
+    def bad_request(error: HTTPException) -> tuple[str, int]:  # noqa: ARG001
+        return catalog.render(
+            "errors.ErrorPage",
+            code=400,
+            title="Bad Request",
+            message="The server could not understand the request.",
+        ), 400
+
     @app.errorhandler(403)
     def forbidden(error: HTTPException) -> tuple[str, int]:  # noqa: ARG001
         return catalog.render(

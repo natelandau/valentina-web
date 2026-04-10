@@ -1,0 +1,39 @@
+{#def campaign, oob: bool = False #}
+
+{% macro render_badge(campaign, field_name, value, label) %}
+  {% set badge_color = "badge-neutral" if value < 2 else "badge-warning" if value in [2, 3] else "badge-error" %}
+
+  {% if can_manage_campaign() %}
+    {# djlint:off #}
+    <details class="dropdown" x-data @click.outside="$el.removeAttribute('open')">
+      <summary class="badge {{ badge_color }} badge-sm text-semibold cursor-pointer hover:ring-1 ring-base-content/20 list-none">{{ label }} {{ value }} <i class="fa-solid fa-chevron-down text-[0.5rem] ml-0.5"></i></summary>
+      <ul class="menu dropdown-content bg-base-100 rounded-box z-10 w-28 p-2 shadow-md mt-1">
+        {% for i in range(6) %}
+          <li>
+            <button hx-post="{{ url_for('campaign.update_danger_desperation', campaign_id=campaign.id, field=field_name) }}"
+                    hx-target="#danger-desperation-badges"
+                    hx-swap="outerHTML"
+                    hx-vals='{"value": {{ i }}}'
+                    class="{% if i == value %}active{% endif %}">
+              {{ i }}
+            </button>
+          </li>
+        {% endfor %}
+      </ul>
+    </details>
+    {# djlint:on #}
+  {% else %}
+    <span class="badge {{ badge_color }} badge-sm text-semibold">{{ label }} {{ value }}</span>
+  {% endif %}
+{% endmacro %}
+
+<div id="danger-desperation-badges" {% if oob %}hx-swap-oob="true"{% endif %}>
+  <div class="flex items-center gap-2 flex-wrap mt-2">
+    {% if campaign.danger is not none %}
+      {{ render_badge(campaign, "danger", campaign.danger, "Danger") }}
+    {% endif %}
+    {% if campaign.desperation is not none %}
+      {{ render_badge(campaign, "desperation", campaign.desperation, "Desperation") }}
+    {% endif %}
+  </div>
+</div>

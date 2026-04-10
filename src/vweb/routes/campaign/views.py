@@ -248,3 +248,54 @@ bp.add_url_rule(
     view_func=CampaignDeleteView.as_view("delete"),
     methods=["DELETE"],
 )
+
+_DANGER_DESPERATION_MIN = 0
+_DANGER_DESPERATION_MAX = 5
+
+
+class CampaignUpdateDangerDesperationView(MethodView):
+    """Handle inline danger/desperation badge updates."""
+
+    def post(self, campaign_id: str, field: str) -> str:
+        """Update a campaign's danger or desperation value.
+
+        Args:
+            campaign_id: The campaign to update.
+            field: Either ``"danger"`` or ``"desperation"``.
+
+        Returns:
+            Re-rendered badge partial HTML.
+        """
+        if not can_manage_campaign():
+            abort(403)
+
+        if field not in ("danger", "desperation"):
+            abort(400)
+
+        raw_value = request.form.get("value", "")
+        try:
+            value = int(raw_value)
+        except (TypeError, ValueError):
+            abort(400)
+
+        if not _DANGER_DESPERATION_MIN <= value <= _DANGER_DESPERATION_MAX:
+            abort(400)
+
+        if field == "danger":
+            update = CampaignUpdate(danger=value)
+        else:
+            update = CampaignUpdate(desperation=value)
+
+        service = sync_campaigns_service(
+            user_id=g.requesting_user.id, company_id=session["company_id"]
+        )
+        campaign = service.update(campaign_id, update)
+        clear_global_context_cache(session["company_id"], session["user_id"])
+        return catalog.render("index.partials.DangerDesperation", campaign=campaign)
+
+
+bp.add_url_rule(
+    "/campaign/<string:campaign_id>/update/<string:field>",
+    view_func=CampaignUpdateDangerDesperationView.as_view("update_danger_desperation"),
+    methods=["POST"],
+)
