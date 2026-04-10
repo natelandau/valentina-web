@@ -1,3 +1,19 @@
+## v0.4.0 (2026-04-10)
+
+### Feat
+
+- **ui**: add hero image and update landing page layout (#18)
+- **ui**: add inline editing for campaign danger/desperation badges (#17)
+- **ui**: add back-navigation links to PageHeader (#16)
+
+### Fix
+
+- **ui**: auto-close dropdown menus on outside click (#15)
+
+### Refactor
+
+- **proxy**: replace vendor-specific middleware with generic IP resolution (#14)
+
 ## v0.3.2 (2026-04-09)
 
 ### Fix
