@@ -6,7 +6,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, cast
 
-from flask import Response, flash, g, request, session, url_for
+from flask import flash, g, request, session, url_for
 from flask.views import MethodView
 from pydantic import ValidationError as PydanticValidationError
 from vclient import sync_character_traits_service, sync_characters_service
@@ -17,6 +17,7 @@ from vweb import catalog
 from vweb.lib.api import fetch_campaign_or_404
 from vweb.lib.character_sheet import CharacterSheetService
 from vweb.lib.global_context import clear_global_context_cache
+from vweb.lib.jinja import hx_redirect
 from vweb.routes.character_create import bp
 from vweb.routes.character_create.autogen_services import fetch_form_options
 from vweb.routes.character_create.profile import (
@@ -28,6 +29,7 @@ from vweb.routes.character_create.profile import (
 if TYPE_CHECKING:
     from vclient.constants import CharacterClass, CharacterType, GameVersion
     from vclient.models import Campaign
+    from werkzeug.wrappers.response import Response
 
 logger = logging.getLogger(__name__)
 
@@ -239,11 +241,7 @@ class ManualProfileView(MethodView):
 
         clear_global_context_cache(session["company_id"], session["user_id"])
         flash("Profile updated successfully", "success")
-        return Response(
-            "",
-            status=200,
-            headers={"HX-Redirect": url_for("character_view.character", character_id=character_id)},
-        )
+        return hx_redirect(url_for("character_view.character", character_id=character_id))
 
     def _post_create(
         self,
@@ -408,15 +406,7 @@ class ManualFinalizeView(MethodView):
 
         if not temp_char_id:
             flash("No character in progress.", "error")
-            return Response(
-                "",
-                status=200,
-                headers={
-                    "HX-Redirect": url_for(
-                        "character_create.manual_profile", campaign_id=campaign_id
-                    )
-                },
-            )
+            return hx_redirect(url_for("character_create.manual_profile", campaign_id=campaign_id))
 
         trait_items: list[CharacterTraitAdd] = []
         for key, value in request.form.items():
@@ -477,8 +467,7 @@ class ManualFinalizeView(MethodView):
         _clear_temp_session()
         clear_global_context_cache(session["company_id"], session["user_id"])
         flash("Character created successfully!", "success")
-        redirect_url = url_for("character_view.character", character_id=temp_char_id)
-        return Response("", status=200, headers={"HX-Redirect": redirect_url})
+        return hx_redirect(url_for("character_view.character", character_id=temp_char_id))
 
 
 bp.add_url_rule(

@@ -8,7 +8,6 @@ from flask import (
     Blueprint,
     flash,
     g,
-    make_response,
     redirect,
     request,
     session,
@@ -17,7 +16,7 @@ from flask import (
 from flask.views import MethodView
 from vclient import sync_character_traits_service
 from vclient.constants import TraitModifyCurrency
-from vclient.exceptions import ConflictError, ValidationError
+from vclient.exceptions import AuthorizationError, ConflictError, ValidationError
 from vclient.models import TraitCreate
 
 from vweb import catalog
@@ -26,12 +25,15 @@ from vweb.lib.blueprint_cache import get_trait as get_blueprint_trait
 from vweb.lib.character_sheet import CharacterSheetService
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_edit_character, can_edit_traits_free
+from vweb.lib.jinja import hx_redirect
 
 bp = Blueprint("character_trait_edit", __name__)
 
 if TYPE_CHECKING:
     from vclient._sync.services import SyncCharacterTraitsService
     from werkzeug.wrappers.response import Response
+
+_API_ERRORS = (AuthorizationError, ConflictError, ValidationError)
 
 
 class CharacterTraitsView(MethodView):
@@ -50,7 +52,7 @@ class CharacterTraitsView(MethodView):
         trait_id: str,
         value: str,
         get_method_url: str,
-    ) -> str:
+    ) -> Response:
         """Update a trait value.
 
         Args:
@@ -60,7 +62,7 @@ class CharacterTraitsView(MethodView):
             get_method_url: The URL to redirect to.
 
         Returns:
-            A string to redirect to.
+            An HX-Redirect response.
         """
         value_options = svc.get_value_options(trait_id)
         if value not in value_options.options:
@@ -68,7 +70,7 @@ class CharacterTraitsView(MethodView):
                 f"You don't have the ability to set {value_options.name.strip().title()} to {value}",
                 "warning",
             )
-            return f'<script>window.location.href="{get_method_url}"</script>'
+            return hx_redirect(get_method_url)
 
         requested_option = value_options.options[str(value)]
         direction = requested_option.direction
@@ -86,15 +88,19 @@ class CharacterTraitsView(MethodView):
                 f"You don't have enough {self.spend_type_humanized} to set {value_options.name.strip().title()} to {value}. You would need {point_change} more {self.spend_type_humanized}",
                 "warning",
             )
-            return f'<script>window.location.href="{get_method_url}"</script>'
+            return hx_redirect(get_method_url)
 
-        svc.change_value(trait_id, int(value), currency=self.spend_type)
+        try:
+            svc.change_value(trait_id, int(value), currency=self.spend_type)
+        except _API_ERRORS as error:
+            flash(error.detail or "Failed to update trait", "error")
+            return hx_redirect(get_method_url)
 
-        flash(
-            f"Updated {value_options.name.strip().title()} to {value}.<br>You {'recouped' if direction == 'decrease' else 'spent'} {point_change} {self.spend_type_humanized}",
-            "success",
-        )
-        return f'<script>window.location.href="{get_method_url}"</script>'
+        msg = f"Updated {value_options.name.strip().title()} to {value}."
+        if self.spend_type != "NO_COST":
+            msg += f"<br>You {'recouped' if direction == 'decrease' else 'spent'} {point_change} {self.spend_type_humanized}"
+        flash(msg, "success")
+        return hx_redirect(get_method_url)
 
     def _delete_trait(
         self,
@@ -102,7 +108,7 @@ class CharacterTraitsView(MethodView):
         *,
         trait_id: str,
         get_method_url: str,
-    ) -> str:
+    ) -> Response:
         """Delete a trait.
 
         Args:
@@ -111,18 +117,22 @@ class CharacterTraitsView(MethodView):
             get_method_url: The URL to redirect to.
 
         Returns:
-            A string to redirect to.
+            An HX-Redirect response.
         """
         value_options = svc.get_value_options(trait_id)
         point_change = value_options.options["DELETE"].point_change
 
-        svc.delete(trait_id, currency=self.spend_type)
+        try:
+            svc.delete(trait_id, currency=self.spend_type)
+        except _API_ERRORS as error:
+            flash(error.detail or "Failed to delete trait", "error")
+            return hx_redirect(get_method_url)
 
         msg = "Trait deleted."
-        if self.spend_type in ["XP", "STARTING_POINTS"]:
+        if self.spend_type != "NO_COST":
             msg += f"<br>You recouped {point_change} {self.spend_type_humanized}"
         flash(msg, "success")
-        return f'<script>window.location.href="{get_method_url}"</script>'
+        return hx_redirect(get_method_url)
 
     def get(self, character_id: str) -> str | Response:
         """Get the character traits form."""
@@ -130,10 +140,7 @@ class CharacterTraitsView(MethodView):
         character, campaign = get_character_and_campaign(character_id)
 
         if not character or not campaign:
-            response = make_response("")
-            if request.headers.get("HX-Request"):
-                response.headers["HX-Redirect"] = url_for("index.index")
-            return response
+            return hx_redirect(url_for("index.index"))
 
         if self.spend_type == "NO_COST" and not can_edit_traits_free(character):
             flash("You are not authorized to update traits without spending points", "error")
@@ -178,15 +185,12 @@ class CharacterTraitsView(MethodView):
             post_url=url_for(f"character_trait_edit.{self.spend_type}", character_id=character_id),
         )
 
-    def post(self, character_id: str) -> str | Response:  # noqa: C901, PLR0911
+    def post(self, character_id: str) -> str | Response:  # noqa: PLR0911
         """Post the character traits form."""
         requesting_user = g.requesting_user
         character, campaign = get_character_and_campaign(character_id)
         if not character or not campaign:
-            if request.headers.get("HX-Request"):
-                response = make_response("")
-                response.headers["HX-Redirect"] = url_for("index.index")
-            return response
+            return hx_redirect(url_for("index.index"))
 
         get_method_url = url_for(
             f"character_trait_edit.{self.spend_type}", character_id=character_id
@@ -199,16 +203,17 @@ class CharacterTraitsView(MethodView):
             company_id=session["company_id"],
         )
         sheet_svc = CharacterSheetService(character=character, requesting_user=requesting_user)
-        sheet_svc.clear_cache()
-        clear_global_context_cache(session["company_id"], session["user_id"])
 
         for trait_id, value in request.form.items():
             if value == "DELETE":
-                return self._delete_trait(
+                result = self._delete_trait(
                     svc=api_svc,
                     trait_id=trait_id,
                     get_method_url=get_method_url,
                 )
+                sheet_svc.clear_cache()
+                clear_global_context_cache(session["company_id"], session["user_id"])
+                return result
 
             if trait_id.startswith("ADD_UNASSIGNED"):
                 new_trait_id = value
@@ -216,23 +221,25 @@ class CharacterTraitsView(MethodView):
                 trait = get_blueprint_trait(new_trait_id)
                 if trait is None:
                     flash("Trait not found", "error")
-                    return f'<script>window.location.href="{get_method_url}"</script>'
+                    return hx_redirect(get_method_url)
                 try:
                     api_svc.assign(
                         trait_id=new_trait_id, value=trait.min_value, currency=self.spend_type
                     )
-                except (ConflictError, ValidationError) as error:
+                except _API_ERRORS as error:
                     flash(error.detail or "Failed to assign trait", "error")
-                    return f'<script>window.location.href="{get_method_url}"</script>'
+                    return hx_redirect(get_method_url)
 
                 flash(f"Assigned {trait.name}", "success")
-                return f'<script>window.location.href="{get_method_url}"</script>'
+                sheet_svc.clear_cache()
+                clear_global_context_cache(session["company_id"], session["user_id"])
+                return hx_redirect(get_method_url)
 
             if trait_id.startswith("CUSTOM_"):
                 new_trait_name = value.strip().title()
                 if not new_trait_name:
                     flash("Trait name is required", "warning")
-                    return f'<script>window.location.href="{get_method_url}"</script>'
+                    return hx_redirect(get_method_url)
                 custom_trait = TraitCreate(
                     name=new_trait_name,
                     show_when_zero=True,
@@ -240,22 +247,27 @@ class CharacterTraitsView(MethodView):
                 )
                 try:
                     api_svc.create(custom_trait)
-                except (ConflictError, ValidationError) as error:
+                except _API_ERRORS as error:
                     flash(error.detail or "Failed to create custom trait", "error")
-                    return f'<script>window.location.href="{get_method_url}"</script>'
+                    return hx_redirect(get_method_url)
 
                 flash(f"Created {new_trait_name}", "success")
-                return f'<script>window.location.href="{get_method_url}"</script>'
+                sheet_svc.clear_cache()
+                clear_global_context_cache(session["company_id"], session["user_id"])
+                return hx_redirect(get_method_url)
 
-            return self._update_trait_value(
+            result = self._update_trait_value(
                 svc=api_svc,
                 trait_id=trait_id,
                 value=value,
                 get_method_url=get_method_url,
             )
+            sheet_svc.clear_cache()
+            clear_global_context_cache(session["company_id"], session["user_id"])
+            return result
 
         flash("Something went wrong", "error")
-        return f'<script>window.location.href="{get_method_url}"</script>'
+        return hx_redirect(get_method_url)
 
 
 for spend_type in get_args(TraitModifyCurrency):

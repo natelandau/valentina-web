@@ -1,7 +1,15 @@
 """Campaign routes."""
 
-from flask import Blueprint, Response, abort, g, request, session, url_for
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from flask import Blueprint, abort, g, request, session, url_for
 from flask.views import MethodView
+
+if TYPE_CHECKING:
+    from werkzeug.wrappers.response import Response
+
 from vclient import sync_campaigns_service
 from vclient.models import CampaignCreate, CampaignUpdate
 
@@ -9,6 +17,7 @@ from vweb import catalog
 from vweb.lib.api import fetch_campaign_or_404, get_user_campaign_experience
 from vweb.lib.global_context import clear_global_context_cache, get_campaign_statistics
 from vweb.lib.guards import can_manage_campaign, is_storyteller
+from vweb.lib.jinja import hx_redirect
 
 bp = Blueprint("campaign", __name__)
 
@@ -152,8 +161,7 @@ class CampaignCreateView(MethodView):
         new_campaign = service.create(CampaignCreate(name=name, description=description or None))
         clear_global_context_cache(session["company_id"], session["user_id"])
 
-        redirect_url = url_for("campaign.campaign", campaign_id=new_campaign.id)
-        return Response("", status=200, headers={"HX-Redirect": redirect_url})
+        return hx_redirect(url_for("campaign.campaign", campaign_id=new_campaign.id))
 
 
 bp.add_url_rule(
@@ -198,8 +206,7 @@ class CampaignUpdateView(MethodView):
         service.update(campaign_id, CampaignUpdate(name=name, description=description or None))
         clear_global_context_cache(session["company_id"], session["user_id"])
 
-        redirect_url = url_for("campaign.campaign", campaign_id=campaign_id)
-        return Response("", status=200, headers={"HX-Redirect": redirect_url})
+        return hx_redirect(url_for("campaign.campaign", campaign_id=campaign_id))
 
 
 bp.add_url_rule(
@@ -233,7 +240,7 @@ class CampaignDeleteView(MethodView):
         clear_global_context_cache(session["company_id"], session["user_id"])
         session.pop("last_campaign_id", None)
 
-        return Response("", status=200, headers={"HX-Redirect": "/"})
+        return hx_redirect("/")
 
 
 bp.add_url_rule(

@@ -3,14 +3,20 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
-from flask import Response, flash, g, request, session, url_for
+from flask import flash, g, request, session, url_for
 from flask.views import MethodView
+
+if TYPE_CHECKING:
+    from werkzeug.wrappers.response import Response
+
 from vclient.exceptions import APIError
 
 from vweb import catalog
 from vweb.lib.api import fetch_campaign_or_404
 from vweb.lib.global_context import clear_global_context_cache
+from vweb.lib.jinja import hx_redirect
 from vweb.routes.character_create import bp
 from vweb.routes.character_create.autogen_services import (
     finalize_session,
@@ -89,8 +95,7 @@ class MultiAutogenFinalizeView(MethodView):
 
         if not session_id or not selected_character_id:
             flash("Invalid session. Please start a new session.", "error")
-            redirect_url = url_for("character_create.selection_page", campaign_id=campaign_id)
-            return Response("", status=200, headers={"HX-Redirect": redirect_url})
+            return hx_redirect(url_for("character_create.selection_page", campaign_id=campaign_id))
 
         try:
             new_char = finalize_session(
@@ -102,13 +107,11 @@ class MultiAutogenFinalizeView(MethodView):
         except APIError:
             logger.exception("Failed to finalize chargen session")
             flash("Failed to finalize character. Please try again.", "error")
-            redirect_url = url_for("character_create.selection_page", campaign_id=campaign_id)
-            return Response("", status=200, headers={"HX-Redirect": redirect_url})
+            return hx_redirect(url_for("character_create.selection_page", campaign_id=campaign_id))
 
         clear_global_context_cache(session["company_id"], session["user_id"])
         flash("Character created successfully!", "success")
-        redirect_url = url_for("character_view.character", character_id=new_char.id)
-        return Response("", status=200, headers={"HX-Redirect": redirect_url})
+        return hx_redirect(url_for("character_view.character", character_id=new_char.id))
 
 
 bp.add_url_rule(
@@ -143,8 +146,7 @@ class ResumeSessionView(MethodView):
         except APIError:
             logger.exception("Failed to resume chargen session %s", session_id)
             flash("This session has expired or is no longer available.", "error")
-            redirect_url = url_for("character_create.selection_page", campaign_id=campaign_id)
-            return Response("", status=200, headers={"HX-Redirect": redirect_url})
+            return hx_redirect(url_for("character_create.selection_page", campaign_id=campaign_id))
 
         return catalog.render(
             "character_create.partials.MultiAutogenCompare",
