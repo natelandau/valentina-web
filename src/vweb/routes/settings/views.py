@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from flask import Blueprint, flash, g, make_response, redirect, request, session, url_for
+from flask import Blueprint, flash, g, redirect, request, session, url_for
 from flask.views import MethodView
 from pydantic import ValidationError
 from vclient import sync_companies_service
@@ -13,7 +13,7 @@ from vclient.models.companies import CompanySettings, CompanyUpdate
 from vweb import catalog
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import is_admin, is_self
-from vweb.lib.jinja import htmx_response
+from vweb.lib.jinja import htmx_response, hx_redirect
 from vweb.routes.settings import services as settings_services
 
 if TYPE_CHECKING:
@@ -259,9 +259,7 @@ class MergeUserView(MethodView):
 
         settings_services.merge(target_id, user_id, g.requesting_user.id)
         flash("Users merged.", "success")
-        response = make_response("", 200)
-        response.headers["HX-Redirect"] = url_for("settings.users")
-        return response
+        return hx_redirect(url_for("settings.users"))
 
 
 bp.add_url_rule("", view_func=SettingsView.as_view("settings"), methods=["GET", "POST"])

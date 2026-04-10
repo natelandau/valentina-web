@@ -6,18 +6,20 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from flask import Response, abort, flash, request, session, url_for
+from flask import abort, flash, request, session, url_for
 from flask.views import MethodView
 from vclient.exceptions import APIError
 
 if TYPE_CHECKING:
     from vclient.models import ChargenSessionResponse, User
+    from werkzeug.wrappers.response import Response
 
 from vweb import catalog
 from vweb.lib.api import fetch_campaign_or_404, get_user_campaign_experience
 from vweb.lib.character_sheet import CharacterSheetService
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import is_storyteller
+from vweb.lib.jinja import hx_redirect
 from vweb.routes.character_create import bp
 from vweb.routes.character_create.autogen_services import (
     fetch_form_options,
@@ -212,8 +214,7 @@ class SingleAutogenFormView(MethodView):
 
         clear_global_context_cache(session["company_id"], session["user_id"])
         flash("Character created successfully!", "success")
-        redirect_url = url_for("character_view.character", character_id=new_char.id)
-        return Response("", status=200, headers={"HX-Redirect": redirect_url})
+        return hx_redirect(url_for("character_view.character", character_id=new_char.id))
 
 
 bp.add_url_rule(

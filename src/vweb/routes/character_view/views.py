@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from flask import (
     Blueprint,
-    Response,
     g,
     make_response,
     redirect,
@@ -23,13 +22,14 @@ from vweb.lib.character_sheet import CharacterSheetService
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_edit_character
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
-from vweb.lib.jinja import htmx_response
+from vweb.lib.jinja import htmx_response, hx_redirect
 from vweb.routes.character_view.views_inventory import CharacterInventoryTableView
 from vweb.routes.character_view.views_notes import CharacterNotesTableView
 from vweb.routes.dictionary.cache import get_all_terms
 
 if TYPE_CHECKING:
     from vclient.models import Campaign, Character
+    from werkzeug.wrappers.response import Response
 
 bp = Blueprint("character_view", __name__)
 
@@ -159,9 +159,7 @@ class CharacterView(MethodView):
 
         if not character or not campaign:
             if request.headers.get("HX-Request"):
-                response = make_response("")
-                response.headers["HX-Redirect"] = url_for("index.index")
-                return response
+                return hx_redirect(url_for("index.index"))
 
             return redirect(url_for("index.index"))  # ty:ignore[invalid-return-type]
 
@@ -213,7 +211,7 @@ class CharacterDeleteView(MethodView):
         char_svc.delete(character_id)
         clear_global_context_cache(session["company_id"], session["user_id"])
 
-        return Response("", status=200, headers={"HX-Redirect": "/"})
+        return hx_redirect("/")
 
 
 bp.add_url_rule(

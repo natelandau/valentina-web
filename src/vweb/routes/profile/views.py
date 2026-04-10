@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from flask import (
     Blueprint,
-    Response,
     abort,
     g,
-    make_response,
     render_template,
     request,
     session,
     url_for,
 )
 from flask.views import MethodView
+
+if TYPE_CHECKING:
+    from werkzeug.wrappers.response import Response
 from vclient import sync_users_service
 from vclient.models.users import UserUpdate
 
@@ -21,6 +24,7 @@ from vweb import catalog
 from vweb.lib.api import get_campaign_name, validate_and_submit_experience
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_grant_experience, is_self
+from vweb.lib.jinja import hx_redirect
 from vweb.routes.profile.views_quickrolls import QuickrollsTableView
 
 bp = Blueprint("profile", __name__)
@@ -95,9 +99,7 @@ class ProfileView(MethodView):
         svc.update(user_id, request=update_request)
         clear_global_context_cache(session["company_id"], session["user_id"])
 
-        response = make_response("")
-        response.headers["HX-Redirect"] = url_for("profile.profile", user_id=user_id)
-        return response
+        return hx_redirect(url_for("profile.profile", user_id=user_id))
 
 
 def _build_experience_rows(user_id: str) -> tuple[list[dict], int, int]:
