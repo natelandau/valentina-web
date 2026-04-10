@@ -5,7 +5,7 @@
 #}
 
 <shared.PageLayout title="Add Character">
-<shared.PageHeader title="Add Character" before_text={{ campaign.name }} />
+<shared.PageHeader title="Add Character" before_text={{ campaign.name }} back_url={{ url_for('index.index') }} back_text="Back Home" />
 <div id="creation-content">
   <character_create.partials.SelectionCards campaign={{ campaign }} user_xp={{ user_xp }} pending_sessions={{ pending_sessions }} />
 </div>

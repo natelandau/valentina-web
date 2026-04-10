@@ -27,7 +27,9 @@
       <shared.CommonButton variant="add" extra_class="btn-sm" href={{ url_for('character_trait_edit.XP', character_id=character.id) }}>
       <i class="fa-solid fa-bolt"></i> Spend XP
       </shared.CommonButton>
-      <details class="dropdown dropdown-end" x-data @click.outside="$el.removeAttribute('open')">
+      <details class="dropdown dropdown-end"
+               x-data
+               @click.outside="$el.removeAttribute('open')">
         <summary class="btn btn-sm btn-ghost">
           <i class="fa-solid fa-bars"></i>
           <span class="inline">More</span>
@@ -56,7 +58,8 @@
           {% endif %}
           <li class="border-t border-base-300 mt-1 pt-1">
             <button class="text-error hover:bg-error/10"
-                    x-data @click="document.getElementById('character-delete-modal').showModal()">
+                    x-data
+                    @click="document.getElementById('character-delete-modal').showModal()">
               <i class="fa-solid fa-trash-can"></i> Delete Character
             </button>
           </li>
@@ -65,7 +68,7 @@
     {% endif %}
   {% endset %}
 
-  <shared.PageHeader title={{ character.name_full }} after_text={{ character.character_class | title }} actions={{ header_actions }}>
+  <shared.PageHeader title={{ character.name_full }} after_text={{ character.character_class | title }} actions={{ header_actions }} back_url={{ url_for("index.index") }} back_text="Back Home">
   </shared.PageHeader>
   <character_view.components.CharacterNav character_id={{ character.id }} active_section={{ active_section }} />
 

@@ -2,12 +2,23 @@
     title: str = "",
     before_text: str = "",
     after_text: str = "",
-    actions: str = ""
+    actions: str = "",
+    back_url: str = "",
+    back_text: str = "",
+    icon: str = ""
 #}
 
 <div class="bg-base-200 rounded-box p-3 sm:p-4">
+  {% if back_url and back_text %}
+    <a href="{{ back_url }}" class="link link-primary text-sm inline-flex items-center gap-1 mb-1">
+      <i class="fa-solid fa-chevron-left text-xs"></i> {{ back_text }}
+    </a>
+  {% endif %}
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-    <div class="min-w-0">
+    {% if icon %}
+      <div class="shrink-0">{{ icon }}</div>
+    {% endif %}
+    <div class="min-w-0 flex-1">
       <div class="join items-baseline">
         {% if before_text %}
           <div class="text-3xl font-thin opacity-50 tabular-nums text-nowrap join-item pr-2">

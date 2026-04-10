@@ -7,7 +7,7 @@
 
     <shared.CommonButton variant="add" extra_attrs={{ add_attrs }}>Add Term</shared.CommonButton>
   {% endset %}
-  <shared.PageHeader title="Dictionary" actions={{ add_btn }} />
+  <shared.PageHeader title="Dictionary" actions={{ add_btn }} back_url={{ url_for('index.index') }} back_text="Back Home" />
 
   <div class="flex flex-col lg:flex-row lg:border lg:border-base-300 lg:rounded-box lg:overflow-hidden"
        style="--dict-height: calc(100vh - 12rem)">

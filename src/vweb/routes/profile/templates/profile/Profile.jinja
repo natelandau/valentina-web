@@ -25,11 +25,16 @@
   {% endif %}
 {% endset %}
 
+{% set avatar_url = (user.discord_profile.avatar_url if user.discord_profile and user.discord_profile.avatar_url else (user.github_profile.avatar_url if user.github_profile and user.github_profile.avatar_url else (user.google_profile.avatar_url if user.google_profile and user.google_profile.avatar_url else ""))) %}
+{% if avatar_url %}
+  {% set avatar_html = '<div class="avatar w-16"><img alt="' ~ user.username ~ '" src="' ~ avatar_url ~ '" class="rounded-full" /></div>' %}
+{% else %}
+  {% set initials = (user.name_first or user.username)[0] | upper ~ (user.name_last[0] | upper if user.name_last else "") %}
+  {% set avatar_html = '<div class="avatar avatar-placeholder"><div class="bg-neutral text-neutral-content w-16 rounded-full"><span>' ~ initials ~ '</span></div></div>' %}
+{% endif %}
+
 <shared.PageLayout title={{ user.username }}>
-<div class="flex items-start gap-4">
-  <shared.UserAvatar user={{ user }} size="w-16" />
-  <div class="flex-1">
-    <shared.PageHeader title={{ user.username }} actions={{ edit_btn }}>
+    <shared.PageHeader title={{ user.username }} actions={{ edit_btn }} back_url={{ url_for('index.index') }} back_text="Back Home" icon={{ avatar_html }}>
     <div class="flex flex-wrap items-center gap-2 mt-1 text-sm opacity-70">
       {% if user.name_first and user.name_last %}
         <span>{{ user.name_first }} {{ user.name_last }}</span>
@@ -42,8 +47,6 @@
       <span>{{ character_count }} character{{ "s" if character_count != 1 else "" }}</span>
     </div>
     </shared.PageHeader>
-  </div>
-</div>
 
 <!-- Edit form target (empty until Edit Profile clicked) -->
 <div id="profile-edit-form" class="mt-4"></div>
