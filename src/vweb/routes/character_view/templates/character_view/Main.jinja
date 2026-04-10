@@ -56,7 +56,7 @@
           {% endif %}
           <li class="border-t border-base-300 mt-1 pt-1">
             <button class="text-error hover:bg-error/10"
-                    onclick="document.getElementById('character-delete-modal').showModal()">
+                    x-data @click="document.getElementById('character-delete-modal').showModal()">
               <i class="fa-solid fa-trash-can"></i> Delete Character
             </button>
           </li>

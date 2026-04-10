@@ -25,7 +25,7 @@ duty css              # Build CSS (production, minified)
 - **Frontend**: HTMX and AlpineJS via CDN
 - **CSS**: Tailwind v4 + daisyUI v5 via `@tailwindcss/cli` (npm)
 - **Config**: pydantic-settings, `VWEB_` env prefix, reads `.env.secret`; lazy singleton via `get_settings()` — never use a module-level `settings`
-- **Security**: Flask-Talisman (CSP/HSTS/cookies), flask-wtf CSRF, Authlib OAuth. When adding new CDN sources, update the CSP dict in `create_app()`.
+- **Security**: Flask-Talisman (CSP/HSTS/cookies), flask-wtf CSRF, Authlib OAuth. When adding new CDN sources, update the CSP dict in `create_app()`. **No inline JavaScript** — CSP blocks `onclick`, `onchange`, inline `<script>` tags, etc. in production (`'unsafe-inline'` is only enabled for `script-src` in development). Use Alpine.js `@click`/`@change`/`x-data` directives instead. For elements not already in an Alpine scope, add `x-data` directly: `<button x-data @click="...">`. For Alpine to evaluate expressions it needs `'unsafe-eval'`, which is already in the CSP.
 - **API client**: valentina-python-client (`SyncVClient`)
 
 ### Route-Centric Structure

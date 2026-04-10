@@ -36,7 +36,7 @@
               <div class="divider mt-1 mb-1"></div>
             {% endif %}
             <li>
-              <a onclick="document.getElementById('campaign-create-modal').showModal()">
+              <a x-data @click="document.getElementById('campaign-create-modal').showModal()">
                 + Add New Campaign
               </a>
             </li>
@@ -61,7 +61,7 @@
             </li>
           {% endif %}
           <li>
-            <a onclick="document.getElementById('logout-form').submit()">Logout</a>
+            <a x-data @click="document.getElementById('logout-form').submit()">Logout</a>
           </li>
         </ul>
         <shared.LogoutForm />

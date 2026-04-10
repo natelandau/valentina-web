@@ -110,7 +110,7 @@
 
         <shared.CommonButton variant="edit" tooltip_text={{ tooltip_text }} disabled={{ term.source_type is not none }} extra_attrs={{ edit_attrs }}>Edit</shared.CommonButton>
         {# djlint:off #}
-          <shared.CommonButton variant="delete" disabled={{ term.source_type is not none }}  btn_type="button" onclick={{ "document.getElementById('delete-term-modal').showModal()" }} tooltip_text={{ tooltip_text }}>Delete</shared.CommonButton>
+          <shared.CommonButton variant="delete" disabled={{ term.source_type is not none }} btn_type="button" hx-on:click="document.getElementById('delete-term-modal').showModal()" tooltip_text={{ tooltip_text }}>Delete</shared.CommonButton>
         {# djlint:on #}
       </div>
     </div>
@@ -159,15 +159,14 @@
       </div>
     {% endif %}
 
-    {% if term.source_type is not none %}
+    {% if term.source_type is none %}
       <dialog id="delete-term-modal" class="modal">
         <div class="modal-box">
           <h3 class="text-lg font-bold">Delete "{{ term.term }}"?</h3>
           <p class="py-4">This action cannot be undone.</p>
           <div class="modal-action">
-            <form method="dialog">
-              <shared.CommonButton variant="cancel">Cancel</shared.CommonButton>
-            </form>
+            <button type="button" class="btn btn-ghost"
+                    hx-on:click="this.closest('dialog').close()">Cancel</button>
 
             {% set del_attrs = 'hx-delete="' ~ url_for("dictionary.term_delete", term_id=term.id) ~ '" hx-target="#term-detail" hx-swap="innerHTML"' %}
 

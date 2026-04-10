@@ -20,7 +20,8 @@
 <form hx-post="{{ url_for('character_create.single_autogen_form', campaign_id=campaign.id) }}"
       hx-target="#creation-content"
       hx-swap="innerHTML"
-      hx-disabled-elt="button[type='submit']">
+      hx-disabled-elt="button[type='submit']"
+      x-data="{ selectedClass: '{{ form_data.get('character_class', '') }}' }">
 
   <input type="hidden" name="character_type" value="{{ form_data.get('character_type', '') }}" />
 
@@ -29,7 +30,7 @@
     <fieldset class="fieldset">
       <legend class="fieldset-legend">Character Class</legend>
       <select name="character_class" id="character-class-select" class="select select-bordered w-full"
-              onchange="toggleClassFields(this.value)">
+              x-model="selectedClass">
         <option value="">Random</option>
         {% for c in character_classes %}
           <option value="{{ c }}" {% if form_data.get("character_class") == c %}selected{% endif %}>{{ c | title }}</option>
@@ -72,7 +73,7 @@
   </div>
 
   {# Class-specific options #}
-  <div id="vampire-fields" class="mt-4 border border-base-300 rounded-lg p-4" style="display: none;">
+  <div id="vampire-fields" class="mt-4 border border-base-300 rounded-lg p-4" x-show="selectedClass === 'VAMPIRE'" x-cloak>
     <h4 class="font-semibold text-sm uppercase text-base-content/60 mb-3">Vampire Options</h4>
     <fieldset class="fieldset">
       <legend class="fieldset-legend">Vampire Clan</legend>
@@ -85,7 +86,7 @@
     </fieldset>
   </div>
 
-  <div id="werewolf-fields" class="mt-4 border border-base-300 rounded-lg p-4" style="display: none;">
+  <div id="werewolf-fields" class="mt-4 border border-base-300 rounded-lg p-4" x-show="selectedClass === 'WEREWOLF'" x-cloak>
     <h4 class="font-semibold text-sm uppercase text-base-content/60 mb-3">Werewolf Options</h4>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <fieldset class="fieldset">
@@ -119,11 +120,3 @@
   </div>
 </form>
 
-<script>
-function toggleClassFields(value) {
-  document.getElementById('vampire-fields').style.display = value === 'VAMPIRE' ? 'block' : 'none';
-  document.getElementById('werewolf-fields').style.display = value === 'WEREWOLF' ? 'block' : 'none';
-}
-// Run on load in case form_data has a class pre-selected
-toggleClassFields(document.getElementById('character-class-select')?.value || '');
-</script>
