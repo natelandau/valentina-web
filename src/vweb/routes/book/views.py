@@ -130,7 +130,7 @@ class BookDetailView(MethodView):
         is_htmx = request.headers.get("HX-Request")
         hx_target = request.headers.get("HX-Target", "")
 
-        if is_htmx and section is not None and hx_target == BOOK_CARD_ID:
+        if is_htmx and hx_target == BOOK_CARD_ID:
             prev_book, next_book, total_books = _load_adjacent_books(campaign_id, book.number)
             card = _render_book_card(
                 book=book,
