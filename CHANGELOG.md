@@ -1,3 +1,12 @@
+## v0.3.2 (2026-04-09)
+
+### Fix
+
+- **traits**: replace inline script redirects with HX-Redirect (#13)
+- **book**: return card fragment on edit cancel (#12)
+- **security**: replace inline JS with Alpine/HTMX (#11)
+- **auth**: add POST method to logout route (#10)
+
 ## v0.3.1 (2026-04-09)
 
 ### Fix

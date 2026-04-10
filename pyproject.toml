@@ -24,7 +24,7 @@
     name = "vweb"
     readme = "README.md"
     requires-python = ">=3.13,<3.14"
-    version = "0.3.1"
+    version = "0.3.2"
 
     [project.scripts]
         vweb = "vweb:main"
