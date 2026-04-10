@@ -1,5 +1,6 @@
 """Tests for campaign blueprint routes."""
 
+import pytest
 from vclient.testing import (
     CampaignFactory,
     CharacterFactory,
@@ -8,7 +9,7 @@ from vclient.testing import (
 )
 
 from tests.conftest import get_csrf
-from tests.helpers import build_global_context
+from tests.helpers import assert_has_element, build_global_context
 from vweb.lib.global_context import GlobalContext
 
 
@@ -422,6 +423,126 @@ class TestCampaignUpdateView:
 
         # Then a 404 is returned
         assert response.status_code == 404
+
+
+class TestCampaignUpdateDangerDesperationView:
+    """Tests for POST /campaign/<campaign_id>/update/<field>."""
+
+    def test_updates_danger_and_returns_badge(self, client, mocker) -> None:
+        """Verify a storyteller can update danger and receive re-rendered badges."""
+        # Given a STORYTELLER user
+        ctx = build_global_context(user_role="STORYTELLER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        mock_service = mocker.MagicMock()
+        updated_campaign = CampaignFactory.build(id=campaign.id, danger=3, desperation=0)
+        mock_service.update.return_value = updated_campaign
+        mocker.patch("vweb.routes.campaign.views.sync_campaigns_service", return_value=mock_service)
+        mocker.patch("vweb.routes.campaign.views.clear_global_context_cache")
+
+        # When posting a danger value update
+        csrf = get_csrf(client)
+        response = client.post(
+            f"/campaign/{campaign.id}/update/danger",
+            data={"value": "3"},
+            headers={"X-CSRFToken": csrf, "HX-Request": "true"},
+        )
+
+        # Then the badge partial is returned
+        assert response.status_code == 200
+        assert_has_element(response, id="danger-desperation-badges")
+        mock_service.update.assert_called_once()
+
+    def test_updates_desperation(self, client, mocker) -> None:
+        """Verify a storyteller can update desperation."""
+        # Given a STORYTELLER user
+        ctx = build_global_context(user_role="STORYTELLER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        mock_service = mocker.MagicMock()
+        mock_service.update.return_value = campaign
+        mocker.patch("vweb.routes.campaign.views.sync_campaigns_service", return_value=mock_service)
+        mocker.patch("vweb.routes.campaign.views.clear_global_context_cache")
+
+        # When posting a desperation value update
+        csrf = get_csrf(client)
+        response = client.post(
+            f"/campaign/{campaign.id}/update/desperation",
+            data={"value": "4"},
+            headers={"X-CSRFToken": csrf, "HX-Request": "true"},
+        )
+
+        # Then the response succeeds
+        assert response.status_code == 200
+        mock_service.update.assert_called_once()
+
+    def test_clears_global_context_cache(self, client, mocker) -> None:
+        """Verify cache is cleared after a successful update."""
+        # Given a STORYTELLER user
+        ctx = build_global_context(user_role="STORYTELLER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        mock_service = mocker.MagicMock()
+        mock_service.update.return_value = campaign
+        mocker.patch("vweb.routes.campaign.views.sync_campaigns_service", return_value=mock_service)
+        mock_clear = mocker.patch("vweb.routes.campaign.views.clear_global_context_cache")
+
+        # When posting a valid update
+        csrf = get_csrf(client)
+        client.post(
+            f"/campaign/{campaign.id}/update/danger",
+            data={"value": "2"},
+            headers={"X-CSRFToken": csrf, "HX-Request": "true"},
+        )
+
+        # Then the global context cache is cleared
+        mock_clear.assert_called_once()
+
+    def test_returns_403_for_player(self, client, mocker) -> None:
+        """Verify players cannot update danger/desperation."""
+        # Given a PLAYER user
+        ctx = build_global_context(user_role="PLAYER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+
+        # When attempting to update danger
+        csrf = get_csrf(client)
+        response = client.post(
+            f"/campaign/{campaign.id}/update/danger",
+            data={"value": "3"},
+            headers={"X-CSRFToken": csrf},
+        )
+
+        # Then a 403 is returned
+        assert response.status_code == 403
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("invalid_field", "3"),
+            ("danger", "abc"),
+            ("danger", "7"),
+            ("danger", "-1"),
+        ],
+        ids=["invalid-field", "non-integer", "over-max", "under-min"],
+    )
+    def test_returns_400_for_invalid_input(self, client, mocker, field, value) -> None:
+        """Verify invalid field names and out-of-range values return 400."""
+        # Given a STORYTELLER user
+        ctx = build_global_context(user_role="STORYTELLER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+
+        # When posting invalid input
+        csrf = get_csrf(client)
+        response = client.post(
+            f"/campaign/{campaign.id}/update/{field}",
+            data={"value": value},
+            headers={"X-CSRFToken": csrf},
+        )
+
+        # Then a 400 is returned
+        assert response.status_code == 400
 
 
 class TestCampaignDeleteView:

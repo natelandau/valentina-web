@@ -52,20 +52,7 @@
     {% endset %}
 
     <shared.PageHeader title={{ campaign.name }} before_text="Campaign" actions={{ header_actions }}>
-    <div class="flex items-center gap-2 flex-wrap mt-2">
-      {% if campaign.danger is not none %}
-
-        {% set danger_color = "badge-neutral" if campaign.danger < 2 else "badge-warning" if campaign.danger is in [2, 3] else "badge-error" %}
-
-        <span class="badge {{ danger_color }} badge-sm text-semibold">Danger {{ campaign.danger }}</span>
-      {% endif %}
-      {% if campaign.desperation is not none %}
-
-        {% set desperation_color = "badge-neutral" if campaign.desperation < 2 else "badge-warning" if campaign.desperation is in [2, 3] else "badge-error" %}
-
-        <span class="badge {{ desperation_color }} badge-sm text-semibold">Desperation {{ campaign.desperation }}</span>
-      {% endif %}
-    </div>
+      <index.partials.DangerDesperation campaign={{ campaign }} />
     </shared.PageHeader>
 
     {# Content Cards Grid #}
