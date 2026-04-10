@@ -28,7 +28,7 @@
       <div class="modal-action">
         <button type="button"
                 class="btn btn-ghost"
-                x-data @click="$el.closest('dialog').remove()">Cancel</button>
+                hx-on:click="this.closest('dialog').remove()">Cancel</button>
         <button type="submit" class="btn btn-primary">Merge</button>
       </div>
     </form>

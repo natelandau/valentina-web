@@ -59,7 +59,7 @@
 
   {# Footer with Back and Select buttons #}
   <div class="flex gap-2 mt-6 justify-end sticky bottom-4 bg-base-300 p-4 rounded-lg shadow-lg">
-    <shared.CommonButton variant="cancel" x-data @click="document.getElementById('back-confirm-modal').showModal()">Back</shared.CommonButton>
+    <shared.CommonButton variant="cancel" hx-on:click="document.getElementById('back-confirm-modal').showModal()">Back</shared.CommonButton>
     <form hx-post="{{ url_for('character_create.multi_autogen_finalize', campaign_id=campaign.id) }}"
           hx-target="#creation-content"
           hx-swap="innerHTML"
@@ -91,7 +91,7 @@
               hx-get="{{ url_for('character_create.selection_cards', campaign_id=campaign.id) }}"
               hx-target="#creation-content"
               hx-swap="innerHTML"
-              x-data @click="document.getElementById('back-confirm-modal').close()">
+              hx-on:click="document.getElementById('back-confirm-modal').close()">
         Confirm
       </button>
     </div>

@@ -155,7 +155,7 @@
           </div>
           <shared.CommonButton variant="submit" disabled={{ true }}>Generate</shared.CommonButton>
         {% elif xp_cost > 0 %}
-          <shared.CommonButton variant="submit" x-data @click="document.getElementById('session-confirm-modal').showModal()">Generate</shared.CommonButton>
+          <shared.CommonButton variant="submit" hx-on:click="document.getElementById('session-confirm-modal').showModal()">Generate</shared.CommonButton>
         {% else %}
           <shared.CommonButton variant="submit" hx-post={{ url_for('character_create.multi_autogen', campaign_id=campaign.id) }} hx-target="#creation-content" hx-swap="innerHTML">Generate</shared.CommonButton>
         {% endif %}
@@ -192,12 +192,12 @@
         You'll see 3 randomly generated characters to choose from.
       </p>
       <div class="modal-action">
-        <shared.CommonButton variant="cancel" x-data @click="$el.closest('dialog').close()">Cancel</shared.CommonButton>
+        <shared.CommonButton variant="cancel" hx-on:click="this.closest('dialog').close()">Cancel</shared.CommonButton>
         <button class="btn btn-primary"
                 hx-post="{{ url_for('character_create.multi_autogen', campaign_id=campaign.id) }}"
                 hx-target="#creation-content"
                 hx-swap="innerHTML"
-                x-data @click="$el.closest('dialog').close()">
+                hx-on:click="this.closest('dialog').close()">
           Confirm
         </button>
       </div>

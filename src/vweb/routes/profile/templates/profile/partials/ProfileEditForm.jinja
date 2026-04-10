@@ -57,7 +57,7 @@
 
       <div class="flex gap-2 mt-4">
         <shared.CommonButton variant="submit" extra_class="btn-sm">Save</shared.CommonButton>
-        <shared.CommonButton variant="cancel" extra_class="btn-sm" x-data @click="document.getElementById('profile-edit-form').innerHTML = ''">
+        <shared.CommonButton variant="cancel" extra_class="btn-sm" hx-on:click="document.getElementById('profile-edit-form').innerHTML = ''">
         Cancel
         </shared.CommonButton>
       </div>
