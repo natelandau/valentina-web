@@ -27,7 +27,7 @@
       <shared.CommonButton variant="add" extra_class="btn-sm" href={{ url_for('character_trait_edit.XP', character_id=character.id) }}>
       <i class="fa-solid fa-bolt"></i> Spend XP
       </shared.CommonButton>
-      <details class="dropdown dropdown-end">
+      <details class="dropdown dropdown-end" x-data @click.outside="$el.removeAttribute('open')">
         <summary class="btn btn-sm btn-ghost">
           <i class="fa-solid fa-bars"></i>
           <span class="inline">More</span>

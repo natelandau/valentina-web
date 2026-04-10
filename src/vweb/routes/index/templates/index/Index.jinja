@@ -26,7 +26,7 @@
     {% set header_actions %}
 
       {% if can_manage_campaign() %}
-        <details class="dropdown dropdown-end">
+        <details class="dropdown dropdown-end" x-data @click.outside="$el.removeAttribute('open')">
           <summary class="btn btn-sm btn-ghost">
             <i class="fa-solid fa-bars"></i>
             <span class="inline">More</span>
