@@ -101,10 +101,10 @@ class CharacterTraitsView(MethodView):
             flash(error.detail or "Failed to update trait", "error")
             return self._hx_redirect(get_method_url)
 
-        flash(
-            f"Updated {value_options.name.strip().title()} to {value}.<br>You {'recouped' if direction == 'decrease' else 'spent'} {point_change} {self.spend_type_humanized}",
-            "success",
-        )
+        msg = f"Updated {value_options.name.strip().title()} to {value}."
+        if self.spend_type != "NO_COST":
+            msg += f"<br>You {'recouped' if direction == 'decrease' else 'spent'} {point_change} {self.spend_type_humanized}"
+        flash(msg, "success")
         return self._hx_redirect(get_method_url)
 
     def _delete_trait(
