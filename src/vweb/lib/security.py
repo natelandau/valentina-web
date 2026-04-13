@@ -26,6 +26,7 @@ def configure_security(app: Flask, s: Settings) -> None:
         "'self'",
         "'unsafe-eval'",
         "unpkg.com",
+        "cdn.jsdelivr.net",
         "kit.fontawesome.com",
         "ka-f.fontawesome.com",
     ]
