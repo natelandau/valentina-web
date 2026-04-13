@@ -6,7 +6,7 @@
     <div class="text-sm text-base-content/70">{{ user.email }}</div>
   </div>
   <form class="flex items-center gap-2"
-        hx-post="{{ url_for('settings.approve_user', user_id=user.id) }}"
+        hx-post="{{ url_for('admin.approve_user', user_id=user.id) }}"
         hx-target="#pending-user-{{ user.id }}"
         hx-swap="outerHTML">
     <select name="role" class="select select-sm">
@@ -17,11 +17,11 @@
     <button type="submit" class="btn btn-sm btn-primary">Approve</button>
   </form>
   <button class="btn btn-sm btn-outline"
-          hx-get="{{ url_for('settings.merge_form', user_id=user.id) }}"
+          hx-get="{{ url_for('admin.merge_form', user_id=user.id) }}"
           hx-target="#merge-modal-slot"
           hx-swap="innerHTML">Merge…</button>
   <button class="btn btn-sm btn-error btn-outline"
-          hx-post="{{ url_for('settings.deny_user', user_id=user.id) }}"
+          hx-post="{{ url_for('admin.deny_user', user_id=user.id) }}"
           hx-target="#pending-user-{{ user.id }}"
           hx-swap="outerHTML"
           hx-confirm="Deny {{ user.name_first }}? This cannot be undone.">

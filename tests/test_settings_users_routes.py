@@ -1,4 +1,4 @@
-"""Tests for the /settings/users page and its action endpoints."""
+"""Tests for the /admin/users page and its action endpoints."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def patch_users_service(mocker):
 
     def _patch(svc: MagicMock) -> None:
         mocker.patch(
-            "vweb.routes.settings.services.sync_users_service",
+            "vweb.routes.admin.services.sync_users_service",
             return_value=svc,
         )
 
@@ -37,7 +37,7 @@ def patch_users_service(mocker):
 
 
 class TestUsersPageAccessControl:
-    """The blueprint admin guard covers /settings/users."""
+    """The blueprint admin guard covers /admin/users."""
 
     def test_non_admin_redirected(
         self,
@@ -45,13 +45,13 @@ class TestUsersPageAccessControl:
         mock_global_context: GlobalContext,
         mocker,
     ) -> None:
-        """Verify a non-admin GET to /settings/users is redirected."""
+        """Verify a non-admin GET to /admin/users is redirected."""
         # Given a player
         mock_global_context.users[0].role = "PLAYER"
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=mock_global_context)
 
         # When loading the page
-        response = client.get("/settings/users")
+        response = client.get("/admin/users")
 
         # Then the player is redirected away
         assert response.status_code == 302
@@ -59,7 +59,7 @@ class TestUsersPageAccessControl:
 
 
 class TestUsersPageGet:
-    """GET /settings/users renders the page with pending and approved sections."""
+    """GET /admin/users renders the page with pending and approved sections."""
 
     def test_users_page_renders_pending_and_approved(
         self,
@@ -84,7 +84,7 @@ class TestUsersPageGet:
         patch_users_service(svc)
 
         # When loading the users page
-        response = client.get("/settings/users")
+        response = client.get("/admin/users")
         body = response.get_data(as_text=True)
 
         # Then the page contains the pending and approved (non-self) users
@@ -97,7 +97,7 @@ class TestUsersPageGet:
 
 
 class TestApproveUserEndpoint:
-    """POST /settings/users/<id>/approve grants a role to a pending user."""
+    """POST /admin/users/<id>/approve grants a role to a pending user."""
 
     def test_approve_calls_service_and_returns_swap_target(
         self,
@@ -109,14 +109,14 @@ class TestApproveUserEndpoint:
         # Given a pending user
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
         approve = mocker.patch(
-            "vweb.routes.settings.views.settings_services.approve",
+            "vweb.routes.admin.views.admin_services.approve",
             return_value=UserFactory.build(id="pending-1", role="PLAYER"),
         )
 
         # When approving
         csrf = get_csrf(client)
         response = client.post(
-            "/settings/users/pending-1/approve",
+            "/admin/users/pending-1/approve",
             data={"role": "PLAYER", "csrf_token": csrf},
         )
 
@@ -138,7 +138,7 @@ class TestApproveUserEndpoint:
         # When approving self
         csrf = get_csrf(client)
         response = client.post(
-            f"/settings/users/{self_id}/approve",
+            f"/admin/users/{self_id}/approve",
             data={"role": "PLAYER", "csrf_token": csrf},
         )
 
@@ -158,7 +158,7 @@ class TestApproveUserEndpoint:
         # When approving with UNAPPROVED role
         csrf = get_csrf(client)
         response = client.post(
-            "/settings/users/pending-1/approve",
+            "/admin/users/pending-1/approve",
             data={"role": "UNAPPROVED", "csrf_token": csrf},
         )
 
@@ -167,7 +167,7 @@ class TestApproveUserEndpoint:
 
 
 class TestChangeRoleEndpoint:
-    """POST /settings/users/<id>/role changes an approved user's role."""
+    """POST /admin/users/<id>/role changes an approved user's role."""
 
     def test_change_role_returns_swapped_row(
         self,
@@ -179,7 +179,7 @@ class TestChangeRoleEndpoint:
         # Given a mocked change_role returning a STORYTELLER
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
         mocker.patch(
-            "vweb.routes.settings.views.settings_services.change_role",
+            "vweb.routes.admin.views.admin_services.change_role",
             return_value=UserFactory.build(
                 id="approved-1",
                 name_first="Grace",
@@ -191,7 +191,7 @@ class TestChangeRoleEndpoint:
         # When posting a role change
         csrf = get_csrf(client)
         response = client.post(
-            "/settings/users/approved-1/role",
+            "/admin/users/approved-1/role",
             data={"role": "STORYTELLER", "csrf_token": csrf},
         )
 
@@ -216,7 +216,7 @@ class TestChangeRoleEndpoint:
         # When changing own role
         csrf = get_csrf(client)
         response = client.post(
-            f"/settings/users/{self_id}/role",
+            f"/admin/users/{self_id}/role",
             data={"role": "PLAYER", "csrf_token": csrf},
         )
 
@@ -236,7 +236,7 @@ class TestChangeRoleEndpoint:
         # When changing role to UNAPPROVED
         csrf = get_csrf(client)
         response = client.post(
-            "/settings/users/approved-1/role",
+            "/admin/users/approved-1/role",
             data={"role": "UNAPPROVED", "csrf_token": csrf},
         )
 
@@ -245,7 +245,7 @@ class TestChangeRoleEndpoint:
 
 
 class TestDenyUserEndpoint:
-    """POST /settings/users/<id>/deny denies a pending user."""
+    """POST /admin/users/<id>/deny denies a pending user."""
 
     def test_deny_calls_service(
         self,
@@ -256,12 +256,12 @@ class TestDenyUserEndpoint:
         """Verify deny endpoint calls deny_user and returns 200."""
         # Given an admin session and mocked deny service
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
-        deny = mocker.patch("vweb.routes.settings.views.settings_services.deny")
+        deny = mocker.patch("vweb.routes.admin.views.admin_services.deny")
 
         # When denying a pending user
         csrf = get_csrf(client)
         response = client.post(
-            "/settings/users/pending-1/deny",
+            "/admin/users/pending-1/deny",
             data={"csrf_token": csrf},
         )
 
@@ -283,7 +283,7 @@ class TestDenyUserEndpoint:
         # When denying self
         csrf = get_csrf(client)
         response = client.post(
-            f"/settings/users/{self_id}/deny",
+            f"/admin/users/{self_id}/deny",
             data={"csrf_token": csrf},
         )
 
@@ -292,7 +292,7 @@ class TestDenyUserEndpoint:
 
 
 class TestMergeForm:
-    """GET /settings/users/<id>/merge returns the merge modal."""
+    """GET /admin/users/<id>/merge returns the merge modal."""
 
     def test_merge_form_returns_modal_with_picker(
         self,
@@ -314,7 +314,7 @@ class TestMergeForm:
         patch_users_service(svc)
 
         # When requesting the merge form
-        response = client.get("/settings/users/pending-1/merge")
+        response = client.get("/admin/users/pending-1/merge")
         body = response.get_data(as_text=True)
 
         # Then the modal is rendered with the pending user and candidate picker
@@ -325,7 +325,7 @@ class TestMergeForm:
 
 
 class TestMergePost:
-    """POST /settings/users/<id>/merge merges a pending user into a primary."""
+    """POST /admin/users/<id>/merge merges a pending user into a primary."""
 
     def test_merge_post_calls_service_and_redirects(
         self,
@@ -336,12 +336,12 @@ class TestMergePost:
         """Verify the endpoint calls merge() and returns HX-Redirect."""
         # Given an admin and a mocked merge service
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
-        merge = mocker.patch("vweb.routes.settings.views.settings_services.merge")
+        merge = mocker.patch("vweb.routes.admin.views.admin_services.merge")
 
         # When posting with a target user
         csrf = get_csrf(client)
         response = client.post(
-            "/settings/users/pending-1/merge",
+            "/admin/users/pending-1/merge",
             data={"csrf_token": csrf, "target_user_id": "approved-1"},
         )
 
@@ -352,7 +352,7 @@ class TestMergePost:
             admin_context.users[0].id,
         )
         assert response.status_code == 200
-        assert response.headers["HX-Redirect"] == "/settings/users"
+        assert response.headers["HX-Redirect"] == "/admin/users"
 
     def test_merge_post_self_as_target_returns_403(
         self,
@@ -368,7 +368,7 @@ class TestMergePost:
         # When posting with self as target
         csrf = get_csrf(client)
         response = client.post(
-            "/settings/users/pending-1/merge",
+            "/admin/users/pending-1/merge",
             data={"csrf_token": csrf, "target_user_id": self_id},
         )
 

@@ -166,7 +166,7 @@ def create_app(settings_override: Settings | None = None) -> Flask:
     from vweb.routes.dictionary.views import bp as dictionary_bp
     from vweb.routes.index.views import bp as index_bp
     from vweb.routes.profile.views import bp as profile_bp
-    from vweb.routes.settings.views import bp as settings_bp
+    from vweb.routes.admin.views import bp as admin_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(index_bp)
@@ -179,7 +179,7 @@ def create_app(settings_override: Settings | None = None) -> Flask:
     app.register_blueprint(diceroll_bp)
     app.register_blueprint(dictionary_bp)
     app.register_blueprint(character_create_bp)
-    app.register_blueprint(settings_bp)
+    app.register_blueprint(admin_bp)
 
     app.extensions["vclient"] = SyncVClient(
         base_url=settings.api.base_url,

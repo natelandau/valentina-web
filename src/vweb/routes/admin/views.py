@@ -1,4 +1,4 @@
-"""Company settings routes."""
+"""Admin routes: audit log, company settings, user management."""
 
 from __future__ import annotations
 
@@ -14,12 +14,12 @@ from vweb import catalog
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import is_admin, is_self
 from vweb.lib.jinja import htmx_response, hx_redirect
-from vweb.routes.settings import services as settings_services
+from vweb.routes.admin import services as admin_services
 
 if TYPE_CHECKING:
     from werkzeug.wrappers.response import Response
 
-bp = Blueprint("settings", __name__, url_prefix="/settings")
+bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 
 @bp.before_request
@@ -111,11 +111,11 @@ class SettingsView(MethodView):
         company_id = session["company_id"]
         company = sync_companies_service().get(company_id)
         return catalog.render(
-            "settings.SettingsPage",
+            "admin.SettingsPage",
             company=company,
             errors={},
             form_values=None,
-            pending_count=settings_services.pending_user_count(g.requesting_user.id),
+            pending_count=admin_services.pending_user_count(g.requesting_user.id),
         )
 
     def post(self) -> Response | tuple[str, int]:
@@ -141,18 +141,18 @@ class SettingsView(MethodView):
         if errors or update is None:
             company = sync_companies_service().get(company_id)
             page = catalog.render(
-                "settings.SettingsPage",
+                "admin.SettingsPage",
                 company=company,
                 errors=errors,
                 form_values=form,
-                pending_count=settings_services.pending_user_count(g.requesting_user.id),
+                pending_count=admin_services.pending_user_count(g.requesting_user.id),
             )
             return page, 400
 
         sync_companies_service().update(company_id, request=update)
         clear_global_context_cache(session["company_id"], session["user_id"])
         flash("Settings updated.", "success")
-        return redirect(url_for("settings.settings"))
+        return redirect(url_for("admin.settings"))
 
 
 class UsersView(MethodView):
@@ -160,9 +160,9 @@ class UsersView(MethodView):
 
     def get(self) -> str:
         """Render pending and approved users for the current company."""
-        pending, approved = settings_services.list_pending_and_approved(g.requesting_user.id)
+        pending, approved = admin_services.list_pending_and_approved(g.requesting_user.id)
         return catalog.render(
-            "settings.UsersPage",
+            "admin.UsersPage",
             pending=pending,
             approved=approved,
             pending_count=len(pending),
@@ -183,7 +183,7 @@ class ApproveUserView(MethodView):
 
         role = request.form.get("role", "")
         try:
-            settings_services.approve(user_id, role, g.requesting_user.id)
+            admin_services.approve(user_id, role, g.requesting_user.id)
         except ValueError as exc:
             return str(exc), 400
 
@@ -206,12 +206,12 @@ class ChangeRoleView(MethodView):
 
         role = request.form.get("role", "")
         try:
-            user = settings_services.change_role(user_id, role, g.requesting_user.id)
+            user = admin_services.change_role(user_id, role, g.requesting_user.id)
         except ValueError as exc:
             return str(exc), 400
 
         flash("Role updated.", "success")
-        row = catalog.render("settings.components.ApprovedUserRow", user=user)
+        row = catalog.render("admin.components.ApprovedUserRow", user=user)
         flash_html = catalog.render("shared.layout.FlashMessage", oob=True)
         return htmx_response(row, flash_html)
 
@@ -224,7 +224,7 @@ class DenyUserView(MethodView):
         if is_self(user_id):
             return "Cannot modify your own account.", 403
 
-        settings_services.deny(user_id, g.requesting_user.id)
+        admin_services.deny(user_id, g.requesting_user.id)
         flash("User denied.", "success")
         flash_html = catalog.render("shared.layout.FlashMessage", oob=True)
         return htmx_response("", flash_html)
@@ -235,12 +235,12 @@ class MergeFormView(MethodView):
 
     def get(self, user_id: str) -> tuple[str, int] | str:
         """Return the modal HTML with a picker of approved users."""
-        pending, candidates = settings_services.list_pending_and_approved(g.requesting_user.id)
+        pending, candidates = admin_services.list_pending_and_approved(g.requesting_user.id)
         pending_user = next((u for u in pending if u.id == user_id), None)
         if pending_user is None:
             return "", 404
         return catalog.render(
-            "settings.partials.MergeModal",
+            "admin.partials.MergeModal",
             pending_user=pending_user,
             candidates=candidates,
         )
@@ -257,12 +257,12 @@ class MergeUserView(MethodView):
         if not target_id:
             return "target_user_id is required.", 400
 
-        settings_services.merge(target_id, user_id, g.requesting_user.id)
+        admin_services.merge(target_id, user_id, g.requesting_user.id)
         flash("Users merged.", "success")
-        return hx_redirect(url_for("settings.users"))
+        return hx_redirect(url_for("admin.users"))
 
 
-bp.add_url_rule("", view_func=SettingsView.as_view("settings"), methods=["GET", "POST"])
+bp.add_url_rule("/settings", view_func=SettingsView.as_view("settings"), methods=["GET", "POST"])
 bp.add_url_rule("/users", view_func=UsersView.as_view("users"), methods=["GET"])
 bp.add_url_rule(
     "/users/<user_id>/approve",

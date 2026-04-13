@@ -10,9 +10,9 @@
     </li>
     {% if requesting_user() and is_admin() %}
       <li>
-        <a href="{{ url_for('settings.settings') }}"
-           class="{% if request.path.startswith('/settings') %}active{% endif %}">
-          Settings
+        <a href="{{ url_for('admin.settings') }}"
+           class="{% if request.path.startswith('/admin') %}active{% endif %}">
+          Admin
         </a>
       </li>
     {% endif %}

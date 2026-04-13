@@ -7,7 +7,7 @@
   </div>
   <select name="role"
           class="select select-sm"
-          hx-post="{{ url_for('settings.change_role', user_id=user.id) }}"
+          hx-post="{{ url_for('admin.change_role', user_id=user.id) }}"
           hx-target="#user-{{ user.id }}"
           hx-swap="outerHTML"
           hx-include="this">
