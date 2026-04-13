@@ -16,6 +16,7 @@ wheels/
 .cache/
 tmp/
 .claude/settings.local.json
+.claude/skills/
 .worktrees/
 _site/
 docs/plans/
