@@ -1,7 +1,7 @@
 {#def pending, approved, pending_count=0 #}
 <shared.PageLayout title="User Management">
   <div class="max-w-3xl mx-auto p-4">
-    <admin.components.SettingsTabs active="users" pending_count={{ pending_count }} />
+    <admin.components.AdminTabs active="users" pending_count={{ pending_count }} />
     <shared.PageHeader title="User Management" back_url={{ url_for('index.index') }} back_text="Back Home" />
 
 
