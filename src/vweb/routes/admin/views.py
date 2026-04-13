@@ -250,7 +250,7 @@ class MergeUserView(MethodView):
     """POST endpoint that merges a pending user into a primary user."""
 
     def post(self, user_id: str) -> tuple[str, int] | Response:
-        """Merge and return an HX-Redirect to /settings/users."""
+        """Merge and return an HX-Redirect to /admin/users."""
         target_id = request.form.get("target_user_id", "")
         if is_self(user_id) or is_self(target_id):
             return "Cannot modify your own account.", 403
