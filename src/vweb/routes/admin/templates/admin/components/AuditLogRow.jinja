@@ -3,12 +3,22 @@
   <td class="whitespace-nowrap text-sm text-base-content/70">
     {{ log.date_created.strftime("%b %d, %Y %-I:%M %p") }}
   </td>
-  <td class="text-sm">{{ log.description or log.summary or "" }}</td>
+  <td class="text-sm font-semibold">{{ log.description or log.summary or "" }}</td>
   <td class="text-sm">
     {% if log.changes %}
       <ul class="list-disc pl-4 text-base-content/60 text-xs">
         {% for key, value in log.changes.items() %}
-          <li>{{ key }}: {{ value }}</li>
+          {% if value is mapping %}
+            <li>{{ key }}
+              <ul class="list-disc pl-4">
+                {% for sub_key, sub_value in value.items() %}
+                  <li>{{ sub_key }}: {{ sub_value }}</li>
+                {% endfor %}
+              </ul>
+            </li>
+          {% else %}
+            <li>{{ key }}: {{ value }}</li>
+          {% endif %}
         {% endfor %}
       </ul>
     {% else %}

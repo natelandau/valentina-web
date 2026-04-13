@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlencode
 
 from flask import Blueprint, flash, g, redirect, request, session, url_for
 from flask.views import MethodView
@@ -16,6 +17,7 @@ from vweb.lib.guards import is_admin, is_self
 from vweb.lib.jinja import htmx_response, hx_redirect
 from vweb.routes.admin import audit_log_services
 from vweb.routes.admin import services as admin_services
+from vweb.routes.admin.audit_log_services import ENTITY_TYPES
 
 if TYPE_CHECKING:
     from werkzeug.wrappers.response import Response
@@ -104,24 +106,6 @@ def _format_pydantic_errors(exc: ValidationError) -> dict[str, str]:
     return errors
 
 
-ENTITY_TYPES = [
-    "ASSET",
-    "BOOK",
-    "CAMPAIGN",
-    "CHAPTER",
-    "CHARACTER",
-    "CHARACTER_INVENTORY",
-    "CHARACTER_TRAIT",
-    "CHARGEN_SESSION",
-    "COMPANY",
-    "DEVELOPER",
-    "DICTIONARY_TERM",
-    "EXPERIENCE",
-    "NOTE",
-    "QUICKROLL",
-    "USER",
-]
-
 PAGE_SIZE = 20
 
 
@@ -165,38 +149,26 @@ class AuditLogTableView(MethodView):
         rows = []
         for log in page.items:
             entities = audit_log_services.resolve_entities(log, context)
-
-            acting_user = (
-                next((u for u in context.users if u.id == log.acting_user_id), None)
-                if log.acting_user_id
-                else None
+            acting_name, acting_url = audit_log_services.resolve_acting_user(
+                log.acting_user_id, context
             )
 
             rows.append(
                 {
                     "log": log,
                     "entities": entities,
-                    "acting_user_name": acting_user.username
-                    if acting_user
-                    else (log.acting_user_id or ""),
-                    "acting_user_url": url_for("profile.profile", user_id=acting_user.id)
-                    if acting_user
-                    else "",
+                    "acting_user_name": acting_name,
+                    "acting_user_url": acting_url,
                 }
             )
 
-        filter_parts = []
-        if entity_type:
-            filter_parts.append(f"entity_type={entity_type}")
-        if operation:
-            filter_parts.append(f"operation={operation}")
-        if acting_user_id:
-            filter_parts.append(f"acting_user_id={acting_user_id}")
-        if date_from:
-            filter_parts.append(f"date_from={date_from}")
-        if date_to:
-            filter_parts.append(f"date_to={date_to}")
-
+        filters = {
+            "entity_type": entity_type,
+            "operation": operation,
+            "acting_user_id": acting_user_id,
+            "date_from": date_from,
+            "date_to": date_to,
+        }
         new_offset = offset + PAGE_SIZE
 
         return catalog.render(
@@ -205,7 +177,7 @@ class AuditLogTableView(MethodView):
             total=page.total,
             offset=new_offset,
             has_more=page.has_more,
-            filter_params="&".join(filter_parts),
+            filter_params=urlencode({k: v for k, v in filters.items() if v}),
         )
 
 

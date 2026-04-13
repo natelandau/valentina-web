@@ -17,8 +17,8 @@
 
   <shared.PageLayout title="Company Settings">
   <div class="max-w-3xl mx-auto p-4">
-    <admin.components.AdminTabs active="settings" pending_count={{ pending_count }} />
     <shared.PageHeader title="Company Settings" back_url={{ url_for('index.index') }} back_text="Back Home" />
+    <admin.components.AdminTabs active="settings" pending_count={{ pending_count }} />
 
 
     {% if errors %}

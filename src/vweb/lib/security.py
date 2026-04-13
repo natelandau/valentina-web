@@ -37,6 +37,7 @@ def configure_security(app: Flask, s: Settings) -> None:
         "style-src": [
             "'self'",
             "'unsafe-inline'",
+            "cdn.jsdelivr.net",
             "ka-f.fontawesome.com",
             "fonts.googleapis.com",
         ],

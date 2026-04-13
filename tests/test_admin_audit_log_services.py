@@ -87,11 +87,16 @@ class TestGetAuditLogPage:
                 date_to="",
             )
 
-        # Then only limit and offset are passed
+        # Then empty filters are passed as None
         mock_svc.get_audit_log_page.assert_called_once_with(
             "test-company-id",
             limit=20,
             offset=0,
+            entity_type=None,
+            operation=None,
+            acting_user_id=None,
+            date_from=None,
+            date_to=None,
         )
 
 

@@ -7,16 +7,18 @@ display names with optional navigation URLs.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_args
 
 from flask import session, url_for
 from vclient import sync_companies_service
+from vclient.models.audit_logs import AuditLog
 
 if TYPE_CHECKING:
-    from vclient.models.audit_logs import AuditLog
     from vclient.models.pagination import PaginatedResponse
 
     from vweb.lib.global_context import GlobalContext
+
+ENTITY_TYPES: list[str] = sorted(get_args(AuditLog.model_fields["entity_type"].annotation))
 
 
 def get_audit_log_page(  # noqa: PLR0913
@@ -47,21 +49,39 @@ def get_audit_log_page(  # noqa: PLR0913
     Returns:
         PaginatedResponse[AuditLog]: Paginated audit log entries.
     """
-    kwargs: dict[str, object] = {"limit": limit, "offset": offset}
-
-    if entity_type:
-        kwargs["entity_type"] = entity_type
-    if operation:
-        kwargs["operation"] = operation
-    if acting_user_id:
-        kwargs["acting_user_id"] = acting_user_id
-    if date_from:
-        kwargs["date_from"] = datetime.fromisoformat(date_from)
-    if date_to:
-        kwargs["date_to"] = datetime.fromisoformat(date_to)
-
     company_id: str = session["company_id"]
-    return sync_companies_service().get_audit_log_page(company_id, **kwargs)  # type: ignore[arg-type]
+    return sync_companies_service().get_audit_log_page(  # ty:ignore[invalid-return-type]
+        company_id,
+        limit=limit,
+        offset=offset,
+        entity_type=entity_type or None,  # ty:ignore[invalid-argument-type]
+        operation=operation or None,  # ty:ignore[invalid-argument-type]
+        acting_user_id=acting_user_id or None,
+        date_from=datetime.fromisoformat(date_from) if date_from else None,
+        date_to=datetime.fromisoformat(date_to) if date_to else None,
+    )
+
+
+def resolve_acting_user(
+    acting_user_id: str | None,
+    context: GlobalContext,
+) -> tuple[str, str]:
+    """Resolve the acting user to a display name and profile URL.
+
+    Args:
+        acting_user_id: The ID of the user who performed the action.
+        context: The global context containing cached users.
+
+    Returns:
+        Tuple of (display_name, url_or_empty_string).
+    """
+    if not acting_user_id:
+        return ("", "")
+
+    user = next((u for u in context.users if u.id == acting_user_id), None)
+    if user:
+        return (user.username, url_for("profile.profile", user_id=user.id))
+    return (acting_user_id, "")
 
 
 def resolve_entities(
@@ -102,7 +122,6 @@ def resolve_entities(
 
 
 def _resolve_user(user_id: str, context: GlobalContext) -> tuple[str, str, str | None]:
-    """Look up a user by ID and return a display tuple."""
     user = next((u for u in context.users if u.id == user_id), None)
     if user:
         return ("User", user.username, url_for("profile.profile", user_id=user.id))
@@ -110,7 +129,6 @@ def _resolve_user(user_id: str, context: GlobalContext) -> tuple[str, str, str |
 
 
 def _resolve_campaign(campaign_id: str, context: GlobalContext) -> tuple[str, str, str | None]:
-    """Look up a campaign by ID and return a display tuple."""
     campaign = next((c for c in context.campaigns if c.id == campaign_id), None)
     if campaign:
         return (
@@ -122,7 +140,6 @@ def _resolve_campaign(campaign_id: str, context: GlobalContext) -> tuple[str, st
 
 
 def _resolve_character(character_id: str, context: GlobalContext) -> tuple[str, str, str | None]:
-    """Look up a character by ID and return a display tuple."""
     character = next((c for c in context.characters if c.id == character_id), None)
     if character:
         return (
@@ -136,9 +153,15 @@ def _resolve_character(character_id: str, context: GlobalContext) -> tuple[str, 
 def _resolve_book(
     book_id: str, campaign_id: str | None, context: GlobalContext
 ) -> tuple[str, str, str | None]:
-    """Look up a book by ID and return a display tuple."""
-    all_books = [book for books in context.books_by_campaign.values() for book in books]
-    book = next((b for b in all_books if b.id == book_id), None)
+    # Narrow search to the specific campaign when possible
+    if campaign_id and campaign_id in context.books_by_campaign:
+        books = context.books_by_campaign[campaign_id]
+    else:
+        books = [
+            book for campaign_books in context.books_by_campaign.values() for book in campaign_books
+        ]
+
+    book = next((b for b in books if b.id == book_id), None)
     if book and campaign_id:
         return (
             "Book",

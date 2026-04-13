@@ -93,8 +93,9 @@ class TestAuditLogTable:
 
         assert response.status_code == 200
 
-    def test_passes_filters_as_query_params(self, client: FlaskClient, mocker) -> None:
-        """Verify filter query params are forwarded to the service."""
+    @pytest.fixture
+    def mock_empty_page(self, mocker) -> MagicMock:
+        """Patch get_audit_log_page to return an empty page."""
         mock_svc_fn = mocker.patch(
             "vweb.routes.admin.views.audit_log_services.get_audit_log_page",
         )
@@ -102,15 +103,19 @@ class TestAuditLogTable:
         mock_page.items = []
         mock_page.total = 0
         mock_page.has_more = False
-        mock_page.offset = 0
         mock_svc_fn.return_value = mock_page
+        return mock_svc_fn
 
+    def test_passes_filters_as_query_params(
+        self, client: FlaskClient, mock_empty_page: MagicMock
+    ) -> None:
+        """Verify filter query params are forwarded to the service."""
         client.get(
             "/admin/audit-log?entity_type=CHARACTER&operation=UPDATE&acting_user_id=u1",
             headers={"HX-Request": "true"},
         )
 
-        mock_svc_fn.assert_called_once_with(
+        mock_empty_page.assert_called_once_with(
             limit=20,
             offset=0,
             entity_type="CHARACTER",
@@ -120,24 +125,14 @@ class TestAuditLogTable:
             date_to="",
         )
 
-    def test_pagination_offset(self, client: FlaskClient, mocker) -> None:
+    def test_pagination_offset(self, client: FlaskClient, mock_empty_page: MagicMock) -> None:
         """Verify offset query param is forwarded for pagination."""
-        mock_svc_fn = mocker.patch(
-            "vweb.routes.admin.views.audit_log_services.get_audit_log_page",
-        )
-        mock_page = MagicMock()
-        mock_page.items = []
-        mock_page.total = 0
-        mock_page.has_more = False
-        mock_page.offset = 40
-        mock_svc_fn.return_value = mock_page
-
         client.get(
             "/admin/audit-log?offset=40",
             headers={"HX-Request": "true"},
         )
 
-        mock_svc_fn.assert_called_once_with(
+        mock_empty_page.assert_called_once_with(
             limit=20,
             offset=40,
             entity_type="",

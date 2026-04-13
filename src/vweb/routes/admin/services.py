@@ -55,8 +55,8 @@ def approve(user_id: str, role: str, requesting_user_id: str) -> User:
         raise ValueError(msg)
     user = sync_users_service(company_id=session["company_id"]).approve_user(
         user_id,
-        role,
-        requesting_user_id,  # ty:ignore[invalid-argument-type]
+        role,  # ty:ignore[invalid-argument-type]
+        requesting_user_id,
     )
     clear_global_context_cache(session["company_id"], session["user_id"])
     return user

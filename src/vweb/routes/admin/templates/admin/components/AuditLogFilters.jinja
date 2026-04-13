@@ -65,20 +65,19 @@
     {# Date From #}
     <fieldset class="fieldset">
       <legend class="fieldset-legend">From</legend>
-      <div class="dropdown" x-data="{ open: false }">
-        <label class="input input-sm w-36 cursor-pointer" tabindex="0" @click="open = !open">
+      <div class="relative" x-data="{ open: false }">
+        <label class="input input-sm w-36 cursor-pointer" @click="open = !open">
           <i class="fa-solid fa-calendar text-base-content/50"></i>
           <input type="text" name="date_from" x-model="date_from" readonly
-                 class="grow cursor-pointer" placeholder="Select date"
-                 hx-get="{{ url_for('admin.audit_log_table') }}"
-                 hx-trigger="change"
-                 hx-target="#audit-log-tbody"
-                 hx-include="#audit-filters" />
+                 class="grow cursor-pointer" placeholder="Select date" />
         </label>
-        <div x-show="open" @click.outside="open = false"
-             class="dropdown-content z-50 bg-base-100 shadow-lg rounded-box p-2">
-          <calendar-date @change="date_from = $event.target.value; open = false"
+        <div x-show="open" x-cloak @click.outside="open = false"
+             class="absolute top-full left-0 z-50 mt-1 bg-base-100 shadow-lg rounded-box p-2">
+          <calendar-date class="cally"
+                         @change="date_from = $event.target.value; open = false; $nextTick(() => { htmx.trigger(document.getElementById('audit-filters'), 'filter-changed') })"
                          :value="date_from">
+            <svg aria-label="Previous" class="fill-current size-4" slot="previous" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15.75 19.5 8.25 12l7.5-7.5"></path></svg>
+            <svg aria-label="Next" class="fill-current size-4" slot="next" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m8.25 4.5 7.5 7.5-7.5 7.5"></path></svg>
             <calendar-month></calendar-month>
           </calendar-date>
         </div>
@@ -88,20 +87,19 @@
     {# Date To #}
     <fieldset class="fieldset">
       <legend class="fieldset-legend">To</legend>
-      <div class="dropdown" x-data="{ open: false }">
-        <label class="input input-sm w-36 cursor-pointer" tabindex="0" @click="open = !open">
+      <div class="relative" x-data="{ open: false }">
+        <label class="input input-sm w-36 cursor-pointer" @click="open = !open">
           <i class="fa-solid fa-calendar text-base-content/50"></i>
           <input type="text" name="date_to" x-model="date_to" readonly
-                 class="grow cursor-pointer" placeholder="Select date"
-                 hx-get="{{ url_for('admin.audit_log_table') }}"
-                 hx-trigger="change"
-                 hx-target="#audit-log-tbody"
-                 hx-include="#audit-filters" />
+                 class="grow cursor-pointer" placeholder="Select date" />
         </label>
-        <div x-show="open" @click.outside="open = false"
-             class="dropdown-content z-50 bg-base-100 shadow-lg rounded-box p-2">
-          <calendar-date @change="date_to = $event.target.value; open = false"
+        <div x-show="open" x-cloak @click.outside="open = false"
+             class="absolute top-full left-0 z-50 mt-1 bg-base-100 shadow-lg rounded-box p-2">
+          <calendar-date class="cally"
+                         @change="date_to = $event.target.value; open = false; $nextTick(() => { htmx.trigger(document.getElementById('audit-filters'), 'filter-changed') })"
                          :value="date_to">
+            <svg aria-label="Previous" class="fill-current size-4" slot="previous" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15.75 19.5 8.25 12l7.5-7.5"></path></svg>
+            <svg aria-label="Next" class="fill-current size-4" slot="next" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m8.25 4.5 7.5 7.5-7.5 7.5"></path></svg>
             <calendar-month></calendar-month>
           </calendar-date>
         </div>
