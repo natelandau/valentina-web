@@ -1,0 +1,20 @@
+{#def rows, total, offset, has_more, filter_params="" #}
+{% for row in rows %}
+  <admin.components.AuditLogRow
+    log={{ row.log }}
+    entities={{ row.entities }}
+    acting_user_name={{ row.acting_user_name }}
+    acting_user_url={{ row.acting_user_url }} />
+{% endfor %}
+{% if has_more %}
+  <tr id="load-more-row">
+    <td colspan="5" class="text-center py-4">
+      <button class="btn btn-ghost btn-sm"
+              hx-get="{{ url_for('admin.audit_log_table') }}?offset={{ offset }}&{{ filter_params }}"
+              hx-target="#load-more-row"
+              hx-swap="outerHTML">
+        Load more (showing {{ offset }} of {{ total }})
+      </button>
+    </td>
+  </tr>
+{% endif %}

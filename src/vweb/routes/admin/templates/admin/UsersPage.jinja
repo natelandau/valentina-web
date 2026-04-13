@@ -1,8 +1,8 @@
 {#def pending, approved, pending_count=0 #}
 <shared.PageLayout title="User Management">
   <div class="max-w-3xl mx-auto p-4">
-    <settings.components.SettingsTabs active="users" pending_count={{ pending_count }} />
     <shared.PageHeader title="User Management" back_url={{ url_for('index.index') }} back_text="Back Home" />
+    <admin.components.AdminTabs active="users" pending_count={{ pending_count }} />
 
 
     {% if pending %}
@@ -14,7 +14,7 @@
           </h2>
           <div id="pending-users">
             {% for u in pending %}
-              <settings.components.PendingUserRow user={{ u }} />
+              <admin.components.PendingUserRow user={{ u }} />
             {% endfor %}
           </div>
         </div>
@@ -26,7 +26,7 @@
         <h2 class="card-title">Users</h2>
         <div id="approved-users">
           {% for u in approved %}
-            <settings.components.ApprovedUserRow user={{ u }} />
+            <admin.components.ApprovedUserRow user={{ u }} />
           {% endfor %}
         </div>
       </div>

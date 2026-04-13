@@ -1,0 +1,112 @@
+{#def users, entity_types, current_filters={} #}
+{# djlint:off #}
+<div x-data="{
+    entity_type: '{{ current_filters.get('entity_type', '') }}',
+    operation: '{{ current_filters.get('operation', '') }}',
+    acting_user_id: '{{ current_filters.get('acting_user_id', '') }}',
+    date_from: '{{ current_filters.get('date_from', '') }}',
+    date_to: '{{ current_filters.get('date_to', '') }}',
+    clearFilters() {
+        this.entity_type = '';
+        this.operation = '';
+        this.acting_user_id = '';
+        this.date_from = '';
+        this.date_to = '';
+        this.$nextTick(() => { htmx.trigger(this.$el, 'filter-changed') });
+    }
+}" id="audit-filters">
+{# djlint:on #}
+  <div class="flex flex-wrap items-end gap-3 p-4 border-b border-base-300">
+    {# Entity Type #}
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Entity Type</legend>
+      <select name="entity_type" x-model="entity_type" class="select select-sm w-36"
+              hx-get="{{ url_for('admin.audit_log_table') }}"
+              hx-trigger="change"
+              hx-target="#audit-log-tbody"
+              hx-include="#audit-filters">
+        <option value="">All</option>
+        {% for et in entity_types %}
+          <option value="{{ et }}">{{ et | replace("_", " ") | title }}</option>
+        {% endfor %}
+      </select>
+    </fieldset>
+
+    {# Operation #}
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Operation</legend>
+      <select name="operation" x-model="operation" class="select select-sm w-32"
+              hx-get="{{ url_for('admin.audit_log_table') }}"
+              hx-trigger="change"
+              hx-target="#audit-log-tbody"
+              hx-include="#audit-filters">
+        <option value="">All</option>
+        <option value="CREATE">Create</option>
+        <option value="UPDATE">Update</option>
+        <option value="DELETE">Delete</option>
+      </select>
+    </fieldset>
+
+    {# Acting User #}
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">User</legend>
+      <select name="acting_user_id" x-model="acting_user_id" class="select select-sm w-40"
+              hx-get="{{ url_for('admin.audit_log_table') }}"
+              hx-trigger="change"
+              hx-target="#audit-log-tbody"
+              hx-include="#audit-filters">
+        <option value="">All</option>
+        {% for user in users %}
+          <option value="{{ user.id }}">{{ user.username }}</option>
+        {% endfor %}
+      </select>
+    </fieldset>
+
+    {# Date From #}
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">From</legend>
+      <div class="relative" x-data="{ open: false }">
+        <label class="input input-sm w-36 cursor-pointer" @click="open = !open">
+          <i class="fa-solid fa-calendar text-base-content/50"></i>
+          <input type="text" name="date_from" x-model="date_from" readonly
+                 class="grow cursor-pointer" placeholder="Select date" />
+        </label>
+        <div x-show="open" x-cloak @click.outside="open = false"
+             class="absolute top-full left-0 z-50 mt-1 bg-base-100 shadow-lg rounded-box p-2">
+          <calendar-date class="cally"
+                         @change="date_from = $event.target.value; open = false; $nextTick(() => { htmx.trigger(document.getElementById('audit-filters'), 'filter-changed') })"
+                         :value="date_from">
+            <svg aria-label="Previous" class="fill-current size-4" slot="previous" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15.75 19.5 8.25 12l7.5-7.5"></path></svg>
+            <svg aria-label="Next" class="fill-current size-4" slot="next" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m8.25 4.5 7.5 7.5-7.5 7.5"></path></svg>
+            <calendar-month></calendar-month>
+          </calendar-date>
+        </div>
+      </div>
+    </fieldset>
+
+    {# Date To #}
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">To</legend>
+      <div class="relative" x-data="{ open: false }">
+        <label class="input input-sm w-36 cursor-pointer" @click="open = !open">
+          <i class="fa-solid fa-calendar text-base-content/50"></i>
+          <input type="text" name="date_to" x-model="date_to" readonly
+                 class="grow cursor-pointer" placeholder="Select date" />
+        </label>
+        <div x-show="open" x-cloak @click.outside="open = false"
+             class="absolute top-full left-0 z-50 mt-1 bg-base-100 shadow-lg rounded-box p-2">
+          <calendar-date class="cally"
+                         @change="date_to = $event.target.value; open = false; $nextTick(() => { htmx.trigger(document.getElementById('audit-filters'), 'filter-changed') })"
+                         :value="date_to">
+            <svg aria-label="Previous" class="fill-current size-4" slot="previous" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15.75 19.5 8.25 12l7.5-7.5"></path></svg>
+            <svg aria-label="Next" class="fill-current size-4" slot="next" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m8.25 4.5 7.5 7.5-7.5 7.5"></path></svg>
+            <calendar-month></calendar-month>
+          </calendar-date>
+        </div>
+      </div>
+    </fieldset>
+
+    {# Clear #}
+    <button class="btn btn-ghost btn-sm" @click="clearFilters()">Clear</button>
+  </div>
+</div>

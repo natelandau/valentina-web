@@ -17,8 +17,8 @@
 
   <shared.PageLayout title="Company Settings">
   <div class="max-w-3xl mx-auto p-4">
-    <settings.components.SettingsTabs active="company" pending_count={{ pending_count }} />
     <shared.PageHeader title="Company Settings" back_url={{ url_for('index.index') }} back_text="Back Home" />
+    <admin.components.AdminTabs active="settings" pending_count={{ pending_count }} />
 
 
     {% if errors %}
@@ -28,7 +28,7 @@
     {% endif %}
 
     <form method="post"
-          action="{{ url_for('settings.settings') }}"
+          action="{{ url_for('admin.settings') }}"
           class="space-y-6">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
 
@@ -246,7 +246,7 @@
       </div>
 
       <div class="flex justify-end gap-2">
-        <a href="{{ url_for('settings.settings') }}" class="btn btn-ghost">Cancel</a>
+        <a href="{{ url_for('admin.settings') }}" class="btn btn-ghost">Cancel</a>
         <button type="submit" class="btn btn-primary">Save Settings</button>
       </div>
     </form>

@@ -8,7 +8,7 @@
       <div><strong>Email:</strong> {{ pending_user.email }}</div>
       <div><strong>ID:</strong> {{ pending_user.id }}</div>
     </div>
-    <form hx-post="{{ url_for('settings.merge_user', user_id=pending_user.id) }}">
+    <form hx-post="{{ url_for('admin.merge_user', user_id=pending_user.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
       <fieldset class="fieldset">
         <legend class="fieldset-legend">Merge into</legend>

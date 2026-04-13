@@ -36,12 +36,12 @@ class TestListPendingAndApproved:
         svc.list_all_unapproved.return_value = pending
         svc.list_all.return_value = approved
         mocker.patch(
-            "vweb.routes.settings.services.sync_users_service",
+            "vweb.routes.admin.services.sync_users_service",
             return_value=svc,
         )
 
         # When partitioning with the self id excluded
-        from vweb.routes.settings.services import list_pending_and_approved
+        from vweb.routes.admin.services import list_pending_and_approved
 
         with app.test_request_context("/"):
             from flask import session
@@ -68,12 +68,12 @@ class TestPendingUserCount:
         svc = MagicMock()
         svc.list_all_unapproved.return_value = UserFactory.batch(3)
         mocker.patch(
-            "vweb.routes.settings.services.sync_users_service",
+            "vweb.routes.admin.services.sync_users_service",
             return_value=svc,
         )
 
         # When asking for the pending count
-        from vweb.routes.settings.services import pending_user_count
+        from vweb.routes.admin.services import pending_user_count
 
         with app.test_request_context("/"):
             from flask import session
@@ -99,15 +99,15 @@ class TestApprove:
         svc = MagicMock()
         svc.approve_user.return_value = UserFactory.build(id="u1", role="PLAYER")
         mocker.patch(
-            "vweb.routes.settings.services.sync_users_service",
+            "vweb.routes.admin.services.sync_users_service",
             return_value=svc,
         )
         clear_cache = mocker.patch(
-            "vweb.routes.settings.services.clear_global_context_cache",
+            "vweb.routes.admin.services.clear_global_context_cache",
         )
 
         # When approving
-        from vweb.routes.settings.services import approve
+        from vweb.routes.admin.services import approve
 
         with app.test_request_context():
             from flask import session
@@ -123,7 +123,7 @@ class TestApprove:
 
     def test_approve_rejects_unapproved_role(self, app: Flask) -> None:
         """Verify approve() refuses to assign UNAPPROVED."""
-        from vweb.routes.settings.services import approve
+        from vweb.routes.admin.services import approve
 
         # When approving with UNAPPROVED, then ValueError is raised
         with app.test_request_context(), pytest.raises(ValueError, match="UNAPPROVED"):
@@ -143,15 +143,15 @@ class TestChangeRole:
         svc = MagicMock()
         svc.update.return_value = UserFactory.build(id="u1", role="STORYTELLER")
         mocker.patch(
-            "vweb.routes.settings.services.sync_users_service",
+            "vweb.routes.admin.services.sync_users_service",
             return_value=svc,
         )
         clear_cache = mocker.patch(
-            "vweb.routes.settings.services.clear_global_context_cache",
+            "vweb.routes.admin.services.clear_global_context_cache",
         )
 
         # When changing role
-        from vweb.routes.settings.services import change_role
+        from vweb.routes.admin.services import change_role
 
         with app.test_request_context():
             from flask import session
@@ -167,7 +167,7 @@ class TestChangeRole:
 
     def test_change_role_rejects_unapproved(self, app: Flask) -> None:
         """Verify UNAPPROVED is rejected as a target role."""
-        from vweb.routes.settings.services import change_role
+        from vweb.routes.admin.services import change_role
 
         # When changing role to UNAPPROVED, then ValueError is raised
         with app.test_request_context(), pytest.raises(ValueError, match="UNAPPROVED"):
@@ -182,14 +182,14 @@ class TestDeny:
         # Given a mocked users service and cache clearer
         svc = MagicMock()
         mocker.patch(
-            "vweb.routes.settings.services.sync_users_service",
+            "vweb.routes.admin.services.sync_users_service",
             return_value=svc,
         )
         clear_cache = mocker.patch(
-            "vweb.routes.settings.services.clear_global_context_cache",
+            "vweb.routes.admin.services.clear_global_context_cache",
         )
 
-        from vweb.routes.settings.services import deny
+        from vweb.routes.admin.services import deny
 
         # When denying a user
         with app.test_request_context():
@@ -217,14 +217,14 @@ class TestMerge:
         svc = MagicMock()
         svc.merge.return_value = UserFactory.build(id="primary")
         mocker.patch(
-            "vweb.routes.settings.services.sync_users_service",
+            "vweb.routes.admin.services.sync_users_service",
             return_value=svc,
         )
         clear_cache = mocker.patch(
-            "vweb.routes.settings.services.clear_global_context_cache",
+            "vweb.routes.admin.services.clear_global_context_cache",
         )
 
-        from vweb.routes.settings.services import merge
+        from vweb.routes.admin.services import merge
 
         # When calling merge
         with app.test_request_context():

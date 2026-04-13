@@ -17,8 +17,8 @@
         "pydantic-settings>=2.13.1",
         "redis>=7.4.0",
         "requests>=2.33.1",
-        "valentina-python-client[testing]>=1.21.0",
-    ]
+        "valentina-python-client[testing]>=1.22.1",
+]
     description = "Web client for the Valentina Noir API."
     license = { file = "LICENSE" }
     name = "vweb"

@@ -1,0 +1,20 @@
+{#def active="audit_log", pending_count=0 #}
+<div role="tablist" class="tabs tabs-border mb-4" hx-boost="true" hx-swap="innerHTML show:no-scroll transition:true" hx-target="body">
+  <a role="tab"
+     class="tab {% if active == 'audit_log' %}tab-active{% endif %}"
+     href="{{ url_for('admin.audit_log') }}">Audit Log</a>
+  <a role="tab"
+     class="tab {% if active == 'settings' %}tab-active{% endif %}"
+     href="{{ url_for('admin.settings') }}">Settings</a>
+  <a role="tab"
+     class="tab {% if active == 'users' %}tab-active{% endif %}"
+     href="{{ url_for('admin.users') }}">
+    Users
+    {% if pending_count > 0 %}
+      <div class="inline-grid *:[grid-area:1/1] ml-2">
+        <div class="status status-error animate-ping"></div>
+        <div class="status status-error"></div>
+      </div>
+    {% endif %}
+  </a>
+</div>

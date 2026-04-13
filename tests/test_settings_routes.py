@@ -22,7 +22,7 @@ class TestSettingsRouteRegistered:
     def test_settings_url_exists(self, app) -> None:
         """The /settings endpoint must be registered on the app."""
         rules = {r.rule for r in app.url_map.iter_rules()}
-        assert "/settings" in rules
+        assert "/admin/settings" in rules
 
 
 class TestSettingsAccessControl:
@@ -51,14 +51,14 @@ class TestSettingsAccessControl:
         company = CompanyFactory.build()
         svc = MagicMock()
         svc.get.return_value = company
-        mocker.patch("vweb.routes.settings.views.sync_companies_service", return_value=svc)
+        mocker.patch("vweb.routes.admin.views.sync_companies_service", return_value=svc)
         users_svc = MagicMock()
         users_svc.list_all_unapproved.return_value = []
         mocker.patch(
-            "vweb.routes.settings.services.sync_users_service",
+            "vweb.routes.admin.services.sync_users_service",
             return_value=users_svc,
         )
-        response = client.get("/settings")
+        response = client.get("/admin/settings")
         assert response.status_code == 200
 
     def test_non_admin_redirected_with_flash(
@@ -69,7 +69,7 @@ class TestSettingsAccessControl:
     ) -> None:
         """Verify non-admin GET is redirected to / with an error flash."""
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=player_context)
-        response = client.get("/settings")
+        response = client.get("/admin/settings")
         assert response.status_code == 302
         assert response.headers["Location"].endswith("/")
 
@@ -96,24 +96,24 @@ class TestSettingsTabs:
         companies_svc = MagicMock()
         companies_svc.get.return_value = company
         mocker.patch(
-            "vweb.routes.settings.views.sync_companies_service",
+            "vweb.routes.admin.views.sync_companies_service",
             return_value=companies_svc,
         )
 
         users_svc = MagicMock()
         users_svc.list_all_unapproved.return_value = [MagicMock(), MagicMock()]
         mocker.patch(
-            "vweb.routes.settings.services.sync_users_service",
+            "vweb.routes.admin.services.sync_users_service",
             return_value=users_svc,
         )
 
         # When loading the settings page
-        response = client.get("/settings")
+        response = client.get("/admin/settings")
 
         # Then the Users tab and badge are present
         body = response.get_data(as_text=True)
         assert response.status_code == 200
-        assert 'href="/settings/users"' in body
+        assert 'href="/admin/users"' in body
         assert "animate-ping" in body
 
 
@@ -146,13 +146,13 @@ class TestSettingsGet:
         svc.get.return_value = company
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
         mocker.patch(
-            "vweb.routes.settings.views.sync_companies_service",
+            "vweb.routes.admin.views.sync_companies_service",
             return_value=svc,
         )
         users_svc = MagicMock()
         users_svc.list_all_unapproved.return_value = []
         mocker.patch(
-            "vweb.routes.settings.services.sync_users_service",
+            "vweb.routes.admin.services.sync_users_service",
             return_value=users_svc,
         )
         return svc
@@ -161,7 +161,7 @@ class TestSettingsGet:
         self, client: FlaskClient, mock_companies_svc: MagicMock
     ) -> None:
         """Verify GET /settings renders the company name in the form."""
-        response = client.get("/settings")
+        response = client.get("/admin/settings")
         assert response.status_code == 200
         assert b'value="Acme Co"' in response.data
 
@@ -169,21 +169,21 @@ class TestSettingsGet:
         self, client: FlaskClient, mock_companies_svc: MagicMock
     ) -> None:
         """Verify GET /settings renders the company email in the form."""
-        response = client.get("/settings")
+        response = client.get("/admin/settings")
         assert b'value="admin@acme.example"' in response.data
 
     def test_get_renders_autogen_xp_cost(
         self, client: FlaskClient, mock_companies_svc: MagicMock
     ) -> None:
         """Verify GET /settings renders the autogen XP cost in the form."""
-        response = client.get("/settings")
+        response = client.get("/admin/settings")
         assert b'value="15"' in response.data
 
     def test_get_calls_companies_get_with_company_id(
         self, client: FlaskClient, mock_companies_svc: MagicMock, app: Flask
     ) -> None:
         """Verify GET /settings calls the companies service with the correct company ID."""
-        client.get("/settings")
+        client.get("/admin/settings")
         mock_companies_svc.get.assert_called_once()
         called_with = mock_companies_svc.get.call_args[0][0]
         assert called_with == "test-company-id"
@@ -211,13 +211,13 @@ class TestSettingsPostSuccess:
         svc.update.return_value = company
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
         mocker.patch(
-            "vweb.routes.settings.views.sync_companies_service",
+            "vweb.routes.admin.views.sync_companies_service",
             return_value=svc,
         )
         users_svc = MagicMock()
         users_svc.list_all_unapproved.return_value = []
         mocker.patch(
-            "vweb.routes.settings.services.sync_users_service",
+            "vweb.routes.admin.services.sync_users_service",
             return_value=users_svc,
         )
         return svc
@@ -233,7 +233,7 @@ class TestSettingsPostSuccess:
         csrf = get_csrf(client)
 
         response = client.post(
-            "/settings",
+            "/admin/settings",
             data={
                 "csrf_token": csrf,
                 "name": "New Name",
@@ -248,7 +248,7 @@ class TestSettingsPostSuccess:
         )
 
         assert response.status_code == 302
-        assert response.headers["Location"].endswith("/settings")
+        assert response.headers["Location"].endswith("/admin/settings")
 
         mock_companies_svc.update.assert_called_once()
         args, kwargs = mock_companies_svc.update.call_args
@@ -271,7 +271,7 @@ class TestSettingsPostSuccess:
 
         csrf = get_csrf(client)
         client.post(
-            "/settings",
+            "/admin/settings",
             data={
                 "csrf_token": csrf,
                 "name": "New Name",
@@ -298,7 +298,7 @@ class TestSettingsPostSuccess:
 
         csrf = get_csrf(client)
         client.post(
-            "/settings",
+            "/admin/settings",
             data={
                 "csrf_token": csrf,
                 "name": "Required Name",
@@ -341,13 +341,13 @@ class TestSettingsPostValidation:
         svc.update.return_value = company
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
         mocker.patch(
-            "vweb.routes.settings.views.sync_companies_service",
+            "vweb.routes.admin.views.sync_companies_service",
             return_value=svc,
         )
         users_svc = MagicMock()
         users_svc.list_all_unapproved.return_value = []
         mocker.patch(
-            "vweb.routes.settings.services.sync_users_service",
+            "vweb.routes.admin.services.sync_users_service",
             return_value=users_svc,
         )
         return svc
@@ -360,7 +360,7 @@ class TestSettingsPostValidation:
 
         csrf = get_csrf(client)
         response = client.post(
-            "/settings",
+            "/admin/settings",
             data={
                 "csrf_token": csrf,
                 "name": "Hi",
@@ -385,7 +385,7 @@ class TestSettingsPostValidation:
 
         csrf = get_csrf(client)
         response = client.post(
-            "/settings",
+            "/admin/settings",
             data={
                 "csrf_token": csrf,
                 "name": "Valid Name",
@@ -411,7 +411,7 @@ class TestSettingsPostValidation:
 
         csrf = get_csrf(client)
         response = client.post(
-            "/settings",
+            "/admin/settings",
             data={
                 "csrf_token": csrf,
                 "name": "Valid Name",
@@ -429,7 +429,7 @@ class TestSettingsPostValidation:
 
     def test_post_missing_csrf_returns_400(self, client: FlaskClient, mock_companies_svc) -> None:
         """Verify a POST without a CSRF token returns 400."""
-        response = client.post("/settings", data={"name": "Valid Name"})
+        response = client.post("/admin/settings", data={"name": "Valid Name"})
         assert response.status_code == 400
         mock_companies_svc.update.assert_not_called()
 
@@ -463,7 +463,7 @@ class TestSettingsNavLink:
         mock_users_svc.get_statistics.return_value = RollStatisticsFactory.build()
         mocker.patch("vweb.routes.profile.views.sync_users_service", return_value=mock_users_svc)
         response = client.get(f"/profile/{admin_context.users[0].id}")
-        assert b"/settings" in response.data
+        assert b"/admin" in response.data
 
     def test_player_does_not_see_settings_link(
         self,
@@ -471,7 +471,7 @@ class TestSettingsNavLink:
         player_context: GlobalContext,
         mocker,  # type: ignore[name-defined]
     ) -> None:
-        """Verify non-admin users do not see the /settings link in navigation."""
+        """Verify non-admin users do not see the /admin link in navigation."""
         from vclient.testing import RollStatisticsFactory
 
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=player_context)
@@ -479,4 +479,4 @@ class TestSettingsNavLink:
         mock_users_svc.get_statistics.return_value = RollStatisticsFactory.build()
         mocker.patch("vweb.routes.profile.views.sync_users_service", return_value=mock_users_svc)
         response = client.get(f"/profile/{player_context.users[0].id}")
-        assert b"/settings" not in response.data
+        assert b"/admin" not in response.data

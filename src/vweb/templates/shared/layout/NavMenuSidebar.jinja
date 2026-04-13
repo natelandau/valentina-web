@@ -35,9 +35,9 @@
     </li>
     {% if requesting_user() and is_admin() %}
       <li>
-        <a href="{{ url_for('settings.settings') }}"
-           class="{% if request.path.startswith('/settings') %}active{% endif %}">
-          <i class="fa-solid fa-gear"></i> Settings
+        <a href="{{ url_for('admin.audit_log') }}"
+           class="{% if request.path.startswith('/admin') %}active{% endif %}">
+          <i class="fa-solid fa-gear"></i> Admin
         </a>
       </li>
     {% endif %}
