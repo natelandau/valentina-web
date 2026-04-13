@@ -1,0 +1,40 @@
+{#def users, entity_types, pending_count=0 #}
+{% set cally_script = '<script type="module" src="https://cdn.jsdelivr.net/npm/cally/dist/cally.js"></script>' %}
+<shared.PageLayout title="Audit Log" scripts_extra={{ cally_script }}>
+  <div class="max-w-6xl mx-auto p-4">
+    <admin.components.AdminTabs active="audit_log" pending_count={{ pending_count }} />
+    <shared.PageHeader title="Audit Log" back_url={{ url_for('index.index') }} back_text="Back Home" />
+
+    <div class="card bg-base-100 shadow-sm">
+      <div class="card-body p-0">
+        <admin.components.AuditLogFilters
+          users={{ users }}
+          entity_types={{ entity_types }} />
+
+        <div class="overflow-x-auto">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th class="w-44">Date</th>
+                <th>Description</th>
+                <th>Changes</th>
+                <th class="w-32">User</th>
+                <th class="w-48">Related</th>
+              </tr>
+            </thead>
+            <tbody id="audit-log-tbody"
+                   hx-get="{{ url_for('admin.audit_log_table') }}"
+                   hx-trigger="load, filter-changed from:#audit-filters"
+                   hx-include="#audit-filters">
+              <tr>
+                <td colspan="5" class="text-center py-8">
+                  <span class="loading loading-spinner loading-md"></span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</shared.PageLayout>
