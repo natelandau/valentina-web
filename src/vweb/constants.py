@@ -18,8 +18,6 @@ CACHE_BLUEPRINT_CATEGORIES_PREFIX: Final[str] = "bp_categories:"
 CACHE_DICTIONARY_KEY: Final[str] = "dictionary_terms"
 CACHE_DICTIONARY_TTL: Final[int] = 60 * 60  # 1 hour
 
-ANONYMOUS_ON_BEHALF_OF: Final[str] = "anonymous"
-
 MAX_IMAGE_SIZE: Final[int] = 10 * 1024 * 1024  # 10 MB
 ALLOWED_IMAGE_TYPES: Final[frozenset[str]] = frozenset(
     {"image/jpeg", "image/png", "image/webp", "image/gif"}
