@@ -96,7 +96,7 @@ class IndexAddExperienceView(MethodView):
             abort(403)
         form_data = request.form.to_dict()
         errors = validate_and_submit_experience(
-            form_data, user_id, campaign_id, requesting_user_id=user_id
+            form_data, user_id, campaign_id, on_behalf_of=user_id
         )
 
         if errors:

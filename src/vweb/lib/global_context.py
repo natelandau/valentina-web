@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -47,26 +48,21 @@ def _fetch_global_data(company_id: str, user_id: str) -> GlobalContext:
     logger.debug("Fetching global company data")
 
     company = sync_companies_service().get(company_id)
-    users = sync_users_service(company_id=company_id).list_all()
-    campaigns = sync_campaigns_service(user_id=user_id, company_id=company_id).list_all()
+    users = sync_users_service(on_behalf_of=user_id, company_id=company_id).list_all()
+    campaigns = sync_campaigns_service(on_behalf_of=user_id, company_id=company_id).list_all()
 
-    characters_by_campaign: dict[str, list[Character]] = {}
     characters: list[Character] = []
+    characters_by_campaign: dict[str, list[Character]] = defaultdict(list)
     books_by_campaign: dict[str, list[CampaignBook]] = {}
     if campaigns:
-        char_results = [
-            sync_characters_service(
-                user_id=user_id, campaign_id=c.id, company_id=company_id
-            ).list_all()
-            for c in campaigns
-        ]
-        characters_by_campaign = {
-            c.id: chars for c, chars in zip(campaigns, char_results, strict=True)
-        }
-        characters = [char for chars in char_results for char in chars]
+        characters = sync_characters_service(on_behalf_of=user_id, company_id=company_id).list_all()
+        for char in characters:
+            characters_by_campaign[char.campaign_id].append(char)
 
         book_results = [
-            sync_books_service(user_id=user_id, campaign_id=c.id, company_id=company_id).list_all()
+            sync_books_service(
+                campaign_id=c.id, on_behalf_of=user_id, company_id=company_id
+            ).list_all()
             for c in campaigns
         ]
         books_by_campaign = {c.id: books for c, books in zip(campaigns, book_results, strict=True)}
@@ -149,7 +145,7 @@ def get_campaign_statistics(campaign_id: str) -> RollStatistics:
 
     user_id = g.requesting_user.id
     company_id = g.global_context.company.id
-    stats = sync_campaigns_service(user_id=user_id, company_id=company_id).get_statistics(
+    stats = sync_campaigns_service(on_behalf_of=user_id, company_id=company_id).get_statistics(
         campaign_id
     )
     cache.set(cache_key, stats, timeout=30)

@@ -155,6 +155,7 @@ def create_app(settings_override: Settings | None = None) -> Flask:
         if settings.debug_toolbar:
             DebugToolbarExtension(app)
 
+    from vweb.routes.admin.views import bp as admin_bp
     from vweb.routes.auth.views import bp as auth_bp
     from vweb.routes.book.views import bp as book_view_bp
     from vweb.routes.campaign.views import bp as campaign_bp
@@ -166,7 +167,6 @@ def create_app(settings_override: Settings | None = None) -> Flask:
     from vweb.routes.dictionary.views import bp as dictionary_bp
     from vweb.routes.index.views import bp as index_bp
     from vweb.routes.profile.views import bp as profile_bp
-    from vweb.routes.admin.views import bp as admin_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(index_bp)

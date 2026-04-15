@@ -193,7 +193,9 @@ class TestSelectCompaniesView:
         new_user = UserFactory.build(id="new-u", role="UNAPPROVED")
         mock_svc = MagicMock()
         mock_svc.register.return_value = new_user
-        mocker.patch("vweb.routes.auth.views.sync_users_service", return_value=mock_svc)
+        mocker.patch(
+            "vweb.routes.auth.views.sync_user_self_registration_service", return_value=mock_svc
+        )
 
         # Given a mock companies service for name lookup
         mock_company = CompanyFactory.build(id="comp-1", name="Test Company")

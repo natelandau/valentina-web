@@ -28,8 +28,7 @@ class CharacterInventoryHandler:
             raise ValueError(msg)
 
         self._svc = sync_characters_service(
-            user_id=session.get("user_id", ""),
-            campaign_id=character.campaign_id,
+            on_behalf_of=session.get("user_id", ""),
             company_id=session["company_id"],
         )
 

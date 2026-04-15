@@ -38,8 +38,7 @@ def get_character_traits(*, character: Character) -> list[CharacterTrait]:
     user_id = g.requesting_user.id
 
     return sync_character_traits_service(
-        user_id=user_id,
-        campaign_id=character.campaign_id,
+        on_behalf_of=user_id,
         character_id=character.id,
         company_id=session["company_id"],
     ).list_all(is_rollable=True)
@@ -61,7 +60,9 @@ def get_roll_context(*, character: Character, campaign: Campaign) -> RollContext
     user_id = g.requesting_user.id
 
     traits = get_character_traits(character=character)
-    quickrolls = sync_users_service(company_id=session["company_id"]).list_all_quickrolls(user_id)
+    quickrolls = sync_users_service(
+        on_behalf_of=user_id, company_id=session["company_id"]
+    ).list_all_quickrolls(user_id)
 
     return RollContext(
         character_traits=traits,
@@ -107,7 +108,9 @@ def perform_custom_roll(
         character_id=character.id,
         campaign_id=campaign.id,
     )
-    return sync_dicerolls_service(user_id, company_id=session["company_id"]).create(request)
+    return sync_dicerolls_service(on_behalf_of=user_id, company_id=session["company_id"]).create(
+        request
+    )
 
 
 def perform_trait_roll(  # noqa: PLR0913
@@ -176,7 +179,9 @@ def perform_trait_roll(  # noqa: PLR0913
         campaign_id=campaign.id,
         trait_ids=trait_ids,
     )
-    return sync_dicerolls_service(user_id, company_id=session["company_id"]).create(request)
+    return sync_dicerolls_service(on_behalf_of=user_id, company_id=session["company_id"]).create(
+        request
+    )
 
 
 def perform_quickroll(
@@ -204,7 +209,9 @@ def perform_quickroll(
     """
     user_id = g.requesting_user.id
 
-    return sync_dicerolls_service(user_id, company_id=session["company_id"]).create_from_quickroll(
+    return sync_dicerolls_service(
+        on_behalf_of=user_id, company_id=session["company_id"]
+    ).create_from_quickroll(
         quickroll_id=quickroll_id,
         character_id=character.id,
         difficulty=difficulty,

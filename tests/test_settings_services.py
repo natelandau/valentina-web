@@ -117,7 +117,7 @@ class TestApprove:
             result = approve("u1", "PLAYER", "admin-id")
 
         # Then users_svc.approve_user is called with the right args
-        svc.approve_user.assert_called_once_with("u1", "PLAYER", "admin-id")
+        svc.approve_user.assert_called_once_with("u1", "PLAYER")
         clear_cache.assert_called_once()
         assert result.id == "u1"
 
@@ -161,7 +161,7 @@ class TestChangeRole:
             result = change_role("u1", "STORYTELLER", "admin-id")
 
         # Then users_svc.update is called with keyword args and cache is cleared
-        svc.update.assert_called_once_with("u1", requesting_user_id="admin-id", role="STORYTELLER")
+        svc.update.assert_called_once_with("u1", role="STORYTELLER")
         clear_cache.assert_called_once()
         assert result.role == "STORYTELLER"
 
@@ -200,7 +200,7 @@ class TestDeny:
             deny("u1", "admin-id")
 
         # Then deny_user is called and cache is cleared
-        svc.deny_user.assert_called_once_with("u1", "admin-id")
+        svc.deny_user.assert_called_once_with("u1")
         clear_cache.assert_called_once()
 
 
@@ -238,7 +238,6 @@ class TestMerge:
         svc.merge.assert_called_once_with(
             primary_user_id="primary",
             secondary_user_id="pending-1",
-            requesting_user_id="admin-id",
         )
         clear_cache.assert_called_once()
         assert result.id == "primary"

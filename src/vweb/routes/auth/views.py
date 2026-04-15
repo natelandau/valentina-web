@@ -9,7 +9,7 @@ import httpx
 from authlib.integrations.base_client.errors import OAuthError
 from flask import Blueprint, flash, redirect, request, session, url_for
 from flask.views import MethodView
-from vclient import sync_companies_service, sync_users_service
+from vclient import sync_companies_service, sync_user_self_registration_service
 from vclient.exceptions import APIError
 from vclient.models.users import UserRegisterDTO
 from werkzeug.wrappers.response import Response
@@ -336,7 +336,7 @@ class SelectCompaniesView(MethodView):
 
         for company_id in company_ids:
             try:
-                user = sync_users_service(company_id=company_id).register(
+                user = sync_user_self_registration_service(company_id=company_id).register(
                     request=register_dto,
                 )
                 companies_mapping[company_id] = {

@@ -70,9 +70,9 @@ def _render_book_card(  # noqa: PLR0913
 def _load_sorted_chapters(user_id: str, campaign_id: str, book_id: str) -> list[CampaignChapter]:
     """Fetch all chapters for a book, sorted by number."""
     chapters = sync_chapters_service(
-        user_id=user_id,
         campaign_id=campaign_id,
         book_id=book_id,
+        on_behalf_of=user_id,
         company_id=session["company_id"],
     ).list_all()
     chapters.sort(key=lambda c: c.number)
@@ -121,7 +121,7 @@ class BookDetailView(MethodView):
         # fetch when the notes tab is requested to avoid an extra API call.
         assets: list[Asset] = (
             sync_books_service(
-                user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
+                campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
             ).list_all_assets(book.id)
             if active_section == "description"
             else []
@@ -235,7 +235,7 @@ class BookDetailView(MethodView):
             )
 
         svc = sync_books_service(
-            user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
+            campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
         )
         updated_book = svc.update(book_id, name=name, description=description)
         if number != book.number:
@@ -267,7 +267,7 @@ class BookImageUploadView(MethodView):
 
         user_id = session.get("user_id", "")
         svc = sync_books_service(
-            user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
+            campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
         )
 
         assets = upload_and_append_asset(
@@ -297,7 +297,7 @@ class BookImageDeleteView(MethodView):
 
         user_id = session.get("user_id", "")
         svc = sync_books_service(
-            user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
+            campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
         )
 
         handle_image_delete(svc=svc, parent_id=book_id, asset_id=asset_id)

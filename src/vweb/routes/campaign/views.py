@@ -156,7 +156,7 @@ class CampaignCreateView(MethodView):
             )
 
         service = sync_campaigns_service(
-            user_id=g.requesting_user.id, company_id=session["company_id"]
+            on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         new_campaign = service.create(CampaignCreate(name=name, description=description or None))
         clear_global_context_cache(session["company_id"], session["user_id"])
@@ -201,7 +201,7 @@ class CampaignUpdateView(MethodView):
             )
 
         service = sync_campaigns_service(
-            user_id=g.requesting_user.id, company_id=session["company_id"]
+            on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         service.update(campaign_id, CampaignUpdate(name=name, description=description or None))
         clear_global_context_cache(session["company_id"], session["user_id"])
@@ -234,7 +234,7 @@ class CampaignDeleteView(MethodView):
         fetch_campaign_or_404(campaign_id)
 
         service = sync_campaigns_service(
-            user_id=g.requesting_user.id, company_id=session["company_id"]
+            on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         service.delete(campaign_id)
         clear_global_context_cache(session["company_id"], session["user_id"])
@@ -287,7 +287,7 @@ class CampaignUpdateDangerDesperationView(MethodView):
             update = CampaignUpdate(desperation=value)
 
         service = sync_campaigns_service(
-            user_id=g.requesting_user.id, company_id=session["company_id"]
+            on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         campaign = service.update(campaign_id, update)
         clear_global_context_cache(session["company_id"], session["user_id"])

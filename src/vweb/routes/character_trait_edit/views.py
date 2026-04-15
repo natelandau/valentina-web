@@ -197,8 +197,7 @@ class CharacterTraitsView(MethodView):
         )
 
         api_svc = sync_character_traits_service(
-            user_id=requesting_user.id,
-            campaign_id=campaign.id,
+            on_behalf_of=requesting_user.id,
             character_id=character.id,
             company_id=session["company_id"],
         )

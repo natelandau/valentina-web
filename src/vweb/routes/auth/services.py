@@ -61,9 +61,9 @@ def update_discord_profile(company_id: str, user_id: str, discord_data: dict) ->
         email=discord_data.get("email"),
         verified=discord_data.get("verified"),
     )
-    sync_users_service(company_id=company_id).update(
+    sync_users_service(on_behalf_of=user_id, company_id=company_id).update(
         user_id,
-        request=UserUpdate(discord_profile=profile, requesting_user_id=user_id),
+        request=UserUpdate(discord_profile=profile),
     )
 
 
@@ -77,9 +77,9 @@ def update_github_profile(company_id: str, user_id: str, github_data: dict) -> N
         email=github_data.get("email"),
         profile_url=github_data.get("html_url"),
     )
-    sync_users_service(company_id=company_id).update(
+    sync_users_service(on_behalf_of=user_id, company_id=company_id).update(
         user_id,
-        request=UserUpdate(github_profile=profile, requesting_user_id=user_id),
+        request=UserUpdate(github_profile=profile),
     )
 
 
@@ -95,7 +95,7 @@ def update_google_profile(company_id: str, user_id: str, google_data: dict) -> N
         avatar_url=google_data.get("picture"),
         locale=google_data.get("locale"),
     )
-    sync_users_service(company_id=company_id).update(
+    sync_users_service(on_behalf_of=user_id, company_id=company_id).update(
         user_id,
-        request=UserUpdate(google_profile=profile, requesting_user_id=user_id),
+        request=UserUpdate(google_profile=profile),
     )

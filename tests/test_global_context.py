@@ -219,16 +219,26 @@ def test_before_request_skips_without_user_id(app, mocker) -> None:
     mock_load.assert_not_called()
 
 
-@pytest.mark.usefixtures("_fake_vclient_data")
 def test_fetch_global_data_returns_all_characters_unfiltered(app, fake_vclient) -> None:
     """Verify _fetch_global_data returns all characters, not just the requesting user's."""
-    # Given characters belonging to different users — use params so this override takes priority
+    # Given a company, users, and campaigns are set up
+    company = CompanyFactory.build(
+        id="test-company-id",
+        name="Test Company",
+        resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
+    )
+    fake_vclient.set_response(Routes.COMPANIES_GET, model=company)
+    user = UserFactory.build(id="test-user-id", username="test-user", company_id="test-company-id")
+    fake_vclient.set_response(Routes.USERS_LIST, items=[user])
+    campaign = CampaignFactory.build(id="camp-1", name="Campaign 1")
+    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[campaign])
+
+    # Given characters belonging to different users
     my_char = CharacterFactory.build(name="My Char", user_player_id="test-user-id")
     other_char = CharacterFactory.build(name="Other Char", user_player_id="other-user-id")
     fake_vclient.set_response(
         Routes.CHARACTERS_LIST,
         items=[my_char, other_char],
-        params={"campaign_id": "camp-1"},
     )
 
     # When fetching global data

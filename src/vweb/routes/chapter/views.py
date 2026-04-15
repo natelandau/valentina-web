@@ -25,6 +25,16 @@ SECTIONS = ("story", "notes")
 CHAPTER_CARD_ID = "chapter-story"
 
 
+def _chapters_svc(campaign_id: str, book_id: str):  # noqa: ANN202
+    """Build a chapters service scoped to the current user and company."""
+    return sync_chapters_service(
+        campaign_id=campaign_id,
+        book_id=book_id,
+        on_behalf_of=session.get("user_id", ""),
+        company_id=session["company_id"],
+    )
+
+
 def _adjacent_chapters(
     chapters: list[CampaignChapter], chapter_id: str
 ) -> tuple[CampaignChapter | None, CampaignChapter | None, int]:
@@ -93,14 +103,7 @@ class ChapterDetailView(MethodView):
     ) -> str:
         """Render chapter detail page or tab fragment."""
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        user_id = session.get("user_id", "")
-
-        ch_svc = sync_chapters_service(
-            user_id=user_id,
-            campaign_id=campaign_id,
-            book_id=book_id,
-            company_id=session["company_id"],
-        )
+        ch_svc = _chapters_svc(campaign_id, book_id)
         chapter = ch_svc.get(chapter_id)
         if chapter is None:
             abort(404)
@@ -202,14 +205,7 @@ class ChapterDetailView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        user_id = session.get("user_id", "")
-
-        ch_svc = sync_chapters_service(
-            user_id=user_id,
-            campaign_id=campaign_id,
-            book_id=book_id,
-            company_id=session["company_id"],
-        )
+        ch_svc = _chapters_svc(campaign_id, book_id)
         ch_svc.delete(chapter_id)
         clear_global_context_cache(session["company_id"], session["user_id"])
 
@@ -233,13 +229,7 @@ class ChapterEditView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        user_id = session.get("user_id", "")
-        ch_svc = sync_chapters_service(
-            user_id=user_id,
-            campaign_id=campaign_id,
-            book_id=book_id,
-            company_id=session["company_id"],
-        )
+        ch_svc = _chapters_svc(campaign_id, book_id)
         chapter = ch_svc.get(chapter_id)
         if chapter is None:
             abort(404)
@@ -258,13 +248,7 @@ class ChapterEditView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        user_id = session.get("user_id", "")
-        ch_svc = sync_chapters_service(
-            user_id=user_id,
-            campaign_id=campaign_id,
-            book_id=book_id,
-            company_id=session["company_id"],
-        )
+        ch_svc = _chapters_svc(campaign_id, book_id)
         chapter = ch_svc.get(chapter_id)
         if chapter is None:
             abort(404)
@@ -335,7 +319,6 @@ class ChapterCreateView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        user_id = session.get("user_id", "")
 
         name = request.form.get("name", "").strip()
         number_str = request.form.get("number", "").strip()
@@ -361,12 +344,7 @@ class ChapterCreateView(MethodView):
                 form_data=request.form,
             )
 
-        ch_svc = sync_chapters_service(
-            user_id=user_id,
-            campaign_id=campaign_id,
-            book_id=book_id,
-            company_id=session["company_id"],
-        )
+        ch_svc = _chapters_svc(campaign_id, book_id)
         ch_svc.create(name=name, number=number, description=description)
         clear_global_context_cache(session["company_id"], session["user_id"])
 
@@ -390,13 +368,7 @@ class ChapterImageUploadView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        user_id = session.get("user_id", "")
-        ch_svc = sync_chapters_service(
-            user_id=user_id,
-            campaign_id=campaign_id,
-            book_id=book_id,
-            company_id=session["company_id"],
-        )
+        ch_svc = _chapters_svc(campaign_id, book_id)
         chapter = ch_svc.get(chapter_id)
         if chapter is None:
             abort(404)
@@ -427,13 +399,7 @@ class ChapterImageDeleteView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        user_id = session.get("user_id", "")
-        ch_svc = sync_chapters_service(
-            user_id=user_id,
-            campaign_id=campaign_id,
-            book_id=book_id,
-            company_id=session["company_id"],
-        )
+        ch_svc = _chapters_svc(campaign_id, book_id)
         chapter = ch_svc.get(chapter_id)
         if chapter is None:
             abort(404)
