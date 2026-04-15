@@ -159,7 +159,7 @@ class CharacterView(MethodView):
             if request.headers.get("HX-Request"):
                 return hx_redirect(url_for("index.index"))
 
-            return redirect(url_for("index.index"))  # ty:ignore[invalid-return-type]
+            return redirect(url_for("index.index"))
 
         section_data = self._fetch_section_data(section, character, campaign)
 
