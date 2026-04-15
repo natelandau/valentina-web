@@ -17,12 +17,7 @@ if TYPE_CHECKING:
 _PUBLIC_PATH_PREFIXES = ("/auth/", "/static")
 _COMPANY_SELECTION_PATHS = ("/select-companies", "/select-company")
 
-# --- Scanner probe filter configuration ---
-# Dotfile segments: any path segment starting with "." is blocked
-# EXCEPT these exemptions (e.g. /.well-known/ is an IETF standard)
 _SCANNER_DOT_EXEMPTIONS = frozenset({".well-known"})
-
-# Paths starting with any of these are blocked (matched against lowercased path)
 _SCANNER_BLOCKED_PREFIXES = (
     "/wp-",
     "/wordpress",
@@ -32,8 +27,6 @@ _SCANNER_BLOCKED_PREFIXES = (
     "/cgi-bin",
     "/xmlrpc",
 )
-
-# Paths ending with any of these are blocked (matched against lowercased path)
 _SCANNER_BLOCKED_SUFFIXES = (
     ".php",
     ".asp",
@@ -41,11 +34,17 @@ _SCANNER_BLOCKED_SUFFIXES = (
     ".jsp",
     ".cgi",
 )
-
-# Compiled regex patterns for complex rules (matched against the full lowercased path)
 _SCANNER_BLOCKED_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\.env\."),  # .env.production, .env.local, .env.backup, etc.
 ]
+
+
+def _block_probe() -> None:
+    """Log a blocked scanner probe at debug level and abort with 404."""
+    logger.debug(
+        "Blocked scanner probe: {path} from {ip}", path=request.path, ip=request.remote_addr
+    )
+    abort(404)
 
 
 def _hook_block_scanner_probes() -> Response | None:
@@ -56,32 +55,19 @@ def _hook_block_scanner_probes() -> Response | None:
     """
     path = request.path.lower()
 
-    # Check for dotfile segments (e.g. /.env, /app/.git/config)
     for segment in path.split("/"):
         if segment.startswith(".") and segment not in _SCANNER_DOT_EXEMPTIONS:
-            logger.debug(
-                "Blocked scanner probe: {path} from {ip}", path=request.path, ip=request.remote_addr
-            )
-            abort(404)
+            _block_probe()
 
     if path.startswith(_SCANNER_BLOCKED_PREFIXES):
-        logger.debug(
-            "Blocked scanner probe: {path} from {ip}", path=request.path, ip=request.remote_addr
-        )
-        abort(404)
+        _block_probe()
 
     if path.endswith(_SCANNER_BLOCKED_SUFFIXES):
-        logger.debug(
-            "Blocked scanner probe: {path} from {ip}", path=request.path, ip=request.remote_addr
-        )
-        abort(404)
+        _block_probe()
 
     for pattern in _SCANNER_BLOCKED_PATTERNS:
         if pattern.search(path):
-            logger.debug(
-                "Blocked scanner probe: {path} from {ip}", path=request.path, ip=request.remote_addr
-            )
-            abort(404)
+            _block_probe()
 
     return None
 
