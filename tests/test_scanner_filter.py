@@ -32,10 +32,12 @@ class TestScannerProbeBlocking:
         # When requesting a .well-known path
         response = client.get("/.well-known/openid-configuration")
 
-        # Then the request is NOT blocked by the scanner filter
-        # (it will 404 from normal routing, but not from the scanner hook —
-        # we just verify it doesn't get caught by dotfile detection)
-        assert response.status_code != 403
+        # Then the request passes the scanner filter and reaches normal routing.
+        # Both the scanner hook and normal routing return 404, so we can't
+        # distinguish them via status code alone. This test documents the
+        # exemption intent; the dotfile parametrized tests above prove that
+        # other dot-prefixed segments ARE blocked.
+        assert response.status_code == 404
 
     @pytest.mark.parametrize(
         "path",
@@ -89,6 +91,23 @@ class TestScannerProbeBlocking:
     def test_env_variant_paths_return_404(self, client, path) -> None:
         """Verify .env.* variant paths are caught by the regex pattern."""
         # When requesting a .env variant path
+        response = client.get(path)
+
+        # Then a 404 is returned
+        assert response.status_code == 404
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/WP-ADMIN",
+            "/.Env",
+            "/PHPMYADMIN",
+            "/login.PHP",
+        ],
+    )
+    def test_case_insensitive_blocking(self, client, path) -> None:
+        """Verify scanner detection is case-insensitive."""
+        # When requesting a scanner path with mixed case
         response = client.get(path)
 
         # Then a 404 is returned
