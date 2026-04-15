@@ -42,6 +42,7 @@ class TestGenerateSingle:
 
         # Then the service is called with character_type and no optionals
         mock_service.generate_character.assert_called_once_with(
+            campaign_id="c1",
             character_type="PLAYER",
             character_class=None,
             experience_level=None,
@@ -84,6 +85,7 @@ class TestGenerateSingle:
 
         # Then all fields are forwarded
         mock_service.generate_character.assert_called_once_with(
+            campaign_id="c1",
             character_type="NPC",
             character_class="VAMPIRE",
             experience_level="ADVANCED",

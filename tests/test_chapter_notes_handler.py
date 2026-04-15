@@ -184,8 +184,8 @@ class TestChapterNotesHandlerOperations:
                 ChapterNotesHandler("chapter-123", campaign_id="camp-456", book_id="book-789")
 
                 patched_svc.assert_called_once_with(
-                    user_id="test-user-id",
                     campaign_id="camp-456",
                     book_id="book-789",
+                    on_behalf_of="test-user-id",
                     company_id="test-company-id",
                 )

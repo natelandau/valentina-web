@@ -117,7 +117,7 @@ class TestApprove:
             result = approve("u1", "PLAYER", "admin-id")
 
         # Then users_svc.approve_user is called with the right args
-        svc.approve_user.assert_called_once_with("u1", "PLAYER", "admin-id")
+        svc.approve_user.assert_called_once_with("u1", "PLAYER")
         clear_cache.assert_called_once()
         assert result.id == "u1"
 
