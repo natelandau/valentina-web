@@ -39,7 +39,7 @@ class QuickrollHandler:
 
     def __init__(self, parent_id: str) -> None:
         self._parent_id = parent_id
-        self._svc = sync_users_service(company_id=session["company_id"])
+        self._svc = sync_users_service(on_behalf_of=session["user_id"], company_id=session["company_id"])
 
     def list_items(self) -> list[QuickrollDisplay]:
         """Fetch all quickrolls for the user, resolving trait IDs to display names."""

@@ -336,7 +336,7 @@ class SelectCompaniesView(MethodView):
 
         for company_id in company_ids:
             try:
-                user = sync_users_service(company_id=company_id).register(
+                user = sync_users_service(on_behalf_of="anonymous", company_id=company_id).register(
                     request=register_dto,
                 )
                 companies_mapping[company_id] = {

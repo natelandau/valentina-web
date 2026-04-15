@@ -171,7 +171,6 @@ class TestProfilePost:
         assert update_req.email == "updated@example.com"
         assert update_req.name_first == "Updated"
         assert update_req.name_last == "Name"
-        assert update_req.requesting_user_id == "test-user-id"
 
     @pytest.mark.usefixtures("_mock_profile_api")
     def test_post_other_profile_returns_403(self, client: FlaskClient) -> None:

@@ -127,7 +127,7 @@ def validate_and_submit_experience(
     form_data: dict,
     user_id: str,
     campaign_id: str,
-    requesting_user_id: str,
+    on_behalf_of: str,
 ) -> list[str]:
     """Validate experience form data and submit to the API if valid.
 
@@ -135,7 +135,7 @@ def validate_and_submit_experience(
         form_data: The form data dict with 'xp' and 'cool_points' keys.
         user_id: The user receiving the experience.
         campaign_id: The campaign to award experience in.
-        requesting_user_id: The user making the request.
+        on_behalf_of: The user making the request (On-Behalf-Of header).
 
     Returns:
         A list of validation error strings (empty on success).
@@ -164,15 +164,13 @@ def validate_and_submit_experience(
     if errors:
         return errors
 
-    svc = sync_users_service(company_id=session["company_id"])
+    svc = sync_users_service(on_behalf_of=on_behalf_of, company_id=session["company_id"])
 
     if xp_amount > 0:
-        svc.add_xp(user_id, campaign_id, amount=xp_amount, requesting_user_id=requesting_user_id)
+        svc.add_xp(user_id, campaign_id, amount=xp_amount)
 
     if cp_amount > 0:
-        svc.add_cool_points(
-            user_id, campaign_id, amount=cp_amount, requesting_user_id=requesting_user_id
-        )
+        svc.add_cool_points(user_id, campaign_id, amount=cp_amount)
 
     clear_global_context_cache(session["company_id"], session["user_id"])
     return []

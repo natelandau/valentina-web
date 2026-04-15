@@ -37,8 +37,7 @@ class CharacterSheetService:
             return full_sheet
 
         full_sheet = sync_characters_service(
-            user_id=self.requesting_user.id,
-            campaign_id=self.character.campaign_id,
+            on_behalf_of=self.requesting_user.id,
             company_id=session["company_id"],
         ).get_full_sheet(self.character.id, include_available_traits=include_available_traits)
 

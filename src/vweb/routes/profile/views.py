@@ -43,7 +43,7 @@ class ProfileView(MethodView):
         user_characters = [ch for ch in ctx.characters if ch.user_player_id == user_id]
 
         # Fetch statistics
-        svc = sync_users_service(company_id=session["company_id"])
+        svc = sync_users_service(on_behalf_of=session["user_id"], company_id=session["company_id"])
         statistics = svc.get_statistics(user_id)
 
         experience_rows, lifetime_xp, lifetime_cool_points = _build_experience_rows(user_id)
@@ -88,13 +88,12 @@ class ProfileView(MethodView):
                 errors=errors,
             )
 
-        svc = sync_users_service(company_id=session["company_id"])
+        svc = sync_users_service(on_behalf_of=session["user_id"], company_id=session["company_id"])
         update_request = UserUpdate(
             name_first=form_data.get("name_first", "").strip() or None,
             name_last=form_data.get("name_last", "").strip() or None,
             username=form_data["username"].strip(),
             email=form_data["email"].strip(),
-            requesting_user_id=session["user_id"],
         )
         svc.update(user_id, request=update_request)
         clear_global_context_cache(session["company_id"], session["user_id"])
@@ -169,7 +168,7 @@ class AddExperienceView(MethodView):
             abort(403)
         form_data = request.form.to_dict()
         errors = validate_and_submit_experience(
-            form_data, user_id, campaign_id, requesting_user_id=session["user_id"]
+            form_data, user_id, campaign_id, on_behalf_of=session["user_id"]
         )
 
         if errors:
