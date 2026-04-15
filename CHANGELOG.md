@@ -1,3 +1,11 @@
+## v0.5.0 (2026-04-15)
+
+### Feat
+
+- **api**: migrate to vclient v1.23 on-behalf-of pattern (#21)
+- **security**: block scanner probes in before_request hook (#20)
+- **admin**: redesign settings as admin section with audit log (#19)
+
 ## v0.4.0 (2026-04-10)
 
 ### Feat
