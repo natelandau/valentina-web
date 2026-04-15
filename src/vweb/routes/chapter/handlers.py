@@ -24,8 +24,8 @@ class ChapterNotesHandler(BaseNotesHandler):
             raise ValueError(msg)
 
         self._svc = sync_chapters_service(
-            user_id=session.get("user_id", ""),
             campaign_id=campaign_id,
             book_id=book_id,
+            on_behalf_of=session.get("user_id", ""),
             company_id=session["company_id"],
         )

@@ -51,10 +51,9 @@ def generate_single(  # noqa: PLR0913
     Returns:
         The newly generated Character.
     """
-    svc = sync_character_autogen_service(
-        user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
-    )
+    svc = sync_character_autogen_service(on_behalf_of=user_id, company_id=session["company_id"])
     return svc.generate_character(
+        campaign_id=campaign_id,
         character_type=cast("CharacterType", character_type),
         character_class=cast("CharacterClass", character_class) if character_class else None,
         experience_level=cast("AutoGenExperienceLevel", experience_level)
@@ -78,16 +77,14 @@ def start_session(*, user_id: str, campaign_id: str) -> ChargenSessionResponse:
     Returns:
         A ChargenSessionResponse with session_id and 3 generated characters.
     """
-    svc = sync_character_autogen_service(
-        user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
-    )
-    return svc.start_chargen_session()
+    svc = sync_character_autogen_service(on_behalf_of=user_id, company_id=session["company_id"])
+    return svc.start_chargen_session(campaign_id=campaign_id)
 
 
 def finalize_session(
     *,
     user_id: str,
-    campaign_id: str,
+    campaign_id: str,  # noqa: ARG001
     session_id: str,
     selected_character_id: str,
 ) -> Character:
@@ -102,16 +99,14 @@ def finalize_session(
     Returns:
         The finalized Character.
     """
-    svc = sync_character_autogen_service(
-        user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
-    )
+    svc = sync_character_autogen_service(on_behalf_of=user_id, company_id=session["company_id"])
     return svc.finalize_chargen_session(
         session_id=session_id,
         selected_character_id=selected_character_id,
     )
 
 
-def list_sessions(*, user_id: str, campaign_id: str) -> list[ChargenSessionResponse]:
+def list_sessions(*, user_id: str, campaign_id: str) -> list[ChargenSessionResponse]:  # noqa: ARG001
     """List all active chargen sessions for a user in a campaign.
 
     Args:
@@ -121,13 +116,11 @@ def list_sessions(*, user_id: str, campaign_id: str) -> list[ChargenSessionRespo
     Returns:
         All active chargen sessions for the user/campaign.
     """
-    svc = sync_character_autogen_service(
-        user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
-    )
+    svc = sync_character_autogen_service(on_behalf_of=user_id, company_id=session["company_id"])
     return svc.list_all()
 
 
-def get_session(*, user_id: str, campaign_id: str, session_id: str) -> ChargenSessionResponse:
+def get_session(*, user_id: str, campaign_id: str, session_id: str) -> ChargenSessionResponse:  # noqa: ARG001
     """Retrieve a single chargen session by ID.
 
     Args:
@@ -138,9 +131,7 @@ def get_session(*, user_id: str, campaign_id: str, session_id: str) -> ChargenSe
     Returns:
         The chargen session matching the given session_id.
     """
-    svc = sync_character_autogen_service(
-        user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
-    )
+    svc = sync_character_autogen_service(on_behalf_of=user_id, company_id=session["company_id"])
     return svc.get(session_id)
 
 

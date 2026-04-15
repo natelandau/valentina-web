@@ -74,8 +74,7 @@ class ManualProfileView(MethodView):
 
         if character_id:
             svc = sync_characters_service(
-                user_id=session["user_id"],
-                campaign_id=campaign_id,
+                on_behalf_of=session["user_id"],
                 company_id=session["company_id"],
             )
             character = svc.get(character_id)
@@ -93,8 +92,7 @@ class ManualProfileView(MethodView):
             if temp_char_id:
                 try:
                     svc = sync_characters_service(
-                        user_id=session["user_id"],
-                        campaign_id=campaign_id,
+                        on_behalf_of=session["user_id"],
                         company_id=session["company_id"],
                     )
                     character = svc.get(temp_char_id)
@@ -201,8 +199,7 @@ class ManualProfileView(MethodView):
         char_type = cast("CharacterType", form_data.get("character_type") or "PLAYER")
 
         svc = sync_characters_service(
-            user_id=session["user_id"],
-            campaign_id=campaign.id,
+            on_behalf_of=session["user_id"],
             company_id=session["company_id"],
         )
         try:
@@ -286,8 +283,7 @@ class ManualProfileView(MethodView):
         concept_id = form_data.get("concept_id") or None
 
         svc = sync_characters_service(
-            user_id=session["user_id"],
-            campaign_id=campaign_id,
+            on_behalf_of=session["user_id"],
             company_id=session["company_id"],
         )
         temp_char_id = session.get("temp_character_id")
@@ -314,6 +310,7 @@ class ManualProfileView(MethodView):
                 svc.update(temp_char_id, update_payload)
             else:
                 create_payload = CharacterCreate(
+                    campaign_id=campaign_id,
                     character_class=character_class,
                     game_version=game_version,
                     name_first=form_data["name_first"],
@@ -427,8 +424,7 @@ class ManualFinalizeView(MethodView):
         try:
             if trait_items:
                 traits_svc = sync_character_traits_service(
-                    user_id=user_id,
-                    campaign_id=campaign_id,
+                    on_behalf_of=user_id,
                     character_id=temp_char_id,
                     company_id=session["company_id"],
                 )
@@ -438,7 +434,7 @@ class ManualFinalizeView(MethodView):
                     flash(f"Some traits failed to assign: {', '.join(failed_names)}", "warning")
 
             char_svc = sync_characters_service(
-                user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
+                on_behalf_of=user_id, company_id=session["company_id"]
             )
             char_svc.update(temp_char_id, CharacterUpdate(is_temporary=False))
         except APIError as exc:
@@ -446,7 +442,7 @@ class ManualFinalizeView(MethodView):
             flash(str(exc), "error")
 
             character = sync_characters_service(
-                user_id=user_id, campaign_id=campaign_id, company_id=session["company_id"]
+                on_behalf_of=user_id, company_id=session["company_id"]
             ).get(temp_char_id)
             sheet_svc = CharacterSheetService(
                 character=character, requesting_user=g.requesting_user

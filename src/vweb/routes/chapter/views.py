@@ -96,9 +96,9 @@ class ChapterDetailView(MethodView):
         user_id = session.get("user_id", "")
 
         ch_svc = sync_chapters_service(
-            user_id=user_id,
             campaign_id=campaign_id,
             book_id=book_id,
+            on_behalf_of=user_id,
             company_id=session["company_id"],
         )
         chapter = ch_svc.get(chapter_id)
@@ -205,9 +205,9 @@ class ChapterDetailView(MethodView):
         user_id = session.get("user_id", "")
 
         ch_svc = sync_chapters_service(
-            user_id=user_id,
             campaign_id=campaign_id,
             book_id=book_id,
+            on_behalf_of=user_id,
             company_id=session["company_id"],
         )
         ch_svc.delete(chapter_id)
@@ -235,9 +235,9 @@ class ChapterEditView(MethodView):
         book, campaign = fetch_book_or_404(campaign_id, book_id)
         user_id = session.get("user_id", "")
         ch_svc = sync_chapters_service(
-            user_id=user_id,
             campaign_id=campaign_id,
             book_id=book_id,
+            on_behalf_of=user_id,
             company_id=session["company_id"],
         )
         chapter = ch_svc.get(chapter_id)
@@ -260,9 +260,9 @@ class ChapterEditView(MethodView):
         book, campaign = fetch_book_or_404(campaign_id, book_id)
         user_id = session.get("user_id", "")
         ch_svc = sync_chapters_service(
-            user_id=user_id,
             campaign_id=campaign_id,
             book_id=book_id,
+            on_behalf_of=user_id,
             company_id=session["company_id"],
         )
         chapter = ch_svc.get(chapter_id)
@@ -362,9 +362,9 @@ class ChapterCreateView(MethodView):
             )
 
         ch_svc = sync_chapters_service(
-            user_id=user_id,
             campaign_id=campaign_id,
             book_id=book_id,
+            on_behalf_of=user_id,
             company_id=session["company_id"],
         )
         ch_svc.create(name=name, number=number, description=description)
@@ -392,9 +392,9 @@ class ChapterImageUploadView(MethodView):
         book, campaign = fetch_book_or_404(campaign_id, book_id)
         user_id = session.get("user_id", "")
         ch_svc = sync_chapters_service(
-            user_id=user_id,
             campaign_id=campaign_id,
             book_id=book_id,
+            on_behalf_of=user_id,
             company_id=session["company_id"],
         )
         chapter = ch_svc.get(chapter_id)
@@ -429,9 +429,9 @@ class ChapterImageDeleteView(MethodView):
         book, campaign = fetch_book_or_404(campaign_id, book_id)
         user_id = session.get("user_id", "")
         ch_svc = sync_chapters_service(
-            user_id=user_id,
             campaign_id=campaign_id,
             book_id=book_id,
+            on_behalf_of=user_id,
             company_id=session["company_id"],
         )
         chapter = ch_svc.get(chapter_id)
