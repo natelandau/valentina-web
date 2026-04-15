@@ -82,9 +82,9 @@ def change_role(user_id: str, role: str, requesting_user_id: str) -> User:
 
 def deny(user_id: str, requesting_user_id: str) -> None:
     """Deny a pending user so they can no longer access the company."""
-    sync_users_service(
-        on_behalf_of=requesting_user_id, company_id=session["company_id"]
-    ).deny_user(user_id)
+    sync_users_service(on_behalf_of=requesting_user_id, company_id=session["company_id"]).deny_user(
+        user_id
+    )
     clear_global_context_cache(session["company_id"], session["user_id"])
 
 
