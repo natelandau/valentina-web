@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
-from flask import g, redirect, request, session, url_for
+from flask import abort, g, redirect, request, session, url_for
+from loguru import logger
 
 from vweb.lib.global_context import clear_global_context_cache, load_global_context
 
@@ -14,6 +16,74 @@ if TYPE_CHECKING:
 
 _PUBLIC_PATH_PREFIXES = ("/auth/", "/static")
 _COMPANY_SELECTION_PATHS = ("/select-companies", "/select-company")
+
+# --- Scanner probe filter configuration ---
+# Dotfile segments: any path segment starting with "." is blocked
+# EXCEPT these exemptions (e.g. /.well-known/ is an IETF standard)
+_SCANNER_DOT_EXEMPTIONS = frozenset({".well-known"})
+
+# Paths starting with any of these are blocked (matched against lowercased path)
+_SCANNER_BLOCKED_PREFIXES = (
+    "/wp-",
+    "/wordpress",
+    "/phpmyadmin",
+    "/pma",
+    "/adminer",
+    "/cgi-bin",
+    "/xmlrpc",
+)
+
+# Paths ending with any of these are blocked (matched against lowercased path)
+_SCANNER_BLOCKED_SUFFIXES = (
+    ".php",
+    ".asp",
+    ".aspx",
+    ".jsp",
+    ".cgi",
+)
+
+# Compiled regex patterns for complex rules (matched against the full lowercased path)
+_SCANNER_BLOCKED_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"\.env\."),  # .env.production, .env.local, .env.backup, etc.
+]
+
+
+def _hook_block_scanner_probes() -> Response | None:
+    """Return 404 for paths commonly targeted by vulnerability scanners.
+
+    Catch dotfile access, CMS admin paths, non-Python script extensions, and
+    regex-matched patterns before any session or template work runs.
+    """
+    path = request.path.lower()
+
+    # Check for dotfile segments (e.g. /.env, /app/.git/config)
+    for segment in path.split("/"):
+        if segment.startswith(".") and segment not in _SCANNER_DOT_EXEMPTIONS:
+            logger.debug(
+                "Blocked scanner probe: {path} from {ip}", path=request.path, ip=request.remote_addr
+            )
+            abort(404)
+
+    if path.startswith(_SCANNER_BLOCKED_PREFIXES):
+        logger.debug(
+            "Blocked scanner probe: {path} from {ip}", path=request.path, ip=request.remote_addr
+        )
+        abort(404)
+
+    if path.endswith(_SCANNER_BLOCKED_SUFFIXES):
+        logger.debug(
+            "Blocked scanner probe: {path} from {ip}", path=request.path, ip=request.remote_addr
+        )
+        abort(404)
+
+    for pattern in _SCANNER_BLOCKED_PATTERNS:
+        if pattern.search(path):
+            logger.debug(
+                "Blocked scanner probe: {path} from {ip}", path=request.path, ip=request.remote_addr
+            )
+            abort(404)
+
+    return None
 
 
 def _hook_remove_trailing_slash() -> Response | None:
@@ -101,6 +171,7 @@ def register_before_request_hooks(app: Flask) -> None:
     Args:
         app: The Flask application instance.
     """
+    app.before_request(_hook_block_scanner_probes)
     app.before_request(_hook_remove_trailing_slash)
     app.before_request(_hook_refresh_session)
     app.before_request(_hook_require_auth)
