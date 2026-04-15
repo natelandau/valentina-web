@@ -26,6 +26,12 @@ _SCANNER_BLOCKED_PREFIXES = (
     "/adminer",
     "/cgi-bin",
     "/xmlrpc",
+    "/laravel",
+    "/react-app",
+    "/vue-app",
+    "/kube",
+    "/var/",
+    "/cpanel",
 )
 _SCANNER_BLOCKED_SUFFIXES = (
     ".php",
@@ -33,9 +39,12 @@ _SCANNER_BLOCKED_SUFFIXES = (
     ".aspx",
     ".jsp",
     ".cgi",
+    "config.json",
+    ".yml",
+    "mcp.json",
 )
 _SCANNER_BLOCKED_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(r"\.env\."),  # .env.production, .env.local, .env.backup, etc.
+    re.compile(r"\.env\.?|phpinfo"),  # .env, .env.production, .env.local, .env.backup, etc.
 ]
 
 
