@@ -15,6 +15,7 @@ from vclient.models.users import UserRegisterDTO
 from werkzeug.wrappers.response import Response
 
 from vweb import catalog
+from vweb.constants import ANONYMOUS_ON_BEHALF_OF
 from vweb.extensions import oauth
 from vweb.routes.auth.services import (
     build_companies_mapping,
@@ -336,7 +337,9 @@ class SelectCompaniesView(MethodView):
 
         for company_id in company_ids:
             try:
-                user = sync_users_service(on_behalf_of="anonymous", company_id=company_id).register(
+                user = sync_users_service(
+                    on_behalf_of=ANONYMOUS_ON_BEHALF_OF, company_id=company_id
+                ).register(
                     request=register_dto,
                 )
                 companies_mapping[company_id] = {
