@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
-from flask import g, redirect, request, session, url_for
+from flask import abort, g, redirect, request, session, url_for
+from loguru import logger
 
 from vweb.lib.global_context import clear_global_context_cache, load_global_context
 
@@ -14,6 +16,69 @@ if TYPE_CHECKING:
 
 _PUBLIC_PATH_PREFIXES = ("/auth/", "/static")
 _COMPANY_SELECTION_PATHS = ("/select-companies", "/select-company")
+
+_SCANNER_DOT_EXEMPTIONS = frozenset({".well-known"})
+_SCANNER_BLOCKED_PREFIXES = (
+    "/wp-",
+    "/wordpress",
+    "/phpmyadmin",
+    "/pma",
+    "/adminer",
+    "/cgi-bin",
+    "/xmlrpc",
+    "/laravel",
+    "/react-app",
+    "/vue-app",
+    "/kube",
+    "/var/",
+    "/cpanel",
+)
+_SCANNER_BLOCKED_SUFFIXES = (
+    ".php",
+    ".asp",
+    ".aspx",
+    ".jsp",
+    ".cgi",
+    "config.json",
+    ".yml",
+    "mcp.json",
+)
+_SCANNER_BLOCKED_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"\.env\.?|phpinfo"),  # .env, .env.production, .env.local, .env.backup, etc.
+]
+
+
+def _block_probe() -> None:
+    """Log a blocked scanner probe at debug level and abort with 404."""
+    logger.debug(
+        "Blocked scanner probe: {path} from {ip}", path=request.path, ip=request.remote_addr
+    )
+    abort(404)
+
+
+def _hook_block_scanner_probes() -> Response | None:
+    """Return 404 for paths commonly targeted by vulnerability scanners.
+
+    Catch dotfile access, CMS admin paths, non-Python script extensions, and
+    regex-matched patterns before any session or template work runs.
+    """
+    path = request.path.lower()
+
+    for segment in path.split("/"):
+        if segment.startswith(".") and segment not in _SCANNER_DOT_EXEMPTIONS:
+            _block_probe()
+
+    if path.startswith(_SCANNER_BLOCKED_PREFIXES):
+        _block_probe()
+
+    if path.endswith(_SCANNER_BLOCKED_SUFFIXES):
+        _block_probe()
+
+    for pattern in _SCANNER_BLOCKED_PATTERNS:
+        if pattern.search(path):
+            _block_probe()
+
+    return None
 
 
 def _hook_remove_trailing_slash() -> Response | None:
@@ -101,6 +166,7 @@ def register_before_request_hooks(app: Flask) -> None:
     Args:
         app: The Flask application instance.
     """
+    app.before_request(_hook_block_scanner_probes)
     app.before_request(_hook_remove_trailing_slash)
     app.before_request(_hook_refresh_session)
     app.before_request(_hook_require_auth)
