@@ -55,7 +55,7 @@
             <div class="list-col-grow">
               <a href="{{ url_for('character_view.character', character_id=character.id) }}">
                 <div class="uppercase font-semibold text-nowrap tracking-wide">
-                  {{ character.name_full }} <span class="font-thin">{{ character.character_class | title }}</span>
+                  {{ character.name }} <span class="font-thin">{{ character.character_class | title }}</span>
                 </div>
                 <div class="text-xs opacity-60">
                   <div class="flex items-center gap-2 [&>*+*]:before:content-['·'] [&>*+*]:before:mr-2">

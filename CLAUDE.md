@@ -2,91 +2,63 @@
 
 Server-rendered Flask app consuming the valentina-python-client API. HTMX for interactivity — no SPA.
 
-## Workflow Rules
-
-- **Never commit plans, designs, or implementation specs in `docs/superpowers/`.** Working documents only.
-- **Work on branches, not worktrees.** Unless the user explicitly asks otherwise.
+**Workflow:** Never commit working documents in `docs/superpowers/` to git. Work on branches, not worktrees.
 
 ## Quick Reference
 
 ```bash
-uv run vweb           # Start dev server (127.0.0.1:8089)
-uv run pytest tests/  # Run tests
-duty lint             # Run all linters (ruff, ty, typos, pre-commit)
-duty test             # Run tests with coverage
-duty run              # Run Flask + Tailwind watcher
+uv run vweb           # Dev server (127.0.0.1:8089)
+uv run pytest tests/  # Tests
+duty lint             # ruff, ty, typos, pre-commit
+duty test             # Tests with coverage
+duty run              # Flask + Tailwind watcher
 duty css              # Build CSS (production, minified)
 ```
 
-## Architecture
+## Stack
 
-- **Framework**: Flask 3.1+, Python 3.13 only
-- **Templates**: JinjaX (on Jinja2)
-- **Frontend**: HTMX and AlpineJS via CDN
-- **CSS**: Tailwind v4 + daisyUI v5 via `@tailwindcss/cli` (npm)
-- **Config**: pydantic-settings, `VWEB_` env prefix, reads `.env.secret`; lazy singleton via `get_settings()` — never use a module-level `settings`
-- **Security**: Flask-Talisman (CSP/HSTS/cookies), flask-wtf CSRF, Authlib OAuth. When adding new CDN sources, update the CSP dict in `create_app()`. **No inline JavaScript** — CSP blocks `onclick`, `onchange`, inline `<script>` tags, etc. in production (`'unsafe-inline'` is only enabled for `script-src` in development). Use Alpine.js `@click`/`@change`/`x-data` directives instead. For elements not already in an Alpine scope, add `x-data` directly: `<button x-data @click="...">`. For Alpine to evaluate expressions it needs `'unsafe-eval'`, which is already in the CSP.
-- **API client**: valentina-python-client (`SyncVClient`)
+- Flask 3.1+, Python 3.13, JinjaX (on Jinja2), HTMX + AlpineJS (CDN)
+- Tailwind v4 + daisyUI v5 via `@tailwindcss/cli` (npm)
+- pydantic-settings (`VWEB_` prefix, reads `.env.secret`) — use lazy `get_settings()`, never a module-level `settings`
+- Flask-Talisman (CSP/HSTS), flask-wtf CSRF, Authlib OAuth
+- API: valentina-python-client (`SyncVClient`)
 
-### Route-Centric Structure
+### CSP / No inline JS
 
-Each route is a self-contained package under `routes/<name>/` co-locating views, services, handlers, and templates. Business logic lives alongside its route — there is no top-level `services/`. Cross-cutting infrastructure lives in `lib/`.
+Production CSP blocks `onclick`, `onchange`, inline `<script>`. Use Alpine `@click`/`@change`/`x-data` directives; add `x-data` directly for elements not already in an Alpine scope: `<button x-data @click="...">`. `'unsafe-eval'` is enabled (Alpine needs it). When adding CDN sources, update the CSP dict in `create_app()`.
 
-**Character routes** are split into three packages: `character_view` (display, image, inventory/notes), `character_trait_edit` (trait value modification with `NO_COST`/`STARTING_POINTS`/`XP` spend types), and `character_create` (picker, autogeneration, manual). Shared character services are in `lib/character_sheet.py` and `lib/character_profile.py`.
+## Route-Centric Structure
 
-### VClient Lifecycle
+Each route is a self-contained package under `routes/<name>/` co-locating views, services, handlers, and templates. Business logic lives next to its route — **there is no top-level `services/`.** Cross-cutting infrastructure lives in `lib/`.
 
-`SyncVClient` is instantiated in `create_app()` and stored in `app.extensions["vclient"]`, configured with a default `company_id`. `sync_*` service factories take `company_id` as optional — just call them:
+Character routes split into `character_view`, `character_trait_edit` (spend types: `NO_COST`/`STARTING_POINTS`/`XP`), and `character_create`. Shared character services: `lib/character_sheet.py`, `lib/character_profile.py`.
 
-```python
-from vclient import sync_companies_service
+### Conventions
 
-all_companies = sync_companies_service().list_all()
-```
+- **`MethodView` only**, not decorated functions. Register via `bp.add_url_rule("/path", view_func=MyView.as_view("name"))`. Always pass `methods=` when handling more than GET.
+- Render templates via `catalog.render("namespace.ComponentName", **kwargs)` — never `render_template()` except for shared partials in `templates/partials/`.
 
-### Data-Access Helpers
+## Key Helpers
 
-- `lib/api.get_character_and_campaign(character_id)` — looks up from `g.global_context`, no API call
-- For campaign lookups, use `g.global_context.campaigns` directly
-- For the requesting user, use `g.requesting_user` (set by a before_request hook)
+- **VClient:** `SyncVClient` is created in `create_app()` with a default `company_id`. Just call `sync_*` service factories — `sync_companies_service().list_all()`.
+- **Data access:** `lib/api.get_character_and_campaign(character_id)` (reads `g.global_context`, no API call). Campaigns via `g.global_context.campaigns`. Requesting user via `g.requesting_user`.
+- **Permission guards (`lib/guards.py`):** `is_admin`, `is_storyteller`, `is_self`, `can_manage_campaign`, `can_grant_experience`, `can_edit_traits_free`, `can_edit_character`, etc. **Never inline `g.requesting_user.role in (...)` or ownership checks — always call a guard** (Python and templates). Don't pass a guard result as a prop if the child already has the parent object in scope. New check? Add to `lib/guards.py`, register in `app.py`'s `jinja_globals`, test in `tests/test_guards.py`.
 
-### Permission Guards (`lib/guards.py`)
+### Caching
 
-Centralized authorization helpers registered as Jinja globals. **Always use these instead of inlining role or ownership checks** — in both Python and templates. See `lib/guards.py` for the current list (`is_admin`, `is_storyteller`, `is_self`, `can_manage_campaign`, `can_grant_experience`, `can_edit_traits_free`, `can_edit_character`, …).
-
-**Rules:**
-
-- Never write `g.requesting_user.role in (...)` or `session.get("user_id") == character.user_player_id` — call the guard.
-- Never re-derive a guard in a template: `{% if can_edit_character(character) %}`.
-- Don't pass a guard result down as a prop when the child template has the parent object in scope — let the child call the guard.
-- If a new permission check is needed and no guard covers it, **add one to `lib/guards.py` first**, register it in `app.py`'s `jinja_globals`, write tests in `tests/test_guards.py`, then use it.
-
-### Caching (`extensions.py`, Flask-Caching)
-
-`RedisCache` in production, `SimpleCache` in dev. All cached values must be picklable. Cache keys and TTLs are defined in `extensions.py` and `lib/*_cache.py`.
+`RedisCache` in prod, `SimpleCache` in dev — all cached values must be picklable. Keys/TTLs in `extensions.py` and `lib/*_cache.py`. Blueprint traits (`lib/blueprint_cache.py`) and API enumerations (`lib/options_cache.py`) are 1-hour shared caches; `get_options()` is a Jinja global (`get_options().characters.character_class`).
 
 **`GlobalContext` gotcha:** `characters_by_campaign` and `characters` contain ALL characters including other players'. **Routes must filter before rendering.** The `inject_global_context` before_request hook populates `g.global_context` and resolves `g.requesting_user` from `session["user_id"]`. Call `clear_global_context_cache()` after local mutations.
 
-Blueprint traits (`lib/blueprint_cache.py`) and API enumerations (`lib/options_cache.py`) are shared 1-hour caches. `get_options()` is a Jinja global — use as `get_options().characters.character_class`, etc.
+### Auth (OAuth)
 
-### Authentication (OAuth)
-
-Authlib with Discord / GitHub / Google. All three resolve users via `routes/auth/services.py` (provider ID → email → create with UNAPPROVED status). `require_auth` before_request hook redirects unauthenticated users to the landing page and UNAPPROVED users to `/pending-approval`. Sessions are 30-day permanent, stored in Redis, keyed by `session["user_id"]`.
+Authlib with Discord/GitHub/Google. All resolve via `routes/auth/services.py` (provider ID → email → create UNAPPROVED). `require_auth` before_request hook redirects unauthenticated → landing, UNAPPROVED → `/pending-approval`. 30-day permanent sessions in Redis, keyed by `session["user_id"]`.
 
 ### Scanner Block Hook (`lib/hooks.py`)
 
-`_hook_block_scanner_probes` runs before auth and returns 404 for known scanner paths. **This hook also serves as the intentional-404 mechanism for paths that don't exist but would otherwise get a 302 redirect from the auth hook.** For example, `/sitemap.xml` has no route — without the scanner block, unauthenticated requests would be redirected to the landing page instead of getting a proper 404. When a path should 404 cleanly for bots and crawlers, add it to the blocked suffixes/prefixes in this hook. For paths that should be publicly accessible (like `/robots.txt`), add them to `_PUBLIC_PATH_PREFIXES` instead.
-
-### Route Conventions
-
-- Use `MethodView` (class-based views), not decorated functions. Register via `bp.add_url_rule("/path", view_func=MyView.as_view("name"))`.
-- **Always pass `methods=` to `add_url_rule()`** for any MethodView handling more than GET.
-- Blueprint instances are named `bp` in each route's `__init__.py` and registered in `create_app()`.
-- Routes render **all** templates via `catalog.render("namespace.ComponentName", **kwargs)`, never `render_template()` (except for shared partials in `templates/partials/`).
+`_hook_block_scanner_probes` runs before auth and 404s known scanner paths — also the **intentional-404 mechanism** for non-routes like `/sitemap.xml` that would otherwise get auth's 302 redirect. For publicly accessible paths (like `/robots.txt`), add to `_PUBLIC_PATH_PREFIXES` instead.
 
 ## Templates (JinjaX)
-
-**Template locations:**
 
 | Category          | Location                                     | Usage                                              |
 | ----------------- | -------------------------------------------- | -------------------------------------------------- |
@@ -97,31 +69,24 @@ Authlib with Discord / GitHub / Google. All three resolve users via `routes/auth
 | Route partials    | `routes/<name>/templates/<name>/partials/`   | `catalog.render("book.partials.BookContent", ...)` |
 | Route components  | `routes/<name>/templates/<name>/components/` | `<chapter.components.ChapterNav>`                  |
 
-The inner `<name>/` directory provides the JinjaX namespace. `render_template()` is permitted **only** for shared partials; everything else goes through `catalog.render()`.
+The inner `<name>/` provides the JinjaX namespace. `render_template()` is **only** for shared partials.
 
-### HTMX OOB + Flash (non-obvious)
+### HTMX OOB + Flash
 
-Use `htmx_response(content, *oob)` from `vweb.lib.jinja` — never concatenate strings. OOB-capable components accept `oob: bool = False`.
-
-Flask `flash()` messages are rendered inside `<div id="flash-messages">` by `<shared.layout.FlashMessage />`. HTMX partial responses swap only their target, so flashes are silently lost unless you OOB-swap the flash container:
+Flask `flash()` messages render inside `<div id="flash-messages">` via `<shared.layout.FlashMessage />`. HTMX partial swaps lose flashes silently — **any HTMX endpoint calling `flash()` must also OOB-swap the flash container**. Use `htmx_response(content, *oob)` from `vweb.lib.jinja`; OOB-capable components accept `oob: bool = False`:
 
 ```python
-flash("Image uploaded successfully.", "success")
-content = catalog.render("character.partials.ImagesContent", ...)
 flash_html = catalog.render("shared.layout.FlashMessage", oob=True)
 return htmx_response(content, flash_html)
 ```
 
-**Any HTMX endpoint calling `flash()` must pair it with an OOB `FlashMessage` render.**
+### JinjaX Gotchas
 
-### JinjaX Prop Gotchas
-
-- **Pass dynamic values WITHOUT quotes**: `<Comp prop={{ expr }} />`. Quotes pass the literal string. (`prop="{{ x }}"` gives you the text `{{ x }}`, not its value.)
-- **`{{ }}` inside quoted props are NOT evaluated.** To pass HTML with dynamic content, build the string with `{% set s = '<tag>' ~ func() ~ '</tag>' %}` then pass as `prop={{ s }}`.
-- **JinjaX components inside `{% set %}` capture blocks are NOT processed** — they render as literal HTML. Use raw HTML with equivalent daisyUI classes instead.
-- `<shared.CommonButton>` uses `extra_class`, `extra_attrs`, `btn_type` (not `class`/`type` — Python reserved words in JinjaX `{#def}`). For dynamic HTMX attrs, use `extra_attrs` — JinjaX can't parse `{{ var }}` in component tags.
+- **Dynamic props unquoted**: `<Comp prop={{ expr }} />`. `prop="{{ x }}"` passes the literal text.
+- **JinjaX components inside `{% set %}` capture blocks render as literal HTML.** Use raw HTML with equivalent daisyUI classes.
+- **`<shared.CommonButton>`** uses `extra_class`, `extra_attrs`, `btn_type` (not `class`/`type` — Python reserved words). Use `extra_attrs` for dynamic HTMX attrs.
 - `static_url(filename)` Jinja global for cache-busted static URLs — use instead of `url_for('static', ...)`.
-- **djlint rewrites single quotes to double**, which breaks JinjaX props containing JS strings. Wrap affected lines in `{# djlint:off #}` / `{# djlint:on #}`.
+- **djlint rewrites single → double quotes**, breaking JinjaX props with JS strings. Wrap affected lines in `{# djlint:off #}` / `{# djlint:on #}`.
 
 ### daisyUI Themes
 
@@ -129,41 +94,25 @@ Use `@plugin "daisyui" { themes: name --default; }`. Do NOT use `@plugin "daisyu
 
 ## CRUD Table Framework (`lib/crud_view.py`)
 
-Generic inline CRUD tables. `CrudTableView` handles GET/POST/DELETE, sorting, validation, cache invalidation, and refetch-after-mutation. Each route creates thin subclasses. Handlers implement the `CrudHandler` protocol (`lib/crud_handler.py`).
-
-**Adding a new table:**
-
-1. Handler class implementing `CrudHandler` in the route package
-2. Form template (JinjaX) in the route's `templates/`
-3. ~8-line `CrudTableView` subclass
-4. URL rules in the route's view file
-5. An `hx-get` div in the parent template
-
-Shared visuals: `templates/shared/crud/CrudTable.jinja` + `CrudForm.jinja`. `CrudTable.jinja` accepts `editable: bool = True`; parents thread `?editable=true/false` on HTMX load URLs. Each table sits in a `<div>` with a unique `table_id`; delete uses a daisyUI modal with `htmx.process()` for the dynamic URL. CSRF is injected via `hx-headers` on `<body>` in `PageLayout.jinja`.
+`CrudTableView` handles GET/POST/DELETE, sorting, validation, cache invalidation, and refetch-after-mutation for inline CRUD tables. Each route subclasses it (~8 lines) plus a handler implementing `CrudHandler` (`lib/crud_handler.py`) and a form template. Shared visuals: `templates/shared/crud/CrudTable.jinja` + `CrudForm.jinja`. `CrudTable.jinja` accepts `editable: bool = True`; parents thread `?editable=true/false` on HTMX load URLs. CSRF via `hx-headers` on `<body>` in `PageLayout.jinja`. Copy an existing subclass when adding a new table.
 
 ## Testing
 
-- Sync pytest. Mock `sync_*` service factories to avoid real API calls.
-- **Always pass `_env_file=None`** when constructing `Settings()` in tests — otherwise pydantic-settings reads `.env.secret` and leaks real config.
-- **Always run pytest with a timeout** to catch infinite loops during refactors.
-- `conftest.py` builds `Settings` via a `test_settings` fixture passed to `create_app(settings_override=...)` — no env vars needed.
-- `--strict-markers` enabled; register new markers in `pyproject.toml`.
-- **Use `vclient.testing` factories** (`UserFactory`, `CampaignFactory`, `CharacterFactory`, …) instead of `MagicMock()` for model instances. Customize with kwargs; `Factory.batch(n)` for multiples.
-- **`fake_vclient` fixture** (`SyncFakeVClient`): intercepts vclient HTTP calls in-memory. Use `set_response()` / `set_error()` — **never `add_route()`** (deprecated). Import `Routes` from `vclient.testing`.
+- Sync pytest. `_mock_api` (autouse in `conftest.py`) prevents real API calls. Always run with a timeout to catch infinite loops. `--strict-markers` — register new markers in `pyproject.toml`.
+- `conftest.py`'s `test_settings` fixture builds `Settings` and passes it to `create_app(settings_override=...)` — no env vars needed. **Always pass `_env_file=None`** when constructing `Settings()` directly or pydantic leaks real config from `.env.secret`.
+- **Model data:** use `vclient.testing` factories (`UserFactory`, `CampaignFactory`, `CharacterFactory`, …). `Factory.batch(n)` for multiples.
+- **`fake_vclient` fixture** (`SyncFakeVClient`) intercepts vclient HTTP in-memory — use `set_response()` / `set_error()` (never `add_route()`, deprecated). Import `Routes` from `vclient.testing`:
 
     ```python
-    from vclient.testing import Routes, UserFactory, CampaignFactory
-
-    fake_vclient.set_response(Routes.USERS_GET, model=UserFactory.build(id="test-user-id"))
-    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=CampaignFactory.batch(3))
-    fake_vclient.set_response(Routes.CAMPAIGNS_GET, model=camp1, params={"campaign_id": "camp-1"})
+    fake_vclient.set_response(Routes.USERS_GET, model=UserFactory.build(id="u1"))
+    fake_vclient.set_response(Routes.CAMPAIGNS_GET, model=camp1, params={"campaign_id": "c1"})
     fake_vclient.set_error(Routes.USERS_GET, status_code=404)
     ```
 
-- **When to use which**: factories for model data; `fake_vclient` for code calling `sync_*` factories directly; `MagicMock()` only for service objects needing `side_effect` or for handler/cache mocks.
-- **Shared fixtures in `conftest.py`**: `_mock_api` (autouse) prevents real API calls; `mock_global_context` provides a factory-built `GlobalContext`; `get_csrf(client)` extracts CSRF tokens. Don't duplicate in test files.
-- **OAuth tests**: mock `oauth.discord`/`oauth.google` methods and `resolve_or_create_discord_user`. Use `client.session_transaction()` to pre-seed `user_id`.
+- **When to use which:** factories for data; `fake_vclient` for code calling `sync_*` factories; `MagicMock()` only for service objects needing `side_effect` or handler/cache mocks.
+- Other shared fixtures: `mock_global_context` (factory-built `GlobalContext`), `get_csrf(client)`. Don't duplicate in test files.
+- **OAuth tests:** mock `oauth.discord`/`oauth.google` and `resolve_or_create_discord_user`; pre-seed `user_id` via `client.session_transaction()`.
 
 ## Code Style
 
-Ruff `select = ["ALL"]`, Google docstrings, line length 100, double quotes — see `pyproject.toml`. **ty ignore comments use `# ty:ignore[rule-name]`, NOT `# type: ignore[...]`.** Always import types from vclient when available (e.g. `CharacterInventoryType`) — never redefine Literal types locally.
+Ruff `select = ["ALL"]`, Google docstrings, line length 100, double quotes — see `pyproject.toml`. **ty ignores use `# ty:ignore[rule-name]`, NOT `# type: ignore[...]`.** Always import types from vclient when available (e.g. `CharacterInventoryType`) — never redefine Literal types locally.
