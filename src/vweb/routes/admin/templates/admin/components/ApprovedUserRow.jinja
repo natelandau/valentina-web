@@ -1,12 +1,15 @@
 {#def user #}
-<div id="user-{{ user.id }}" class="flex items-center gap-3 py-2 border-b border-base-300">
-  <shared.UserAvatar user={{ user }} size="w-10" />
-  <div class="grow">
-    <div class="font-medium">{{ user.name_first }} {{ user.name_last or "" }}</div>
-    <div class="text-sm text-base-content/70">{{ user.email }}</div>
+<div id="user-{{ user.id }}"
+     class="flex flex-col sm:flex-row sm:items-center gap-3 py-3 border-b border-base-300">
+  <div class="flex items-center gap-3 grow min-w-0">
+    <shared.UserAvatar user={{ user }} size="w-10" />
+    <div class="min-w-0">
+      <div class="font-medium truncate">{{ user.name_first }} {{ user.name_last or "" }}</div>
+      <div class="text-sm text-base-content/70 truncate">{{ user.email }}</div>
+    </div>
   </div>
   <select name="role"
-          class="select select-sm"
+          class="select select-sm w-full sm:w-auto"
           hx-post="{{ url_for('admin.change_role', user_id=user.id) }}"
           hx-target="#user-{{ user.id }}"
           hx-swap="outerHTML"

@@ -6,15 +6,15 @@
 
 {% set editable = can_manage_campaign() %}
 
-<div class="prose max-w-none flex items-center justify-between">
+<div class="prose max-w-none flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between [&>h2]:mt-0">
   <h2 class="card-title">{{ book.name }}</h2>
 
   {% if editable %}
 
     {% set upload_url = url_for('book_view.book_image_upload', campaign_id=campaign.id, book_id=book.id) %}
 
-    <div class="flex justify-end mb-3">
-      <shared.CommonButton variant="edit" extra_class="btn-sm mr-2" hx-get={{ url_for('book_view.book_detail_action', campaign_id=campaign.id, book_id=book.id, action='edit') }} hx-target="#book-content" hx-swap="outerHTML">
+    <div class="flex justify-start gap-2 shrink-0 sm:justify-end">
+      <shared.CommonButton variant="edit" extra_class="btn-sm" hx-get={{ url_for('book_view.book_detail_action', campaign_id=campaign.id, book_id=book.id, action='edit') }} hx-target="#book-content" hx-swap="outerHTML">
       <i class="fa-solid fa-pen-to-square"></i> Edit Book
       </shared.CommonButton>
 

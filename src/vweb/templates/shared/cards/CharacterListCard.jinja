@@ -52,32 +52,32 @@
             <li class="list-row hover:bg-neutral/80 hover:text-neutral-content transition-colors {% if character.type == "STORYTELLER" %}bg-primary/10{% endif %}" {% if pagination > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"
             {% endif %}
             >
-            <div class="list-col-grow">
+            <div class="list-col-grow min-w-0">
               <a href="{{ url_for('character_view.character', character_id=character.id) }}">
-                <div class="uppercase font-semibold text-nowrap tracking-wide">
-                  {{ character.name_full }} <span class="font-thin">{{ character.character_class | title }}</span>
+                <div class="uppercase font-semibold tracking-wide flex flex-col sm:flex-row sm:gap-1 min-w-0">
+                  <span class="truncate">{{ character.name }}</span>
+                  <span class="font-thin truncate">{{ character.character_class | title }}</span>
                 </div>
                 <div class="text-xs opacity-60">
-                  <div class="flex items-center gap-2 [&>*+*]:before:content-['·'] [&>*+*]:before:mr-2">
+                  <div class="flex flex-col sm:flex-row sm:items-center sm:gap-2 sm:[&>*+*]:before:content-['·'] sm:[&>*+*]:before:mr-2">
 
                     {% if show_type %}
                       <span>{{ character.type | title }} Character</span>
                     {% endif %}
 
                     {% if link_user_profile %}
-                      <span class="text-xs"><a href="{{ url_for('profile.profile', user_id=character.user_player_id) }}"
+                      <span><a href="{{ url_for('profile.profile', user_id=character.user_player_id) }}"
    class="link link-info link-hover">{{ user_map.get(character.user_player_id, "Unknown") }}</a></span>
-
                     {% endif %}
 
                     {% if show_campaign %}
-                      <span class="font-semibold">Campaign:</span> {{ campaign_map.get(character.campaign_id, "Unknown") }}
+                      <span><span class="font-semibold">Campaign:</span> {{ campaign_map.get(character.campaign_id, "Unknown") }}</span>
                     {% endif %}
                   </div>
                 </div>
               </a>
             </div>
-            <div x-data>
+            <div x-data class="flex items-center gap-1 shrink-0">
 
               <button class="btn btn-square btn-ghost"
                       @click="$dispatch('open-dice-roll', { characterId: '{{ character.id }}', characterName: '{{ character.name | normalize_string }}' })">

@@ -129,6 +129,7 @@ class AuditLogTableView(MethodView):
     def get(self) -> str:
         """Return rendered table rows for the current filter/offset combination."""
         offset = request.args.get("offset", 0, type=int)
+        is_initial = offset == 0
         entity_type = request.args.get("entity_type", "")
         operation = request.args.get("operation", "")
         acting_user_id = request.args.get("acting_user_id", "")
@@ -178,6 +179,7 @@ class AuditLogTableView(MethodView):
             offset=new_offset,
             has_more=page.has_more,
             filter_params=urlencode({k: v for k, v in filters.items() if v}),
+            is_initial=is_initial,
         )
 
 
