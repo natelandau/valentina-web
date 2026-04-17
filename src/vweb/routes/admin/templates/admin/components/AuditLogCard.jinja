@@ -1,0 +1,58 @@
+{#def log, entities, acting_user_name="", acting_user_url="" #}
+<div class="card card-border bg-base-200/50">
+  <div class="card-body p-4 gap-2">
+    <div class="flex justify-between items-start gap-2">
+      <h3 class="card-title text-base leading-tight">{{ log.description or log.summary or "" }}</h3>
+      <span class="text-xs text-base-content/60 whitespace-nowrap shrink-0">
+        {{ log.date_created.strftime("%b %d, %Y") }}
+      </span>
+    </div>
+
+    <p class="text-sm">
+      <span class="font-medium text-base-content/50">By:</span>
+      {% if acting_user_url %}
+        <a href="{{ acting_user_url }}" class="link link-primary">{{ acting_user_name }}</a>
+      {% elif acting_user_name %}
+        {{ acting_user_name }}
+      {% else %}
+        <span class="text-base-content/40 italic">system</span>
+      {% endif %}
+    </p>
+
+    {% if entities %}
+      <div class="text-sm">
+        {% for label, name, url in entities %}
+          <div>
+            <span class="text-xs text-base-content/50">{{ label }}:</span>
+            {% if url %}
+              <a href="{{ url }}" class="link link-primary text-xs">{{ name }}</a>
+            {% else %}
+              <span class="text-xs">{{ name }}</span>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if log.changes %}
+      <div>
+        <div class="text-xs font-medium text-base-content/50 mb-1">Changes:</div>
+        <ul class="list-disc pl-4 text-xs text-base-content/70">
+          {% for key, value in log.changes.items() %}
+            {% if value is mapping %}
+              <li>{{ key }}
+                <ul class="list-disc pl-4">
+                  {% for sub_key, sub_value in value.items() %}
+                    <li>{{ sub_key }}: {{ sub_value }}</li>
+                  {% endfor %}
+                </ul>
+              </li>
+            {% else %}
+              <li>{{ key }}: {{ value }}</li>
+            {% endif %}
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+  </div>
+</div>

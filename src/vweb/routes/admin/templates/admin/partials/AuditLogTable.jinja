@@ -1,20 +1,86 @@
-{#def rows, total, offset, has_more, filter_params="" #}
-{% for row in rows %}
-  <admin.components.AuditLogRow
-    log={{ row.log }}
-    entities={{ row.entities }}
-    acting_user_name={{ row.acting_user_name }}
-    acting_user_url={{ row.acting_user_url }} />
-{% endfor %}
-{% if has_more %}
-  <tr id="load-more-row">
-    <td colspan="5" class="text-center py-4">
+{#def rows, total, offset, has_more, filter_params="", is_initial=True #}
+{% if is_initial %}
+  {% if rows %}
+    {# Desktop: table (hidden below md) #}
+    <div class="hidden md:block overflow-x-auto">
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th class="w-40">Date</th>
+            <th class="w-1/3">Description</th>
+            <th>Changes</th>
+            <th class="w-28">User</th>
+            <th class="w-44">Related</th>
+          </tr>
+        </thead>
+        <tbody id="audit-log-rows">
+          {% for row in rows %}
+            <admin.components.AuditLogRow
+              log={{ row.log }}
+              entities={{ row.entities }}
+              acting_user_name={{ row.acting_user_name }}
+              acting_user_url={{ row.acting_user_url }} />
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {# Mobile: card stack (hidden at md+) #}
+    <div id="audit-log-cards" class="md:hidden flex flex-col gap-3 p-4">
+      {% for row in rows %}
+        <admin.components.AuditLogCard
+          log={{ row.log }}
+          entities={{ row.entities }}
+          acting_user_name={{ row.acting_user_name }}
+          acting_user_url={{ row.acting_user_url }} />
+      {% endfor %}
+    </div>
+
+    {% if has_more %}
+      <div id="audit-log-load-more" class="text-center py-4">
+        <button class="btn btn-ghost btn-sm"
+                hx-get="{{ url_for('admin.audit_log_table') }}?offset={{ offset }}&{{ filter_params }}"
+                hx-target="#audit-log-load-more"
+                hx-swap="outerHTML">
+          Load more (showing {{ offset }} of {{ total }})
+        </button>
+      </div>
+    {% endif %}
+  {% else %}
+    <div class="text-center py-8 text-base-content/50 italic">
+      No audit log entries match these filters.
+    </div>
+  {% endif %}
+{% else %}
+  {# Pagination response — OOB append into both views, replace load-more button #}
+  <tbody id="audit-log-rows" hx-swap-oob="beforeend">
+    {% for row in rows %}
+      <admin.components.AuditLogRow
+        log={{ row.log }}
+        entities={{ row.entities }}
+        acting_user_name={{ row.acting_user_name }}
+        acting_user_url={{ row.acting_user_url }} />
+    {% endfor %}
+  </tbody>
+
+  <div id="audit-log-cards" hx-swap-oob="beforeend">
+    {% for row in rows %}
+      <admin.components.AuditLogCard
+        log={{ row.log }}
+        entities={{ row.entities }}
+        acting_user_name={{ row.acting_user_name }}
+        acting_user_url={{ row.acting_user_url }} />
+    {% endfor %}
+  </div>
+
+  {% if has_more %}
+    <div id="audit-log-load-more" class="text-center py-4">
       <button class="btn btn-ghost btn-sm"
               hx-get="{{ url_for('admin.audit_log_table') }}?offset={{ offset }}&{{ filter_params }}"
-              hx-target="#load-more-row"
+              hx-target="#audit-log-load-more"
               hx-swap="outerHTML">
         Load more (showing {{ offset }} of {{ total }})
       </button>
-    </td>
-  </tr>
+    </div>
+  {% endif %}
 {% endif %}

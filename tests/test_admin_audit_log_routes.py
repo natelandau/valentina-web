@@ -80,7 +80,7 @@ class TestAuditLogPage:
         assert response.status_code == 200
         body = response.get_data(as_text=True)
         assert "Audit Log" in body
-        assert "audit-log-tbody" in body
+        assert "audit-log-content" in body
 
 
 @pytest.mark.usefixtures("_mock_audit_api")
