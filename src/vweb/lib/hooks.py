@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from flask import Flask
     from werkzeug.wrappers.response import Response
 
-_PUBLIC_PATH_PREFIXES = ("/auth/", "/static")
+_PUBLIC_PATH_PREFIXES = ("/auth/", "/static", "/robots.txt")
 _COMPANY_SELECTION_PATHS = ("/select-companies", "/select-company")
 
 _SCANNER_DOT_EXEMPTIONS = frozenset({".well-known"})
@@ -42,6 +42,7 @@ _SCANNER_BLOCKED_SUFFIXES = (
     "config.json",
     ".yml",
     "mcp.json",
+    "sitemap.xml",
 )
 _SCANNER_BLOCKED_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\.env\.?|phpinfo"),  # .env, .env.production, .env.local, .env.backup, etc.
@@ -92,7 +93,7 @@ def _hook_remove_trailing_slash() -> Response | None:
 
 def _hook_refresh_session() -> None:
     """Refresh permanent session expiry on each visit."""
-    if request.path.startswith("/static"):
+    if request.path.startswith(_PUBLIC_PATH_PREFIXES):
         return
 
     session.modified = True

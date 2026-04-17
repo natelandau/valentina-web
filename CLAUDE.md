@@ -73,6 +73,10 @@ Blueprint traits (`lib/blueprint_cache.py`) and API enumerations (`lib/options_c
 
 Authlib with Discord / GitHub / Google. All three resolve users via `routes/auth/services.py` (provider ID → email → create with UNAPPROVED status). `require_auth` before_request hook redirects unauthenticated users to the landing page and UNAPPROVED users to `/pending-approval`. Sessions are 30-day permanent, stored in Redis, keyed by `session["user_id"]`.
 
+### Scanner Block Hook (`lib/hooks.py`)
+
+`_hook_block_scanner_probes` runs before auth and returns 404 for known scanner paths. **This hook also serves as the intentional-404 mechanism for paths that don't exist but would otherwise get a 302 redirect from the auth hook.** For example, `/sitemap.xml` has no route — without the scanner block, unauthenticated requests would be redirected to the landing page instead of getting a proper 404. When a path should 404 cleanly for bots and crawlers, add it to the blocked suffixes/prefixes in this hook. For paths that should be publicly accessible (like `/robots.txt`), add them to `_PUBLIC_PATH_PREFIXES` instead.
+
 ### Route Conventions
 
 - Use `MethodView` (class-based views), not decorated functions. Register via `bp.add_url_rule("/path", view_func=MyView.as_view("name"))`.

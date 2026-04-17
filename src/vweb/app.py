@@ -114,7 +114,7 @@ def _configure_cache_and_session(app: Flask, settings: Settings) -> None:
         Session(app)
 
 
-def create_app(settings_override: Settings | None = None) -> Flask:
+def create_app(settings_override: Settings | None = None) -> Flask:  # noqa: PLR0915
     """Create and configure the Flask application.
 
     Args:
@@ -167,6 +167,7 @@ def create_app(settings_override: Settings | None = None) -> Flask:
     from vweb.routes.dictionary.views import bp as dictionary_bp
     from vweb.routes.index.views import bp as index_bp
     from vweb.routes.profile.views import bp as profile_bp
+    from vweb.routes.static_files.views import bp as static_files_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(index_bp)
@@ -180,6 +181,7 @@ def create_app(settings_override: Settings | None = None) -> Flask:
     app.register_blueprint(dictionary_bp)
     app.register_blueprint(character_create_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(static_files_bp)
 
     app.extensions["vclient"] = SyncVClient(
         base_url=settings.api.base_url,
