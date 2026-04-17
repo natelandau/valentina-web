@@ -6,7 +6,8 @@
 {% set show_grant = can_grant_experience(user_id) %}
 
 {% if experience_rows %}
-  <div class="overflow-x-auto mt-4">
+  {# Desktop: standard table (hidden below md) #}
+  <div class="hidden md:block overflow-x-auto mt-4">
     <table class="table table">
       <thead>
         <tr>
@@ -36,6 +37,37 @@
         {% endfor %}
       </tbody>
     </table>
+  </div>
+
+  {# Mobile: card layout (hidden at md+) #}
+  <div class="flex flex-col gap-3 md:hidden mt-4">
+    {% for row in experience_rows %}
+      <div class="card card-border bg-base-200/50">
+        <div class="card-body p-4 gap-1">
+          <h3 class="card-title text-lg">{{ row.campaign_name }}</h3>
+          <p class="text-base-content/70">
+            <span class="font-medium text-base-content/50">Available XP:</span>
+            <span class="font-mono">{{ row.xp_current }}</span>
+          </p>
+          <p class="text-base-content/70">
+            <span class="font-medium text-base-content/50">Total XP:</span>
+            <span class="font-mono">{{ row.xp_total }}</span>
+          </p>
+          <p class="text-base-content/70">
+            <span class="font-medium text-base-content/50">Cool Points:</span>
+            <span class="font-mono">{{ row.cool_points }}</span>
+          </p>
+          {% if show_grant %}
+
+            {% set exp_attrs = 'hx-get="' ~ url_for('profile.experience_form', user_id=user_id, campaign_id=row.campaign_id) ~ '" hx-target="#experience-card" hx-swap="innerHTML"' %}
+
+            <div class="card-actions justify-end mt-2">
+              <shared.CommonButton variant="add" extra_class="btn-xs" extra_attrs={{ exp_attrs }}><i class="fa-solid fa-plus"></i> Experience</shared.CommonButton>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    {% endfor %}
   </div>
 {% else %}
   <p class="text-base-content/60 mt-2">No campaign experience yet</p>
