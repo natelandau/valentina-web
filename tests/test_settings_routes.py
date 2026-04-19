@@ -137,9 +137,11 @@ class TestSettingsGet:
             settings=CompanySettings(
                 character_autogen_xp_cost=15,
                 character_autogen_num_choices=3,
+                character_autogen_starting_points=25,
                 permission_manage_campaign="STORYTELLER",
                 permission_grant_xp="UNRESTRICTED",
                 permission_free_trait_changes="WITHIN_24_HOURS",
+                permission_recoup_xp="UNRESTRICTED",
             ),
         )
         svc = MagicMock()
@@ -179,6 +181,17 @@ class TestSettingsGet:
         response = client.get("/admin/settings")
         assert b'value="15"' in response.data
 
+    def test_get_renders_autogen_starting_points(
+        self, client: FlaskClient, mock_companies_svc: MagicMock
+    ) -> None:
+        """Verify GET /settings renders the autogen starting-points value in the form."""
+        # When loading the settings page
+        response = client.get("/admin/settings")
+
+        # Then the starting-points input is pre-populated with the company value
+        assert b'name="character_autogen_starting_points"' in response.data
+        assert b'value="25"' in response.data
+
     def test_get_calls_companies_get_with_company_id(
         self, client: FlaskClient, mock_companies_svc: MagicMock, app: Flask
     ) -> None:
@@ -204,7 +217,6 @@ class TestSettingsPostSuccess:
             name="Acme Co",
             email="admin@acme.example",
             description="A test company",
-            settings=CompanySettings(),
         )
         svc = MagicMock()
         svc.get.return_value = company
@@ -241,9 +253,10 @@ class TestSettingsPostSuccess:
                 "description": "Updated description",
                 "character_autogen_xp_cost": "20",
                 "character_autogen_num_choices": "4",
+                "character_autogen_starting_points": "30",
                 "permission_manage_campaign": "STORYTELLER",
                 "permission_grant_xp": "UNRESTRICTED",
-                "permission_free_trait_changes": "",  # blank → None
+                "permission_free_trait_changes": "",
             },
         )
 
@@ -261,6 +274,7 @@ class TestSettingsPostSuccess:
         assert update_req.settings is not None
         assert update_req.settings.character_autogen_xp_cost == 20
         assert update_req.settings.character_autogen_num_choices == 4
+        assert update_req.settings.character_autogen_starting_points == 30
         assert update_req.settings.permission_manage_campaign == "STORYTELLER"
         assert update_req.settings.permission_grant_xp == "UNRESTRICTED"
         assert update_req.settings.permission_free_trait_changes is None
@@ -279,6 +293,7 @@ class TestSettingsPostSuccess:
                 "description": "",
                 "character_autogen_xp_cost": "",
                 "character_autogen_num_choices": "",
+                "character_autogen_starting_points": "",
                 "permission_manage_campaign": "",
                 "permission_grant_xp": "",
                 "permission_free_trait_changes": "",
@@ -306,6 +321,7 @@ class TestSettingsPostSuccess:
                 "description": "",
                 "character_autogen_xp_cost": "",
                 "character_autogen_num_choices": "",
+                "character_autogen_starting_points": "",
                 "permission_manage_campaign": "",
                 "permission_grant_xp": "",
                 "permission_free_trait_changes": "",
@@ -316,6 +332,7 @@ class TestSettingsPostSuccess:
         assert update_req.description is None
         assert update_req.settings.character_autogen_xp_cost is None
         assert update_req.settings.character_autogen_num_choices is None
+        assert update_req.settings.character_autogen_starting_points is None
         assert update_req.settings.permission_manage_campaign is None
 
 
@@ -334,7 +351,6 @@ class TestSettingsPostValidation:
             name="Acme Co",
             email="admin@acme.example",
             description="A test company",
-            settings=CompanySettings(),
         )
         svc = MagicMock()
         svc.get.return_value = company
@@ -368,6 +384,7 @@ class TestSettingsPostValidation:
                 "description": "",
                 "character_autogen_xp_cost": "",
                 "character_autogen_num_choices": "",
+                "character_autogen_starting_points": "",
                 "permission_manage_campaign": "",
                 "permission_grant_xp": "",
                 "permission_free_trait_changes": "",
@@ -379,28 +396,43 @@ class TestSettingsPostValidation:
         assert "text-error" in body
         mock_companies_svc.update.assert_not_called()
 
-    def test_post_invalid_int_returns_400(self, client: FlaskClient, mock_companies_svc) -> None:
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "character_autogen_xp_cost",
+            "character_autogen_num_choices",
+            "character_autogen_starting_points",
+        ],
+    )
+    def test_post_invalid_int_returns_400(
+        self, client: FlaskClient, mock_companies_svc, field: str
+    ) -> None:
         """Verify a non-integer in an int field returns 400 with an error message."""
+        # Given a CSRF token and a payload where one int field is non-numeric
         from tests.conftest import get_csrf
 
         csrf = get_csrf(client)
-        response = client.post(
-            "/admin/settings",
-            data={
-                "csrf_token": csrf,
-                "name": "Valid Name",
-                "email": "",
-                "description": "",
-                "character_autogen_xp_cost": "abc",
-                "character_autogen_num_choices": "",
-                "permission_manage_campaign": "",
-                "permission_grant_xp": "",
-                "permission_free_trait_changes": "",
-            },
-        )
+        data = {
+            "csrf_token": csrf,
+            "name": "Valid Name",
+            "email": "",
+            "description": "",
+            "character_autogen_xp_cost": "",
+            "character_autogen_num_choices": "",
+            "character_autogen_starting_points": "",
+            "permission_manage_campaign": "",
+            "permission_grant_xp": "",
+            "permission_free_trait_changes": "",
+            field: "not-a-number",
+        }
+
+        # When posting to the settings endpoint
+        response = client.post("/admin/settings", data=data)
+
+        # Then the request is rejected and no update is issued
         assert response.status_code == 400
         body = response.get_data(as_text=True)
-        assert "whole number" in body.lower() or "text-error" in body
+        assert "whole number" in body.lower()
         mock_companies_svc.update.assert_not_called()
 
     def test_post_invalid_permission_returns_400(
@@ -419,6 +451,7 @@ class TestSettingsPostValidation:
                 "description": "",
                 "character_autogen_xp_cost": "",
                 "character_autogen_num_choices": "",
+                "character_autogen_starting_points": "",
                 "permission_manage_campaign": "TOTALLY_FAKE_VALUE",
                 "permission_grant_xp": "",
                 "permission_free_trait_changes": "",

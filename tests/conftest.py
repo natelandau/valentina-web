@@ -20,21 +20,26 @@ from vclient.testing import (
 from vweb.config import APISettings, RedisSettings, Settings
 from vweb.lib.global_context import GlobalContext
 
-# CompanyFactory randomly builds settings=None, which breaks permission guards that
-# dereference company.settings. Force a populated CompanySettings on every build.
+# Polyfactory randomizes CompanySettings, including permission fields. When it rolls
+# "UNRESTRICTED" for permission_manage_campaign, PLAYER-role tests flake because
+# can_manage_campaign() returns True from the company rather than the user's role.
+# Force a deterministic, permission-locked CompanySettings unless the caller passes one.
 _original_company_build = CompanyFactory.build
+
+_TEST_COMPANY_SETTINGS = CompanySettings(
+    character_autogen_xp_cost=0,
+    character_autogen_num_choices=3,
+    character_autogen_starting_points=0,
+    permission_manage_campaign="STORYTELLER",
+    permission_grant_xp="STORYTELLER",
+    permission_free_trait_changes="STORYTELLER",
+    permission_recoup_xp="DENIED",
+)
 
 
 def _build_company_with_settings(**kwargs):  # noqa: ANN202
-    company = _original_company_build(**kwargs)
-    if company.settings is None:
-        company.settings = CompanySettings(
-            permission_manage_campaign="STORYTELLER",
-            permission_grant_xp="STORYTELLER",
-            permission_free_trait_changes="STORYTELLER",
-            permission_recoup_xp="DENIED",
-        )
-    return company
+    kwargs.setdefault("settings", _TEST_COMPANY_SETTINGS)
+    return _original_company_build(**kwargs)
 
 
 CompanyFactory.build = staticmethod(_build_company_with_settings)  # type: ignore[method-assign]  # ty:ignore[invalid-assignment]
