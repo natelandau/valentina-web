@@ -4,13 +4,9 @@
   <div class="flex items-center gap-3 grow min-w-0">
     <shared.UserAvatar user={{ user }} size="w-10" />
     <div class="min-w-0">
-
-      {% set display_name = user.name_first ~ " " ~ user.name_last or "" if user.name_first else user.username %}
-
+      {% set display_name = (user.name_first ~ " " ~ user.name_last) if user.name_first and user.name_last else user.username %}
       <div class="font-medium truncate">{{ display_name }}</div>
-      <div class="text-sm text-base-content/70 truncate">
-        {{ user.email }}
-      </div>
+      <div class="text-sm text-base-content/70 truncate">{{ user.email }}</div>
     </div>
   </div>
   <select name="role"
@@ -19,15 +15,8 @@
           hx-target="#user-{{ user.id }}"
           hx-swap="outerHTML"
           hx-include="this">
-    <option value="PLAYER" {% if user.role == "PLAYER" %}selected{% endif %}>
-      Player
-    </option>
-    <option value="STORYTELLER"
-            {% if user.role == "STORYTELLER" %}selected{% endif %}>
-      Storyteller
-    </option>
-    <option value="ADMIN" {% if user.role == "ADMIN" %}selected{% endif %}>
-      Admin
-    </option>
+    <option value="PLAYER" {% if user.role == "PLAYER" %}selected{% endif %}>Player</option>
+    <option value="STORYTELLER" {% if user.role == "STORYTELLER" %}selected{% endif %}>Storyteller</option>
+    <option value="ADMIN" {% if user.role == "ADMIN" %}selected{% endif %}>Admin</option>
   </select>
 </div>

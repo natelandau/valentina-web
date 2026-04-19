@@ -11,10 +11,7 @@
      href="{{ url_for('admin.users') }}">
     Users
     {% if pending_count > 0 %}
-      <div class="inline-grid *:[grid-area:1/1] ml-2">
-        <div class="status status-error animate-ping"></div>
-        <div class="status status-error"></div>
-      </div>
+      <shared.PingBadge extra_class="ml-2" />
     {% endif %}
   </a>
 </div>

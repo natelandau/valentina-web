@@ -38,11 +38,8 @@
         <a href="{{ url_for('admin.audit_log') }}"
            class="{% if request.path.startswith('/admin') %}active{% endif %}">
           <i class="fa-solid fa-gear"></i> Admin
-          {% if global_context().pending_user_count > 0 %}
-            <span class="inline-grid *:[grid-area:1/1] ml-1">
-              <span class="status status-error animate-ping"></span>
-              <span class="status status-error"></span>
-            </span>
+          {% if ctx.pending_user_count > 0 %}
+            <shared.PingBadge extra_class="ml-1" />
           {% endif %}
         </a>
       </li>

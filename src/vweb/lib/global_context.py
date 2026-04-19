@@ -53,8 +53,7 @@ def _fetch_global_data(company_id: str, user_id: str) -> GlobalContext:
     users = users_svc.list_all()
     campaigns = sync_campaigns_service(on_behalf_of=user_id, company_id=company_id).list_all()
 
-    # Only admins have API permission to list unapproved users; this count drives
-    # the pending-approval indicator in the global nav and admin tabs.
+    # Only admins have API permission to list unapproved users.
     requesting_user = next((u for u in users if u.id == user_id), None)
     pending_user_count = (
         len(users_svc.list_all_unapproved())
