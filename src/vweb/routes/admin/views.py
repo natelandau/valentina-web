@@ -9,7 +9,7 @@ from flask import Blueprint, flash, g, redirect, request, session, url_for
 from flask.views import MethodView
 from pydantic import ValidationError
 from vclient import sync_companies_service
-from vclient.models.companies import CompanySettings, CompanyUpdate
+from vclient.models.companies import CompanySettingsUpdate, CompanyUpdate
 
 from vweb import catalog
 from vweb.lib.global_context import clear_global_context_cache
@@ -42,15 +42,24 @@ def _empty_to_none(value: str | None) -> str | None:
     return stripped or None
 
 
-def _parse_optional_int(value: str | None, field: str) -> int | None:
+class _FieldValueError(ValueError):
+    """Raised when a form field value fails parsing; carries the field key."""
+
+    def __init__(self, field: str, message: str) -> None:
+        super().__init__(message)
+        self.field = field
+
+
+def _parse_optional_int(value: str | None, name: str, label: str) -> int | None:
     """Parse a non-empty string as int, returning None for blank values.
 
     Args:
         value: Raw string from the form field.
-        field: Human-readable field name for the error message.
+        name: Form field name (used as the error key in the template).
+        label: Human-readable label for the error message.
 
     Raises:
-        ValueError: If the value is non-empty but cannot be parsed as an integer.
+        _FieldValueError: If the value is non-empty but cannot be parsed as an integer.
     """
     s = _empty_to_none(value)
     if s is None:
@@ -58,8 +67,8 @@ def _parse_optional_int(value: str | None, field: str) -> int | None:
     try:
         return int(s)
     except ValueError as exc:
-        msg = f"{field} must be a whole number."
-        raise ValueError(msg) from exc
+        msg = f"{label} must be a whole number."
+        raise _FieldValueError(name, msg) from exc
 
 
 def _build_update(form: dict[str, Any]) -> CompanyUpdate:
@@ -73,10 +82,19 @@ def _build_update(form: dict[str, Any]) -> CompanyUpdate:
     """
     settings_payload: dict[str, Any] = {
         "character_autogen_xp_cost": _parse_optional_int(
-            form.get("character_autogen_xp_cost"), "Autogen XP Cost"
+            form.get("character_autogen_xp_cost"),
+            "character_autogen_xp_cost",
+            "Autogen XP Cost",
         ),
         "character_autogen_num_choices": _parse_optional_int(
-            form.get("character_autogen_num_choices"), "Number of Choices"
+            form.get("character_autogen_num_choices"),
+            "character_autogen_num_choices",
+            "Number of Choices",
+        ),
+        "character_autogen_starting_points": _parse_optional_int(
+            form.get("character_autogen_starting_points"),
+            "character_autogen_starting_points",
+            "Starting Points",
         ),
         "permission_manage_campaign": _empty_to_none(form.get("permission_manage_campaign")),
         "permission_grant_xp": _empty_to_none(form.get("permission_grant_xp")),
@@ -87,7 +105,7 @@ def _build_update(form: dict[str, Any]) -> CompanyUpdate:
         name=form.get("name", "").strip(),
         email=_empty_to_none(form.get("email")),
         description=_empty_to_none(form.get("description")),
-        settings=CompanySettings(**settings_payload),
+        settings=CompanySettingsUpdate(**settings_payload),
     )
 
 
@@ -209,14 +227,8 @@ class SettingsView(MethodView):
             update = _build_update(form)
         except ValidationError as exc:
             errors = _format_pydantic_errors(exc)
-        except ValueError as exc:
-            msg = str(exc)
-            if "Autogen XP Cost" in msg:
-                errors["character_autogen_xp_cost"] = msg
-            elif "Number of Choices" in msg:
-                errors["character_autogen_num_choices"] = msg
-            else:
-                errors["_form"] = msg
+        except _FieldValueError as exc:
+            errors[exc.field] = str(exc)
 
         if errors or update is None:
             company = sync_companies_service().get(company_id)
