@@ -1,3 +1,16 @@
+## v0.6.0 (2026-04-19)
+
+### Feat
+
+- **character-create**: surface autogen settings on selection cards (#25)
+- **admin**: pending-approval indicator in global nav and sidebar (#24)
+- **admin**: add autogen starting points to company settings (#23)
+- **security**: serve robots.txt disallowing all bots
+
+### Fix
+
+- **mobile**: responsive layout fixes across key surfaces (#22)
+
 ## v0.5.0 (2026-04-15)
 
 ### Feat
