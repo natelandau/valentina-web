@@ -35,6 +35,7 @@ def _fake_vclient_data(fake_vclient) -> None:
 
     user = UserFactory.build(id="test-user-id", username="test-user", company_id="test-company-id")
     fake_vclient.set_response(Routes.USERS_LIST, items=[user])
+    fake_vclient.set_response(Routes.USERS_UNAPPROVED_LIST, items=[])
 
     campaign = CampaignFactory.build(id="camp-1", name="Campaign 1")
     fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[campaign])
@@ -66,6 +67,45 @@ def test_fetch_global_data_returns_timestamp(app) -> None:
         result = _fetch_global_data("test-company-id", "test-user-id")
 
     assert result.resources_modified_at == "2026-01-01T00:00:00+00:00"
+
+
+def test_fetch_global_data_admin_populates_pending_user_count(app, fake_vclient) -> None:
+    """Verify pending_user_count reflects list_all_unapproved when user is ADMIN."""
+    # Given an ADMIN requesting user and two pending users on the company
+    company = CompanyFactory.build(id="test-company-id")
+    admin = UserFactory.build(id="admin-id", role="ADMIN", company_id="test-company-id")
+    pending = UserFactory.batch(2, role="UNAPPROVED", company_id="test-company-id")
+
+    fake_vclient.set_response(Routes.COMPANIES_GET, model=company)
+    fake_vclient.set_response(Routes.USERS_LIST, items=[admin])
+    fake_vclient.set_response(Routes.USERS_UNAPPROVED_LIST, items=pending)
+    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[])
+
+    # When fetching global data
+    with app.app_context():
+        result = _fetch_global_data("test-company-id", "admin-id")
+
+    # Then pending_user_count matches the unapproved list length
+    assert result.pending_user_count == 2
+
+
+def test_fetch_global_data_non_admin_skips_pending_user_count(app, fake_vclient) -> None:
+    """Verify pending_user_count stays 0 for non-admins (no list_all_unapproved call)."""
+    # Given a PLAYER requesting user
+    company = CompanyFactory.build(id="test-company-id")
+    player = UserFactory.build(id="player-id", role="PLAYER", company_id="test-company-id")
+
+    fake_vclient.set_response(Routes.COMPANIES_GET, model=company)
+    fake_vclient.set_response(Routes.USERS_LIST, items=[player])
+    # list_all_unapproved intentionally not registered — calling it would 404
+    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[])
+
+    # When fetching global data
+    with app.app_context():
+        result = _fetch_global_data("test-company-id", "player-id")
+
+    # Then pending_user_count is 0 and the unapproved endpoint was never called
+    assert result.pending_user_count == 0
 
 
 @pytest.mark.usefixtures("mock_cache_store")

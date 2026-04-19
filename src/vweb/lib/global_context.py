@@ -33,6 +33,7 @@ class GlobalContext:
     characters: list[Character] = field(default_factory=list)
     books_by_campaign: dict[str, list[CampaignBook]] = field(default_factory=dict)
     resources_modified_at: str = ""
+    pending_user_count: int = 0
 
 
 def _fetch_global_data(company_id: str, user_id: str) -> GlobalContext:
@@ -48,8 +49,17 @@ def _fetch_global_data(company_id: str, user_id: str) -> GlobalContext:
     logger.debug("Fetching global company data")
 
     company = sync_companies_service().get(company_id)
-    users = sync_users_service(on_behalf_of=user_id, company_id=company_id).list_all()
+    users_svc = sync_users_service(on_behalf_of=user_id, company_id=company_id)
+    users = users_svc.list_all()
     campaigns = sync_campaigns_service(on_behalf_of=user_id, company_id=company_id).list_all()
+
+    # Only admins have API permission to list unapproved users.
+    requesting_user = next((u for u in users if u.id == user_id), None)
+    pending_user_count = (
+        len(users_svc.list_all_unapproved())
+        if requesting_user is not None and requesting_user.role == "ADMIN"
+        else 0
+    )
 
     characters: list[Character] = []
     characters_by_campaign: dict[str, list[Character]] = defaultdict(list)
@@ -77,6 +87,7 @@ def _fetch_global_data(company_id: str, user_id: str) -> GlobalContext:
         resources_modified_at=company.resources_modified_at.isoformat()
         if company.resources_modified_at
         else "",
+        pending_user_count=pending_user_count,
     )
 
 

@@ -137,7 +137,7 @@ class AuditLogView(MethodView):
             "admin.AuditLogPage",
             users=users,
             entity_types=ENTITY_TYPES,
-            pending_count=admin_services.pending_user_count(g.requesting_user.id),
+            pending_count=g.global_context.pending_user_count,
         )
 
 
@@ -213,7 +213,7 @@ class SettingsView(MethodView):
             company=company,
             errors={},
             form_values=None,
-            pending_count=admin_services.pending_user_count(g.requesting_user.id),
+            pending_count=g.global_context.pending_user_count,
         )
 
     def post(self) -> Response | tuple[str, int]:
@@ -237,7 +237,7 @@ class SettingsView(MethodView):
                 company=company,
                 errors=errors,
                 form_values=form,
-                pending_count=admin_services.pending_user_count(g.requesting_user.id),
+                pending_count=g.global_context.pending_user_count,
             )
             return page, 400
 

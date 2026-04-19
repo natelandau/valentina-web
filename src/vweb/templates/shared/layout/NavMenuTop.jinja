@@ -13,6 +13,9 @@
         <a href="{{ url_for('admin.audit_log') }}"
            class="{% if request.path.startswith('/admin') %}active{% endif %}">
           Admin
+          {% if ctx.pending_user_count > 0 %}
+            <shared.PingBadge extra_class="ml-1" />
+          {% endif %}
         </a>
       </li>
     {% endif %}

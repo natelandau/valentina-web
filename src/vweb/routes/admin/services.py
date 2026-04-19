@@ -32,19 +32,6 @@ def list_pending_and_approved(
     return pending, approved
 
 
-def pending_user_count(requesting_user_id: str) -> int:
-    """Return the number of pending (UNAPPROVED) users for the current company.
-
-    Drives the warning badge on the settings tabs. Uncached because admin-page
-    traffic is low; if that changes, add a short-TTL cache key.
-    """
-    return len(
-        sync_users_service(
-            on_behalf_of=requesting_user_id, company_id=session["company_id"]
-        ).list_all_unapproved()
-    )
-
-
 def approve(user_id: str, role: str, requesting_user_id: str) -> User:
     """Approve a pending user and assign them a real role.
 

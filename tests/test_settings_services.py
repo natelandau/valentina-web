@@ -55,37 +55,6 @@ class TestListPendingAndApproved:
         assert [u.id for u in result_approved] == ["user-1", "user-2"]
 
 
-class TestPendingUserCount:
-    """pending_user_count returns the length of list_all_unapproved()."""
-
-    def test_pending_user_count_returns_unapproved_total(
-        self,
-        app: Flask,
-        mocker,
-    ) -> None:
-        """Verify the count matches list_all_unapproved length."""
-        # Given three unapproved users
-        svc = MagicMock()
-        svc.list_all_unapproved.return_value = UserFactory.batch(3)
-        mocker.patch(
-            "vweb.routes.admin.services.sync_users_service",
-            return_value=svc,
-        )
-
-        # When asking for the pending count
-        from vweb.routes.admin.services import pending_user_count
-
-        with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
-            count = pending_user_count("admin-id")
-
-        # Then the count is 3
-        assert count == 3
-
-
 class TestApprove:
     """approve() wraps users_svc.approve_user and clears the global cache."""
 
