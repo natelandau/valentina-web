@@ -38,7 +38,7 @@
   </div>
 {% endif %}
 
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+<div class="grid grid-cols-1 md:grid-cols-2 {% if is_storyteller() %}lg:grid-cols-3{% endif %} gap-4">
   {% if is_storyteller() %}
     {# Quick Generate card - storyteller only #}
     <div class="card bg-base-100 shadow-sm">
@@ -124,11 +124,20 @@
           </li>
           <li>Then traits and attributes are randomly assigned.</li>
           <li>A name and other details are randomly generated.</li>
+          {% if g.global_context.company.settings.character_autogen_starting_points > 0 %}
+            <li>
+              The character is granted {{ g.global_context.company.settings.character_autogen_starting_points }} starting points which you can allocate to abilities and traits after creation.
+            </li>
+          {% endif %}
         </ol>
-        <p>
-          Once you select one of these characters, you can re-allocate dots, update the name, and otherwise customize your character.
-        </p>
-
+        {% if g.global_context.company.settings.permission_recoup_xp in ["UNRESTRICTED", "WITHIN_SESSION"] %}
+          <p>
+            Once you select one of these characters, you can re-allocate dots, update the name, and otherwise customize your character.
+            {% if g.global_context.company.settings.permission_recoup_xp == "WITHIN_SESSION" %}
+              <span class="font-bold">You can only reallocate dots within a 1 hour window of creating the character.</span>
+            {% endif %}
+          </p>
+        {% endif %}
       </div>
       {% if xp_cost > 0 %}
         <div role="alert" class="alert alert-info alert-soft">
