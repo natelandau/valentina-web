@@ -88,8 +88,9 @@ class TestSettingsTabs:
         mocker,
     ) -> None:
         """Verify the Users tab badge reflects the unapproved user count."""
-        # Given an admin user and two pending users
+        # Given an admin user and two pending users surfaced via global context
         mock_global_context.users[0].role = "ADMIN"
+        mock_global_context.pending_user_count = 2
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=mock_global_context)
 
         company = CompanyFactory.build()
@@ -98,13 +99,6 @@ class TestSettingsTabs:
         mocker.patch(
             "vweb.routes.admin.views.sync_companies_service",
             return_value=companies_svc,
-        )
-
-        users_svc = MagicMock()
-        users_svc.list_all_unapproved.return_value = [MagicMock(), MagicMock()]
-        mocker.patch(
-            "vweb.routes.admin.services.sync_users_service",
-            return_value=users_svc,
         )
 
         # When loading the settings page
