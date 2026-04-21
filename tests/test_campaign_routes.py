@@ -610,3 +610,68 @@ class TestCampaignDeleteView:
 
         # Then a 404 is returned
         assert response.status_code == 404
+
+
+class TestCampaignSummaryCard:
+    """Tests for the new top-of-page summary card on the campaign dashboard."""
+
+    def test_renders_campaign_name_and_eyebrow(self, client, mock_global_context) -> None:
+        """Verify the card shows the CAMPAIGN eyebrow and campaign name."""
+        # Given an authenticated user with a campaign
+        campaign = mock_global_context.campaigns[0]
+
+        # When loading the campaign dashboard
+        response = client.get(f"/campaign/{campaign.id}")
+        body = response.get_data(as_text=True)
+
+        # Then the eyebrow + title render inside the summary card
+        assert response.status_code == 200
+        assert 'id="campaign-summary-card"' in body
+        # Eyebrow label
+        assert "Campaign" in body
+        # Title
+        assert campaign.name in body
+
+    def test_renders_start_date_pill(self, client, mock_global_context) -> None:
+        """Verify the summary card shows a Started MMM YYYY pill from date_created."""
+        campaign = mock_global_context.campaigns[0]
+
+        response = client.get(f"/campaign/{campaign.id}")
+        body = response.get_data(as_text=True)
+
+        expected = campaign.date_created.strftime("Started %b %Y")
+        assert expected in body
+
+    def test_hides_book_pill_when_no_books(self, client, mock_global_context) -> None:
+        """Verify the books/chapters pill is omitted when there are no books."""
+        campaign = mock_global_context.campaigns[0]
+
+        response = client.get(f"/campaign/{campaign.id}")
+        body = response.get_data(as_text=True)
+
+        # mock_global_context.books_by_campaign is empty for this campaign
+        assert "books ·" not in body
+
+    def test_omits_page_header(self, client, mock_global_context) -> None:
+        """Verify the old shared PageHeader 'Campaign' before_text no longer renders."""
+        campaign = mock_global_context.campaigns[0]
+
+        response = client.get(f"/campaign/{campaign.id}")
+        body = response.get_data(as_text=True)
+
+        # The old PageHeader put the before_text in a text-3xl font-thin
+        # opacity-50 span. The new summary card uses a small uppercase
+        # eyebrow instead — the old class signature should not appear.
+        assert "text-3xl font-thin opacity-50" not in body
+
+    def test_danger_desperation_renders_vertical_in_card(self, client, mock_global_context) -> None:
+        """Verify the badges container stacks vertically at lg+ inside the summary card."""
+        campaign = mock_global_context.campaigns[0]
+
+        response = client.get(f"/campaign/{campaign.id}")
+        body = response.get_data(as_text=True)
+
+        # `lg:flex-col` is unique to the vertical prop branch — its presence
+        # proves the badges wrap horizontally on mobile and stack at lg+.
+        assert 'id="danger-desperation-badges"' in body
+        assert "lg:flex-col" in body

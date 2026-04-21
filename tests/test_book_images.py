@@ -62,9 +62,11 @@ def _mock_book_lookup(mocker, mock_book, mock_campaign) -> None:
 
 @pytest.fixture
 def _mock_chapters_service(mocker, mock_chapters) -> None:
-    """Mock the chapters service."""
-    svc = mocker.patch("vweb.routes.book.views.sync_chapters_service").return_value
-    svc.list_all.return_value = mock_chapters
+    """Mock the chapter lookup."""
+    mocker.patch(
+        "vweb.routes.book.views.get_chapters_for_book",
+        return_value=mock_chapters,
+    )
 
 
 @pytest.fixture

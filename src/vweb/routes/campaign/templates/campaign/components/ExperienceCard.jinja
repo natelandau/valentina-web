@@ -6,7 +6,7 @@
 
 {% set current_user_experience = user_campaign_experience(current_user.id, campaign_id) %}
 
-{% set exp_attrs = 'hx-get="' ~ url_for('index.experience_form', campaign_id=campaign_id) ~ '" hx-target="#index-experience-card" hx-swap="innerHTML"' %}
+{% set exp_attrs = 'hx-get="' ~ url_for('campaign.experience_form', campaign_id=campaign_id) ~ '" hx-target="#index-experience-card" hx-swap="innerHTML"' %}
 
 <div class="card-body mb-0">
   <div class="flex items-center justify-between">

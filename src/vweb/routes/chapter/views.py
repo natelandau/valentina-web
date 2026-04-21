@@ -9,7 +9,7 @@ from flask.views import MethodView
 from vclient import sync_chapters_service
 
 from vweb import catalog
-from vweb.lib.api import fetch_book_or_404
+from vweb.lib.api import fetch_book_or_404, get_chapters_for_book
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_manage_campaign
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
@@ -123,7 +123,9 @@ class ChapterDetailView(MethodView):
         hx_target = request.headers.get("HX-Target", "")
 
         if is_htmx and section is not None and hx_target == CHAPTER_CARD_ID:
-            prev_ch, next_ch, total_chapters = _adjacent_chapters(ch_svc.list_all(), chapter_id)
+            prev_ch, next_ch, total_chapters = _adjacent_chapters(
+                get_chapters_for_book(book_id), chapter_id
+            )
             card = _render_chapter_card(
                 chapter=chapter,
                 book=book,
@@ -155,7 +157,9 @@ class ChapterDetailView(MethodView):
             )
             return htmx_response(content, nav, header)
 
-        prev_ch, next_ch, total_chapters = _adjacent_chapters(ch_svc.list_all(), chapter_id)
+        prev_ch, next_ch, total_chapters = _adjacent_chapters(
+            get_chapters_for_book(book_id), chapter_id
+        )
         return catalog.render(
             "chapter.ChapterDetail",
             chapter=chapter,
@@ -376,7 +380,9 @@ class ChapterImageUploadView(MethodView):
         assets = upload_and_append_asset(
             svc=ch_svc, parent_id=chapter_id, file=request.files.get("image")
         )
-        prev_ch, next_ch, total_chapters = _adjacent_chapters(ch_svc.list_all(), chapter_id)
+        prev_ch, next_ch, total_chapters = _adjacent_chapters(
+            get_chapters_for_book(book_id), chapter_id
+        )
         content_html = _render_chapter_card(
             chapter=chapter,
             book=book,
@@ -407,7 +413,9 @@ class ChapterImageDeleteView(MethodView):
         handle_image_delete(svc=ch_svc, parent_id=chapter_id, asset_id=asset_id)
 
         assets = ch_svc.list_all_assets(chapter_id)
-        prev_ch, next_ch, total_chapters = _adjacent_chapters(ch_svc.list_all(), chapter_id)
+        prev_ch, next_ch, total_chapters = _adjacent_chapters(
+            get_chapters_for_book(book_id), chapter_id
+        )
         content_html = _render_chapter_card(
             chapter=chapter,
             book=book,

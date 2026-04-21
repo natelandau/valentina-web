@@ -70,6 +70,10 @@ def mock_ch_svc(mocker, mock_chapter):
     svc.get.return_value = mock_chapter
     svc.list_all.return_value = [mock_chapter]
     svc.list_all_assets.return_value = []
+    mocker.patch(
+        "vweb.routes.chapter.views.get_chapters_for_book",
+        return_value=[mock_chapter],
+    )
     return svc
 
 

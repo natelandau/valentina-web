@@ -1,0 +1,9 @@
+<shared.PageLayout title="Home">
+  <div class="flex flex-col items-center justify-center py-16">
+    <h2 class="text-2xl font-bold mb-4">No campaigns exist yet.</h2>
+    <p class="text-base-content/60">
+      <a class="link link-primary"
+         x-data @click="document.getElementById('campaign-create-modal').showModal()">Create one.</a>
+    </p>
+  </div>
+</shared.PageLayout>
