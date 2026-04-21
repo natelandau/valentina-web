@@ -2,7 +2,7 @@
 {% set active = active_campaign() %}
 {% set user = requesting_user() %}
 
-<header class="navbar bg-base-100 border-b border-base-300 px-4 gap-2 min-h-16">
+<header class="navbar surface-chrome px-4 gap-2 min-h-16">
   <div class="flex-none">
     <a href="{{ url_for('index.index') }}" class="flex items-center gap-2">
       <img src="{{ static_url('img/valentina120.png') }}"

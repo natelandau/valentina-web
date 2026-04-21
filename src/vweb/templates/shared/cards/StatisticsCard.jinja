@@ -6,7 +6,7 @@
 
 {% set grid_col_span = "col-span-" ~ col_span if col_span > 0 else "" %}
 
-<div class="card bg-base-100 shadow-sm h-full {{ grid_col_span }}">
+<div class="card surface-card h-full {{ grid_col_span }}">
   <div class="card-body">
     <h2 class="card-title">{{ title }}</h2>
     <div class="stats stats-vertical lg:stats-horizontal shadow-sm overflow-hidden">

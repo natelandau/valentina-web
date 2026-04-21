@@ -13,7 +13,7 @@
 {% set current_user = g.requesting_user %}
 
 <div {% if card_id %}id="{{ card_id }}"{% endif %}
-     class="card bg-base-100 shadow-sm {{ grid_col_span }}">
+     class="card surface-card {{ grid_col_span }}">
   <div id="index-experience-card">
     <campaign.components.ExperienceCard campaign_id={{ campaign_id }} />
   </div>

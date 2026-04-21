@@ -1,0 +1,18 @@
+{#def campaign #}
+
+{# Compact campaign identity strip. Sits above the SectionNav on campaign-scoped
+   subpages (dictionary, notes, etc.) so the campaign context is always visible
+   without dominating like the full hero card on the Overview page. #}
+
+<div class="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 sm:flex-nowrap">
+  <div class="flex items-center gap-2 min-w-0 sm:flex-1">
+    <span class="text-[0.65rem] uppercase tracking-wider opacity-60 font-semibold shrink-0">Campaign</span>
+    <a href="{{ url_for('campaign.campaign', campaign_id=campaign.id) }}"
+       class="text-lg font-semibold truncate hover:underline">
+      {{ campaign.name }}
+    </a>
+  </div>
+  <div class="shrink-0 sm:ml-auto">
+    <campaign.partials.DangerDesperation campaign={{ campaign }} compact={{ true }} />
+  </div>
+</div>

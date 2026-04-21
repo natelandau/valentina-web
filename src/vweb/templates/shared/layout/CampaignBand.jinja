@@ -1,0 +1,21 @@
+{#def
+    active: str = "",
+    campaign_id: str = "",
+    show_admin: bool = false
+#}
+
+{# Shared chrome shell for campaign-scoped pages. Renders a branded chrome card
+   containing a content slot (the campaign identity element — compact strip or
+   full hero) and the SectionNav attached at the bottom. Every campaign-scoped
+   page uses this so the "campaign zone + tabs" shell looks identical. #}
+
+<div class="surface-chrome rounded-box border-t-2 border-primary/50">
+  {{ content }}
+  <div class="px-2 sm:px-4 border-t border-base-300/60">
+    <campaign.components.SectionNav
+        active={{ active }}
+        campaign_id={{ campaign_id }}
+        show_admin={{ show_admin }}
+        bordered={{ false }} />
+  </div>
+</div>

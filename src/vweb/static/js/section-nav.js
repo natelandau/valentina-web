@@ -1,38 +1,42 @@
 /**
- * Priority+ section navigation.
+ * Priority+ section navigation with pinned active tab.
  *
- * Measures the actual rendered width of each tab (and the "More" button)
- * against the container width, then decides how many tabs fit inline and
- * how many spill into the overflow dropdown. Runs on mount, on container
- * resize, and after web fonts settle.
+ * Measures the actual rendered width of each tab (and the "More" button) and
+ * decides which items fit inline vs. overflow. The active item is always
+ * promoted into the visible set; the item it displaces drops into the More
+ * dropdown. Re-runs on mount, container resize, and after web fonts settle.
  */
 document.addEventListener("alpine:init", () => {
     Alpine.data("priorityNav", ({ items, active }) => ({
         items,
         active,
-        visibleCount: 0,
         open: false,
         ready: false,
         tabWidths: [],
         moreWidth: 0,
+        barWidth: 0,
+        layout: { visible: [], hidden: [] },
         resizeObserver: null,
 
         init() {
-            // Initial measurement after first paint — $refs are populated here.
             this.$nextTick(() => {
-                this.captureWidths();
-                this.computeFit();
+                this.captureItemWidths();
+                this.updateBarWidth();
+                this.recompute();
                 this.ready = true;
-                this.resizeObserver = new ResizeObserver(() => this.computeFit());
+                this.resizeObserver = new ResizeObserver(() => {
+                    this.updateBarWidth();
+                    this.recompute();
+                });
                 this.resizeObserver.observe(this.$refs.bar);
             });
 
-            // Re-measure once web fonts load — label widths can shift when
-            // fallback fonts are swapped for the real ones.
+            // Item widths can shift when fallback fonts are swapped for the
+            // real ones — re-capture after font load, then recompute.
             if (document.fonts && document.fonts.ready) {
                 document.fonts.ready.then(() => {
-                    this.captureWidths();
-                    this.computeFit();
+                    this.captureItemWidths();
+                    this.recompute();
                 });
             }
         },
@@ -43,7 +47,7 @@ document.addEventListener("alpine:init", () => {
             }
         },
 
-        captureWidths() {
+        captureItemWidths() {
             const measureRow = this.$refs.measure;
             if (!measureRow) return;
             const tabs = measureRow.querySelectorAll("[data-measure-tab]");
@@ -52,37 +56,84 @@ document.addEventListener("alpine:init", () => {
             this.moreWidth = more ? more.getBoundingClientRect().width : 0;
         },
 
-        computeFit() {
+        updateBarWidth() {
             const bar = this.$refs.bar;
-            if (!bar || this.tabWidths.length === 0) return;
-            const available = bar.clientWidth;
+            if (bar) {
+                this.barWidth = bar.clientWidth;
+            }
+        },
+
+        recompute() {
+            const next = this._computeLayout();
+
+            // Skip reassignment when the visible/hidden arrays are identical
+            // to the current layout — no-op resizes shouldn't thrash Alpine's
+            // reactive consumers (x-for templates re-render on every change).
+            if (sameLayout(next, this.layout)) return;
+            this.layout = next;
+        },
+
+        _computeLayout() {
+            if (this.tabWidths.length === 0 || this.barWidth === 0) {
+                return { visible: [...this.items], hidden: [] };
+            }
 
             const total = this.tabWidths.reduce((sum, width) => sum + width, 0);
-            if (total <= available) {
-                this.visibleCount = this.items.length;
-                return;
+            if (total <= this.barWidth) {
+                return { visible: [...this.items], hidden: [] };
             }
 
-            // Overflow needed — reserve room for the More button.
-            const cap = available - this.moreWidth;
+            // Overflow mode — reserve space for the More button.
+            const cap = this.barWidth - this.moreWidth;
+            const activeIndex = this.active
+                ? this.items.findIndex((item) => item.key === this.active)
+                : -1;
+            const visibleSet = new Set();
             let used = 0;
-            let count = 0;
-            for (const width of this.tabWidths) {
+
+            // Pin the active item into the visible set first so it's always
+            // shown regardless of position in the original order.
+            if (activeIndex >= 0) {
+                visibleSet.add(activeIndex);
+                used = this.tabWidths[activeIndex];
+            }
+
+            // Fill remaining slots with items in original order until the cap.
+            for (let index = 0; index < this.items.length; index++) {
+                if (index === activeIndex) continue;
+                const width = this.tabWidths[index];
                 if (used + width > cap) break;
                 used += width;
-                count++;
+                visibleSet.add(index);
             }
-            // Always keep at least one tab inline so the bar isn't just "More".
-            this.visibleCount = Math.max(count, 1);
-        },
 
-        isOverflow(index) {
-            return index >= this.visibleCount;
-        },
+            // Fallback: always keep at least one item inline.
+            if (visibleSet.size === 0 && this.items.length > 0) {
+                visibleSet.add(0);
+            }
 
-        activeInOverflow() {
-            const activeIndex = this.items.findIndex((item) => item.key === this.active);
-            return activeIndex >= 0 && activeIndex >= this.visibleCount;
+            const visible = [];
+            const hidden = [];
+            for (let index = 0; index < this.items.length; index++) {
+                if (visibleSet.has(index)) {
+                    visible.push(this.items[index]);
+                } else {
+                    hidden.push(this.items[index]);
+                }
+            }
+            return { visible, hidden };
         },
     }));
 });
+
+function sameLayout(a, b) {
+    return sameItems(a.visible, b.visible) && sameItems(a.hidden, b.hidden);
+}
+
+function sameItems(a, b) {
+    if (a.length !== b.length) return false;
+    for (let index = 0; index < a.length; index++) {
+        if (a[index] !== b[index]) return false;
+    }
+    return true;
+}

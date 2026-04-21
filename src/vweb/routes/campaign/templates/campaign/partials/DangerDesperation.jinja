@@ -1,4 +1,4 @@
-{#def campaign, oob: bool = False, vertical: bool = False #}
+{#def campaign, oob: bool = False, vertical: bool = False, compact: bool = False #}
 
 {% macro render_badge(campaign, field_name, value, label) %}
   {% set badge_color = "badge-neutral" if value < 2 else "badge-warning" if value in [2, 3] else "badge-error" %}
@@ -27,7 +27,13 @@
   {% endif %}
 {% endmacro %}
 
-{% set layout_classes = "flex items-center gap-2 flex-wrap lg:flex-col lg:items-stretch" if vertical else "flex items-center gap-2 flex-wrap mt-2" %}
+{% if vertical %}
+  {% set layout_classes = "flex items-center gap-2 flex-wrap lg:flex-col lg:items-stretch" %}
+{% elif compact %}
+  {% set layout_classes = "flex items-center gap-2 flex-wrap" %}
+{% else %}
+  {% set layout_classes = "flex items-center gap-2 flex-wrap mt-2" %}
+{% endif %}
 
 <div id="danger-desperation-badges" {% if oob %}hx-swap-oob="true"{% endif %}>
   <div class="{{ layout_classes }}">

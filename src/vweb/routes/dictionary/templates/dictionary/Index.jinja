@@ -1,18 +1,26 @@
 {#def terms: list = [], active_term: object = None, trait: object = None, subcategory: object = None #}
+{% set current_campaign = active_campaign() %}
 <shared.PageLayout title="Dictionary">
 <div class="flex flex-col gap-4">
 
+  {% if current_campaign %}
+    <shared.layout.CampaignChrome
+        campaign={{ current_campaign }}
+        active="dictionary"
+        show_admin={{ is_admin() }} />
+  {% endif %}
+
+  <h1 class="sr-only">Dictionary</h1>
+
   {% set add_attrs = 'hx-get="' ~ url_for('dictionary.term_form') ~ '" hx-target="#term-detail" hx-swap="innerHTML"' %}
-  {% set add_btn %}
-
+  <div class="flex justify-end">
     <shared.CommonButton variant="add" extra_attrs={{ add_attrs }}>Add Term</shared.CommonButton>
-  {% endset %}
-  <shared.PageHeader title="Dictionary" actions={{ add_btn }} back_url={{ url_for('index.index') }} back_text="Back Home" />
+  </div>
 
-  <div class="flex flex-col lg:flex-row lg:border lg:border-base-300 lg:rounded-box lg:overflow-hidden"
+  <div class="surface-card flex flex-col overflow-hidden lg:flex-row"
        style="--dict-height: calc(100vh - 12rem)">
 
-    <div class="{{ 'hidden lg:flex' if active_term else 'flex' }} flex-col lg:w-56 lg:min-w-56 lg:border-r lg:border-base-300 lg:bg-base-200 lg:h-[var(--dict-height)]">
+    <div class="{{ 'hidden lg:flex' if active_term else 'flex' }} flex-col lg:w-56 lg:min-w-56 lg:border-r lg:border-base-300 lg:bg-base-200/60 lg:h-[var(--dict-height)]">
       <div class="p-2 lg:border-b lg:border-base-300">
         <dictionary.components.SearchBar />
       </div>
