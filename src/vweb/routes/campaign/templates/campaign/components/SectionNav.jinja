@@ -6,15 +6,20 @@
 #}
 
 {% set items = [
-  {"key": "overview",    "label": "Overview",         "url": url_for('campaign.campaign', campaign_id=campaign_id)},
-  {"key": "books",       "label": "Books & Chapters", "url": "#books"},
-  {"key": "characters",  "label": "Characters",       "url": "#characters"},
-  {"key": "players",     "label": "Players",          "url": "#players"},
-  {"key": "dictionary",  "label": "Dictionary",       "url": url_for('dictionary.index')},
-  {"key": "notes",       "label": "Notes",            "url": "#notes"},
+  {"key": "overview",    "label": "Overview",         "url": url_for('campaign.campaign', campaign_id=campaign_id), "badge": false},
+  {"key": "books",       "label": "Books & Chapters", "url": "#books",                                              "badge": false},
+  {"key": "characters",  "label": "Characters",       "url": "#characters",                                         "badge": false},
+  {"key": "players",     "label": "Players",          "url": "#players",                                            "badge": false},
+  {"key": "dictionary",  "label": "Dictionary",       "url": url_for('dictionary.index'),                           "badge": false},
+  {"key": "notes",       "label": "Notes",            "url": "#notes",                                              "badge": false},
 ] %}
 {% if show_admin %}
-  {% set _ = items.append({"key": "admin", "label": "Admin", "url": "#admin"}) %}
+  {% set _ = items.append({
+    "key": "admin",
+    "label": "Admin",
+    "url": url_for('admin.audit_log'),
+    "badge": global_context().pending_user_count > 0,
+  }) %}
 {% endif %}
 
 <nav aria-label="Campaign sections"
@@ -28,7 +33,12 @@
        aria-hidden="true"
        class="invisible absolute -left-[9999px] top-0 flex flex-nowrap tabs tabs-border">
     {% for item in items %}
-      <span data-measure-tab class="tab">{{ item.label }}</span>
+      <span data-measure-tab class="tab">
+        {{ item.label }}
+        {% if item.badge %}
+          <shared.PingBadge extra_class="ml-2" />
+        {% endif %}
+      </span>
     {% endfor %}
     <span data-measure-more class="tab">
       More
@@ -44,8 +54,12 @@
       <a role="tab"
          :href="item.url"
          class="tab"
-         :class="{ 'tab-active font-semibold': item.key === active }"
-         x-text="item.label"></a>
+         :class="{ 'tab-active font-semibold': item.key === active }">
+        <span x-text="item.label"></span>
+        <template x-if="item.badge">
+          <shared.PingBadge extra_class="ml-2" />
+        </template>
+      </a>
     </template>
 
     <div class="dropdown dropdown-end ml-auto"
@@ -73,8 +87,12 @@
         <template x-for="item in layout.hidden" :key="item.key">
           <li>
             <a :href="item.url"
-               :class="{ 'menu-active font-semibold': item.key === active }"
-               x-text="item.label"></a>
+               :class="{ 'menu-active font-semibold': item.key === active }">
+              <span x-text="item.label"></span>
+              <template x-if="item.badge">
+                <shared.PingBadge extra_class="ml-auto" />
+              </template>
+            </a>
           </li>
         </template>
       </ul>

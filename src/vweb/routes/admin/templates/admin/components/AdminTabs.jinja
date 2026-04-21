@@ -1,5 +1,5 @@
 {#def active="audit_log", pending_count=0 #}
-<div role="tablist" class="tabs tabs-border mb-4" hx-boost="true" hx-swap="innerHTML show:no-scroll transition:true" hx-target="body">
+<div role="tablist" class="tabs tabs-border" hx-boost="true" hx-swap="innerHTML show:no-scroll transition:true" hx-target="body">
   <a role="tab"
      class="tab {% if active == 'audit_log' %}tab-active{% endif %}"
      href="{{ url_for('admin.audit_log') }}">Audit Log</a>
