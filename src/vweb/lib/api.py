@@ -12,6 +12,25 @@ if TYPE_CHECKING:
     from vclient.models.users import CampaignExperience
 
 
+def get_active_campaign() -> Campaign | None:
+    """Return the user's currently active campaign.
+
+    Resolve the active campaign in priority order: session-stored
+    ``last_campaign_id`` when it still maps to an existing campaign, otherwise
+    the most-recently-modified campaign from the user's global context.
+    """
+    ctx = g.get("global_context")
+    if ctx is None or not ctx.campaigns:
+        return None
+
+    last_id = session.get("last_campaign_id")
+    selected = next((c for c in ctx.campaigns if c.id == last_id), None)
+    if selected is not None:
+        return selected
+
+    return max(ctx.campaigns, key=lambda c: c.date_modified)
+
+
 def get_character_and_campaign(
     character_id: str,
 ) -> tuple[Character | None, Campaign | None]:

@@ -19,6 +19,7 @@ from flask.views import MethodView
 
 from vweb import catalog
 from vweb.lib.api import (
+    get_active_campaign,
     get_campaign_name,
     get_user_campaign_experience,
     validate_and_submit_experience,
@@ -35,21 +36,13 @@ class IndexView(MethodView):
     """Home page. Landing page for guests, redirect for authenticated users."""
 
     def get(self) -> str | WerkzeugResponse:
-        """Render landing page or redirect to the last-viewed campaign."""
+        """Render landing page or redirect to the active campaign."""
         if "user_id" not in session:
             return catalog.render("auth.LandingPage")
 
-        ctx = g.global_context
-        campaigns = ctx.campaigns
-
-        if not campaigns:
-            return catalog.render("index.Index", campaign=None)
-
-        # Use session-stored campaign if still valid
-        last_id = session.get("last_campaign_id")
-        selected = next((c for c in campaigns if c.id == last_id), None)
+        selected = get_active_campaign()
         if selected is None:
-            selected = max(campaigns, key=lambda c: c.date_modified)
+            return catalog.render("index.Index", campaign=None)
 
         return redirect(url_for("campaign.campaign", campaign_id=selected.id))
 

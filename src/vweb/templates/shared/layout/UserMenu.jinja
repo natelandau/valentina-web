@@ -1,0 +1,25 @@
+{#def
+    user
+#}
+
+<details class="dropdown dropdown-end" x-data @click.outside="$el.removeAttribute('open')">
+  <summary class="list-none cursor-pointer flex items-center gap-2 bg-base-200 border border-base-300 rounded-full pl-1 pr-3 py-1 hover:bg-base-300 transition-colors">
+    <shared.UserAvatar user={{ user }} size="w-8" />
+    <span class="text-sm font-medium hidden sm:inline truncate max-w-[8rem]">{{ user.name_first or user.username }}</span>
+    <i class="fa-solid fa-chevron-down text-xs text-base-content/60"></i>
+  </summary>
+  <ul class="menu dropdown-content bg-base-100 border border-base-300 rounded-box z-10 mt-2 w-52 p-2 shadow">
+    <li>
+      <a href="{{ url_for('profile.profile', user_id=user.id) }}">Profile</a>
+    </li>
+    {% if approved_company_count() >= 2 %}
+      <li>
+        <a href="{{ url_for('auth.select_company') }}">Switch Company</a>
+      </li>
+    {% endif %}
+    <li>
+      <a x-data @click="document.getElementById('logout-form').submit()">Logout</a>
+    </li>
+  </ul>
+  <shared.LogoutForm />
+</details>

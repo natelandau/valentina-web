@@ -309,7 +309,7 @@ class TestNavbarCampaignDropdown:
         body = response.get_data(as_text=True)
 
         # Then the add button is not present
-        assert "+ Add New Campaign" not in body
+        assert "+ Create Campaign" not in body
 
     def test_navbar_shows_add_button_for_storyteller(self, client, mocker) -> None:
         """Verify the Add New Campaign button is visible for STORYTELLER role."""
@@ -334,7 +334,7 @@ class TestNavbarCampaignDropdown:
         body = response.get_data(as_text=True)
 
         # Then the add button is present
-        assert "+ Add New Campaign" in body
+        assert "+ Create Campaign" in body
 
 
 class TestCampaignUpdateView:

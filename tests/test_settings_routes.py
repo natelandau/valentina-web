@@ -476,6 +476,9 @@ class TestSettingsNavLink:
         mock_global_context.users[0].role = "PLAYER"
         return mock_global_context
 
+    @pytest.mark.skip(
+        reason="Admin link dropped from global nav — will be restored in a future pass; see docs/superpowers/specs/2026-04-21-global-header-redesign-design.md"
+    )
     def test_admin_sees_settings_link(
         self,
         client: FlaskClient,
@@ -492,6 +495,9 @@ class TestSettingsNavLink:
         response = client.get(f"/profile/{admin_context.users[0].id}")
         assert b"/admin" in response.data
 
+    @pytest.mark.skip(
+        reason="Admin link dropped from global nav — will be restored in a future pass; see docs/superpowers/specs/2026-04-21-global-header-redesign-design.md"
+    )
     def test_player_does_not_see_settings_link(
         self,
         client: FlaskClient,

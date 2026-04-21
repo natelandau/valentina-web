@@ -125,3 +125,63 @@ def test_development_mode_uses_cookie_sessions(app) -> None:
     from flask.sessions import SecureCookieSessionInterface
 
     assert isinstance(app.session_interface, SecureCookieSessionInterface)
+
+
+def test_global_header_renders_app_name_and_campaign_pill(client, mock_global_context) -> None:
+    """Verify the global header renders the app name and active campaign pill."""
+    # Given an authenticated user with a campaign
+    campaign = mock_global_context.campaigns[0]
+
+    # When loading the campaign dashboard
+    response = client.get(f"/campaign/{campaign.id}")
+    body = response.get_data(as_text=True)
+
+    # Then the new header markup is present
+    assert response.status_code == 200
+    # App name appears in the header (sm:inline label)
+    assert "Test App" in body
+    # Campaign overline and active campaign name appear in the pill
+    assert ">Campaign<" in body
+    assert campaign.name in body
+    # User menu pill renders with the user's first name
+    assert "Test" in body  # first name from UserFactory.build(name_first="Test", ...)
+
+
+def test_global_header_has_no_drawer_markup(client, mock_global_context) -> None:
+    """Verify the old drawer/sidebar plumbing is absent from rendered pages."""
+    # Given an authenticated user with a campaign
+    campaign = mock_global_context.campaigns[0]
+
+    # When loading the campaign dashboard
+    response = client.get(f"/campaign/{campaign.id}")
+    body = response.get_data(as_text=True)
+
+    # Then no drawer classes or mobile-nav IDs remain
+    assert response.status_code == 200
+    assert "drawer-toggle" not in body
+    assert "my-drawer-2" not in body
+    assert "drawer-side" not in body
+
+
+def test_global_header_omits_campaign_switcher_when_no_campaigns(client, mocker) -> None:
+    """Verify the campaign switcher is absent when the user has no campaigns."""
+    # Given a global context with zero campaigns
+    company = CompanyFactory.build(name="Test Company")
+    user = UserFactory.build(id="test-user-id", company_id="test-company-id")
+    ctx = GlobalContext(
+        company=company,
+        users=[user],
+        campaigns=[],
+        resources_modified_at="2026-01-01T00:00:00+00:00",
+    )
+    mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+
+    # When loading the landing index (empty state)
+    response = client.get("/")
+    body = response.get_data(as_text=True)
+
+    # Then the "Campaign" overline is not rendered
+    assert response.status_code == 200
+    assert ">Campaign<" not in body
+    # And the empty state is still shown
+    assert "No campaigns exist yet." in body

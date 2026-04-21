@@ -42,18 +42,6 @@ class TestDictionaryIndex:
         assert response.status_code == 200
         assert b"Dictionary" in response.data
 
-    def test_nav_contains_dictionary_link(self, client: FlaskClient, mock_dict_cache: dict) -> None:
-        """Verify navigation includes a link to the dictionary page."""
-        # Given dictionary terms exist
-        mock_dict_cache["get_all_terms"].return_value = DictionaryTermFactory.batch(1)
-
-        # When requesting the dictionary page
-        response = client.get("/dictionary")
-
-        # Then the nav contains a dictionary link
-        assert response.status_code == 200
-        assert b'href="/dictionary"' in response.data
-
     def test_renders_empty_state(self, client: FlaskClient, mock_dict_cache: dict) -> None:
         """Verify dictionary index shows empty state when no terms exist."""
         # Given no dictionary terms
