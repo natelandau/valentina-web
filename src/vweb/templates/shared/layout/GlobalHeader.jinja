@@ -1,0 +1,27 @@
+{% set ctx = global_context() %}
+{% set active = active_campaign() %}
+{% set user = requesting_user() %}
+
+<header class="navbar bg-base-100 border-b border-base-300 px-4 gap-2 min-h-16">
+  <div class="flex-none">
+    <a href="{{ url_for('index.index') }}" class="flex items-center gap-2">
+      <img src="{{ static_url('img/valentina120.png') }}"
+           alt="{{ app_name }}"
+           width="32" height="32"
+           class="rounded-md" />
+      <span class="text-xl font-semibold hidden sm:inline">{{ app_name }}</span>
+    </a>
+  </div>
+
+  <div class="flex-1 min-w-0 flex justify-start">
+    {% if active %}
+      <shared.layout.CampaignSwitcher active={{ active }} campaigns={{ ctx.campaigns }} />
+    {% endif %}
+  </div>
+
+  {% if user %}
+    <div class="flex-none">
+      <shared.layout.UserMenu user={{ user }} />
+    </div>
+  {% endif %}
+</header>

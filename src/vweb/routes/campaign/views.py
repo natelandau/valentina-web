@@ -2,21 +2,21 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-from flask import Blueprint, abort, g, request, session, url_for
+from flask import Blueprint, Response, abort, g, render_template, request, session, url_for
 from flask.views import MethodView
-
-if TYPE_CHECKING:
-    from werkzeug.wrappers.response import Response
-
 from vclient import sync_campaigns_service
 from vclient.models import CampaignCreate, CampaignUpdate
 
 from vweb import catalog
-from vweb.lib.api import fetch_campaign_or_404, get_user_campaign_experience
+from vweb.lib.api import (
+    fetch_campaign_or_404,
+    get_campaign_name,
+    get_chapter_count_for_campaign,
+    get_user_campaign_experience,
+    validate_and_submit_experience,
+)
 from vweb.lib.global_context import clear_global_context_cache, get_campaign_statistics
-from vweb.lib.guards import can_manage_campaign, is_storyteller
+from vweb.lib.guards import can_grant_experience, can_manage_campaign, is_storyteller
 from vweb.lib.jinja import hx_redirect
 
 bp = Blueprint("campaign", __name__)
@@ -81,13 +81,15 @@ class CampaignView(MethodView):
         books = ctx.books_by_campaign.get(campaign_id, [])
         campaign_statistics = get_campaign_statistics(campaign_id)
         campaign_experience = get_user_campaign_experience(user_id, campaign_id)
+        chapter_count = get_chapter_count_for_campaign(campaign_id)
 
         return catalog.render(
-            "index.Index",
+            "campaign.CampaignDetail",
             campaign=campaign,
             user_characters=user_characters,
             other_characters=other_characters,
             books=books,
+            chapter_count=chapter_count,
             campaign_statistics=campaign_statistics,
             campaign_experience=campaign_experience,
             user=g.requesting_user,
@@ -291,11 +293,95 @@ class CampaignUpdateDangerDesperationView(MethodView):
         )
         campaign = service.update(campaign_id, update)
         clear_global_context_cache(session["company_id"], session["user_id"])
-        return catalog.render("index.partials.DangerDesperation", campaign=campaign)
+        return catalog.render(
+            "campaign.partials.DangerDesperation",
+            campaign=campaign,
+            vertical=True,
+        )
 
 
 bp.add_url_rule(
     "/campaign/<string:campaign_id>/update/<string:field>",
     view_func=CampaignUpdateDangerDesperationView.as_view("update_danger_desperation"),
+    methods=["POST"],
+)
+
+
+class CampaignExperienceCardView(MethodView):
+    """Render the experience card fragment for a campaign."""
+
+    def get(self, campaign_id: str) -> str:
+        """Return the experience card HTML fragment with updated values."""
+        user = g.requesting_user
+        campaign_experience = get_user_campaign_experience(user.id, campaign_id)
+
+        return catalog.render(
+            "campaign.components.ExperienceCard",
+            user=user,
+            campaign_id=campaign_id,
+            campaign_experience=campaign_experience,
+        )
+
+
+class CampaignExperienceFormView(MethodView):
+    """Serve the experience form fragment for a campaign."""
+
+    def get(self, campaign_id: str) -> str:
+        """Return the experience form HTML fragment."""
+        user_id = g.requesting_user.id
+        if not can_grant_experience(user_id):
+            abort(403)
+        return catalog.render(
+            "campaign.partials.ExperienceForm",
+            user_id=user_id,
+            campaign_id=campaign_id,
+            campaign_name=get_campaign_name(campaign_id),
+        )
+
+
+class CampaignAddExperienceView(MethodView):
+    """Handle experience form submission for a campaign."""
+
+    def post(self, campaign_id: str) -> str | Response:
+        """Award XP and/or cool points for a campaign."""
+        user_id = session["user_id"]
+        if not can_grant_experience(user_id):
+            abort(403)
+        form_data = request.form.to_dict()
+        errors = validate_and_submit_experience(
+            form_data, user_id, campaign_id, on_behalf_of=user_id
+        )
+
+        if errors:
+            return catalog.render(
+                "campaign.partials.ExperienceForm",
+                user_id=user_id,
+                campaign_id=campaign_id,
+                campaign_name=get_campaign_name(campaign_id),
+                form_data=form_data,
+                errors=errors,
+            )
+
+        card_url = url_for("campaign.experience_card", campaign_id=campaign_id)
+        return render_template(
+            "partials/crud_refetch.html",
+            table_url=card_url,
+            table_target_id="index-experience-card",
+        )
+
+
+bp.add_url_rule(
+    "/campaign/<string:campaign_id>/experience",
+    view_func=CampaignExperienceCardView.as_view("experience_card"),
+    methods=["GET"],
+)
+bp.add_url_rule(
+    "/campaign/<string:campaign_id>/experience/form",
+    view_func=CampaignExperienceFormView.as_view("experience_form"),
+    methods=["GET"],
+)
+bp.add_url_rule(
+    "/campaign/<string:campaign_id>/experience",
+    view_func=CampaignAddExperienceView.as_view("add_experience"),
     methods=["POST"],
 )

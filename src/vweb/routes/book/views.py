@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING
 
 from flask import Blueprint, abort, g, request, session
 from flask.views import MethodView
-from vclient import sync_books_service, sync_chapters_service
+from vclient import sync_books_service
 
 from vweb import catalog
-from vweb.lib.api import fetch_book_or_404
+from vweb.lib.api import fetch_book_or_404, get_chapters_for_book
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_manage_campaign
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
@@ -17,7 +17,7 @@ from vweb.lib.jinja import htmx_response
 from vweb.routes.book.views_notes import BookNotesTableView
 
 if TYPE_CHECKING:
-    from vclient.models import Asset, Campaign, CampaignBook, CampaignChapter
+    from vclient.models import Asset, Campaign, CampaignBook
 
 
 SECTIONS = ("description", "notes")
@@ -65,18 +65,6 @@ def _render_book_card(  # noqa: PLR0913
         total_books=total_books,
         active_section=active_section,
     )
-
-
-def _load_sorted_chapters(user_id: str, campaign_id: str, book_id: str) -> list[CampaignChapter]:
-    """Fetch all chapters for a book, sorted by number."""
-    chapters = sync_chapters_service(
-        campaign_id=campaign_id,
-        book_id=book_id,
-        on_behalf_of=user_id,
-        company_id=session["company_id"],
-    ).list_all()
-    chapters.sort(key=lambda c: c.number)
-    return chapters
 
 
 def _card_with_header_response(card_html: str, book: CampaignBook, *extra_oob: str) -> str:
@@ -141,7 +129,7 @@ class BookDetailView(MethodView):
                 total_books=total_books,
                 active_section=active_section,
             )
-            chapters = _load_sorted_chapters(user_id, campaign_id, book_id)
+            chapters = get_chapters_for_book(book_id)
             chapters_html = catalog.render(
                 "book.partials.ChaptersCard",
                 book=book,
@@ -164,7 +152,7 @@ class BookDetailView(MethodView):
             return htmx_response(content, nav, header)
 
         prev_book, next_book, total_books = _load_adjacent_books(campaign_id, book.number)
-        chapters = _load_sorted_chapters(user_id, campaign_id, book_id)
+        chapters = get_chapters_for_book(book_id)
 
         return catalog.render(
             "book.BookDetail",

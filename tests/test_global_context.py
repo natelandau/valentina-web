@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import pytest
 from vclient.testing import (
     CampaignBookFactory,
+    CampaignChapterFactory,
     CampaignFactory,
     CharacterFactory,
     CompanyFactory,
@@ -407,6 +408,28 @@ def test_hook_retries_on_user_not_found(app, mocker) -> None:
     # Then the hook retried and the request succeeded
     assert response.status_code == 200
     assert mock_load.call_count == 2
+
+
+@pytest.mark.usefixtures("_fake_vclient_data")
+def test_fetch_global_data_populates_chapters_by_book(app, fake_vclient) -> None:
+    """Verify _fetch_global_data populates chapters_by_book keyed by book id."""
+    # Given a book belongs to the campaign and two chapters belong to that book
+    book = CampaignBookFactory.build(id="b1", campaign_id="camp-1")
+    fake_vclient.set_response(Routes.BOOKS_LIST, items=[book], params={"campaign_id": "camp-1"})
+    chapters = CampaignChapterFactory.batch(2, book_id="b1", campaign_id="camp-1")
+    fake_vclient.set_response(
+        Routes.CHAPTERS_LIST,
+        items=chapters,
+        params={"campaign_id": "camp-1", "book_id": "b1"},
+    )
+
+    # When fetching global data
+    with app.app_context():
+        result = _fetch_global_data("test-company-id", "test-user-id")
+
+    # Then chapters_by_book is keyed by book id and contains both chapters
+    assert list(result.chapters_by_book.keys()) == ["b1"]
+    assert len(result.chapters_by_book["b1"]) == 2
 
 
 def test_hook_redirects_when_user_not_found_after_retry(app, mocker) -> None:

@@ -1,0 +1,37 @@
+{#def
+    active,
+    campaigns
+#}
+
+<div class="flex items-stretch bg-base-200 border border-base-300 rounded-full min-w-0 relative">
+  <a href="{{ url_for('campaign.campaign', campaign_id=active.id) }}"
+     class="flex flex-col justify-center px-4 py-1.5 rounded-l-full hover:bg-base-300 transition-colors min-w-0">
+    <span class="text-[10px] uppercase tracking-wider text-base-content/60 font-semibold leading-tight">Campaign</span>
+    <span class="text-sm font-semibold truncate max-w-[10rem] sm:max-w-[14rem] md:max-w-[20rem] leading-tight">
+      {{ active.name }}
+    </span>
+  </a>
+  <details class="dropdown [position:static]" x-data @click.outside="$el.removeAttribute('open')">
+    <summary class="list-none cursor-pointer flex items-center px-3 h-full rounded-r-full hover:bg-base-300 transition-colors">
+      <i class="fa-solid fa-chevron-down text-xs text-base-content/60"></i>
+    </summary>
+    <ul class="menu dropdown-content bg-base-100 border border-base-300 rounded-box z-10 mt-2 w-64 p-2 shadow absolute top-full left-0">
+      {% for c in campaigns | sort(attribute="name") %}
+        <li>
+          <a href="{{ url_for('campaign.campaign', campaign_id=c.id) }}"
+             class="{% if c.id == active.id %}active{% endif %}">
+            {{ c.name }}
+          </a>
+        </li>
+      {% endfor %}
+      {% if can_manage_campaign() %}
+        <div class="divider my-1"></div>
+        <li>
+          <a x-data @click="document.getElementById('campaign-create-modal').showModal()">
+            + Create Campaign
+          </a>
+        </li>
+      {% endif %}
+    </ul>
+  </details>
+</div>

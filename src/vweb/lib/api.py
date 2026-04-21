@@ -7,9 +7,28 @@ from typing import TYPE_CHECKING
 from flask import abort, g, session
 
 if TYPE_CHECKING:
-    from vclient.models import CampaignBook, Character
+    from vclient.models import CampaignBook, CampaignChapter, Character
     from vclient.models.campaigns import Campaign
     from vclient.models.users import CampaignExperience
+
+
+def get_active_campaign() -> Campaign | None:
+    """Return the user's currently active campaign.
+
+    Resolve the active campaign in priority order: session-stored
+    ``last_campaign_id`` when it still maps to an existing campaign, otherwise
+    the most-recently-modified campaign from the user's global context.
+    """
+    ctx = g.get("global_context")
+    if ctx is None or not ctx.campaigns:
+        return None
+
+    last_id = session.get("last_campaign_id")
+    selected = next((c for c in ctx.campaigns if c.id == last_id), None)
+    if selected is not None:
+        return selected
+
+    return max(ctx.campaigns, key=lambda c: c.date_modified)
 
 
 def get_character_and_campaign(
@@ -89,6 +108,36 @@ def fetch_campaign_or_404(campaign_id: str) -> Campaign:
     if campaign is None:
         abort(404)
     return campaign
+
+
+def get_chapters_for_book(book_id: str) -> list[CampaignChapter]:
+    """Return chapters for a book from the global context, sorted by number.
+
+    Use this in page-load reads where `g.global_context` is fresh. For
+    post-mutation reads inside the same request, call the chapters service
+    directly — the global context is stale until the next request.
+
+    Args:
+        book_id: The book's unique identifier.
+
+    Returns:
+        A list of CampaignChapter ordered by `number` ascending.
+    """
+    chapters = g.global_context.chapters_by_book.get(book_id, [])
+    return sorted(chapters, key=lambda c: c.number)
+
+
+def get_chapter_count_for_campaign(campaign_id: str) -> int:
+    """Count chapters across every book in a campaign using the global context.
+
+    Args:
+        campaign_id: The campaign's unique identifier.
+
+    Returns:
+        The total number of chapters across every book in the campaign.
+    """
+    books = g.global_context.books_by_campaign.get(campaign_id, [])
+    return sum(len(g.global_context.chapters_by_book.get(b.id, [])) for b in books)
 
 
 def get_campaign_name(campaign_id: str) -> str:

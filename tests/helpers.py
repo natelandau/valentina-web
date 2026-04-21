@@ -12,7 +12,14 @@ from vweb.lib.global_context import GlobalContext
 if TYPE_CHECKING:
     from flask.testing import TestResponse
     from pytest_mock import MockerFixture
-    from vclient.models import Campaign, Character, Company, User
+    from vclient.models import (
+        Campaign,
+        CampaignBook,
+        CampaignChapter,
+        Character,
+        Company,
+        User,
+    )
 
 
 def assert_success(response: TestResponse) -> None:
@@ -94,6 +101,8 @@ def build_global_context(
     user: User | None = None,
     campaign: Campaign | None = None,
     characters: list[Character] | None = None,
+    books_by_campaign: dict[str, list[CampaignBook]] | None = None,
+    chapters_by_book: dict[str, list[CampaignChapter]] | None = None,
 ) -> GlobalContext:
     """Build a GlobalContext with sensible defaults for testing.
 
@@ -106,6 +115,9 @@ def build_global_context(
         user: Optional custom User. Defaults to factory-built with id="test-user-id".
         campaign: Optional custom Campaign. Defaults to factory-built.
         characters: Optional list of characters to associate with the campaign.
+        books_by_campaign: Optional mapping of campaign id to books. Defaults to an
+            empty list under the primary campaign's id.
+        chapters_by_book: Optional mapping of book id to chapters. Defaults to empty.
 
     Returns:
         A populated GlobalContext ready for use in tests.
@@ -133,7 +145,8 @@ def build_global_context(
         company=company,
         users=[user],
         campaigns=[campaign],
-        books_by_campaign={campaign.id: []},
+        books_by_campaign=books_by_campaign if books_by_campaign is not None else {campaign.id: []},
+        chapters_by_book=chapters_by_book or {},
         characters_by_campaign={campaign.id: characters},
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )

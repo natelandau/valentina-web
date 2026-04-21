@@ -14,13 +14,9 @@
 
 <div {% if card_id %}id="{{ card_id }}"{% endif %}
      class="card bg-base-100 shadow-sm {{ grid_col_span }}">
-  {# --------------------------------------- #}
   <div id="index-experience-card">
-    <div id="index-experience-card">
-      <index.components.ExperienceCard campaign_id={{ campaign_id }} />
-    </div>
+    <campaign.components.ExperienceCard campaign_id={{ campaign_id }} />
   </div>
-  {# --------------------------------------- #}
   <div class="card-body pt-0">
     <div class="flex items-center justify-between">
       <h2 class="card-title">All Players</h2>

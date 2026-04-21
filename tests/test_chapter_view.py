@@ -43,6 +43,10 @@ def _mock_chapter_lookup(mocker, mock_book, mock_campaign, mock_chapters) -> Non
         "vweb.routes.chapter.views.fetch_book_or_404",
         return_value=(mock_book, mock_campaign),
     )
+    mocker.patch(
+        "vweb.routes.chapter.views.get_chapters_for_book",
+        return_value=mock_chapters,
+    )
     svc = mocker.patch("vweb.routes.chapter.views.sync_chapters_service").return_value
     svc.get.return_value = mock_chapters[1]  # ch-2 by default
     svc.list_all.return_value = mock_chapters
@@ -101,6 +105,10 @@ class TestChapterDetailGet:
         svc = mocker.patch("vweb.routes.chapter.views.sync_chapters_service").return_value
         svc.get.return_value = mock_chapters[0]
         svc.list_all.return_value = mock_chapters
+        mocker.patch(
+            "vweb.routes.chapter.views.get_chapters_for_book",
+            return_value=mock_chapters,
+        )
         response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-1")
         assert response.status_code == 200
 

@@ -16,6 +16,7 @@ from markupsafe import Markup, escape
 import vweb
 from vweb.config import get_settings
 from vweb.constants import MAX_IMAGE_SIZE, STATIC_PATH, TEMPLATES_PATH
+from vweb.lib.api import get_active_campaign
 from vweb.lib.blueprint_cache import get_all_traits
 from vweb.lib.guards import (
     can_edit_character,
@@ -285,6 +286,7 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
         return g.get("global_context")
 
     jinja_globals["global_context"] = _get_global_context
+    jinja_globals["active_campaign"] = get_active_campaign
 
     def _get_requesting_user() -> User | None:
         return g.get("requesting_user")

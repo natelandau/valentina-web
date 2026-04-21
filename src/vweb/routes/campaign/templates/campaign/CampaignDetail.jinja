@@ -1,0 +1,46 @@
+{# def
+    campaign = None,
+    user_characters: list = [],
+    other_characters: list = [],
+    books: list = [],
+    chapter_count: int = 0,
+    campaign_statistics = None,
+    campaign_experience = None,
+    user: User = None,
+#}
+
+<shared.PageLayout title="Home">
+  <div class="flex flex-col gap-6">
+
+    <campaign.components.CampaignSummaryCard
+        campaign={{ campaign }}
+        books={{ books }}
+        chapter_count={{ chapter_count }}
+    />
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+      <shared.cards.CharacterListCard title="Your Characters" characters={{ user_characters }} show_type={{ is_storyteller() }} show_add_button={{ true }} add_url={{ url_for('character_create.selection_page', campaign_id=campaign.id) }} empty_message="No characters in this campaign" pagination={{ 5 }} />
+
+      <campaign.components.UserListCard users={{ g.global_context.users }} pagination={{ 3 }} campaign_id={{ campaign.id }} />
+
+      <shared.cards.CharacterListCard title="Other Players' Characters" characters={{ other_characters }} show_type={{ is_storyteller() }} empty_message="No other players' characters" pagination={{ 5 }} link_user_profile={{ true }} />
+
+      {% set book_urls = {} %}
+      {% for book in books %}
+        {% set _ = book_urls.update({book.id: url_for('book_view.book_detail', campaign_id=book.campaign_id, book_id=book.id)}) %}
+      {% endfor %}
+
+      <shared.cards.NumberedListCard title={{ campaign.name ~ " Books" }} items={{ books }} pagination={{ 5 }} item_urls={{ book_urls }} empty_message="No books in this campaign" />
+
+      {% if campaign_statistics %}
+        <shared.cards.StatisticsCard statistics={{ campaign_statistics }} col_span={{ 2 }} />
+      {% endif %}
+
+    </div>
+  </div>
+  {% if can_manage_campaign() %}
+    <campaign.components.CampaignDeleteModal campaign_id={{ campaign.id }} campaign_name={{ campaign.name }} />
+  {% endif %}
+  <shared.diceroll.DiceRollModal />
+</shared.PageLayout>
