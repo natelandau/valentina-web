@@ -9,13 +9,20 @@
     user: User = None,
 #}
 
-<shared.PageLayout title="Home">
+{% set section_nav_script = '<script src="' ~ static_url('js/section-nav.js') ~ '"></script>' %}
+
+<shared.PageLayout title="Home" scripts_extra={{ section_nav_script }}>
   <div class="flex flex-col gap-6">
 
     <campaign.components.CampaignSummaryCard
         campaign={{ campaign }}
         books={{ books }}
         chapter_count={{ chapter_count }}
+    />
+
+    <campaign.components.SectionNav
+        active="overview"
+        show_admin={{ is_admin() }}
     />
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
