@@ -14,6 +14,7 @@
     sort_dir: str = "asc",
     editable: bool = True,
     extra_params: str = "",
+    pagination: int = 0,
 #}
 
 <div class="flex justify-between items-center mb-4">
@@ -29,6 +30,9 @@
 </div>
 
 {% if items %}
+  {% if pagination > 0 %}
+    <div x-data="{ currentPage: 1, pageSize: {{ pagination }}, totalItems: {{ items|length }}, get totalPages() { return Math.ceil(this.totalItems / this.pageSize) } }">
+  {% endif %}
   {# Desktop: standard table (hidden below md) #}
   <div class="hidden md:block">
     <table class="table table-zebra">
@@ -72,7 +76,7 @@
       </thead>
       <tbody>
         {% for item in items %}
-          <tr>
+          <tr {% if pagination > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"{% endif %}>
             {% for field in fields %}
               {% if loop.first %}
                 <th class="text-md">{{ item[field] | default("", true) }}</th>
@@ -112,7 +116,7 @@
   {# Mobile: card layout (hidden at md+) #}
   <div class="flex flex-col gap-3 md:hidden">
     {% for item in items %}
-      <div class="card card-border bg-base-200/50">
+      <div class="card card-border bg-base-200/50" {% if pagination > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"{% endif %}>
         <div class="card-body p-4 gap-1">
           <h3 class="card-title text-lg">{{ item[fields[0]] | default("", true) | title }}</h3>
 
@@ -154,6 +158,10 @@
       </div>
     {% endfor %}
   </div>
+  {% if pagination > 0 %}
+    <shared.cards.Pagination />
+    </div>
+  {% endif %}
 {% else %}
   <p class="text-base-content/60 italic">No {{ table_type_name | lower }} yet.</p>
 {% endif %}

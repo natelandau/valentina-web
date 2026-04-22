@@ -11,7 +11,7 @@
   {"key": "characters",  "label": "Characters",       "url": url_for('character_list.index', campaign_id=campaign_id), "badge": false},
   {"key": "players",     "label": "Players",          "url": url_for('player_list.index', campaign_id=campaign_id),    "badge": false},
   {"key": "dictionary",  "label": "Dictionary",       "url": url_for('dictionary.index'),                           "badge": false},
-  {"key": "notes",       "label": "Notes",            "url": "#notes",                                              "badge": false},
+  {"key": "notes",       "label": "Notes",            "url": url_for('campaign_notes.index', campaign_id=campaign_id), "badge": false},
 ] %}
 {% if show_admin %}
   {% set _ = items.append({
