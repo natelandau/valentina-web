@@ -27,7 +27,7 @@
 
       <shared.cards.CharacterListCard title="Your Characters" characters={{ user_characters }} show_type={{ is_storyteller() }} show_add_button={{ true }} add_url={{ url_for('character_create.selection_page', campaign_id=campaign.id) }} empty_message="No characters in this campaign" pagination={{ 5 }} />
 
-      <campaign.components.UserListCard users={{ g.global_context.users }} pagination={{ 3 }} campaign_id={{ campaign.id }} />
+      <campaign.components.UserListCard title="All Players" users={{ g.global_context.users }} pagination={{ 3 }} campaign_id={{ campaign.id }} />
 
       <shared.cards.CharacterListCard title="Other Players' Characters" characters={{ other_characters }} show_type={{ is_storyteller() }} empty_message="No other players' characters" pagination={{ 5 }} link_user_profile={{ true }} />
 

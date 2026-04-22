@@ -9,7 +9,7 @@
   {"key": "overview",    "label": "Overview",         "url": url_for('campaign.campaign', campaign_id=campaign_id), "badge": false},
   {"key": "books",       "label": "Books & Chapters", "url": "#books",                                              "badge": false},
   {"key": "characters",  "label": "Characters",       "url": url_for('character_list.index', campaign_id=campaign_id), "badge": false},
-  {"key": "players",     "label": "Players",          "url": "#players",                                            "badge": false},
+  {"key": "players",     "label": "Players",          "url": url_for('player_list.index', campaign_id=campaign_id),    "badge": false},
   {"key": "dictionary",  "label": "Dictionary",       "url": url_for('dictionary.index'),                           "badge": false},
   {"key": "notes",       "label": "Notes",            "url": "#notes",                                              "badge": false},
 ] %}

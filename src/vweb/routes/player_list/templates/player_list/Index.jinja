@@ -1,0 +1,31 @@
+{#def
+    campaign,
+    users: list = [],
+    role_options: list = []
+#}
+
+<shared.PageLayout title="Players">
+<div class="flex flex-col gap-4">
+
+  <shared.layout.CampaignChrome
+      campaign={{ campaign }}
+      active="players"
+      show_admin={{ is_admin() }} />
+
+  <h1 class="sr-only">Players</h1>
+
+  <player_list.components.FilterBar
+      list_url={{ url_for('player_list.list_partial', campaign_id=campaign.id) }}
+      role_options={{ role_options }} />
+
+  <div id="player-list-body"
+       hx-get="{{ url_for('player_list.list_partial', campaign_id=campaign.id) }}"
+       hx-trigger="filter-changed from:#player-list-filters"
+       hx-include="#player-list-filters"
+       hx-sync="this:abort">
+    <player_list.partials.PlayerList
+        campaign_id={{ campaign.id }}
+        users={{ users }} />
+  </div>
+</div>
+</shared.PageLayout>
