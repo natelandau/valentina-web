@@ -1,0 +1,52 @@
+{#def
+    list_url: str,
+    role_options: list = []
+#}
+
+{# Filter bar for the player list. Alpine x-data holds selected values; each
+   select fires an HTMX GET to the list partial on change. The Clear button
+   resets Alpine state and dispatches a synthetic `filter-changed` event the
+   body listens for. #}
+
+{# djlint:off #}
+<div id="player-list-filters" x-data="{ role: '', has_characters: '' }">
+{# djlint:on #}
+  <div class="flex flex-wrap items-end gap-3">
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Role</legend>
+      <select name="role"
+              x-model="role"
+              class="select select-sm w-40"
+              hx-get="{{ list_url }}"
+              hx-trigger="change"
+              hx-target="#player-list-body"
+              hx-include="#player-list-filters">
+        <option value="">All roles</option>
+        {% for role in role_options %}
+          <option value="{{ role }}">{{ role | title }}</option>
+        {% endfor %}
+      </select>
+    </fieldset>
+
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Has characters</legend>
+      <select name="has_characters"
+              x-model="has_characters"
+              class="select select-sm w-44"
+              hx-get="{{ list_url }}"
+              hx-trigger="change"
+              hx-target="#player-list-body"
+              hx-include="#player-list-filters">
+        <option value="">All players</option>
+        <option value="yes">With characters</option>
+        <option value="no">Without characters</option>
+      </select>
+    </fieldset>
+
+    <button type="button"
+            class="btn btn-ghost btn-sm"
+            @click="role = ''; has_characters = ''; $nextTick(() => htmx.trigger($root, 'filter-changed'))">
+      Clear
+    </button>
+  </div>
+</div>

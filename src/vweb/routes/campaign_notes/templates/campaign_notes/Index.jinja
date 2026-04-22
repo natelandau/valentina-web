@@ -1,0 +1,28 @@
+{#def campaign #}
+
+<shared.PageLayout title="Notes">
+<div class="flex flex-col gap-4">
+
+  <shared.layout.CampaignChrome
+      campaign={{ campaign }}
+      active="notes"
+      show_admin={{ is_admin() }} />
+
+  <h1 class="sr-only">Notes</h1>
+
+  {% set editable_param = 'true' if can_manage_campaign() else 'false' %}
+
+  <div class="card surface-card">
+    <div class="card-body">
+      <div id="crud-campaign_notes"
+           hx-get="{{ url_for('campaign_notes.notes_table', campaign_id=campaign.id) }}?editable={{ editable_param }}"
+           hx-trigger="load"
+           hx-swap="innerHTML">
+        <div class="text-center py-8">
+          <span class="loading loading-spinner loading-md"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</shared.PageLayout>

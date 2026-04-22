@@ -6,6 +6,7 @@
 @theme {
     --font-sans: "Inter", sans-serif;
     --font-mono: "Roboto Mono", monospace;
+    --font-serif: "Playfair Display", serif;
 }
 
 
@@ -14,9 +15,10 @@
   default: true;
   prefersdark: false;
   color-scheme: "light";
-  --color-base-100: oklch(98% 0 0);
-  --color-base-200: oklch(97% 0 0);
-  --color-base-300: oklch(92% 0 0);
+  /* Light body canvas, pure-white lifted surfaces, tinted borders/accents. */
+  --color-base-100: oklch(99% 0 0);
+  --color-base-200: oklch(97% 0.003 320);
+  --color-base-300: oklch(88% 0.012 320);
   --color-base-content: oklch(20% 0 0);
   --color-primary: oklch(74% 0.16 232.661);
   --color-primary-content: oklch(29% 0.066 243.157);
@@ -49,6 +51,53 @@
 }
 
 @custom-variant dark (&:where([data-theme=dim], [data-theme=dim] *));
+
+/* ==========================================================================
+   Surface system
+   ==========================================================================
+
+   Three surface tiers keep hierarchy consistent across the app:
+
+   - base-200 (body)  : page canvas. Lightest tinted backdrop.
+   - base-100 (lift)  : cards, dropdowns, modals, chrome bands. Pure white.
+   - base-300         : borders, accents, nested-panel borders.
+
+   Three standardized surface patterns, applied via @utility classes so every
+   occurrence stays in sync when tuned. Use these instead of ad-hoc bg/border
+   class combinations on similar elements.
+
+   - .surface-chrome  : app-chrome bands (global header, campaign chrome).
+                        Base-100 fill, base-300 bottom border, soft lift shadow.
+   - .surface-card    : primary content containers (dictionary shell, etc.).
+                        Base-100 fill, base-300 hairline, rounded-box, lift shadow.
+   - .surface-panel   : nested sub-surfaces inside a card (sidebar rails, inset
+                        sections). Tinted base-200 fill, no shadow.
+
+   Branded chrome (e.g., CampaignChrome) layers a thin primary-tinted top
+   accent on top of .surface-chrome to signal campaign-scoped context.
+*/
+@utility surface-chrome {
+  background-color: var(--color-base-100);
+  border-bottom: 1px solid var(--color-base-300);
+  box-shadow: 0 1px 2px oklch(0% 0 0 / 0.04);
+}
+@utility surface-card {
+  background-color: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  border-radius: var(--radius-box);
+  box-shadow: 0 1px 2px oklch(0% 0 0 / 0.04);
+}
+@utility surface-panel {
+  background-color: oklch(from var(--color-base-200) l c h / 0.6);
+  border-radius: var(--radius-box);
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
 
 /* Let daisyUI .link classes override @tailwindcss/typography prose link styles */
 .prose .link {

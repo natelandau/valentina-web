@@ -1,0 +1,28 @@
+{#def campaign #}
+
+<shared.PageLayout title="Books & Chapters">
+<div class="flex flex-col gap-4">
+
+  <shared.layout.CampaignChrome
+      campaign={{ campaign }}
+      active="books"
+      show_admin={{ is_admin() }} />
+
+  <h1 class="sr-only">Books & Chapters</h1>
+
+  <div class="surface-card py-12 px-6 text-center flex flex-col items-center gap-3">
+    <i class="fa-regular fa-book text-4xl opacity-30"></i>
+    <h2 class="text-xl font-semibold">No books yet</h2>
+    <p class="text-base-content/60 max-w-md">
+      This campaign doesn't have any books yet. Books organize your campaign's story into
+      chapters and act as the home for session notes and lore.
+    </p>
+    {% if can_manage_campaign() %}
+      <button type="button" class="btn btn-primary btn-sm mt-2" disabled>
+        <i class="fa-solid fa-plus"></i> Create the first book
+      </button>
+      <p class="text-xs opacity-40">Book creation coming soon</p>
+    {% endif %}
+  </div>
+</div>
+</shared.PageLayout>

@@ -2,24 +2,23 @@
     chapter: object,
     book: object,
     campaign: object,
-    prev_chapter: object = None,
-    next_chapter: object = None,
-    total_chapters: int = 0,
-    active_section: str = "story",
+    chapters: list = [],
     assets: list = [],
+    note_count: int = 0,
 #}
 <shared.PageLayout title={{ chapter.name }}>
+<div class="flex flex-col gap-4">
 
-  <chapter.partials.ChapterPageHeader chapter={{ chapter }} book={{ book }} campaign={{ campaign }} />
+  <shared.layout.CampaignChrome campaign={{ campaign }} active="books" show_admin={{ is_admin() }} />
 
-  <chapter.partials.ChapterContentCard
-    chapter={{ chapter }}
-    book={{ book }}
-    campaign={{ campaign }}
-    assets={{ assets }}
-    prev_chapter={{ prev_chapter }}
-    next_chapter={{ next_chapter }}
-    total_chapters={{ total_chapters }}
-    active_section={{ active_section }} />
+  <shared.layout.BookStrip book={{ book }} campaign={{ campaign }} />
 
+  <h1 class="sr-only">{{ chapter.name }}</h1>
+
+  <div class="surface-card px-4 pt-4 pb-3 sm:px-6 sm:pt-6">
+    <chapter.components.ChapterCarousel campaign={{ campaign }} book={{ book }} chapters={{ chapters }} current_chapter={{ chapter }} />
+  </div>
+
+  <chapter.partials.ChapterContentCard chapter={{ chapter }} book={{ book }} campaign={{ campaign }} assets={{ assets }} note_count={{ note_count }} />
+</div>
 </shared.PageLayout>

@@ -1,0 +1,18 @@
+{#def
+    campaign_id: str,
+    users: list = []
+#}
+
+{# List card body. Swapped into #player-list-body on filter change; also the
+   initial server-rendered list inside Index.jinja. Delegates to UserListCard
+   with the self-experience embed and self-exclude filter turned off so the
+   row design stays unified with the Overview page. #}
+
+<campaign.components.UserListCard
+    title="Players"
+    users={{ users }}
+    pagination={{ 10 }}
+    campaign_id={{ campaign_id }}
+    show_self_experience={{ false }}
+    exclude_current_user={{ false }}
+    empty_message="No players match these filters." />

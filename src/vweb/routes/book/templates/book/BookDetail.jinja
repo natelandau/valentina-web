@@ -2,31 +2,32 @@
     book: object,
     campaign: object,
     chapters: list,
-    prev_book: object = None,
-    next_book: object = None,
-    total_books: int = 0,
-    active_section: str = "description",
+    all_books: list = [],
     assets: list = [],
+    note_count: int = 0,
 #}
 <shared.PageLayout title={{ book.name }}>
+<div class="flex flex-col gap-4">
 
-  <book.partials.BookPageHeader book={{ book }} />
+  <shared.layout.CampaignChrome
+      campaign={{ campaign }}
+      active="books"
+      show_admin={{ is_admin() }} />
 
-  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
-    <div class="lg:col-span-2">
-      <book.partials.BookContentCard
-        book={{ book }}
+  <h1 class="sr-only">Books &amp; Chapters</h1>
+
+  <div class="surface-card px-4 pt-4 pb-3 sm:px-6 sm:pt-6">
+    <book.components.BookCarousel
         campaign={{ campaign }}
-        assets={{ assets }}
-        prev_book={{ prev_book }}
-        next_book={{ next_book }}
-        total_books={{ total_books }}
-        active_section={{ active_section }} />
-    </div>
-
-    <div class="flex flex-col gap-4">
-      <book.partials.ChaptersCard book={{ book }} campaign={{ campaign }} chapters={{ chapters }} />
-    </div>
+        books={{ all_books }}
+        current_book={{ book }} />
   </div>
 
+  <book.partials.BookContentCard
+      book={{ book }}
+      campaign={{ campaign }}
+      assets={{ assets }}
+      chapters={{ chapters }}
+      note_count={{ note_count }} />
+</div>
 </shared.PageLayout>

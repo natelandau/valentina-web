@@ -4,76 +4,71 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from flask import Blueprint, abort, g, request, session
+from flask import Blueprint, abort, redirect, request, session, url_for
 from flask.views import MethodView
 from vclient import sync_books_service
 
 from vweb import catalog
-from vweb.lib.api import fetch_book_or_404, get_chapters_for_book
+from vweb.lib.api import (
+    count_notes,
+    fetch_book_or_404,
+    fetch_campaign_or_404,
+    get_books_for_campaign,
+    get_chapters_for_book,
+)
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_manage_campaign
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
-from vweb.lib.jinja import htmx_response
+from vweb.lib.jinja import htmx_response_with_flash, hx_redirect
 from vweb.routes.book.views_notes import BookNotesTableView
 
 if TYPE_CHECKING:
     from vclient.models import Asset, Campaign, CampaignBook
 
 
-SECTIONS = ("description", "notes")
 BOOK_CARD_ID = "book-content"
 
 
-def _load_adjacent_books(
-    campaign_id: str, book_number: int
-) -> tuple[CampaignBook | None, CampaignBook | None, int]:
-    """Resolve previous, next, and total book count for a campaign from the global context."""
-    all_books = sorted(
-        g.global_context.books_by_campaign.get(campaign_id, []),
-        key=lambda x: x.number,
-    )
-    prev_book: CampaignBook | None = None
-    next_book: CampaignBook | None = None
-    for i, b in enumerate(all_books):
-        if b.number == book_number:
-            if i > 0:
-                prev_book = all_books[i - 1]
-            if i < len(all_books) - 1:
-                next_book = all_books[i + 1]
-            break
-    return prev_book, next_book, len(all_books)
-
-
-def _render_book_card(  # noqa: PLR0913
+def _render_book_card(
     *,
     book: CampaignBook,
     campaign: Campaign,
     assets: list[Asset],
-    prev_book: CampaignBook | None = None,
-    next_book: CampaignBook | None = None,
-    total_books: int = 0,
-    active_section: str = "description",
+    chapters: list,
+    note_count: int,
 ) -> str:
-    """Render the full book content card (persistent wrapper with tabs)."""
+    """Render the full book content card (title + thumbnails + sub-tabs + metadata sidebar)."""
     return catalog.render(
         "book.partials.BookContentCard",
         book=book,
         campaign=campaign,
         assets=assets,
-        prev_book=prev_book,
-        next_book=next_book,
-        total_books=total_books,
-        active_section=active_section,
+        chapters=chapters,
+        note_count=note_count,
     )
 
 
-def _card_with_header_response(card_html: str, book: CampaignBook, *extra_oob: str) -> str:
-    """Return an HTMX response pairing the book card with OOB PageHeader swap and extras."""
-    header = catalog.render("book.partials.BookPageHeader", book=book, oob=True)
-    return htmx_response(card_html, header, *extra_oob)
-
-
 bp = Blueprint("book_view", __name__)
+
+
+class BooksIndexView(MethodView):
+    """Landing view for the Books & Chapters section.
+
+    With books present, redirect to the first book's detail page so the
+    carousel + content render for a real selection. With no books, render the
+    empty-state page with a create-book CTA.
+    """
+
+    def get(self, campaign_id: str) -> object:
+        """Redirect to the first book or render the empty state."""
+        campaign = fetch_campaign_or_404(campaign_id)
+        session["last_campaign_id"] = campaign_id
+        books = get_books_for_campaign(campaign_id)
+        if not books:
+            return catalog.render("book.BooksEmpty", campaign=campaign)
+        return redirect(
+            url_for("book_view.book_detail", campaign_id=campaign_id, book_id=books[0].id)
+        )
 
 
 class BookDetailView(MethodView):
@@ -84,9 +79,8 @@ class BookDetailView(MethodView):
         campaign_id: str,
         book_id: str,
         action: str | None = None,
-        section: str | None = None,
     ) -> str:
-        """Render book detail page, section fragment, or edit form fragment."""
+        """Render the book detail page, or the edit form fragment when action=edit."""
         book, campaign = fetch_book_or_404(campaign_id, book_id)
 
         if action == "edit":
@@ -100,88 +94,25 @@ class BookDetailView(MethodView):
             )
 
         user_id = session.get("user_id", "")
+        session["last_campaign_id"] = campaign_id
 
-        if section is not None and section not in SECTIONS:
-            section = "description"
-        active_section = section or "description"
-
-        # Only the description tab renders the image carousel; skip the asset
-        # fetch when the notes tab is requested to avoid an extra API call.
-        assets: list[Asset] = (
-            sync_books_service(
-                campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
-            ).list_all_assets(book.id)
-            if active_section == "description"
-            else []
+        books_service = sync_books_service(
+            campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
         )
+        assets = books_service.list_all_assets(book.id)
 
-        is_htmx = request.headers.get("HX-Request")
-        hx_target = request.headers.get("HX-Target", "")
-
-        if is_htmx and hx_target == BOOK_CARD_ID:
-            prev_book, next_book, total_books = _load_adjacent_books(campaign_id, book.number)
-            card = _render_book_card(
-                book=book,
-                campaign=campaign,
-                assets=assets,
-                prev_book=prev_book,
-                next_book=next_book,
-                total_books=total_books,
-                active_section=active_section,
-            )
-            chapters = get_chapters_for_book(book_id)
-            chapters_html = catalog.render(
-                "book.partials.ChaptersCard",
-                book=book,
-                campaign=campaign,
-                chapters=chapters,
-                oob=True,
-            )
-            return _card_with_header_response(card, book, chapters_html)
-
-        if is_htmx and section is not None:
-            content = self._render_section(active_section, book, campaign, assets=assets)
-            nav = catalog.render(
-                "book.components.BookNav",
-                book_id=book_id,
-                campaign_id=campaign_id,
-                active_section=active_section,
-                oob=True,
-            )
-            header = catalog.render("book.partials.BookPageHeader", book=book, oob=True)
-            return htmx_response(content, nav, header)
-
-        prev_book, next_book, total_books = _load_adjacent_books(campaign_id, book.number)
         chapters = get_chapters_for_book(book_id)
+        note_count = count_notes(books_service, book_id)
+        all_books = get_books_for_campaign(campaign_id)
 
         return catalog.render(
             "book.BookDetail",
             book=book,
             campaign=campaign,
             chapters=chapters,
-            prev_book=prev_book,
-            next_book=next_book,
-            total_books=total_books,
-            active_section=active_section,
+            all_books=all_books,
             assets=assets,
-        )
-
-    def _render_section(
-        self,
-        section: str,
-        book: CampaignBook,
-        campaign: Campaign,
-        *,
-        assets: list[Asset],
-    ) -> str:
-        """Render a single tab inner fragment (swapped into #book-tab-content)."""
-        if section == "notes":
-            return catalog.render("book.partials.BookNotes", book=book, campaign=campaign)
-        return catalog.render(
-            "book.partials.BookDescription",
-            book=book,
-            campaign=campaign,
-            assets=assets,
+            note_count=note_count,
         )
 
     def post(
@@ -189,7 +120,6 @@ class BookDetailView(MethodView):
         campaign_id: str,
         book_id: str,
         action: str | None = None,  # noqa: ARG002
-        section: str | None = None,  # noqa: ARG002
     ) -> str:
         """Handle book edit form submission."""
         if not can_manage_campaign():
@@ -222,26 +152,46 @@ class BookDetailView(MethodView):
                 form_data=request.form,
             )
 
-        svc = sync_books_service(
+        books_service = sync_books_service(
             campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
         )
-        updated_book = svc.update(book_id, name=name, description=description)
+        updated_book = books_service.update(book_id, name=name, description=description)
         if number != book.number:
-            updated_book = svc.renumber(book_id, number)
+            updated_book = books_service.renumber(book_id, number)
         clear_global_context_cache(session["company_id"], session["user_id"])
 
-        assets = svc.list_all_assets(book_id)
-        prev_book, next_book, total_books = _load_adjacent_books(campaign_id, updated_book.number)
+        assets = books_service.list_all_assets(book_id)
+        chapters = get_chapters_for_book(book_id)
+        note_count = count_notes(books_service, book_id)
 
-        card = _render_book_card(
+        return _render_book_card(
             book=updated_book,
             campaign=campaign,
             assets=assets,
-            prev_book=prev_book,
-            next_book=next_book,
-            total_books=total_books,
+            chapters=chapters,
+            note_count=note_count,
         )
-        return _card_with_header_response(card, updated_book)
+
+    def delete(
+        self,
+        campaign_id: str,
+        book_id: str,
+        action: str | None = None,  # noqa: ARG002
+    ) -> object:
+        """Delete the book and redirect the client to the books landing page."""
+        if not can_manage_campaign():
+            abort(403)
+
+        book, _ = fetch_book_or_404(campaign_id, book_id)
+        user_id = session.get("user_id", "")
+
+        books_service = sync_books_service(
+            campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
+        )
+        books_service.delete(book.id)
+        clear_global_context_cache(session["company_id"], session["user_id"])
+
+        return hx_redirect(url_for("book_view.books_index", campaign_id=campaign_id))
 
 
 class BookImageUploadView(MethodView):
@@ -254,71 +204,71 @@ class BookImageUploadView(MethodView):
             abort(403)
 
         user_id = session.get("user_id", "")
-        svc = sync_books_service(
+        books_service = sync_books_service(
             campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
         )
 
         assets = upload_and_append_asset(
-            svc=svc, parent_id=book_id, file=request.files.get("image")
+            svc=books_service, parent_id=book_id, file=request.files.get("image")
         )
-        prev_book, next_book, total_books = _load_adjacent_books(campaign_id, book.number)
+        chapters = get_chapters_for_book(book_id)
+        note_count = count_notes(books_service, book_id)
         content_html = _render_book_card(
             book=book,
             campaign=campaign,
             assets=assets,
-            prev_book=prev_book,
-            next_book=next_book,
-            total_books=total_books,
+            chapters=chapters,
+            note_count=note_count,
         )
-        flash_html = catalog.render("shared.layout.FlashMessage", oob=True)
-        return htmx_response(content_html, flash_html)
+        return htmx_response_with_flash(content_html)
 
 
 class BookImageDeleteView(MethodView):
     """Delete an image asset from a book."""
 
     def delete(self, campaign_id: str, book_id: str, asset_id: str) -> object:
-        """Delete the asset and re-render the Story partial."""
+        """Delete the asset and re-render the book content card."""
         book, campaign = fetch_book_or_404(campaign_id, book_id)
         if not can_manage_campaign():
             abort(403)
 
         user_id = session.get("user_id", "")
-        svc = sync_books_service(
+        books_service = sync_books_service(
             campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
         )
 
-        handle_image_delete(svc=svc, parent_id=book_id, asset_id=asset_id)
+        handle_image_delete(svc=books_service, parent_id=book_id, asset_id=asset_id)
 
-        assets = svc.list_all_assets(book_id)
-        prev_book, next_book, total_books = _load_adjacent_books(campaign_id, book.number)
+        assets = books_service.list_all_assets(book_id)
+        chapters = get_chapters_for_book(book_id)
+        note_count = count_notes(books_service, book_id)
         content_html = _render_book_card(
             book=book,
             campaign=campaign,
             assets=assets,
-            prev_book=prev_book,
-            next_book=next_book,
-            total_books=total_books,
+            chapters=chapters,
+            note_count=note_count,
         )
-        flash_html = catalog.render("shared.layout.FlashMessage", oob=True)
-        return htmx_response(content_html, flash_html)
+        return htmx_response_with_flash(content_html)
 
+
+bp.add_url_rule(
+    "/campaign/<campaign_id>/books",
+    view_func=BooksIndexView.as_view("books_index"),
+    methods=["GET"],
+)
 
 _book_detail_view = BookDetailView.as_view("book_detail")
 bp.add_url_rule(
     "/campaign/<campaign_id>/book/<book_id>",
     view_func=_book_detail_view,
-    defaults={"action": None, "section": None},
-)
-bp.add_url_rule(
-    "/campaign/<campaign_id>/book/<book_id>/section/<section>",
-    view_func=BookDetailView.as_view("book_detail_section"),
     defaults={"action": None},
+    methods=["GET", "POST", "DELETE"],
 )
 bp.add_url_rule(
     "/campaign/<campaign_id>/book/<book_id>/<action>",
     view_func=BookDetailView.as_view("book_detail_action"),
-    defaults={"section": None},
+    methods=["GET", "POST"],
 )
 
 _book_notes_view = BookNotesTableView.as_view("book_notes")

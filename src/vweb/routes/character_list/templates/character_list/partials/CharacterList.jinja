@@ -1,0 +1,18 @@
+{#def
+    campaign_id: str,
+    characters: list = []
+#}
+
+{# List card body. Swapped into #character-list-body on filter change; also the
+   initial server-rendered list inside Index.jinja. Delegates to the shared
+   CharacterListCard so the row design stays unified with the home page. #}
+
+<shared.cards.CharacterListCard
+    title="Characters"
+    characters={{ characters }}
+    show_type={{ true }}
+    link_user_profile={{ true }}
+    show_add_button={{ true }}
+    add_url={{ url_for('character_create.selection_page', campaign_id=campaign_id) }}
+    pagination={{ 10 }}
+    empty_message="No characters match these filters." />

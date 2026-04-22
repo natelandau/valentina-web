@@ -5,14 +5,29 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from flask import abort, g, redirect, request, session, url_for
+from flask import Response, abort, g, redirect, request, session, url_for
 from loguru import logger
 
 from vweb.lib.global_context import clear_global_context_cache, load_global_context
 
 if TYPE_CHECKING:
     from flask import Flask
-    from werkzeug.wrappers.response import Response
+    from werkzeug.wrappers.response import Response as WerkzeugResponse
+
+
+def _redirect_for_request(url: str) -> Response | WerkzeugResponse:
+    """Return the right kind of redirect for the current request.
+
+    HTMX requests follow 302s via fetch and swap the redirected body into
+    the current target — silently breaking the UI when the redirect target
+    doesn't contain the expected element (common with ``hx-boost`` +
+    ``hx-select``). Return an empty 200 with ``HX-Redirect`` so the htmx
+    client triggers a full browser navigation instead.
+    """
+    if request.headers.get("HX-Request"):
+        return Response("", status=200, headers={"HX-Redirect": url})
+    return redirect(url)
+
 
 _PUBLIC_PATH_PREFIXES = ("/auth/", "/static", "/robots.txt")
 _COMPANY_SELECTION_PATHS = ("/select-companies", "/select-company")
@@ -57,7 +72,7 @@ def _block_probe() -> None:
     abort(404)
 
 
-def _hook_block_scanner_probes() -> Response | None:
+def _hook_block_scanner_probes() -> WerkzeugResponse | None:
     """Return 404 for paths commonly targeted by vulnerability scanners.
 
     Catch dotfile access, CMS admin paths, non-Python script extensions, and
@@ -82,7 +97,7 @@ def _hook_block_scanner_probes() -> Response | None:
     return None
 
 
-def _hook_remove_trailing_slash() -> Response | None:
+def _hook_remove_trailing_slash() -> WerkzeugResponse | None:
     """Redirect trailing-slash URLs to their canonical form."""
     rp: str = request.path
     if rp != "/" and rp.endswith("/"):
@@ -99,7 +114,7 @@ def _hook_refresh_session() -> None:
     session.modified = True
 
 
-def _hook_require_auth() -> Response | None:
+def _hook_require_auth() -> Response | WerkzeugResponse | None:
     """Redirect unauthenticated users to the landing page."""
     if (
         request.path == "/"
@@ -109,12 +124,12 @@ def _hook_require_auth() -> Response | None:
         return None
 
     if not session.get("user_id"):
-        return redirect(url_for("index.index"))
+        return _redirect_for_request(url_for("index.index"))
 
     return None
 
 
-def _hook_inject_global_context() -> Response | None:
+def _hook_inject_global_context() -> Response | WerkzeugResponse | None:
     """Load cached global context and resolve the requesting user for template access."""
     if (
         request.path.startswith(_PUBLIC_PATH_PREFIXES)
@@ -140,13 +155,13 @@ def _hook_inject_global_context() -> Response | None:
 
     if requesting_user is None:
         session.clear()
-        return redirect(url_for("index.index"))
+        return _redirect_for_request(url_for("index.index"))
 
     g.requesting_user = requesting_user
     return None
 
 
-def _hook_redirect_unapproved() -> Response | None:
+def _hook_redirect_unapproved() -> Response | WerkzeugResponse | None:
     """Redirect unapproved users to the pending approval page."""
     requesting_user = g.get("requesting_user")
     if not requesting_user:
@@ -156,7 +171,7 @@ def _hook_redirect_unapproved() -> Response | None:
         "/pending-approval",
         "/",
     ):
-        return redirect(url_for("auth.pending_approval"))
+        return _redirect_for_request(url_for("auth.pending_approval"))
 
     return None
 

@@ -42,6 +42,18 @@ class TestRequireAuth:
         response = client.get("/pending-approval")
         assert response.status_code == 200
 
+    def test_htmx_request_gets_hx_redirect_instead_of_302(self, app) -> None:
+        """Verify htmx requests to protected routes get HX-Redirect, not a 302.
+
+        A 302 under hx-boost would be silently followed by fetch and the landing
+        page would be swapped into the boosted region. Returning HX-Redirect lets
+        htmx trigger a full browser navigation instead.
+        """
+        client = app.test_client()
+        response = client.get("/characters/some-id", headers={"HX-Request": "true"})
+        assert response.status_code == 200
+        assert response.headers.get("HX-Redirect") == "/"
+
 
 class TestUnapprovedRedirect:
     """Tests for UNAPPROVED user redirection in inject_global_context."""
@@ -76,6 +88,33 @@ class TestUnapprovedRedirect:
         # Then redirected to pending-approval
         assert response.status_code == 302
         assert response.location == "/pending-approval"
+
+    def test_unapproved_htmx_request_gets_hx_redirect(self, app, mocker) -> None:
+        """Verify UNAPPROVED htmx requests get HX-Redirect instead of 302."""
+        unapproved_user = UserFactory.build(id="test-user-id", role="UNAPPROVED")
+        unapproved_context = GlobalContext(
+            company=MagicMock(),
+            users=[unapproved_user],
+            campaigns=[],
+            resources_modified_at="2026-01-01T00:00:00+00:00",
+        )
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=unapproved_context)
+
+        client = app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_id"] = "test-user-id"
+            sess["company_id"] = "test-company-id"
+            sess["companies"] = {
+                "test-company-id": {
+                    "user_id": "test-user-id",
+                    "company_name": "Test",
+                    "role": "UNAPPROVED",
+                },
+            }
+
+        response = client.get("/characters/some-id", headers={"HX-Request": "true"})
+        assert response.status_code == 200
+        assert response.headers.get("HX-Redirect") == "/pending-approval"
 
     def test_unapproved_user_can_access_pending_page(self, app, mocker) -> None:
         """Verify UNAPPROVED users can access /pending-approval without redirect loop."""

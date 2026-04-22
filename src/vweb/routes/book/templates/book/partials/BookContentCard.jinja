@@ -2,27 +2,201 @@
     book: object,
     campaign: object,
     assets: list = [],
-    prev_book: object = None,
-    next_book: object = None,
-    total_books: int = 0,
-    active_section: str = "description",
+    chapters: list = [],
+    note_count: int = 0,
 #}
 
 {% set editable = can_manage_campaign() %}
+{% set chapter_count = chapters | length %}
 
-<div id="book-content" class="card bg-base-100 shadow-sm h-full">
-  <div class="card-body">
-    <shared.PrevNextNav prev_label={{ prev_book.name if prev_book else "" }} prev_hx_url={{ url_for('book_view.book_detail_section', campaign_id=campaign.id, book_id=prev_book.id, section='description') if prev_book else "" }} prev_push_url={{ url_for('book_view.book_detail', campaign_id=campaign.id, book_id=prev_book.id) if prev_book else "" }} next_label={{ next_book.name if next_book else "" }} next_hx_url={{ url_for('book_view.book_detail_section', campaign_id=campaign.id, book_id=next_book.id, section='description') if next_book else "" }} next_push_url={{ url_for('book_view.book_detail', campaign_id=campaign.id, book_id=next_book.id) if next_book else "" }} target="#book-content" position_label={{ "Book " ~ book.number ~ " of " ~ total_books if total_books > 1 else "" }} />
+{% set delete_urls = {} %}
+{% for asset in assets %}
+  {% set _ = delete_urls.update({asset.id: url_for('book_view.book_image_delete', campaign_id=campaign.id, book_id=book.id, asset_id=asset.id)}) %}
+{% endfor %}
 
-    <div>
-      <book.components.BookNav book_id={{ book.id }} campaign_id={{ campaign.id }} active_section={{ active_section }} />
-      <div id="book-tab-content" class="pt-4">
-        {% if active_section == "notes" %}
-          <book.partials.BookNotes book={{ book }} campaign={{ campaign }} />
+{# Manager action block. Rendered twice (mobile inline + desktop sidebar) via
+   macro. The Add-image upload form is rendered once separately below so a
+   single hidden <input id="book-image-upload-input"> is shared by both menus;
+   having the form inside the <li> breaks daisyUI menu child padding. #}
+{% macro book_actions(book, campaign) %}
+  <button type="button"
+          class="btn btn-sm"
+          hx-get="{{ url_for('book_view.book_detail_action', campaign_id=campaign.id, book_id=book.id, action='edit') }}"
+          hx-target="#book-content"
+          hx-swap="outerHTML">
+    <i class="fa-regular fa-pen-to-square"></i> Edit book
+  </button>
+
+  <details class="dropdown dropdown-end"
+           x-data
+           @click.outside="$el.removeAttribute('open')">
+    <summary class="btn btn-sm btn-ghost btn-square">
+      <i class="fa-solid fa-ellipsis"></i>
+      <span class="sr-only">More book actions</span>
+    </summary>
+    <ul class="menu dropdown-content bg-base-100 rounded-box z-10 w-52 p-2 shadow-md border border-base-300">
+      <li>
+        <button type="button"
+                @click="document.getElementById('book-image-upload-input').click()">
+          <i class="fa-regular fa-image"></i> Add image
+        </button>
+      </li>
+      <li>
+        <button type="button"
+                @click="view = 'chapters'"
+                hx-get="{{ url_for('chapter_view.chapter_create', campaign_id=campaign.id, book_id=book.id) }}"
+                hx-target="#book-chapters-card"
+                hx-swap="outerHTML">
+          <i class="fa-solid fa-plus"></i> Add chapter
+        </button>
+      </li>
+      <li>
+        <button type="button"
+                class="text-error hover:bg-error/10"
+                @click="document.getElementById('book-delete-modal').showModal()">
+          <i class="fa-solid fa-trash-can"></i> Delete book
+        </button>
+      </li>
+    </ul>
+  </details>
+{% endmacro %}
+
+<div id="book-content" class="surface-card">
+  <div class="card-body p-4 sm:p-6 flex flex-col gap-6 lg:flex-row lg:gap-8" x-data="{ view: 'description' }">
+
+    <div class="lg:flex-1 min-w-0 flex flex-col gap-5">
+
+      <div>
+        <div class="text-xs uppercase tracking-wider opacity-60">Book {{ book.number | to_roman }}</div>
+        <h2 class="font-serif text-3xl sm:text-4xl leading-tight mt-1">{{ book.name }}</h2>
+      </div>
+
+      <div role="tablist" class="tabs tabs-border tabs-sm flex-nowrap border-b border-base-300/60">
+        <button type="button" role="tab" class="tab"
+                :class="{ 'tab-active font-semibold': view === 'description' }"
+                @click="view = 'description'">Description</button>
+        <button type="button" role="tab" class="tab"
+                :class="{ 'tab-active font-semibold': view === 'chapters' }"
+                @click="view = 'chapters'">Chapters</button>
+        <button type="button" role="tab" class="tab"
+                :class="{ 'tab-active font-semibold': view === 'notes' }"
+                @click="view = 'notes'">Notes</button>
+      </div>
+
+      <div x-show="view === 'description'" class="flex flex-col gap-4">
+        {% if assets %}
+          <shared.ImageCarousel assets={{ assets }}
+                                delete_urls={{ delete_urls }}
+                                editable={{ editable }}
+                                carousel_id="book-carousel"
+                                swap_target="book-content" />
+        {% endif %}
+        {% if book.description %}
+          <div class="prose max-w-none">
+            {{ book.description | from_markdown | link_terms("html") }}
+          </div>
         {% else %}
-          <book.partials.BookDescription book={{ book }} campaign={{ campaign }} assets={{ assets }} />
+          <p class="text-base-content/50 italic">No description.</p>
         {% endif %}
       </div>
+
+      <div x-show="view === 'chapters'" x-cloak>
+        <book.partials.ChaptersCard book={{ book }} campaign={{ campaign }} chapters={{ chapters }} />
+      </div>
+
+      {% set notes_editable_param = 'true' if editable else 'false' %}
+      <div x-show="view === 'notes'" x-cloak>
+        <div id="crud-book_notes"
+             hx-get="{{ url_for('book_view.book_notes', campaign_id=campaign.id, book_id=book.id) }}?editable={{ notes_editable_param }}"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+          <div class="text-center py-8">
+            <span class="loading loading-spinner loading-md"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap gap-2 lg:hidden">
+        <span class="badge badge-outline badge-sm">{{ chapter_count }} chapter{% if chapter_count != 1 %}s{% endif %}</span>
+        <span class="badge badge-outline badge-sm">{{ note_count }} note{% if note_count != 1 %}s{% endif %}</span>
+        <span class="badge badge-outline badge-sm">Created {{ book.date_created.strftime("%b %-d, %Y") }}</span>
+        <span class="badge badge-outline badge-sm">Updated {{ book.date_modified.strftime("%b %-d, %Y") }}</span>
+      </div>
+
+      {% if editable %}
+        <div class="flex items-center justify-end gap-2 lg:hidden">
+          {{ book_actions(book, campaign) }}
+        </div>
+      {% endif %}
+
     </div>
+
+    <aside class="hidden lg:flex lg:w-56 shrink-0 flex-col gap-5 lg:border-l lg:border-base-300/60 lg:pl-6">
+      <dl class="flex flex-col text-sm divide-y divide-base-300/60">
+        <div class="flex justify-between items-baseline py-2 first:pt-0">
+          <dt class="text-xs uppercase tracking-wider opacity-60">Chapters</dt>
+          <dd class="font-semibold">{{ chapter_count }}</dd>
+        </div>
+        <div class="flex justify-between items-baseline py-2">
+          <dt class="text-xs uppercase tracking-wider opacity-60">Notes</dt>
+          <dd class="font-semibold">{{ note_count }}</dd>
+        </div>
+        <div class="flex justify-between items-baseline py-2">
+          <dt class="text-xs uppercase tracking-wider opacity-60">Created</dt>
+          <dd>{{ book.date_created.strftime("%b %-d, %Y") }}</dd>
+        </div>
+        <div class="flex justify-between items-baseline py-2 last:pb-0">
+          <dt class="text-xs uppercase tracking-wider opacity-60">Updated</dt>
+          <dd>{{ book.date_modified.strftime("%b %-d, %Y") }}</dd>
+        </div>
+      </dl>
+
+      {% if editable %}
+        <div class="flex items-center gap-2">
+          {{ book_actions(book, campaign) }}
+        </div>
+      {% endif %}
+    </aside>
+
   </div>
 </div>
+
+{% if editable %}
+  <form id="book-image-upload-form"
+        class="hidden"
+        hx-post="{{ url_for('book_view.book_image_upload', campaign_id=campaign.id, book_id=book.id) }}"
+        hx-target="#book-content"
+        hx-swap="outerHTML"
+        hx-encoding="multipart/form-data"
+        hx-disabled-elt="find button"
+        x-data="{ maxSize: {{ MAX_IMAGE_SIZE }}, maxSizeMb: {{ MAX_IMAGE_SIZE // 1024 // 1024 }} }">
+    <input type="file"
+           id="book-image-upload-input"
+           name="image"
+           accept="image/jpeg,image/png,image/webp,image/gif"
+           @change="if ($event.target.files[0]?.size > maxSize) { alert('File is too large. Maximum size is ' + maxSizeMb + ' MB.'); $event.target.value = ''; return; } $el.closest('form').requestSubmit();" />
+  </form>
+
+  <dialog id="book-delete-modal" class="modal">
+    <div class="modal-box">
+      <h3 class="text-lg font-bold">Delete book?</h3>
+      <p class="py-4">
+        This permanently deletes <strong>{{ book.name }}</strong> and all its chapters, notes, and images. This cannot be undone.
+      </p>
+      <div class="modal-action">
+        <form method="dialog">
+          <button type="button" class="btn btn-ghost">Cancel</button>
+        </form>
+        <button type="button"
+                class="btn btn-error"
+                hx-delete="{{ url_for('book_view.book_detail', campaign_id=campaign.id, book_id=book.id) }}"
+                hx-on::after-request="this.closest('dialog').close()">
+          <i class="fa-solid fa-trash-can"></i> Delete book
+        </button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button>close</button>
+    </form>
+  </dialog>
+{% endif %}

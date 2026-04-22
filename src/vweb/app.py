@@ -159,19 +159,23 @@ def create_app(settings_override: Settings | None = None) -> Flask:  # noqa: PLR
     from vweb.routes.auth.views import bp as auth_bp
     from vweb.routes.book.views import bp as book_view_bp
     from vweb.routes.campaign.views import bp as campaign_bp
+    from vweb.routes.campaign_notes.views import bp as campaign_notes_bp
     from vweb.routes.chapter.views import bp as chapter_view_bp
     from vweb.routes.character_create import bp as character_create_bp
+    from vweb.routes.character_list.views import bp as character_list_bp
     from vweb.routes.character_trait_edit.views import bp as character_trait_edit_bp
     from vweb.routes.character_view.views import bp as character_view_bp
     from vweb.routes.diceroll.views import bp as diceroll_bp
     from vweb.routes.dictionary.views import bp as dictionary_bp
     from vweb.routes.index.views import bp as index_bp
+    from vweb.routes.player_list.views import bp as player_list_bp
     from vweb.routes.profile.views import bp as profile_bp
     from vweb.routes.static_files.views import bp as static_files_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(index_bp)
     app.register_blueprint(campaign_bp)
+    app.register_blueprint(campaign_notes_bp)
     app.register_blueprint(character_view_bp)
     app.register_blueprint(character_trait_edit_bp)
     app.register_blueprint(book_view_bp)
@@ -180,6 +184,8 @@ def create_app(settings_override: Settings | None = None) -> Flask:  # noqa: PLR
     app.register_blueprint(diceroll_bp)
     app.register_blueprint(dictionary_bp)
     app.register_blueprint(character_create_bp)
+    app.register_blueprint(character_list_bp)
+    app.register_blueprint(player_list_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(static_files_bp)
 

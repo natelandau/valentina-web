@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 from vclient.testing import (
     CampaignBookFactory,
@@ -11,7 +13,8 @@ from vclient.testing import (
 
 from tests.conftest import get_csrf
 
-SECTIONS = ("story", "notes")
+if TYPE_CHECKING:
+    from vclient.models import CampaignChapter
 
 
 @pytest.fixture
@@ -38,20 +41,28 @@ def mock_chapters():
 
 @pytest.fixture
 def _mock_chapter_lookup(mocker, mock_book, mock_campaign, mock_chapters) -> None:
-    """Mock book lookup and chapters service for chapter detail."""
+    """Mock book lookup, chapter lookup, and chapters service for chapter detail."""
     mocker.patch(
         "vweb.routes.chapter.views.fetch_book_or_404",
         return_value=(mock_book, mock_campaign),
+    )
+
+    def _fetch_chapter(book_id: str, chapter_id: str) -> CampaignChapter:
+        return next((c for c in mock_chapters if c.id == chapter_id), mock_chapters[1])
+
+    mocker.patch(
+        "vweb.routes.chapter.views.fetch_chapter_or_404",
+        side_effect=_fetch_chapter,
     )
     mocker.patch(
         "vweb.routes.chapter.views.get_chapters_for_book",
         return_value=mock_chapters,
     )
-    svc = mocker.patch("vweb.routes.chapter.views.sync_chapters_service").return_value
-    svc.get.return_value = mock_chapters[1]  # ch-2 by default
-    svc.list_all.return_value = mock_chapters
-    svc.list_all_assets.return_value = []
-    return svc
+    chapters_service = mocker.patch("vweb.routes.chapter.views.sync_chapters_service").return_value
+    chapters_service.list_all.return_value = mock_chapters
+    chapters_service.list_all_assets.return_value = []
+    chapters_service.list_all_notes.return_value = []
+    return chapters_service
 
 
 @pytest.mark.usefixtures("_mock_chapter_lookup")
@@ -68,49 +79,11 @@ class TestChapterDetailGet:
         response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2")
         assert b"Chapter Two" in response.data
 
-    def test_htmx_story_fragment(self, client, mock_campaign, mock_book) -> None:
-        """Verify HTMX story section returns 200."""
-        response = client.get(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2/story",
-            headers={"HX-Request": "true"},
-        )
-        assert response.status_code == 200
-
-    def test_htmx_notes_fragment(self, client, mock_campaign, mock_book) -> None:
-        """Verify HTMX notes section returns 200."""
-        response = client.get(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2/notes",
-            headers={"HX-Request": "true"},
-        )
-        assert response.status_code == 200
-
-    def test_invalid_section_defaults_to_story(self, client, mock_campaign, mock_book) -> None:
-        """Verify invalid section name defaults to story."""
-        response = client.get(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2/invalid",
-            headers={"HX-Request": "true"},
-        )
-        assert response.status_code == 200
-
-    def test_prev_next_navigation(self, client, mock_campaign, mock_book) -> None:
-        """Chapter 2 should have prev and next navigation links."""
+    def test_carousel_links_to_sibling_chapters(self, client, mock_campaign, mock_book) -> None:
+        """Verify the chapter carousel renders anchors to sibling chapters."""
         response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2")
         assert b"chapter/ch-1" in response.data
         assert b"chapter/ch-3" in response.data
-
-    def test_first_chapter_no_prev(
-        self, client, mock_campaign, mock_book, mocker, mock_chapters
-    ) -> None:
-        """First chapter should not have a prev link."""
-        svc = mocker.patch("vweb.routes.chapter.views.sync_chapters_service").return_value
-        svc.get.return_value = mock_chapters[0]
-        svc.list_all.return_value = mock_chapters
-        mocker.patch(
-            "vweb.routes.chapter.views.get_chapters_for_book",
-            return_value=mock_chapters,
-        )
-        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-1")
-        assert response.status_code == 200
 
 
 @pytest.mark.usefixtures("_mock_chapter_lookup")
@@ -180,10 +153,10 @@ class TestChapterDelete:
         )
         assert response.status_code == 403
 
-    def test_delete_returns_updated_card(
+    def test_delete_redirects_to_book_page(
         self, client, mocker, mock_campaign, mock_book, mock_chapters
     ) -> None:
-        """Privileged users can delete chapters."""
+        """Privileged delete redirects back to the parent book page via HX-Redirect."""
         mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
         csrf = get_csrf(client)
         response = client.delete(
@@ -191,4 +164,7 @@ class TestChapterDelete:
             headers={"X-CSRFToken": csrf},
         )
         assert response.status_code == 200
-        assert b"book-chapters-card" in response.data
+        assert (
+            response.headers.get("HX-Redirect")
+            == f"/campaign/{mock_campaign.id}/book/{mock_book.id}"
+        )
