@@ -1,0 +1,119 @@
+{#def
+    campaign,
+    books: list = [],
+    current_book = None
+#}
+
+{# Horizontal carousel of campaign books. Card selection navigates to that
+   book's detail URL (full-page load). On mount, the active card auto-centers
+   in the viewport; on desktop, left/right arrows appear that scroll the row.
+Below the scroller, a prev/next strip shows adjacent books + position. #}
+
+{% set current_id = current_book.id if current_book else "" %}
+
+{% set current_number = current_book.number if current_book else 0 %}
+
+{% set total_books = books|length %}
+
+{% set current_index = namespace(value=-1) %}
+
+{% for book in books %}
+  {% if book.id == current_id %}
+
+    {% set current_index.value = loop.index0 %}
+
+  {% endif %}
+{% endfor %}
+
+{% set prev_book = books[current_index.value - 1] if current_index.value > 0 else none %}
+
+{% set next_book = books[current_index.value + 1] if 0 <= current_index.value < total_books - 1 else none %}
+
+<div class="flex flex-col gap-3"
+     x-data="{ start: true, end: false, refreshEdges() { const el = this.$refs.scroller; this.start = el.scrollLeft <= 1; this.end = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1; }, scrollBy(amount) { this.$refs.scroller.scrollBy({ left: amount, behavior: 'smooth' }); }, }"
+     x-init="$nextTick(() => { const active = $el.querySelector('[data-active-card]'); if (active) { $refs.scroller.scrollLeft = active.offsetLeft - ($refs.scroller.clientWidth / 2) + (active.clientWidth / 2); } refreshEdges(); })">
+
+  <div class="relative">
+    {# Desktop-only left arrow #}
+    <button type="button"
+            class="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 btn btn-sm btn-circle btn-ghost bg-base-100 shadow"
+            :class="{ 'opacity-30 pointer-events-none': start }"
+            @click="scrollBy(-320)"
+            aria-label="Scroll books left">
+      <i class="fa-solid fa-chevron-left"></i>
+    </button>
+
+    <div x-ref="scroller"
+         @scroll.throttle.50ms="refreshEdges()"
+         class="flex gap-3 overflow-x-auto scrollbar-none snap-x snap-mandatory scroll-smooth pb-2 -mx-1 px-1">
+      {% for book in books %}
+
+        {% set is_active = book.id == current_id %}
+
+        {% set chapter_count = g.global_context.chapters_by_book.get(book.id, [])|length %}
+
+        <a href="{{ url_for('book_view.book_detail', campaign_id=campaign.id, book_id=book.id) }}"
+           class="snap-start shrink-0 w-64 sm:w-72 rounded-box border p-4 flex items-center gap-4 transition-all {% if is_active %}border-primary border-2 bg-base-100 shadow-sm{% else %}border-base-300 bg-base-200/50 hover:bg-base-100 hover:border-base-content/30{% endif %}"
+           {% if is_active %}data-active-card aria-current="true"{% endif %}>
+          <div class="text-4xl font-thin leading-none tabular-nums text-nowrap shrink-0 {% if is_active %}text-base-content{% else %}text-base-content/70{% endif %}">
+            {{ "%02d" | format(book.number) }}
+          </div>
+          <div class="flex flex-col gap-1 min-w-0 flex-1">
+            <div class="text-base font-semibold leading-snug line-clamp-2">
+              {{ book.name }}
+            </div>
+            <div class="text-[0.65rem] uppercase tracking-wider opacity-60">
+              {{ chapter_count }} chapter
+              {% if chapter_count != 1 %}s{% endif %}
+              · Created {{ book.date_created.strftime("%b %Y") }}
+            </div>
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+
+    {# Desktop-only right arrow #}
+    <button type="button"
+            class="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 z-10 btn btn-sm btn-circle btn-ghost bg-base-100 shadow"
+            :class="{ 'opacity-30 pointer-events-none': end }"
+            @click="scrollBy(320)"
+            aria-label="Scroll books right">
+      <i class="fa-solid fa-chevron-right"></i>
+    </button>
+  </div>
+
+  {# Prev/Next strip. Invisible (not removed) placeholder preserves layout on the edges. #}
+  <div class="flex items-center justify-between gap-3 text-sm border-t border-base-300/60 pt-3">
+    <a class="btn btn-ghost h-auto min-h-0 py-2 px-3 justify-start {% if not prev_book %}invisible{% endif %}"
+       {% if prev_book %}href="{{ url_for('book_view.book_detail', campaign_id=campaign.id, book_id=prev_book.id) }}"{% endif %}>
+      <i class="fa-solid fa-chevron-left shrink-0"></i>
+      <span class="flex flex-col items-start gap-0.5 min-w-0 font-normal">
+        <span class="text-xs uppercase tracking-wider opacity-60">Previous</span>
+        <span class="truncate">
+          {% if prev_book %}
+            Book {{ prev_book.number | to_roman }} · {{ prev_book.name }}
+          {% endif %}
+        </span>
+      </span>
+    </a>
+
+    {% if current_book and total_books > 1 %}
+      <div class="hidden sm:block text-xs uppercase tracking-wider opacity-60 text-center shrink-0">
+        Book {{ current_number | to_roman }} of {{ total_books }} · {{ current_book.name }}
+      </div>
+    {% endif %}
+
+    <a class="btn btn-ghost h-auto min-h-0 py-2 px-3 justify-end {% if not next_book %}invisible{% endif %}"
+       {% if next_book %}href="{{ url_for('book_view.book_detail', campaign_id=campaign.id, book_id=next_book.id) }}"{% endif %}>
+      <span class="flex flex-col items-end gap-0.5 min-w-0 font-normal">
+        <span class="text-xs uppercase tracking-wider opacity-60">Next</span>
+        <span class="truncate">
+          {% if next_book %}
+            Book {{ next_book.number | to_roman }} · {{ next_book.name }}
+          {% endif %}
+        </span>
+      </span>
+      <i class="fa-solid fa-chevron-right shrink-0"></i>
+    </a>
+  </div>
+</div>

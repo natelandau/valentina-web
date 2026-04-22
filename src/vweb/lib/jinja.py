@@ -91,6 +91,46 @@ def humanize_date(value: str | datetime) -> str:
     return humanize.naturaltime(value)
 
 
+_ROMAN_NUMERALS: tuple[tuple[int, str], ...] = (
+    (1000, "M"),
+    (900, "CM"),
+    (500, "D"),
+    (400, "CD"),
+    (100, "C"),
+    (90, "XC"),
+    (50, "L"),
+    (40, "XL"),
+    (10, "X"),
+    (9, "IX"),
+    (5, "V"),
+    (4, "IV"),
+    (1, "I"),
+)
+
+
+def to_roman(value: int) -> str:
+    """Render an integer as its Roman-numeral representation.
+
+    Return an empty string for non-positive inputs (Roman numerals have no
+    concept of zero or negatives).
+
+    Args:
+        value: The integer to convert.
+
+    Returns:
+        The Roman numeral string, or an empty string for value <= 0.
+    """
+    if value <= 0:
+        return ""
+    parts: list[str] = []
+    remaining = value
+    for amount, symbol in _ROMAN_NUMERALS:
+        while remaining >= amount:
+            parts.append(symbol)
+            remaining -= amount
+    return "".join(parts)
+
+
 def normalize_string(value: str) -> str:
     """Normalize a string by removing quotes and whitespace.
 
@@ -256,6 +296,7 @@ def register_jinjax_catalog() -> jinjax.Catalog:
     catalog.jinja_env.filters["humanize_date"] = humanize_date
     catalog.jinja_env.filters["link_terms"] = link_terms
     catalog.jinja_env.filters["normalize_string"] = normalize_string
+    catalog.jinja_env.filters["to_roman"] = to_roman
     catalog.jinja_env.globals["user_campaign_experience"] = user_campaign_experience  # ty:ignore[invalid-assignment]
     catalog.jinja_env.add_extension("jinja2.ext.do")
     catalog.jinja_env.trim_blocks = True

@@ -1,0 +1,17 @@
+{#def book, campaign #}
+
+{# Compact book identity strip for pages nested inside a book (e.g., chapter
+   detail). Analogous to CampaignStrip. Eyebrow-labeled book reference linked
+back to the book detail page. #}
+
+<div class="flex flex-wrap items-center gap-x-4 gap-y-1 py-2 sm:flex-nowrap">
+  <a href="{{ url_for('book_view.book_detail', campaign_id=campaign.id, book_id=book.id) }}"
+     class="btn btn-ghost btn-md">
+    <i class="fa-solid fa-chevron-left"></i>
+    <span class="uppercase font-thin tracking-wider">
+      Book {{ "%02d" | format(book.number) }}
+    </span>
+
+    <span class="font-semibold truncate">{{ book.name }}</span>
+  </a>
+</div>

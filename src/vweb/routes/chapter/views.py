@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from flask import Blueprint, abort, request, session
+from flask import Blueprint, abort, request, session, url_for
 from flask.views import MethodView
 from vclient import sync_chapters_service
 
 from vweb import catalog
-from vweb.lib.api import fetch_book_or_404, get_chapters_for_book
+from vweb.lib.api import count_notes, fetch_book_or_404
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_manage_campaign
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
-from vweb.lib.jinja import htmx_response
+from vweb.lib.jinja import htmx_response, hx_redirect
 from vweb.routes.chapter.views_notes import ChapterNotesTableView
 
 if TYPE_CHECKING:
@@ -21,8 +21,7 @@ if TYPE_CHECKING:
 
 bp = Blueprint("chapter_view", __name__)
 
-SECTIONS = ("story", "notes")
-CHAPTER_CARD_ID = "chapter-story"
+CHAPTER_CARD_ID = "chapter-content"
 
 
 def _chapters_svc(campaign_id: str, book_id: str):  # noqa: ANN202
@@ -35,166 +34,57 @@ def _chapters_svc(campaign_id: str, book_id: str):  # noqa: ANN202
     )
 
 
-def _adjacent_chapters(
-    chapters: list[CampaignChapter], chapter_id: str
-) -> tuple[CampaignChapter | None, CampaignChapter | None, int]:
-    """Return (prev, next, total) for the chapter with the given id."""
-    sorted_chapters = sorted(chapters, key=lambda c: c.number)
-    total = len(sorted_chapters)
-    current_idx = next((i for i, c in enumerate(sorted_chapters) if c.id == chapter_id), None)
-    if current_idx is None:
-        return None, None, total
-    prev_ch = sorted_chapters[current_idx - 1] if current_idx > 0 else None
-    next_ch = sorted_chapters[current_idx + 1] if current_idx < total - 1 else None
-    return prev_ch, next_ch, total
-
-
-def _render_chapter_card(  # noqa: PLR0913
+def _render_chapter_card(
     *,
     chapter: CampaignChapter,
     book: CampaignBook,
     campaign: Campaign,
     assets: list[Asset],
-    prev_chapter: CampaignChapter | None = None,
-    next_chapter: CampaignChapter | None = None,
-    total_chapters: int = 0,
-    active_section: str = "story",
+    note_count: int,
 ) -> str:
-    """Render the full chapter content card (persistent wrapper with tabs)."""
+    """Render the full chapter content card (title + thumbnails + sub-tabs + metadata sidebar)."""
     return catalog.render(
         "chapter.partials.ChapterContentCard",
         chapter=chapter,
         book=book,
         campaign=campaign,
         assets=assets,
-        prev_chapter=prev_chapter,
-        next_chapter=next_chapter,
-        total_chapters=total_chapters,
-        active_section=active_section,
+        note_count=note_count,
     )
-
-
-def _card_with_header_response(
-    card_html: str,
-    chapter: CampaignChapter,
-    book: CampaignBook,
-    campaign: Campaign,
-) -> str:
-    """Return an HTMX response pairing the chapter card with an OOB PageHeader swap."""
-    header = catalog.render(
-        "chapter.partials.ChapterPageHeader",
-        chapter=chapter,
-        book=book,
-        campaign=campaign,
-        oob=True,
-    )
-    return htmx_response(card_html, header)
 
 
 class ChapterDetailView(MethodView):
-    """Chapter detail page with tabbed navigation."""
+    """Chapter detail page."""
 
     def get(
         self,
         campaign_id: str,
         book_id: str,
         chapter_id: str,
-        section: str | None = None,
     ) -> str:
-        """Render chapter detail page or tab fragment."""
+        """Render the chapter detail page."""
         book, campaign = fetch_book_or_404(campaign_id, book_id)
         ch_svc = _chapters_svc(campaign_id, book_id)
         chapter = ch_svc.get(chapter_id)
         if chapter is None:
             abort(404)
 
-        if section is not None and section not in SECTIONS:
-            section = "story"
+        session["last_campaign_id"] = campaign_id
 
-        active_section = section or "story"
+        assets = ch_svc.list_all_assets(chapter_id)
+        note_count = count_notes(ch_svc, chapter_id)
 
-        # Only the story tab renders the image carousel; skip the asset fetch
-        # when the notes tab is requested to avoid an extra API call.
-        assets: list[Asset] = (
-            ch_svc.list_all_assets(chapter_id) if active_section == "story" else []
-        )
+        chapters = ch_svc.list_all()
+        chapters.sort(key=lambda c: c.number)
 
-        is_htmx = request.headers.get("HX-Request")
-        hx_target = request.headers.get("HX-Target", "")
-
-        if is_htmx and section is not None and hx_target == CHAPTER_CARD_ID:
-            prev_ch, next_ch, total_chapters = _adjacent_chapters(
-                get_chapters_for_book(book_id), chapter_id
-            )
-            card = _render_chapter_card(
-                chapter=chapter,
-                book=book,
-                campaign=campaign,
-                assets=assets,
-                prev_chapter=prev_ch,
-                next_chapter=next_ch,
-                total_chapters=total_chapters,
-                active_section=active_section,
-            )
-            return _card_with_header_response(card, chapter, book, campaign)
-
-        if is_htmx and section is not None:
-            content = self._render_section(active_section, chapter, book, campaign, assets=assets)
-            nav = catalog.render(
-                "chapter.components.ChapterNav",
-                chapter_id=chapter_id,
-                campaign_id=campaign_id,
-                book_id=book_id,
-                active_section=active_section,
-                oob=True,
-            )
-            header = catalog.render(
-                "chapter.partials.ChapterPageHeader",
-                chapter=chapter,
-                book=book,
-                campaign=campaign,
-                oob=True,
-            )
-            return htmx_response(content, nav, header)
-
-        prev_ch, next_ch, total_chapters = _adjacent_chapters(
-            get_chapters_for_book(book_id), chapter_id
-        )
         return catalog.render(
             "chapter.ChapterDetail",
             chapter=chapter,
             book=book,
             campaign=campaign,
-            prev_chapter=prev_ch,
-            next_chapter=next_ch,
-            total_chapters=total_chapters,
-            active_section=active_section,
+            chapters=chapters,
             assets=assets,
-        )
-
-    def _render_section(
-        self,
-        section: str,
-        chapter: CampaignChapter,
-        book: CampaignBook,
-        campaign: Campaign,
-        *,
-        assets: list[Asset],
-    ) -> str:
-        """Render a single tab inner fragment (swapped into #chapter-tab-content)."""
-        if section == "notes":
-            return catalog.render(
-                "chapter.partials.ChapterNotes",
-                chapter=chapter,
-                book=book,
-                campaign=campaign,
-            )
-        return catalog.render(
-            "chapter.partials.ChapterStory",
-            chapter=chapter,
-            book=book,
-            campaign=campaign,
-            assets=assets,
+            note_count=note_count,
         )
 
     def delete(
@@ -202,25 +92,18 @@ class ChapterDetailView(MethodView):
         campaign_id: str,
         book_id: str,
         chapter_id: str,
-        section: str | None = None,  # noqa: ARG002
-    ) -> str:
-        """Delete chapter and return refreshed chapters card."""
+    ) -> object:
+        """Delete the chapter and redirect to the parent book page."""
         if not can_manage_campaign():
             abort(403)
 
-        book, campaign = fetch_book_or_404(campaign_id, book_id)
+        fetch_book_or_404(campaign_id, book_id)
         ch_svc = _chapters_svc(campaign_id, book_id)
         ch_svc.delete(chapter_id)
         clear_global_context_cache(session["company_id"], session["user_id"])
 
-        chapters = ch_svc.list_all()
-        chapters.sort(key=lambda c: c.number)
-
-        return catalog.render(
-            "book.partials.ChaptersCard",
-            book=book,
-            campaign=campaign,
-            chapters=chapters,
+        return hx_redirect(
+            url_for("book_view.book_detail", campaign_id=campaign_id, book_id=book_id)
         )
 
 
@@ -288,17 +171,14 @@ class ChapterEditView(MethodView):
         clear_global_context_cache(session["company_id"], session["user_id"])
 
         assets = ch_svc.list_all_assets(chapter_id)
-        prev_ch, next_ch, total_chapters = _adjacent_chapters(ch_svc.list_all(), chapter_id)
-        card = _render_chapter_card(
+        note_count = count_notes(ch_svc, chapter_id)
+        return _render_chapter_card(
             chapter=updated,
             book=book,
             campaign=campaign,
             assets=assets,
-            prev_chapter=prev_ch,
-            next_chapter=next_ch,
-            total_chapters=total_chapters,
+            note_count=note_count,
         )
-        return _card_with_header_response(card, updated, book, campaign)
 
 
 class ChapterCreateView(MethodView):
@@ -380,17 +260,13 @@ class ChapterImageUploadView(MethodView):
         assets = upload_and_append_asset(
             svc=ch_svc, parent_id=chapter_id, file=request.files.get("image")
         )
-        prev_ch, next_ch, total_chapters = _adjacent_chapters(
-            get_chapters_for_book(book_id), chapter_id
-        )
+        note_count = count_notes(ch_svc, chapter_id)
         content_html = _render_chapter_card(
             chapter=chapter,
             book=book,
             campaign=campaign,
             assets=assets,
-            prev_chapter=prev_ch,
-            next_chapter=next_ch,
-            total_chapters=total_chapters,
+            note_count=note_count,
         )
         flash_html = catalog.render("shared.layout.FlashMessage", oob=True)
         return htmx_response(content_html, flash_html)
@@ -400,7 +276,7 @@ class ChapterImageDeleteView(MethodView):
     """Delete an image asset from a chapter."""
 
     def delete(self, campaign_id: str, book_id: str, chapter_id: str, asset_id: str) -> object:
-        """Delete the asset and re-render the Story partial."""
+        """Delete the asset and re-render the chapter content card."""
         if not can_manage_campaign():
             abort(403)
 
@@ -413,17 +289,13 @@ class ChapterImageDeleteView(MethodView):
         handle_image_delete(svc=ch_svc, parent_id=chapter_id, asset_id=asset_id)
 
         assets = ch_svc.list_all_assets(chapter_id)
-        prev_ch, next_ch, total_chapters = _adjacent_chapters(
-            get_chapters_for_book(book_id), chapter_id
-        )
+        note_count = count_notes(ch_svc, chapter_id)
         content_html = _render_chapter_card(
             chapter=chapter,
             book=book,
             campaign=campaign,
             assets=assets,
-            prev_chapter=prev_ch,
-            next_chapter=next_ch,
-            total_chapters=total_chapters,
+            note_count=note_count,
         )
         flash_html = catalog.render("shared.layout.FlashMessage", oob=True)
         return htmx_response(content_html, flash_html)
@@ -473,12 +345,7 @@ bp.add_url_rule(
 bp.add_url_rule(
     "/campaign/<campaign_id>/book/<book_id>/chapter/<chapter_id>",
     view_func=ChapterDetailView.as_view("chapter_detail"),
-    defaults={"section": None},
     methods=["GET", "DELETE"],
-)
-bp.add_url_rule(
-    "/campaign/<campaign_id>/book/<book_id>/chapter/<chapter_id>/<section>",
-    view_func=ChapterDetailView.as_view("chapter_detail_section"),
 )
 bp.add_url_rule(
     "/campaign/<campaign_id>/book/<book_id>/chapter",

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from flask import abort, g, session
+from vclient.exceptions import APIError
 
 from vweb.lib.guards import is_storyteller
 
@@ -12,6 +13,19 @@ if TYPE_CHECKING:
     from vclient.models import CampaignBook, CampaignChapter, Character
     from vclient.models.campaigns import Campaign
     from vclient.models.users import CampaignExperience
+
+
+def count_notes(svc: Any, parent_id: str) -> int:
+    """Return the number of notes on an entity via the given service, 0 on API error.
+
+    Shared by book and chapter views (any service exposing ``list_all_notes``).
+    Falls back to zero so a transient notes endpoint failure doesn't break the
+    surrounding page render.
+    """
+    try:
+        return len(svc.list_all_notes(parent_id))
+    except APIError:
+        return 0
 
 
 def get_visible_characters_for_campaign(campaign_id: str) -> list[Character]:
