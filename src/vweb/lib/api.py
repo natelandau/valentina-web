@@ -15,15 +15,14 @@ if TYPE_CHECKING:
     from vclient.models.users import CampaignExperience
 
 
-def count_notes(svc: Any, parent_id: str) -> int:
+def count_notes(service: Any, parent_id: str) -> int:
     """Return the number of notes on an entity via the given service, 0 on API error.
 
-    Shared by book and chapter views (any service exposing ``list_all_notes``).
-    Falls back to zero so a transient notes endpoint failure doesn't break the
+    Fall back to zero so a transient notes endpoint failure doesn't break the
     surrounding page render.
     """
     try:
-        return len(svc.list_all_notes(parent_id))
+        return len(service.list_all_notes(parent_id))
     except APIError:
         return 0
 
@@ -149,6 +148,23 @@ def fetch_campaign_or_404(campaign_id: str) -> Campaign:
     return campaign
 
 
+def get_books_for_campaign(campaign_id: str) -> list[CampaignBook]:
+    """Return books for a campaign from the global context, sorted by number.
+
+    Use this in page-load reads where `g.global_context` is fresh. For
+    post-mutation reads inside the same request, call the books service
+    directly — the global context is stale until the next request.
+
+    Args:
+        campaign_id: The campaign's unique identifier.
+
+    Returns:
+        A list of CampaignBook ordered by `number` ascending.
+    """
+    books = g.global_context.books_by_campaign.get(campaign_id, [])
+    return sorted(books, key=lambda b: b.number)
+
+
 def get_chapters_for_book(book_id: str) -> list[CampaignChapter]:
     """Return chapters for a book from the global context, sorted by number.
 
@@ -164,6 +180,23 @@ def get_chapters_for_book(book_id: str) -> list[CampaignChapter]:
     """
     chapters = g.global_context.chapters_by_book.get(book_id, [])
     return sorted(chapters, key=lambda c: c.number)
+
+
+def fetch_chapter_or_404(book_id: str, chapter_id: str) -> CampaignChapter:
+    """Look up a chapter from the global context, abort 404 if not found.
+
+    Args:
+        book_id: The book's unique identifier.
+        chapter_id: The chapter's unique identifier.
+
+    Returns:
+        The CampaignChapter object.
+    """
+    chapters = g.global_context.chapters_by_book.get(book_id, [])
+    chapter = next((c for c in chapters if c.id == chapter_id), None)
+    if chapter is None:
+        abort(404)
+    return chapter
 
 
 def get_chapter_count_for_campaign(campaign_id: str) -> int:

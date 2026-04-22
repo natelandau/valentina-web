@@ -55,23 +55,30 @@ def mock_asset():
 
 
 @pytest.fixture
-def _mock_chapter_lookup(mocker, mock_book, mock_campaign) -> None:
-    """Mock the book/campaign lookup for the chapter blueprint."""
+def _mock_chapter_lookup(mocker, mock_book, mock_campaign, mock_chapter) -> None:
+    """Mock the book/campaign/chapter lookups for the chapter blueprint."""
     mocker.patch(
         "vweb.routes.chapter.views.fetch_book_or_404",
         return_value=(mock_book, mock_campaign),
     )
+    mocker.patch(
+        "vweb.routes.chapter.views.fetch_chapter_or_404",
+        return_value=mock_chapter,
+    )
+    mocker.patch(
+        "vweb.routes.chapter.views.get_chapters_for_book",
+        return_value=[mock_chapter],
+    )
 
 
 @pytest.fixture
-def mock_ch_svc(mocker, mock_chapter):
+def mock_chapters_service(mocker, mock_chapter):
     """Mock the chapters service factory and return the underlying service mock."""
-    svc = mocker.patch("vweb.routes.chapter.views.sync_chapters_service").return_value
-    svc.get.return_value = mock_chapter
-    svc.list_all.return_value = [mock_chapter]
-    svc.list_all_assets.return_value = []
-    svc.list_all_notes.return_value = []
-    return svc
+    chapters_service = mocker.patch("vweb.routes.chapter.views.sync_chapters_service").return_value
+    chapters_service.list_all.return_value = [mock_chapter]
+    chapters_service.list_all_assets.return_value = []
+    chapters_service.list_all_notes.return_value = []
+    return chapters_service
 
 
 @pytest.mark.usefixtures("_mock_chapter_lookup")
@@ -79,11 +86,11 @@ class TestChapterImageCarousel:
     """Tests for carousel rendering on the chapter detail page."""
 
     def test_chapter_detail_renders_carousel_when_assets_present(
-        self, client, mock_ch_svc, mock_asset, mock_book, mock_campaign
+        self, client, mock_chapters_service, mock_asset, mock_book, mock_campaign
     ) -> None:
         """Verify carousel renders when assets exist."""
         # Given the chapter has one asset
-        mock_ch_svc.list_all_assets.return_value = [mock_asset]
+        mock_chapters_service.list_all_assets.return_value = [mock_asset]
 
         # When fetching the chapter detail page
         response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-1")
@@ -95,11 +102,11 @@ class TestChapterImageCarousel:
         assert mock_asset.public_url in body
 
     def test_chapter_detail_hides_carousel_when_no_assets(
-        self, client, mock_ch_svc, mock_book, mock_campaign
+        self, client, mock_chapters_service, mock_book, mock_campaign
     ) -> None:
         """Verify carousel is absent when no assets exist."""
         # Given no assets
-        mock_ch_svc.list_all_assets.return_value = []
+        mock_chapters_service.list_all_assets.return_value = []
 
         # When fetching the chapter detail page
         response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-1")
@@ -114,13 +121,13 @@ class TestChapterImageUpload:
     """Tests for chapter image upload."""
 
     def test_chapter_image_upload_happy_path(
-        self, client, mocker, mock_ch_svc, mock_asset, mock_book, mock_campaign
+        self, client, mocker, mock_chapters_service, mock_asset, mock_book, mock_campaign
     ) -> None:
         """Verify a valid upload re-renders the partial with the new asset."""
         # Given a privileged user; assets list goes from empty to populated after upload
         mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
         # side_effect proves the view re-fetches AFTER mutation rather than reusing a stale list
-        mock_ch_svc.list_all_assets.side_effect = [[mock_asset]]
+        mock_chapters_service.list_all_assets.side_effect = [[mock_asset]]
         csrf = get_csrf(client)
 
         # When uploading an image
@@ -135,18 +142,18 @@ class TestChapterImageUpload:
 
         # Then upload is called with the expected kwargs and the new asset is rendered
         assert response.status_code == 200
-        mock_ch_svc.upload_asset.assert_called_once_with(
+        mock_chapters_service.upload_asset.assert_called_once_with(
             "ch-1", "img.jpg", b"fakeimage", "image/jpeg"
         )
         assert mock_asset.public_url in response.get_data(as_text=True)
 
     def test_chapter_image_upload_rejects_wrong_type(
-        self, client, mocker, mock_ch_svc, mock_book, mock_campaign
+        self, client, mocker, mock_chapters_service, mock_book, mock_campaign
     ) -> None:
         """Verify upload of an unsupported MIME type does not call the API."""
         # Given a privileged user
         mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-        mock_ch_svc.list_all_assets.return_value = []
+        mock_chapters_service.list_all_assets.return_value = []
         csrf = get_csrf(client)
 
         # When uploading a non-image file
@@ -161,10 +168,10 @@ class TestChapterImageUpload:
 
         # Then upload was not called
         assert response.status_code == 200
-        mock_ch_svc.upload_asset.assert_not_called()
+        mock_chapters_service.upload_asset.assert_not_called()
 
     def test_chapter_image_upload_forbidden_for_non_editor(
-        self, client, mocker, mock_ch_svc, mock_book, mock_campaign
+        self, client, mocker, mock_chapters_service, mock_book, mock_campaign
     ) -> None:
         """Verify non-privileged users get 403 on upload."""
         # Given an unprivileged user
@@ -183,7 +190,7 @@ class TestChapterImageUpload:
 
         # Then access is forbidden
         assert response.status_code == 403
-        mock_ch_svc.upload_asset.assert_not_called()
+        mock_chapters_service.upload_asset.assert_not_called()
 
 
 @pytest.mark.usefixtures("_mock_chapter_lookup")
@@ -191,12 +198,12 @@ class TestChapterImageDelete:
     """Tests for chapter image delete."""
 
     def test_chapter_image_delete_happy_path(
-        self, client, mocker, mock_ch_svc, mock_book, mock_campaign
+        self, client, mocker, mock_chapters_service, mock_book, mock_campaign
     ) -> None:
         """Verify deletion calls the service and re-renders without the carousel."""
         # Given a privileged user and an empty asset list after delete
         mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-        mock_ch_svc.list_all_assets.return_value = []
+        mock_chapters_service.list_all_assets.return_value = []
         csrf = get_csrf(client)
 
         # When deleting an asset
@@ -207,5 +214,5 @@ class TestChapterImageDelete:
 
         # Then delete is called and the carousel is gone
         assert response.status_code == 200
-        mock_ch_svc.delete_asset.assert_called_once_with("ch-1", "asset-1")
+        mock_chapters_service.delete_asset.assert_called_once_with("ch-1", "asset-1")
         assert "chapter-carousel" not in response.get_data(as_text=True)

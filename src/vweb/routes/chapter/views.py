@@ -9,14 +9,20 @@ from flask.views import MethodView
 from vclient import sync_chapters_service
 
 from vweb import catalog
-from vweb.lib.api import count_notes, fetch_book_or_404
+from vweb.lib.api import (
+    count_notes,
+    fetch_book_or_404,
+    fetch_chapter_or_404,
+    get_chapters_for_book,
+)
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_manage_campaign
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
-from vweb.lib.jinja import htmx_response, hx_redirect
+from vweb.lib.jinja import htmx_response_with_flash, hx_redirect
 from vweb.routes.chapter.views_notes import ChapterNotesTableView
 
 if TYPE_CHECKING:
+    from vclient._sync.services.campaign_book_chapters import SyncChaptersService
     from vclient.models import Asset, Campaign, CampaignBook, CampaignChapter
 
 bp = Blueprint("chapter_view", __name__)
@@ -24,7 +30,7 @@ bp = Blueprint("chapter_view", __name__)
 CHAPTER_CARD_ID = "chapter-content"
 
 
-def _chapters_svc(campaign_id: str, book_id: str):  # noqa: ANN202
+def _chapters_service(campaign_id: str, book_id: str) -> SyncChaptersService:
     """Build a chapters service scoped to the current user and company."""
     return sync_chapters_service(
         campaign_id=campaign_id,
@@ -64,18 +70,14 @@ class ChapterDetailView(MethodView):
     ) -> str:
         """Render the chapter detail page."""
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        ch_svc = _chapters_svc(campaign_id, book_id)
-        chapter = ch_svc.get(chapter_id)
-        if chapter is None:
-            abort(404)
+        chapter = fetch_chapter_or_404(book_id, chapter_id)
+        chapters = get_chapters_for_book(book_id)
 
         session["last_campaign_id"] = campaign_id
 
-        assets = ch_svc.list_all_assets(chapter_id)
-        note_count = count_notes(ch_svc, chapter_id)
-
-        chapters = ch_svc.list_all()
-        chapters.sort(key=lambda c: c.number)
+        chapters_service = _chapters_service(campaign_id, book_id)
+        assets = chapters_service.list_all_assets(chapter_id)
+        note_count = count_notes(chapters_service, chapter_id)
 
         return catalog.render(
             "chapter.ChapterDetail",
@@ -98,8 +100,8 @@ class ChapterDetailView(MethodView):
             abort(403)
 
         fetch_book_or_404(campaign_id, book_id)
-        ch_svc = _chapters_svc(campaign_id, book_id)
-        ch_svc.delete(chapter_id)
+        chapters_service = _chapters_service(campaign_id, book_id)
+        chapters_service.delete(chapter_id)
         clear_global_context_cache(session["company_id"], session["user_id"])
 
         return hx_redirect(
@@ -116,10 +118,7 @@ class ChapterEditView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        ch_svc = _chapters_svc(campaign_id, book_id)
-        chapter = ch_svc.get(chapter_id)
-        if chapter is None:
-            abort(404)
+        chapter = fetch_chapter_or_404(book_id, chapter_id)
 
         return catalog.render(
             "chapter.partials.ChapterEditForm",
@@ -135,10 +134,8 @@ class ChapterEditView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        ch_svc = _chapters_svc(campaign_id, book_id)
-        chapter = ch_svc.get(chapter_id)
-        if chapter is None:
-            abort(404)
+        chapter = fetch_chapter_or_404(book_id, chapter_id)
+        chapters_service = _chapters_service(campaign_id, book_id)
 
         name = request.form.get("name", "").strip()
         number_str = request.form.get("number", "").strip()
@@ -165,13 +162,13 @@ class ChapterEditView(MethodView):
                 form_data=request.form,
             )
 
-        updated = ch_svc.update(chapter_id, name=name, description=description)
+        updated = chapters_service.update(chapter_id, name=name, description=description)
         if number != chapter.number:
-            updated = ch_svc.renumber(chapter_id, number)
+            updated = chapters_service.renumber(chapter_id, number)
         clear_global_context_cache(session["company_id"], session["user_id"])
 
-        assets = ch_svc.list_all_assets(chapter_id)
-        note_count = count_notes(ch_svc, chapter_id)
+        assets = chapters_service.list_all_assets(chapter_id)
+        note_count = count_notes(chapters_service, chapter_id)
         return _render_chapter_card(
             chapter=updated,
             book=book,
@@ -228,11 +225,11 @@ class ChapterCreateView(MethodView):
                 form_data=request.form,
             )
 
-        ch_svc = _chapters_svc(campaign_id, book_id)
-        ch_svc.create(name=name, number=number, description=description)
+        chapters_service = _chapters_service(campaign_id, book_id)
+        chapters_service.create(name=name, number=number, description=description)
         clear_global_context_cache(session["company_id"], session["user_id"])
 
-        chapters = ch_svc.list_all()
+        chapters = chapters_service.list_all()
         chapters.sort(key=lambda c: c.number)
 
         return catalog.render(
@@ -252,15 +249,13 @@ class ChapterImageUploadView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        ch_svc = _chapters_svc(campaign_id, book_id)
-        chapter = ch_svc.get(chapter_id)
-        if chapter is None:
-            abort(404)
+        chapter = fetch_chapter_or_404(book_id, chapter_id)
+        chapters_service = _chapters_service(campaign_id, book_id)
 
         assets = upload_and_append_asset(
-            svc=ch_svc, parent_id=chapter_id, file=request.files.get("image")
+            svc=chapters_service, parent_id=chapter_id, file=request.files.get("image")
         )
-        note_count = count_notes(ch_svc, chapter_id)
+        note_count = count_notes(chapters_service, chapter_id)
         content_html = _render_chapter_card(
             chapter=chapter,
             book=book,
@@ -268,8 +263,7 @@ class ChapterImageUploadView(MethodView):
             assets=assets,
             note_count=note_count,
         )
-        flash_html = catalog.render("shared.layout.FlashMessage", oob=True)
-        return htmx_response(content_html, flash_html)
+        return htmx_response_with_flash(content_html)
 
 
 class ChapterImageDeleteView(MethodView):
@@ -281,15 +275,13 @@ class ChapterImageDeleteView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        ch_svc = _chapters_svc(campaign_id, book_id)
-        chapter = ch_svc.get(chapter_id)
-        if chapter is None:
-            abort(404)
+        chapter = fetch_chapter_or_404(book_id, chapter_id)
+        chapters_service = _chapters_service(campaign_id, book_id)
 
-        handle_image_delete(svc=ch_svc, parent_id=chapter_id, asset_id=asset_id)
+        handle_image_delete(svc=chapters_service, parent_id=chapter_id, asset_id=asset_id)
 
-        assets = ch_svc.list_all_assets(chapter_id)
-        note_count = count_notes(ch_svc, chapter_id)
+        assets = chapters_service.list_all_assets(chapter_id)
+        note_count = count_notes(chapters_service, chapter_id)
         content_html = _render_chapter_card(
             chapter=chapter,
             book=book,
@@ -297,20 +289,19 @@ class ChapterImageDeleteView(MethodView):
             assets=assets,
             note_count=note_count,
         )
-        flash_html = catalog.render("shared.layout.FlashMessage", oob=True)
-        return htmx_response(content_html, flash_html)
+        return htmx_response_with_flash(content_html)
 
 
-_ch_notes_view = ChapterNotesTableView.as_view("chapter_notes")
+_chapter_notes_view = ChapterNotesTableView.as_view("chapter_notes")
 bp.add_url_rule(
     "/campaign/<campaign_id>/book/<book_id>/chapter/<chapter_id>/crud-notes",
     defaults={"item_id": None},
-    view_func=_ch_notes_view,
+    view_func=_chapter_notes_view,
     methods=["GET", "POST"],
 )
 bp.add_url_rule(
     "/campaign/<campaign_id>/book/<book_id>/chapter/<chapter_id>/crud-notes/<string:item_id>",
-    view_func=_ch_notes_view,
+    view_func=_chapter_notes_view,
     methods=["POST", "DELETE"],
 )
 bp.add_url_rule(

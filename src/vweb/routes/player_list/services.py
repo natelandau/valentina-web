@@ -26,20 +26,10 @@ def filter_players(
     role: str | None = None,
     has_characters: str | None = None,
 ) -> list[User]:
-    """Apply role and has-characters filters to a player list.
+    """Apply optional role and has-characters filters to a player list.
 
-    A falsy ``role`` means "any role." ``has_characters`` accepts ``"yes"`` (only
-    users with at least one character in the campaign), ``"no"`` (only users
-    without), or any other value to skip the filter.
-
-    Args:
-        users: The full player list (already sorted).
-        campaign_id: Campaign to resolve character ownership against.
-        role: Optional role filter (e.g., PLAYER, STORYTELLER, ADMIN).
-        has_characters: Optional membership filter — "yes", "no", or None.
-
-    Returns:
-        The filtered player list in the same order.
+    Falsy filter values pass through unchanged. ``has_characters`` only applies
+    when set to ``HAS_CHARACTERS_YES`` or ``HAS_CHARACTERS_NO``.
     """
     filtered = users
     if role:

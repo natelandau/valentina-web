@@ -1,8 +1,4 @@
-"""Filtering and option-building for the campaign character list.
-
-Visibility + sort is handled by the shared ``lib.api.get_visible_characters_for_campaign``
-helper; this module only deals with the user-supplied filter dimensions.
-"""
+"""Filtering and option-building for the campaign character list."""
 
 from __future__ import annotations
 
@@ -21,16 +17,7 @@ def filter_characters(
 ) -> list[Character]:
     """Apply optional player/class/type filters to an already-visible character list.
 
-    A falsy filter value means "no filter for this dimension."
-
-    Args:
-        characters: The source list (already filtered by visibility).
-        player_id: Only include characters owned by this user id, if set.
-        character_class: Only include characters of this class, if set.
-        type_filter: Only include characters of this type (PLAYER/STORYTELLER), if set.
-
-    Returns:
-        The filtered character list in the same order.
+    Falsy filter values pass through unchanged.
     """
     filtered = characters
     if player_id:
@@ -45,19 +32,14 @@ def filter_characters(
 def build_filter_options(
     characters: list[Character], users_by_id: dict[str, str]
 ) -> tuple[list[tuple[str, str]], list[str]]:
-    """Build the (player, class) option lists from the campaign's visible roster.
+    """Build (player, class) option lists from the campaign's visible roster.
 
-    Deriving options from the roster (rather than all company users / all
-    possible classes) keeps the dropdowns scoped to values that can actually
+    Deriving options from the roster keeps the dropdowns scoped to values that
     match at least one character in this campaign.
 
-    Args:
-        characters: The visible character list for the campaign.
-        users_by_id: Lookup of user id → username.
-
     Returns:
-        Tuple of (player_options, class_options) where player_options is a list
-        of (user_id, username) pairs sorted by username, and class_options is a
+        ``(player_options, class_options)`` — ``player_options`` is a list of
+        ``(user_id, username)`` pairs sorted by username; ``class_options`` is a
         sorted list of distinct character_class strings.
     """
     player_ids: set[str] = set()

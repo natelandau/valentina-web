@@ -41,7 +41,7 @@
             {% if pagination > 0 %}x-ref="list" :style="listHeight ? 'min-height:' + listHeight + 'px' : ''"{% endif %}>
           {% for user in filtered_users | sort(attribute="username") %}
 
-            {% set campaign_experience = user_campaign_experience(user.id, campaign_id) %}
+            {% set campaign_experience = user.campaign_experience | selectattr("campaign_id", "equalto", campaign_id) | first | default(None, true) %}
 
             <li class="list-row hover:bg-neutral/80 hover:text-neutral-content transition-colors" {% if pagination > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"
             {% endif %}

@@ -16,7 +16,7 @@ from markupsafe import Markup, escape
 import vweb
 from vweb.config import get_settings
 from vweb.constants import MAX_IMAGE_SIZE, STATIC_PATH, TEMPLATES_PATH
-from vweb.lib.api import get_active_campaign
+from vweb.lib.api import get_active_campaign, get_user_campaign_experience
 from vweb.lib.blueprint_cache import get_all_traits
 from vweb.lib.guards import (
     can_edit_character,
@@ -33,7 +33,6 @@ from vweb.routes.dictionary.cache import get_all_terms
 if TYPE_CHECKING:
     from flask import Flask
     from vclient.models import User
-    from vclient.models.users import CampaignExperience
 
     from vweb.config import Settings
     from vweb.lib.global_context import GlobalContext
@@ -143,25 +142,6 @@ def normalize_string(value: str) -> str:
     return value.replace("'", "").replace('"', "").strip()
 
 
-def user_campaign_experience(user_id: str, campaign_id: str) -> CampaignExperience | None:
-    """Look up a user's experience for a specific campaign.
-
-    Args:
-        user_id: The user's unique identifier.
-        campaign_id: The campaign's unique identifier.
-
-    Returns:
-        The CampaignExperience object if found, None otherwise.
-    """
-    user = next((u for u in g.global_context.users if u.id == user_id), None)
-    if user is None:
-        return None
-    return next(
-        (exp for exp in user.campaign_experience if exp.campaign_id == campaign_id),
-        None,
-    )
-
-
 def link_terms(
     value: str,
     link_type: Literal["markdown", "html"],
@@ -269,6 +249,18 @@ def htmx_response(*parts: str) -> Markup:
     return Markup("".join(parts))  # noqa: S704
 
 
+def htmx_response_with_flash(content: str) -> Markup:
+    """Return an HTMX response that OOB-swaps the flash container.
+
+    Any HTMX endpoint that calls ``flash()`` must include the flash container
+    in the response or the toast silently drops. Use this helper in place of
+    the manual ``catalog.render("shared.layout.FlashMessage", oob=True)`` +
+    ``htmx_response(...)`` pairing.
+    """
+    flash_html = vweb.catalog.render("shared.layout.FlashMessage", oob=True)
+    return htmx_response(content, flash_html)
+
+
 def register_jinjax_catalog() -> jinjax.Catalog:
     """Create a standalone JinjaX catalog and register component folders.
 
@@ -297,7 +289,7 @@ def register_jinjax_catalog() -> jinjax.Catalog:
     catalog.jinja_env.filters["link_terms"] = link_terms
     catalog.jinja_env.filters["normalize_string"] = normalize_string
     catalog.jinja_env.filters["to_roman"] = to_roman
-    catalog.jinja_env.globals["user_campaign_experience"] = user_campaign_experience  # ty:ignore[invalid-assignment]
+    catalog.jinja_env.globals["user_campaign_experience"] = get_user_campaign_experience  # ty:ignore[invalid-assignment]
     catalog.jinja_env.add_extension("jinja2.ext.do")
     catalog.jinja_env.trim_blocks = True
     catalog.jinja_env.lstrip_blocks = True

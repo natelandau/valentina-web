@@ -27,13 +27,13 @@
   {% endif %}
 {% endmacro %}
 
-{% if vertical %}
-  {% set layout_classes = "flex items-center gap-2 flex-wrap lg:flex-col lg:items-stretch" %}
-{% elif compact %}
-  {% set layout_classes = "flex items-center gap-2 flex-wrap" %}
-{% else %}
-  {% set layout_classes = "flex items-center gap-2 flex-wrap mt-2" %}
-{% endif %}
+{% set layout_mode = "vertical" if vertical else "compact" if compact else "default" %}
+{% set layouts = {
+  "vertical": "flex items-center gap-2 flex-wrap lg:flex-col lg:items-stretch",
+  "compact": "flex items-center gap-2 flex-wrap",
+  "default": "flex items-center gap-2 flex-wrap mt-2",
+} %}
+{% set layout_classes = layouts[layout_mode] %}
 
 <div id="danger-desperation-badges" {% if oob %}hx-swap-oob="true"{% endif %}>
   <div class="{{ layout_classes }}">

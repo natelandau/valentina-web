@@ -1,10 +1,4 @@
-"""Campaign notes page + inline CRUD table.
-
-- ``/campaign/<campaign_id>/notes`` — full page. Lazy-loads the CRUD table via
-  HTMX on load (same pattern as book notes).
-- ``/campaign/<campaign_id>/notes/items[/<item_id>]`` — CRUD table + item
-  endpoints handled by ``CampaignNotesTableView`` (CrudTableView subclass).
-"""
+"""Campaign notes page + inline CRUD table."""
 
 from __future__ import annotations
 
