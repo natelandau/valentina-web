@@ -13,10 +13,11 @@ from vweb.lib.api import (
     get_campaign_name,
     get_chapter_count_for_campaign,
     get_user_campaign_experience,
+    get_visible_characters_for_campaign,
     validate_and_submit_experience,
 )
 from vweb.lib.global_context import clear_global_context_cache, get_campaign_statistics
-from vweb.lib.guards import can_grant_experience, can_manage_campaign, is_storyteller
+from vweb.lib.guards import can_grant_experience, can_manage_campaign
 from vweb.lib.jinja import hx_redirect
 
 bp = Blueprint("campaign", __name__)
@@ -64,19 +65,9 @@ class CampaignView(MethodView):
 
         ctx = g.global_context
         user_id = session["user_id"]
-        all_characters = ctx.characters_by_campaign.get(campaign_id, [])
-
-        privileged = is_storyteller()
-        user_characters: list = []
-        other_characters: list = []
-        for char in sorted(all_characters, key=lambda c: c.name):
-            is_visible = char.type == "PLAYER" or (privileged and char.type == "STORYTELLER")
-            if not is_visible:
-                continue
-            if char.user_player_id == user_id:
-                user_characters.append(char)
-            else:
-                other_characters.append(char)
+        visible_characters = get_visible_characters_for_campaign(campaign_id)
+        user_characters = [c for c in visible_characters if c.user_player_id == user_id]
+        other_characters = [c for c in visible_characters if c.user_player_id != user_id]
 
         books = ctx.books_by_campaign.get(campaign_id, [])
         campaign_statistics = get_campaign_statistics(campaign_id)

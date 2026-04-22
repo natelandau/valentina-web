@@ -1,0 +1,75 @@
+{#def
+    list_url: str,
+    player_options: list = [],
+    class_options: list = [],
+    show_type_filter: bool = false
+#}
+
+{# Filter bar for the character list. Alpine x-data holds the selected values;
+   each select fires an HTMX GET to the list partial on change, targeting
+   #character-list-body. The Clear button resets the Alpine state and dispatches
+   a synthetic `filter-changed` event that the body listens for. #}
+
+{# djlint:off #}
+<div id="character-list-filters" x-data="{ player: '', char_class: '', type: '' }">
+{# djlint:on #}
+  <div class="flex flex-wrap items-end gap-3">
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Player</legend>
+      <select name="player"
+              x-model="player"
+              class="select select-sm w-44"
+              hx-get="{{ list_url }}"
+              hx-trigger="change"
+              hx-target="#character-list-body"
+              hx-include="#character-list-filters"
+              hx-sync="closest #character-list-filters:abort">
+        <option value="">All players</option>
+        {% for player_id, username in player_options %}
+          <option value="{{ player_id }}">{{ username }}</option>
+        {% endfor %}
+      </select>
+    </fieldset>
+
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">Class</legend>
+      <select name="char_class"
+              x-model="char_class"
+              class="select select-sm w-40"
+              hx-get="{{ list_url }}"
+              hx-trigger="change"
+              hx-target="#character-list-body"
+              hx-include="#character-list-filters"
+              hx-sync="closest #character-list-filters:abort">
+        <option value="">All classes</option>
+        {% for klass in class_options %}
+          <option value="{{ klass }}">{{ klass | title }}</option>
+        {% endfor %}
+      </select>
+    </fieldset>
+
+    {% if show_type_filter %}
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Type</legend>
+        <select name="type"
+                x-model="type"
+                class="select select-sm w-36"
+                hx-get="{{ list_url }}"
+                hx-trigger="change"
+                hx-target="#character-list-body"
+                hx-include="#character-list-filters"
+                hx-sync="closest #character-list-filters:abort">
+          <option value="">All types</option>
+          <option value="PLAYER">Player</option>
+          <option value="STORYTELLER">Storyteller</option>
+        </select>
+      </fieldset>
+    {% endif %}
+
+    <button type="button"
+            class="btn btn-ghost btn-sm"
+            @click="player = ''; char_class = ''; type = ''; $nextTick(() => htmx.trigger($root, 'filter-changed'))">
+      Clear
+    </button>
+  </div>
+</div>

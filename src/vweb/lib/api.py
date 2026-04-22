@@ -6,10 +6,35 @@ from typing import TYPE_CHECKING
 
 from flask import abort, g, session
 
+from vweb.lib.guards import is_storyteller
+
 if TYPE_CHECKING:
     from vclient.models import CampaignBook, CampaignChapter, Character
     from vclient.models.campaigns import Campaign
     from vclient.models.users import CampaignExperience
+
+
+def get_visible_characters_for_campaign(campaign_id: str) -> list[Character]:
+    """Return characters in the campaign visible to the current user, sorted A-Z.
+
+    Apply the standard visibility rule: everyone sees PLAYER-type characters;
+    only storytellers (and admins) additionally see STORYTELLER-type characters.
+    Sort is case-insensitive by character name.
+
+    Args:
+        campaign_id: The campaign to list characters for.
+
+    Returns:
+        A sorted list of visible characters.
+    """
+    all_characters = g.global_context.characters_by_campaign.get(campaign_id, [])
+    privileged = is_storyteller()
+    visible = [
+        character
+        for character in all_characters
+        if character.type == "PLAYER" or (privileged and character.type == "STORYTELLER")
+    ]
+    return sorted(visible, key=lambda character: character.name.lower())
 
 
 def get_active_campaign() -> Campaign | None:

@@ -1,0 +1,37 @@
+{#def
+    campaign,
+    characters: list = [],
+    player_options: list = [],
+    class_options: list = [],
+    is_storyteller: bool = false
+#}
+
+<shared.PageLayout title="Characters">
+<div class="flex flex-col gap-4">
+
+  <shared.layout.CampaignChrome
+      campaign={{ campaign }}
+      active="characters"
+      show_admin={{ is_admin() }} />
+
+  <h1 class="sr-only">Characters</h1>
+
+  <character_list.components.FilterBar
+      list_url={{ url_for('character_list.list_partial', campaign_id=campaign.id) }}
+      player_options={{ player_options }}
+      class_options={{ class_options }}
+      show_type_filter={{ is_storyteller }} />
+
+  <div id="character-list-body"
+       hx-get="{{ url_for('character_list.list_partial', campaign_id=campaign.id) }}"
+       hx-trigger="filter-changed from:#character-list-filters"
+       hx-include="#character-list-filters"
+       hx-sync="this:abort">
+    <character_list.partials.CharacterList
+        campaign_id={{ campaign.id }}
+        characters={{ characters }} />
+  </div>
+</div>
+
+<shared.diceroll.DiceRollModal />
+</shared.PageLayout>
