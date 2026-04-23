@@ -1,0 +1,54 @@
+{#def
+    rows: list, page_size: int, offset: int, has_more: bool, filters: dict,
+    card_id: str,
+    empty_message: str = "No audit log entries",
+#}
+
+{% if rows %}
+  <ul class="list bg-base-100 rounded-box shadow-md"
+      style="min-height: {{ page_size * 5.5 }}rem;">
+    {% for row in rows %}
+      <li class="list-row">
+        <div class="list-col-grow min-w-0">
+          {# Line 1: date (left) + description (right, truncated) #}
+          <div class="flex items-center justify-between gap-2 min-w-0">
+            <span class="text-xs opacity-60 whitespace-nowrap">
+              {{ row.log.date_created | humanize_date }}
+            </span>
+            <span class="font-semibold truncate">
+              {{ row.log.description or row.log.summary or "" }}
+            </span>
+          </div>
+
+          {# Line 2: acting user (left) + related entity links (right) #}
+          <div class="flex items-center justify-between gap-2 text-xs mt-1 min-w-0">
+            <span>
+              {% set acting_name, acting_url = row.acting_user %}
+              {% if acting_url %}
+                <a href="{{ acting_url }}" class="link link-hover">{{ acting_name }}</a>
+              {% elif acting_name %}
+                {{ acting_name }}
+              {% else %}
+                <span class="opacity-40 italic">system</span>
+              {% endif %}
+            </span>
+            <span class="flex flex-wrap gap-x-3 gap-y-1 opacity-80 text-right">
+              {% for label, name, url in row.entities %}
+                <span>
+                  <span class="opacity-60">{{ label }}:</span>
+                  {% if url %}
+                    <a href="{{ url }}" class="link link-hover">{{ name }}</a>
+                  {% else %}
+                    {{ name }}
+                  {% endif %}
+                </span>
+              {% endfor %}
+            </span>
+          </div>
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="text-base-content/60 text-sm">{{ empty_message }}</p>
+{% endif %}

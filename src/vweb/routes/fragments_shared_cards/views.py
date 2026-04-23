@@ -139,9 +139,18 @@ class AuditLogCardView(MethodView):
                 }
             )
 
-        # Templates are added in Task 6. For now, return a placeholder so the
-        # endpoint responds 200 and tests can verify filter forwarding.
-        return f"<!-- audit log card: {len(rows)} rows -->"
+        return catalog.render(
+            "shared.cards.partials.AuditLogContent",
+            rows=rows,
+            page_size=page_size,
+            offset=offset,
+            has_more=page.has_more,
+            filters=filters,
+            card_id=request.args.get("card_id", "auditlog"),
+            col_span=request.args.get("col_span", 0, type=int),
+            title=request.args.get("title", "Audit Log"),
+            empty_message=request.args.get("empty_message", "No audit log entries"),
+        )
 
 
 bp.add_url_rule(

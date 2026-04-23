@@ -1,0 +1,25 @@
+{#def
+    rows: list, page_size: int, offset: int, has_more: bool, filters: dict,
+    card_id: str, col_span: int = 0,
+    title: str = "Audit Log",
+    empty_message: str = "No audit log entries",
+#}
+
+{% set grid_col_span = "col-span-" ~ col_span if col_span > 0 else "" %}
+
+<div class="card surface-card {{ grid_col_span }}" id="{{ card_id }}">
+  <div class="card-body">
+    <h2 class="card-title">{{ title }}</h2>
+
+    <div id="{{ card_id }}-body">
+      <shared.cards.partials.AuditLogBody
+        rows={{ rows }}
+        page_size={{ page_size }}
+        offset={{ offset }}
+        has_more={{ has_more }}
+        filters={{ filters }}
+        card_id={{ card_id }}
+        empty_message={{ empty_message }} />
+    </div>
+  </div>
+</div>

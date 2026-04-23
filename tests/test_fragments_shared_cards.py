@@ -314,3 +314,86 @@ class TestAuditLogCardEndpoint:
         assert kwargs["character_id"] == "char1"
         assert kwargs["limit"] == 15
         assert kwargs["offset"] == 30
+
+    @pytest.mark.usefixtures("_audit_log_rows")
+    def test_renders_full_card_on_initial_load(
+        self, client: FlaskClient, mock_global_context
+    ) -> None:
+        """Verify the initial load response contains the full card shell."""
+        # When requesting /cards/audit-log with no body_only flag
+        response = client.get("/cards/audit-log")
+
+        # Then the response contains the card chrome
+        assert response.status_code == 200
+        assert b'class="card surface-card' in response.data
+        assert b"Audit Log" in response.data  # default title
+
+    @pytest.mark.usefixtures("_audit_log_rows")
+    def test_acting_user_name_rendered(self, client: FlaskClient, mock_global_context) -> None:
+        """Verify the acting user's username appears in the output."""
+        # Given a row with an acting_user_id matching a known user
+        user = mock_global_context.users[0]
+
+        # When requesting the card
+        response = client.get("/cards/audit-log")
+
+        # Then the username shows in line 2
+        assert user.username.encode() in response.data
+
+    @pytest.mark.usefixtures("_audit_log_rows")
+    def test_custom_title_renders(self, client: FlaskClient, mock_global_context) -> None:
+        """Verify a custom title query arg appears in the output."""
+        # When requesting with a custom title
+        response = client.get("/cards/audit-log?title=Recent+Changes")
+
+        # Then the custom title is in the response
+        assert b"Recent Changes" in response.data
+
+    def test_empty_rows_shows_empty_message(
+        self, client: FlaskClient, fake_vclient, mock_global_context
+    ) -> None:
+        """Verify the empty_message is rendered when no rows match."""
+        # Given zero rows from vclient
+        fake_vclient.set_response(Routes.COMPANIES_AUDIT_LOGS_LIST, items=[])
+
+        # When requesting with a custom empty_message
+        response = client.get("/cards/audit-log?empty_message=Nothing+logged")
+
+        # Then the empty message is in the response
+        assert b"Nothing logged" in response.data
+
+
+class TestAuditLogWrapperComponent:
+    """Tests that the <shared.cards.AuditLog /> wrapper renders correct HTMX."""
+
+    def test_wrapper_points_at_audit_log_endpoint(
+        self, client: FlaskClient, mock_global_context
+    ) -> None:
+        """Verify the wrapper's hx-get URL targets /cards/audit-log."""
+        # Given an app context for url_for
+        from vweb import catalog
+
+        # When rendering the wrapper with a character scope
+        with client.application.test_request_context():
+            html = catalog.render("shared.cards.AuditLog", character_id="ch-1", page_size=15)
+
+        # Then the hx-get URL is /cards/audit-log with filters in the query
+        assert "/cards/audit-log" in html
+        assert "character_id=ch-1" in html
+        assert "page_size=15" in html
+        assert 'hx-trigger="load"' in html
+
+    def test_wrapper_drops_empty_filter_kwargs(
+        self, client: FlaskClient, mock_global_context
+    ) -> None:
+        """Verify unset filter kwargs don't appear as empty query args."""
+        from vweb import catalog
+
+        # When rendering the wrapper with only one filter set
+        with client.application.test_request_context():
+            html = catalog.render("shared.cards.AuditLog", campaign_id="c-1")
+
+        # Then other filter kwargs are absent from the URL
+        assert "user_id=" not in html
+        assert "character_id=" not in html
+        assert "book_id=" not in html
