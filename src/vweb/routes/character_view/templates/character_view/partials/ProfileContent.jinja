@@ -5,7 +5,7 @@
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
   {# Bio #}
-  <div class="card bg-base-100 shadow-sm">
+  <div class="card surface-card">
     <div class="card-body">
       <h2 class="card-title">Biography</h2>
       {% if character.biography and character.biography != "None" %}
@@ -19,7 +19,7 @@
   </div>
   {# Concept #}
   {% if concept %}
-    <div class="card bg-base-100 shadow-sm">
+    <div class="card surface-card">
       <div class="card-body">
         <h2 class="card-title">Concept: {{ concept.name }}</h2>
         <p class="prose max-w-none">{{ concept.description }}</p>

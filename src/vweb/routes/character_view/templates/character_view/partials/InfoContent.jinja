@@ -3,7 +3,7 @@
 {% set editable_param = 'true' if can_edit_character(character) else 'false' %}
 
 <div class="grid grid-cols-1 gap-4">
-  <div class="card bg-base-100 shadow-sm">
+  <div class="card surface-card">
     <div class="card-body">
       <div id="crud-inventory"
            hx-get="{{ url_for("character_view.character_inventory", parent_id=character.id) }}?editable={{ editable_param }}"
@@ -16,7 +16,7 @@
     </div>
   </div>
 
-  <div class="card bg-base-100 shadow-sm">
+  <div class="card surface-card">
     <div class="card-body">
       <div id="crud-notes"
            hx-get="{{ url_for("character_view.character_notes", parent_id=character.id) }}?editable={{ editable_param }}"
