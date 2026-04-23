@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from vclient.testing import RollStatisticsFactory
+from vclient.testing import AuditLogFactory, RollStatisticsFactory, Routes
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
@@ -245,3 +245,71 @@ class TestRecentDiceRollsWrapperComponent:
         # Then unused scope kwargs do NOT appear in the URL at all
         assert "user_id=" not in html
         assert "character_id=" not in html
+
+
+@pytest.fixture
+def _audit_log_rows(fake_vclient, mock_global_context) -> list:
+    """Seed the fake vclient with a default page of audit logs."""
+    user = mock_global_context.users[0]
+    logs = [
+        AuditLogFactory.build(
+            acting_user_id=user.id,
+            user_id=None,
+            campaign_id=None,
+            character_id=None,
+            book_id=None,
+            chapter_id=None,
+            changes=None,
+        )
+        for _ in range(3)
+    ]
+    fake_vclient.set_response(
+        Routes.COMPANIES_AUDIT_LOGS_LIST,
+        items=[log.model_dump(mode="json") for log in logs],
+    )
+    return logs
+
+
+class TestAuditLogCardEndpoint:
+    """Tests for GET /cards/audit-log."""
+
+    @pytest.mark.usefixtures("_audit_log_rows")
+    def test_no_filters_returns_200(self, client: FlaskClient, mock_global_context) -> None:
+        """Verify an unscoped request renders a 200 response."""
+        # When requesting /cards/audit-log with no filters
+        response = client.get("/cards/audit-log")
+
+        # Then the response is 200
+        assert response.status_code == 200
+
+    def test_filters_forwarded_to_vclient(
+        self, client: FlaskClient, mock_global_context, mocker
+    ) -> None:
+        """Verify all filter query args are forwarded to get_audit_log_page."""
+        # Given a patched get_audit_log_page
+        mock_page = mocker.MagicMock(items=[], has_more=False, total=0)
+        mock_fn = mocker.patch(
+            "vweb.routes.fragments_shared_cards.views.get_audit_log_page",
+            autospec=True,
+            return_value=mock_page,
+        )
+
+        # When requesting with all six filter kwargs populated
+        response = client.get(
+            "/cards/audit-log"
+            "?acting_user_id=a1&user_id=u1&campaign_id=c1"
+            "&book_id=b1&chapter_id=ch1&character_id=char1"
+            "&page_size=15&offset=30"
+        )
+
+        # Then the helper receives every filter by keyword
+        assert response.status_code == 200
+        kwargs = mock_fn.call_args.kwargs
+        assert kwargs["acting_user_id"] == "a1"
+        assert kwargs["user_id"] == "u1"
+        assert kwargs["campaign_id"] == "c1"
+        assert kwargs["book_id"] == "b1"
+        assert kwargs["chapter_id"] == "ch1"
+        assert kwargs["character_id"] == "char1"
+        assert kwargs["limit"] == 15
+        assert kwargs["offset"] == 30

@@ -7,11 +7,17 @@ its ``hx-get`` at an endpoint here.
 
 from __future__ import annotations
 
-from flask import Blueprint, abort, request
+from flask import Blueprint, abort, g, request
 from flask.views import MethodView
 
 from vweb import catalog
 from vweb.lib.api import get_recent_player_dicerolls
+from vweb.lib.audit_log import (
+    get_audit_log_page,
+    resolve_acting_user,
+    resolve_entities,
+    split_changes,
+)
 from vweb.lib.statistics_cache import ScopeType, get_statistics
 
 bp = Blueprint("shared_cards", __name__, url_prefix="/cards")
@@ -78,5 +84,63 @@ class DiceRollsCardView(MethodView):
 bp.add_url_rule(
     "/dice-rolls",
     view_func=DiceRollsCardView.as_view("dice_rolls"),
+    methods=["GET"],
+)
+
+
+class AuditLogCardView(MethodView):
+    """Lazy audit log card with server-side Prev/Next pagination.
+
+    Trusts the caller — the parent template decides where to render the card.
+    The vclient API still enforces company-scoped authorization.
+    """
+
+    def get(self) -> str:
+        """Fetch a page of audit log entries and render the card fragment."""
+        filter_keys = (
+            "acting_user_id",
+            "user_id",
+            "campaign_id",
+            "book_id",
+            "chapter_id",
+            "character_id",
+        )
+        filters = {key: request.args.get(key, "") for key in filter_keys}
+        page_size = request.args.get("page_size", 10, type=int)
+        offset = request.args.get("offset", 0, type=int)
+
+        page = get_audit_log_page(limit=page_size, offset=offset, **filters)
+
+        # Scope-skip: hide entity links that duplicate an already-active scope filter.
+        # acting_user_id filters by "who performed the action" and is NOT paired with
+        # a resolved entity label; only the 5 "affected entity" filters go here.
+        scope_skip_ids = {
+            filters[key]
+            for key in ("user_id", "campaign_id", "book_id", "chapter_id", "character_id")
+            if filters[key]
+        }
+
+        context = g.global_context
+        rows = []
+        for log in page.items:
+            field_diffs, other_entries = split_changes(log.changes)
+            rows.append(
+                {
+                    "log": log,
+                    "acting_user": resolve_acting_user(log.acting_user_id, context),
+                    "entities": resolve_entities(log, context, skip_ids=scope_skip_ids),
+                    "field_diffs": field_diffs,
+                    "other_entries": other_entries,
+                }
+            )
+
+        # Templates are added in Task 6. For now, return a placeholder so the
+        # endpoint responds 200 and tests can verify filter forwarding.
+        return f"<!-- audit log card: {len(rows)} rows -->"
+
+
+bp.add_url_rule(
+    "/audit-log",
+    view_func=AuditLogCardView.as_view("audit_log"),
     methods=["GET"],
 )
