@@ -82,6 +82,16 @@ class TestFormatChangeValue:
         assert '"name"' in html
         assert '"Alice"' in html
 
+    def test_list_with_html_content_is_escaped(self) -> None:
+        """Verify HTML special characters inside a list are escaped in the pre block."""
+        # Given a list containing HTML injection attempt
+        result = format_change_value(["<script>alert(1)</script>"])
+
+        # Then the script tag is escaped
+        html = str(result)
+        assert "<script>" not in html
+        assert "&lt;script&gt;" in html
+
     def test_datetime_falls_back_via_default_str(self) -> None:
         """Verify a datetime nested in a list renders via default=str (JSON-safe)."""
         # Given a list containing a datetime

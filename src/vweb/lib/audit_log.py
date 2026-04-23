@@ -36,16 +36,24 @@ def format_change_value(value: Any) -> Markup:
     None becomes a muted em-dash, booleans become Yes/No, lists and dicts become
     pretty-printed JSON inside a <pre> block, and other scalars become
     HTML-escaped strings.
+
+    Args:
+        value: The raw change value from an AuditLog.changes dict entry.
+
+    Returns:
+        Markup: Safe HTML ready to render without further escaping.
     """
     if value is None:
         return Markup('<em class="opacity-40">—</em>')
     if isinstance(value, bool):
-        return Markup("Yes" if value else "No")  # noqa: S704
+        return Markup("Yes") if value else Markup("No")
     if isinstance(value, (list, dict)):
         pretty = json.dumps(value, indent=2, sort_keys=True, default=str)
         # Escape only chars that matter in HTML text content; leave quotes literal so
         # JSON double-quoted strings remain readable in the rendered <pre> block.
         safe_content = pretty.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        # S704: safe because safe_content is built from manual &/</> replacement above,
+        # not from untrusted input passed directly — ruff can't statically verify this.
         return Markup(  # noqa: S704
             f'<pre class="text-xs whitespace-pre-wrap break-words">{safe_content}</pre>'
         )
@@ -57,9 +65,16 @@ def split_changes(
 ) -> tuple[list[FieldDiff], list[OtherEntry]]:
     """Parse an AuditLog.changes dict into canonical field diffs plus off-shape entries.
 
-    Canonical shape is ``{field: {"old": ..., "new": ...}}`` (extra keys tolerated).
+    Canonical shape is `{field: {"old": ..., "new": ...}}` (extra keys tolerated).
     Anything that doesn't match — flat scalars, differently-nested dicts — surfaces
     as OtherEntry so nothing is silently dropped.
+
+    Args:
+        changes: The raw changes dict from an AuditLog entry, or None.
+
+    Returns:
+        A two-tuple of (diffs, others) where diffs contains FieldDiff objects for
+        canonical entries and others contains OtherEntry objects for everything else.
     """
     diffs: list[FieldDiff] = []
     others: list[OtherEntry] = []
