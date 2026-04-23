@@ -12,6 +12,7 @@ from vweb.lib.api import (
     fetch_campaign_or_404,
     get_campaign_name,
     get_chapter_count_for_campaign,
+    get_recent_player_dicerolls,
     get_user_campaign_experience,
     get_visible_characters_for_campaign,
     validate_and_submit_experience,
@@ -73,6 +74,7 @@ class CampaignView(MethodView):
         campaign_statistics = get_campaign_statistics(campaign_id)
         campaign_experience = get_user_campaign_experience(user_id, campaign_id)
         chapter_count = get_chapter_count_for_campaign(campaign_id)
+        recent_dicerolls = get_recent_player_dicerolls(campaign_id)
 
         return catalog.render(
             "campaign.CampaignDetail",
@@ -83,6 +85,7 @@ class CampaignView(MethodView):
             chapter_count=chapter_count,
             campaign_statistics=campaign_statistics,
             campaign_experience=campaign_experience,
+            recent_dicerolls=recent_dicerolls,
             user=g.requesting_user,
         )
 

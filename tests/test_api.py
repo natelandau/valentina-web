@@ -9,15 +9,21 @@ from vclient.testing import (
     CampaignBookFactory,
     CampaignChapterFactory,
     CampaignFactory,
+    CharacterFactory,
     CompanyFactory,
+    DicerollFactory,
+    Routes,
+    TraitFactory,
     UserFactory,
 )
 
+from tests.conftest import make_dice_roll_result
 from tests.helpers import build_global_context
 from vweb.lib.api import (
     get_active_campaign,
     get_chapter_count_for_campaign,
     get_chapters_for_book,
+    get_recent_player_dicerolls,
 )
 from vweb.lib.global_context import GlobalContext
 
@@ -180,3 +186,219 @@ class TestChapterHelpers:
         with app.test_request_context("/"):
             g.global_context = ctx
             assert get_chapter_count_for_campaign("camp1") == 0
+
+
+class TestGetRecentPlayerDicerolls:
+    """Tests for get_recent_player_dicerolls helper in lib/api.py."""
+
+    def _make_context(self, *, user, characters, campaign) -> GlobalContext:
+        """Build a GlobalContext aligned with the user's role for the helper tests."""
+        return build_global_context(
+            user_role=user.role,
+            user=user,
+            campaign=campaign,
+            characters=characters,
+        )
+
+    def test_filters_out_non_player_characters_and_rolls_without_character(
+        self, app, fake_vclient, mocker
+    ) -> None:
+        """Verify only rolls for PLAYER-type characters in the campaign are returned."""
+        # Given player, storyteller, and no-character rolls
+        campaign = CampaignFactory.build(id="camp-1")
+        user = UserFactory.build(id="user-1", username="alice", role="PLAYER")
+        player_char = CharacterFactory.build(
+            id="char-player", type="PLAYER", name="Hero", campaign_id=campaign.id
+        )
+        storyteller_char = CharacterFactory.build(
+            id="char-st", type="STORYTELLER", name="Villain", campaign_id=campaign.id
+        )
+
+        player_roll = DicerollFactory.build(
+            id="r1",
+            character_id="char-player",
+            user_id="user-1",
+            dice_size=10,
+            trait_ids=[],
+            result=make_dice_roll_result(),
+        )
+        storyteller_roll = DicerollFactory.build(
+            id="r2",
+            character_id="char-st",
+            user_id="user-1",
+            dice_size=10,
+            trait_ids=[],
+            result=make_dice_roll_result(),
+        )
+        no_character_roll = DicerollFactory.build(
+            id="r3",
+            character_id=None,
+            user_id="user-1",
+            dice_size=10,
+            trait_ids=[],
+            result=make_dice_roll_result(),
+        )
+
+        fake_vclient.set_response(
+            Routes.DICEROLLS_LIST,
+            items=[player_roll, storyteller_roll, no_character_roll],
+        )
+        mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+
+        ctx = self._make_context(
+            user=user, characters=[player_char, storyteller_char], campaign=campaign
+        )
+
+        with app.test_request_context("/"):
+            session["company_id"] = "test-company-id"
+            g.global_context = ctx
+            g.requesting_user = user
+
+            # When fetching recent player dicerolls
+            result = get_recent_player_dicerolls(campaign.id)
+
+        # Then only the player character's roll is kept
+        assert [row.id for row in result] == ["r1"]
+        assert result[0].character_name == "Hero"
+        assert result[0].dice_size == 10
+
+    def test_resolves_username_and_trait_names(self, app, fake_vclient, mocker) -> None:
+        """Verify username resolves from ctx.users and trait names resolve from the blueprint cache."""
+        # Given a player character and a roll with two trait ids
+        campaign = CampaignFactory.build(id="camp-1")
+        user = UserFactory.build(id="user-1", username="alice", role="PLAYER")
+        player_char = CharacterFactory.build(
+            id="char-player", type="PLAYER", name="Hero", campaign_id=campaign.id
+        )
+        strength = TraitFactory.build(id="t-str", name="Strength")
+        brawl = TraitFactory.build(id="t-brawl", name="Brawl")
+        roll = DicerollFactory.build(
+            id="r1",
+            character_id="char-player",
+            user_id="user-1",
+            dice_size=10,
+            num_dice=5,
+            trait_ids=["t-str", "t-brawl", "t-missing"],
+            result=make_dice_roll_result(),
+        )
+
+        fake_vclient.set_response(Routes.DICEROLLS_LIST, items=[roll])
+        mocker.patch(
+            "vweb.lib.api.get_all_traits",
+            return_value={"t-str": strength, "t-brawl": brawl},
+        )
+
+        ctx = self._make_context(user=user, characters=[player_char], campaign=campaign)
+
+        with app.test_request_context("/"):
+            session["company_id"] = "test-company-id"
+            g.global_context = ctx
+            g.requesting_user = user
+
+            # When fetching recent player dicerolls
+            result = get_recent_player_dicerolls(campaign.id)
+
+        # Then the username resolves and known trait names are included in order, unknown ones silently dropped
+        assert len(result) == 1
+        assert result[0].username == "alice"
+        assert result[0].user_id == "user-1"
+        assert result[0].trait_names == ["Strength", "Brawl"]
+
+    def test_returns_rolls_newest_first(self, app, fake_vclient, mocker) -> None:
+        """Verify rolls are ordered by date_created descending regardless of API order."""
+        # Given three rolls returned in a non-chronological order
+        campaign = CampaignFactory.build(id="camp-1")
+        user = UserFactory.build(id="user-1", username="alice", role="PLAYER")
+        player_char = CharacterFactory.build(
+            id="char-player", type="PLAYER", name="Hero", campaign_id=campaign.id
+        )
+
+        def _roll(roll_id: str, when: datetime) -> object:
+            return DicerollFactory.build(
+                id=roll_id,
+                character_id="char-player",
+                user_id="user-1",
+                dice_size=10,
+                trait_ids=[],
+                date_created=when,
+                result=make_dice_roll_result(),
+            )
+
+        oldest = _roll("old", datetime(2026, 1, 1, tzinfo=UTC))
+        middle = _roll("mid", datetime(2026, 2, 1, tzinfo=UTC))
+        newest = _roll("new", datetime(2026, 3, 1, tzinfo=UTC))
+
+        fake_vclient.set_response(Routes.DICEROLLS_LIST, items=[middle, oldest, newest])
+        mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+
+        ctx = self._make_context(user=user, characters=[player_char], campaign=campaign)
+
+        with app.test_request_context("/"):
+            session["company_id"] = "test-company-id"
+            g.global_context = ctx
+            g.requesting_user = user
+
+            # When fetching recent player dicerolls
+            result = get_recent_player_dicerolls(campaign.id)
+
+        # Then the rows are newest-first
+        assert [row.id for row in result] == ["new", "mid", "old"]
+
+    def test_unknown_user_falls_back_to_dash(self, app, fake_vclient, mocker) -> None:
+        """Verify rolls whose user_id is not in ctx.users still render with a '—' username."""
+        campaign = CampaignFactory.build(id="camp-1")
+        user = UserFactory.build(id="user-1", username="alice", role="PLAYER")
+        player_char = CharacterFactory.build(
+            id="char-player", type="PLAYER", name="Hero", campaign_id=campaign.id
+        )
+        roll = DicerollFactory.build(
+            id="r1",
+            character_id="char-player",
+            user_id="stranger",  # not in ctx.users
+            dice_size=10,
+            trait_ids=[],
+            result=make_dice_roll_result(),
+        )
+
+        fake_vclient.set_response(Routes.DICEROLLS_LIST, items=[roll])
+        mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+
+        ctx = self._make_context(user=user, characters=[player_char], campaign=campaign)
+
+        with app.test_request_context("/"):
+            session["company_id"] = "test-company-id"
+            g.global_context = ctx
+            g.requesting_user = user
+
+            result = get_recent_player_dicerolls(campaign.id)
+
+        assert result[0].username == "—"
+        assert result[0].user_id is None
+
+    def test_passes_campaignid_and_limit_to_service(self, app, mocker) -> None:
+        """Verify the campaign id scope and limit are forwarded to the dicerolls service."""
+        campaign = CampaignFactory.build(id="camp-1")
+        user = UserFactory.build(id="user-1", role="PLAYER")
+
+        mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+
+        page = mocker.MagicMock(items=[])
+        fake_service = mocker.MagicMock()
+        fake_service.get_page.return_value = page
+        service_factory = mocker.patch(
+            "vweb.lib.api.sync_dicerolls_service", return_value=fake_service
+        )
+
+        ctx = self._make_context(user=user, characters=[], campaign=campaign)
+
+        with app.test_request_context("/"):
+            session["company_id"] = "test-company-id"
+            g.global_context = ctx
+            g.requesting_user = user
+
+            get_recent_player_dicerolls(campaign.id, limit=25)
+
+        # Then the service is scoped to the requesting user and company
+        service_factory.assert_called_once_with(on_behalf_of=user.id, company_id="test-company-id")
+        # And the page fetch is scoped to the campaign with the requested limit
+        fake_service.get_page.assert_called_once_with(campaignid=campaign.id, limit=25, offset=0)

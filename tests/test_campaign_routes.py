@@ -28,6 +28,8 @@ class TestCampaignView:
         assert response.status_code == 200
         body = response.get_data(as_text=True)
         assert campaign.name in body
+        # And the Recent Dicerolls card is rendered (empty state OK for this smoke check)
+        assert "Recent Dicerolls" in body
 
     def test_stores_campaign_in_session(self, client, mock_global_context) -> None:
         """Verify the selected campaign ID is stored in the session."""

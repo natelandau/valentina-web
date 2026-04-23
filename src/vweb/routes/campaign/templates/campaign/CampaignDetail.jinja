@@ -6,6 +6,7 @@
     chapter_count: int = 0,
     campaign_statistics = None,
     campaign_experience = None,
+    recent_dicerolls: list = [],
     user: User = None,
 #}
 
@@ -37,6 +38,8 @@
       {% endfor %}
 
       <shared.cards.NumberedListCard title={{ campaign.name ~ " Books" }} items={{ books }} pagination={{ 5 }} item_urls={{ book_urls }} empty_message="No books in this campaign" />
+
+      <campaign.components.RecentDiceRollsCard rolls={{ recent_dicerolls }} />
 
       {% if campaign_statistics %}
         <shared.cards.StatisticsCard statistics={{ campaign_statistics }} col_span={{ 2 }} />

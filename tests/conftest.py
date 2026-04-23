@@ -141,6 +141,10 @@ def _mock_api(mocker, mock_global_context) -> None:
         "vweb.routes.campaign.views.get_campaign_statistics",
         return_value=RollStatisticsFactory.build(),
     )
+    mocker.patch(
+        "vweb.routes.campaign.views.get_recent_player_dicerolls",
+        return_value=[],
+    )
 
     mock_dict_svc = mocker.patch("vweb.routes.dictionary.cache.sync_dictionary_service")
     mock_dict_svc.return_value.list_all.return_value = []
