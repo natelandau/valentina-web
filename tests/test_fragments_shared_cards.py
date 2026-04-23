@@ -411,6 +411,7 @@ class TestAuditLogCardEndpoint:
         assert b"Show changes" in response.data
         assert b"Alice" in response.data
         assert b"Bob" in response.data
+        assert b"name" in response.data  # field-name row rendered
 
     def test_off_shape_changes_render_as_list(
         self, client: FlaskClient, fake_vclient, mock_global_context
