@@ -8,13 +8,16 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from flask import url_for
+from flask import session, url_for
 from markupsafe import Markup, escape
+from vclient import sync_companies_service
 
 if TYPE_CHECKING:
     from vclient.models.audit_logs import AuditLog
+    from vclient.models.pagination import PaginatedResponse
 
     from vweb.lib.global_context import GlobalContext
 
@@ -217,3 +220,59 @@ def _resolve_book(
             url_for("book_view.book_detail", campaign_id=campaign_id, book_id=book.id),
         )
     return ("Book", book.name if book else book_id, None)
+
+
+def get_audit_log_page(  # noqa: PLR0913
+    *,
+    limit: int = 10,
+    offset: int = 0,
+    acting_user_id: str = "",
+    user_id: str = "",
+    campaign_id: str = "",
+    book_id: str = "",
+    chapter_id: str = "",
+    character_id: str = "",
+    entity_type: str = "",
+    operation: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> PaginatedResponse[AuditLog]:
+    """Fetch a page of audit log entries for the current company.
+
+    Single canonical wrapper used by both the admin audit log page and the shared
+    audit log card. Empty-string filter values are coerced to None; non-empty
+    date strings are parsed via `datetime.fromisoformat`.
+
+    Args:
+        limit: Maximum number of entries per page.
+        offset: Number of entries to skip.
+        acting_user_id: Filter by the user who performed the action.
+        user_id: Filter by the user affected by the action.
+        campaign_id: Filter by campaign.
+        book_id: Filter by book.
+        chapter_id: Filter by chapter.
+        character_id: Filter by character.
+        entity_type: Filter by entity type (e.g. "CAMPAIGN", "CHARACTER").
+        operation: Filter by operation type (CREATE, UPDATE, DELETE).
+        date_from: ISO-8601 date string for the start of the range.
+        date_to: ISO-8601 date string for the end of the range.
+
+    Returns:
+        A PaginatedResponse of AuditLog entries from the vclient service.
+    """
+    company_id: str = session["company_id"]
+    return sync_companies_service().get_audit_log_page(  # ty:ignore[invalid-return-type]
+        company_id,
+        limit=limit,
+        offset=offset,
+        acting_user_id=acting_user_id or None,
+        user_id=user_id or None,
+        campaign_id=campaign_id or None,
+        book_id=book_id or None,
+        chapter_id=chapter_id or None,
+        character_id=character_id or None,
+        entity_type=entity_type or None,  # ty:ignore[invalid-argument-type]
+        operation=operation or None,  # ty:ignore[invalid-argument-type]
+        date_from=datetime.fromisoformat(date_from) if date_from else None,
+        date_to=datetime.fromisoformat(date_to) if date_to else None,
+    )

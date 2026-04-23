@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import pytest
+from flask import session
 from vclient.testing import (
     AuditLogFactory,
     CharacterFactory,
@@ -15,6 +17,7 @@ from vweb.lib.audit_log import (
     FieldDiff,
     OtherEntry,
     format_change_value,
+    get_audit_log_page,
     resolve_acting_user,
     resolve_entities,
     split_changes,
@@ -350,3 +353,86 @@ class TestResolveEntitiesSkipIds:
         # Then only the campaign remains
         assert len(result) == 1
         assert result[0][0] == "Campaign"
+
+
+class TestGetAuditLogPage:
+    """Tests for the canonical vclient wrapper."""
+
+    def test_all_filters_forwarded(self, app: Flask, mocker) -> None:
+        """Verify all non-empty filters are forwarded with dates parsed."""
+        # Given a mocked companies service
+        mock_svc = MagicMock()
+        mock_svc.get_audit_log_page.return_value = MagicMock()
+        mocker.patch(
+            "vweb.lib.audit_log.sync_companies_service",
+            return_value=mock_svc,
+        )
+
+        with app.test_request_context():
+            session["company_id"] = "test-company-id"
+
+            # When calling with every filter populated
+            get_audit_log_page(
+                limit=25,
+                offset=50,
+                acting_user_id="u-1",
+                user_id="u-2",
+                campaign_id="c-1",
+                book_id="b-1",
+                chapter_id="ch-1",
+                character_id="char-1",
+                entity_type="CAMPAIGN",
+                operation="UPDATE",
+                date_from="2026-01-01",
+                date_to="2026-01-31",
+            )
+
+        # Then the API receives parsed kwargs including datetimes
+        mock_svc.get_audit_log_page.assert_called_once_with(
+            "test-company-id",
+            limit=25,
+            offset=50,
+            acting_user_id="u-1",
+            user_id="u-2",
+            campaign_id="c-1",
+            book_id="b-1",
+            chapter_id="ch-1",
+            character_id="char-1",
+            entity_type="CAMPAIGN",
+            operation="UPDATE",
+            date_from=datetime.fromisoformat("2026-01-01"),
+            date_to=datetime.fromisoformat("2026-01-31"),
+        )
+
+    def test_empty_filters_become_none(self, app: Flask, mocker) -> None:
+        """Verify empty-string filters are coerced to None before the API call."""
+        # Given a mocked companies service
+        mock_svc = MagicMock()
+        mock_svc.get_audit_log_page.return_value = MagicMock()
+        mocker.patch(
+            "vweb.lib.audit_log.sync_companies_service",
+            return_value=mock_svc,
+        )
+
+        with app.test_request_context():
+            session["company_id"] = "test-company-id"
+
+            # When calling with no filters set
+            get_audit_log_page(limit=10, offset=0)
+
+        # Then all filters are None and dates are absent
+        mock_svc.get_audit_log_page.assert_called_once_with(
+            "test-company-id",
+            limit=10,
+            offset=0,
+            acting_user_id=None,
+            user_id=None,
+            campaign_id=None,
+            book_id=None,
+            chapter_id=None,
+            character_id=None,
+            entity_type=None,
+            operation=None,
+            date_from=None,
+            date_to=None,
+        )
