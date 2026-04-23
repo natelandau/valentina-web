@@ -258,7 +258,7 @@ def get_audit_log_page(  # noqa: PLR0913
         date_to: ISO-8601 date string for the end of the range.
 
     Returns:
-        A PaginatedResponse of AuditLog entries from the vclient service.
+        PaginatedResponse[AuditLog]: Paginated audit log entries for the current company.
     """
     company_id: str = session["company_id"]
     return sync_companies_service().get_audit_log_page(  # ty:ignore[invalid-return-type]

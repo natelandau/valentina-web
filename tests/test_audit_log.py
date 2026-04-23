@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 from flask import session
@@ -361,10 +360,11 @@ class TestGetAuditLogPage:
     def test_all_filters_forwarded(self, app: Flask, mocker) -> None:
         """Verify all non-empty filters are forwarded with dates parsed."""
         # Given a mocked companies service
-        mock_svc = MagicMock()
-        mock_svc.get_audit_log_page.return_value = MagicMock()
+        mock_svc = mocker.MagicMock()
+        mock_svc.get_audit_log_page.return_value = mocker.MagicMock()
         mocker.patch(
             "vweb.lib.audit_log.sync_companies_service",
+            autospec=True,
             return_value=mock_svc,
         )
 
@@ -407,10 +407,11 @@ class TestGetAuditLogPage:
     def test_empty_filters_become_none(self, app: Flask, mocker) -> None:
         """Verify empty-string filters are coerced to None before the API call."""
         # Given a mocked companies service
-        mock_svc = MagicMock()
-        mock_svc.get_audit_log_page.return_value = MagicMock()
+        mock_svc = mocker.MagicMock()
+        mock_svc.get_audit_log_page.return_value = mocker.MagicMock()
         mocker.patch(
             "vweb.lib.audit_log.sync_companies_service",
+            autospec=True,
             return_value=mock_svc,
         )
 
