@@ -96,7 +96,12 @@ class AuditLogCardView(MethodView):
     """
 
     def get(self) -> str:
-        """Fetch a page of audit log entries and render the card fragment."""
+        """Return an HTMX fragment for the audit log card, scoped by optional filter args.
+
+        Reads up to six filter query args (acting_user_id, user_id, campaign_id, book_id,
+        chapter_id, character_id) plus page_size and offset. Scope-active entity IDs are
+        excluded from per-row entity links to avoid redundant context.
+        """
         filter_keys = (
             "acting_user_id",
             "user_id",

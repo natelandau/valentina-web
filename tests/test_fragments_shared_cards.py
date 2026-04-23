@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
     from flask.testing import FlaskClient
     from pytest_mock import MockerFixture
+    from vclient.models.audit_logs import AuditLog
 
 
 @pytest.fixture
@@ -248,7 +249,7 @@ class TestRecentDiceRollsWrapperComponent:
 
 
 @pytest.fixture
-def _audit_log_rows(fake_vclient, mock_global_context) -> list:
+def _audit_log_rows(fake_vclient, mock_global_context) -> list[AuditLog]:
     """Seed the fake vclient with a default page of audit logs."""
     user = mock_global_context.users[0]
     logs = [
@@ -274,7 +275,7 @@ class TestAuditLogCardEndpoint:
     """Tests for GET /cards/audit-log."""
 
     @pytest.mark.usefixtures("_audit_log_rows")
-    def test_no_filters_returns_200(self, client: FlaskClient, mock_global_context) -> None:
+    def test_no_filters_returns_200(self, client: FlaskClient) -> None:
         """Verify an unscoped request renders a 200 response."""
         # When requesting /cards/audit-log with no filters
         response = client.get("/cards/audit-log")
