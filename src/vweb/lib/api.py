@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from flask import abort, g, session
+from vclient import sync_dicerolls_service
 from vclient.exceptions import APIError
 
+from vweb.lib.blueprint_cache import get_all_traits
 from vweb.lib.guards import is_storyteller
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from vclient.models import CampaignBook, CampaignChapter, Character
     from vclient.models.campaigns import Campaign
+    from vclient.models.diceroll import RollResultType
     from vclient.models.users import CampaignExperience
 
 
@@ -242,6 +248,74 @@ def get_user_campaign_experience(user_id: str, campaign_id: str) -> CampaignExpe
         (exp for exp in user.campaign_experience if exp.campaign_id == campaign_id),
         None,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class DiceRollDisplay:
+    """Pre-resolved dice roll data shaped for the Recent Dicerolls card."""
+
+    id: str
+    character_id: str
+    character_name: str
+    num_dice: int
+    dice_size: int
+    trait_names: list[str]
+    result_type: RollResultType | None
+    result_humanized: str | None
+    date_created: datetime
+
+
+def get_recent_player_dicerolls(campaign_id: str, limit: int = 50) -> list[DiceRollDisplay]:
+    """Return recent dice rolls made for player characters in a campaign.
+
+    Fetch up to ``limit`` most-recent rolls for the campaign (the API already
+    returns them newest-first) and keep only those whose character is a
+    PLAYER-type character in the current campaign. Because filtering happens
+    after the fetch, the returned list may be shorter than ``limit`` when
+    storyteller/NPC rolls intersperse — acceptable for an overview preview.
+
+    Args:
+        campaign_id: The campaign whose rolls to surface.
+        limit: The maximum number of rolls to fetch from the API.
+
+    Returns:
+        Display-ready rows in the API's newest-first order.
+    """
+    service = sync_dicerolls_service(
+        on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
+    )
+    page = service.get_page(campaignid=campaign_id, limit=limit, offset=0)
+
+    ctx = g.global_context
+    player_characters = {
+        character.id: character
+        for character in ctx.characters_by_campaign.get(campaign_id, [])
+        if character.type == "PLAYER"
+    }
+    all_traits = get_all_traits()
+
+    displays: list[DiceRollDisplay] = []
+    for roll in page.items:
+        character = player_characters.get(roll.character_id) if roll.character_id else None
+        if character is None:
+            continue
+
+        trait_names = [all_traits[tid].name for tid in roll.trait_ids if tid in all_traits]
+
+        displays.append(
+            DiceRollDisplay(
+                id=roll.id,
+                character_id=character.id,
+                character_name=character.name,
+                num_dice=roll.num_dice,
+                dice_size=roll.dice_size,
+                trait_names=trait_names,
+                result_type=roll.result.total_result_type if roll.result else None,
+                result_humanized=roll.result.total_result_humanized if roll.result else None,
+                date_created=roll.date_created,
+            )
+        )
+    return displays
 
 
 def validate_and_submit_experience(

@@ -1,0 +1,79 @@
+{#def
+    rolls: list,
+    col_span: int = 1,
+    pagination: int = 5,
+    empty_message: str = "No dicerolls yet",
+#}
+
+{% set grid_col_span = "col-span-" ~ col_span if col_span > 0 else "" %}
+
+{# Label + weight/color classes per RollResultType; None falls back to the Pending entry #}
+{% set result_styles = {
+    "CRITICAL": ("Critical", "font-bold text-success"),
+    "BOTCH":    ("Botch",    "font-bold text-error"),
+    "SUCCESS":  ("Success",  "font-semibold text-success"),
+    "FAILURE":  ("Failure",  "font-semibold text-error"),
+} %}
+
+<div class="card surface-card {{ grid_col_span }}">
+  <div class="card-body">
+    <h2 class="card-title">Recent Dicerolls</h2>
+
+    {% if rolls %}
+      {% if pagination > 0 %}
+        <div x-data="{ currentPage: 1, pageSize: {{ pagination }}, totalItems: {{ rolls|length }}, get totalPages() { return Math.ceil(this.totalItems / this.pageSize) }, listHeight: 0 }"
+             x-init="$nextTick(() => { listHeight = $refs.list.offsetHeight })">
+      {% endif %}
+
+        <ul class="list bg-base-100 rounded-box shadow-md"
+            {% if pagination > 0 %}x-ref="list" :style="listHeight ? 'min-height:' + listHeight + 'px' : ''"{% endif %}>
+          {% for roll in rolls %}
+            <li class="list-row"
+                {% if pagination > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"{% endif %}>
+
+              {# Left column: character/traits on top, date/dice notation below. list-col-grow flexes to fill and pushes the result column to the right edge. #}
+              <div class="list-col-grow min-w-0">
+                <div class="flex items-center gap-2 min-w-0">
+                  <a href="{{ url_for('character_view.character', character_id=roll.character_id) }}"
+                     class="uppercase font-semibold tracking-wide truncate min-w-0">{{ roll.character_name }}</a>
+                  {% if roll.trait_names %}
+                    <span class="text-xs opacity-60 truncate min-w-0">{{ roll.trait_names | join(", ") }}</span>
+                  {% endif %}
+                </div>
+                <div class="flex items-center gap-2 text-xs opacity-60 mt-1">
+                  <span>{{ roll.date_created | humanize_date }}</span>
+                  <span>·</span>
+                  <span class="font-mono">{{ roll.num_dice }}d{{ roll.dice_size }}</span>
+                </div>
+              </div>
+
+              {# Right column: result on top, humanized result below — both plain text, right-aligned to the list edge #}
+              <div class="flex flex-col items-end text-right">
+
+                {% set styled = result_styles.get(roll.result_type) %}
+                {% if styled %}
+                  <span class="uppercase tracking-wide {{ styled[1] }}">{{ styled[0] }}</span>
+                {% elif roll.result_type %}
+                  <span class="font-semibold uppercase tracking-wide">{{ roll.result_type | title }}</span>
+                {% else %}
+                  <span class="font-semibold uppercase tracking-wide opacity-60">Pending</span>
+                {% endif %}
+
+                {% if roll.result_humanized %}
+                  <span class="text-xs opacity-60">{{ roll.result_humanized }}</span>
+                {% endif %}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+
+      {% if pagination > 0 %}
+        <shared.cards.Pagination />
+        </div>
+      {% endif %}
+
+    {% else %}
+      <p class="text-base-content/60 text-sm">{{ empty_message }}</p>
+    {% endif %}
+  </div>
+</div>
