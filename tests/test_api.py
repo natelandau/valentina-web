@@ -262,18 +262,18 @@ class TestGetRecentPlayerDicerolls:
         assert result[0].character_name == "Hero"
         assert result[0].dice_size == 10
 
-    def test_resolves_username_and_trait_names(self, app, fake_vclient, mocker) -> None:
-        """Verify username resolves from ctx.users and trait names resolve from the blueprint cache."""
-        # Given a player character and a roll with two trait ids
+    def test_resolves_trait_names_and_preserves_api_order(self, app, fake_vclient, mocker) -> None:
+        """Verify trait names resolve and the API's newest-first order is preserved as-is."""
+        # Given two player rolls returned by the API in newest-first order
         campaign = CampaignFactory.build(id="camp-1")
-        user = UserFactory.build(id="user-1", username="alice", role="PLAYER")
+        user = UserFactory.build(id="user-1", role="PLAYER")
         player_char = CharacterFactory.build(
             id="char-player", type="PLAYER", name="Hero", campaign_id=campaign.id
         )
         strength = TraitFactory.build(id="t-str", name="Strength")
         brawl = TraitFactory.build(id="t-brawl", name="Brawl")
-        roll = DicerollFactory.build(
-            id="r1",
+        newer = DicerollFactory.build(
+            id="r-newer",
             character_id="char-player",
             user_id="user-1",
             dice_size=10,
@@ -281,8 +281,17 @@ class TestGetRecentPlayerDicerolls:
             trait_ids=["t-str", "t-brawl", "t-missing"],
             result=make_dice_roll_result(),
         )
+        older = DicerollFactory.build(
+            id="r-older",
+            character_id="char-player",
+            user_id="user-1",
+            dice_size=6,
+            num_dice=2,
+            trait_ids=[],
+            result=make_dice_roll_result(),
+        )
 
-        fake_vclient.set_response(Routes.DICEROLLS_LIST, items=[roll])
+        fake_vclient.set_response(Routes.DICEROLLS_LIST, items=[newer, older])
         mocker.patch(
             "vweb.lib.api.get_all_traits",
             return_value={"t-str": strength, "t-brawl": brawl},
@@ -298,82 +307,10 @@ class TestGetRecentPlayerDicerolls:
             # When fetching recent player dicerolls
             result = get_recent_player_dicerolls(campaign.id)
 
-        # Then the username resolves and known trait names are included in order, unknown ones silently dropped
-        assert len(result) == 1
-        assert result[0].username == "alice"
-        assert result[0].user_id == "user-1"
+        # Then API order is preserved and trait names resolve (unknown ids silently dropped)
+        assert [row.id for row in result] == ["r-newer", "r-older"]
         assert result[0].trait_names == ["Strength", "Brawl"]
-
-    def test_returns_rolls_newest_first(self, app, fake_vclient, mocker) -> None:
-        """Verify rolls are ordered by date_created descending regardless of API order."""
-        # Given three rolls returned in a non-chronological order
-        campaign = CampaignFactory.build(id="camp-1")
-        user = UserFactory.build(id="user-1", username="alice", role="PLAYER")
-        player_char = CharacterFactory.build(
-            id="char-player", type="PLAYER", name="Hero", campaign_id=campaign.id
-        )
-
-        def _roll(roll_id: str, when: datetime) -> object:
-            return DicerollFactory.build(
-                id=roll_id,
-                character_id="char-player",
-                user_id="user-1",
-                dice_size=10,
-                trait_ids=[],
-                date_created=when,
-                result=make_dice_roll_result(),
-            )
-
-        oldest = _roll("old", datetime(2026, 1, 1, tzinfo=UTC))
-        middle = _roll("mid", datetime(2026, 2, 1, tzinfo=UTC))
-        newest = _roll("new", datetime(2026, 3, 1, tzinfo=UTC))
-
-        fake_vclient.set_response(Routes.DICEROLLS_LIST, items=[middle, oldest, newest])
-        mocker.patch("vweb.lib.api.get_all_traits", return_value={})
-
-        ctx = self._make_context(user=user, characters=[player_char], campaign=campaign)
-
-        with app.test_request_context("/"):
-            session["company_id"] = "test-company-id"
-            g.global_context = ctx
-            g.requesting_user = user
-
-            # When fetching recent player dicerolls
-            result = get_recent_player_dicerolls(campaign.id)
-
-        # Then the rows are newest-first
-        assert [row.id for row in result] == ["new", "mid", "old"]
-
-    def test_unknown_user_falls_back_to_dash(self, app, fake_vclient, mocker) -> None:
-        """Verify rolls whose user_id is not in ctx.users still render with a '—' username."""
-        campaign = CampaignFactory.build(id="camp-1")
-        user = UserFactory.build(id="user-1", username="alice", role="PLAYER")
-        player_char = CharacterFactory.build(
-            id="char-player", type="PLAYER", name="Hero", campaign_id=campaign.id
-        )
-        roll = DicerollFactory.build(
-            id="r1",
-            character_id="char-player",
-            user_id="stranger",  # not in ctx.users
-            dice_size=10,
-            trait_ids=[],
-            result=make_dice_roll_result(),
-        )
-
-        fake_vclient.set_response(Routes.DICEROLLS_LIST, items=[roll])
-        mocker.patch("vweb.lib.api.get_all_traits", return_value={})
-
-        ctx = self._make_context(user=user, characters=[player_char], campaign=campaign)
-
-        with app.test_request_context("/"):
-            session["company_id"] = "test-company-id"
-            g.global_context = ctx
-            g.requesting_user = user
-
-            result = get_recent_player_dicerolls(campaign.id)
-
-        assert result[0].username == "—"
-        assert result[0].user_id is None
+        assert result[1].trait_names == []
 
     def test_passes_campaignid_and_limit_to_service(self, app, mocker) -> None:
         """Verify the campaign id scope and limit are forwarded to the dicerolls service."""

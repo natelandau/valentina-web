@@ -256,11 +256,8 @@ class DiceRollDisplay:
     id: str
     character_id: str
     character_name: str
-    user_id: str | None
-    username: str
     num_dice: int
     dice_size: int
-    num_desperation_dice: int
     trait_names: list[str]
     result_type: str | None
     result_humanized: str
@@ -270,19 +267,18 @@ class DiceRollDisplay:
 def get_recent_player_dicerolls(campaign_id: str, limit: int = 50) -> list[DiceRollDisplay]:
     """Return recent dice rolls made for player characters in a campaign.
 
-    Fetch up to ``limit`` most-recent rolls for the campaign, keep only those
-    whose character is a PLAYER-type character in the current campaign, and
-    resolve user/character/trait names for compact in-card display. Since
-    filtering happens after the fetch, the returned list may be shorter than
-    ``limit`` when many of the recent rolls belong to storyteller/NPC
-    characters — acceptable for an overview preview.
+    Fetch up to ``limit`` most-recent rolls for the campaign (the API already
+    returns them newest-first) and keep only those whose character is a
+    PLAYER-type character in the current campaign. Because filtering happens
+    after the fetch, the returned list may be shorter than ``limit`` when
+    storyteller/NPC rolls intersperse — acceptable for an overview preview.
 
     Args:
         campaign_id: The campaign whose rolls to surface.
         limit: The maximum number of rolls to fetch from the API.
 
     Returns:
-        Display-ready rows ordered newest first.
+        Display-ready rows in the API's newest-first order.
     """
     service = sync_dicerolls_service(
         on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
@@ -295,19 +291,14 @@ def get_recent_player_dicerolls(campaign_id: str, limit: int = 50) -> list[DiceR
         for character in ctx.characters_by_campaign.get(campaign_id, [])
         if character.type == "PLAYER"
     }
-    users_by_id = {user.id: user for user in ctx.users}
     all_traits = get_all_traits()
 
-    # Sort newest-first locally — the API's default order is not contractually guaranteed
-    rolls_newest_first = sorted(page.items, key=lambda r: r.date_created, reverse=True)
-
     displays: list[DiceRollDisplay] = []
-    for roll in rolls_newest_first:
+    for roll in page.items:
         character = player_characters.get(roll.character_id) if roll.character_id else None
         if character is None:
             continue
 
-        user = users_by_id.get(roll.user_id) if roll.user_id else None
         trait_names = [all_traits[tid].name for tid in roll.trait_ids if tid in all_traits]
 
         displays.append(
@@ -315,11 +306,8 @@ def get_recent_player_dicerolls(campaign_id: str, limit: int = 50) -> list[DiceR
                 id=roll.id,
                 character_id=character.id,
                 character_name=character.name,
-                user_id=user.id if user else None,
-                username=user.username if user else "—",
                 num_dice=roll.num_dice,
                 dice_size=roll.dice_size,
-                num_desperation_dice=roll.num_desperation_dice,
                 trait_names=trait_names,
                 result_type=roll.result.total_result_type if roll.result else None,
                 result_humanized=roll.result.total_result_humanized if roll.result else "",
