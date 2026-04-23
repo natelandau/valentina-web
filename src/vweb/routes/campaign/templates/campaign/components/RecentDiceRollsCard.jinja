@@ -20,39 +20,43 @@
         <ul class="list bg-base-100 rounded-box shadow-md"
             {% if pagination > 0 %}x-ref="list" :style="listHeight ? 'min-height:' + listHeight + 'px' : ''"{% endif %}>
           {% for roll in rolls %}
-            <li class="list-row flex-col items-stretch gap-1 hover:bg-neutral/80 hover:text-neutral-content transition-colors"
+            <li class="list-row hover:bg-neutral/80 hover:text-neutral-content transition-colors"
                 {% if pagination > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"{% endif %}>
+              {# Single grid cell — stack the two lines vertically inside it (daisyUI list-row places children in grid columns) #}
+              <div class="flex flex-col gap-1 min-w-0 w-full">
 
-              {# Row 1: character | traits | result #}
-              <div class="flex items-center gap-2 min-w-0">
-                <a href="{{ url_for('character_view.character', character_id=roll.character_id) }}"
-                   class="uppercase font-semibold tracking-wide truncate min-w-0">{{ roll.character_name }}</a>
+                {# Line 1: character | traits | result #}
+                <div class="flex items-center gap-2 min-w-0">
+                  <a href="{{ url_for('character_view.character', character_id=roll.character_id) }}"
+                     class="uppercase font-semibold tracking-wide truncate min-w-0">{{ roll.character_name }}</a>
 
-                {% if roll.trait_names %}
-                  <span class="text-xs opacity-60 truncate min-w-0 flex-1">{{ roll.trait_names | join(", ") }}</span>
-                {% else %}
-                  <span class="flex-1"></span>
-                {% endif %}
+                  {% if roll.trait_names %}
+                    <span class="text-xs opacity-60 truncate min-w-0 flex-1">{{ roll.trait_names | join(", ") }}</span>
+                  {% else %}
+                    <span class="flex-1"></span>
+                  {% endif %}
 
-                {% if roll.result_type == "CRITICAL" %}
-                  <span class="badge badge-sm badge-success font-bold shrink-0">CRITICAL</span>
-                {% elif roll.result_type == "BOTCH" %}
-                  <span class="badge badge-sm badge-error font-bold shrink-0">BOTCH</span>
-                {% elif roll.result_type == "SUCCESS" %}
-                  <span class="badge badge-sm badge-success badge-outline shrink-0">SUCCESS</span>
-                {% elif roll.result_type == "FAILURE" %}
-                  <span class="badge badge-sm badge-error badge-outline shrink-0">FAILURE</span>
-                {% elif roll.result_type %}
-                  <span class="badge badge-sm badge-neutral badge-outline shrink-0">{{ roll.result_type }}</span>
-                {% else %}
-                  <span class="badge badge-sm badge-ghost shrink-0">PENDING</span>
-                {% endif %}
-              </div>
+                  {% if roll.result_type == "CRITICAL" %}
+                    <span class="badge badge-sm badge-success font-bold shrink-0">CRITICAL</span>
+                  {% elif roll.result_type == "BOTCH" %}
+                    <span class="badge badge-sm badge-error font-bold shrink-0">BOTCH</span>
+                  {% elif roll.result_type == "SUCCESS" %}
+                    <span class="badge badge-sm badge-success badge-outline shrink-0">SUCCESS</span>
+                  {% elif roll.result_type == "FAILURE" %}
+                    <span class="badge badge-sm badge-error badge-outline shrink-0">FAILURE</span>
+                  {% elif roll.result_type %}
+                    <span class="badge badge-sm badge-neutral badge-outline shrink-0">{{ roll.result_type }}</span>
+                  {% else %}
+                    <span class="badge badge-sm badge-ghost shrink-0">PENDING</span>
+                  {% endif %}
+                </div>
 
-              {# Row 2: date on the left, dice notation on the right #}
-              <div class="flex items-center justify-between gap-2 text-xs opacity-60">
-                <span>{{ roll.date_created | humanize_date }}</span>
-                <span class="font-mono">{{ roll.num_dice }}d{{ roll.dice_size }}</span>
+                {# Line 2: date on the left, dice notation on the right #}
+                <div class="flex items-center justify-between gap-2 text-xs opacity-60">
+                  <span>{{ roll.date_created | humanize_date }}</span>
+                  <span class="font-mono">{{ roll.num_dice }}d{{ roll.dice_size }}</span>
+                </div>
+
               </div>
             </li>
           {% endfor %}
