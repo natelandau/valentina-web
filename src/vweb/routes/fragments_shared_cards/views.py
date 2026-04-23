@@ -139,18 +139,25 @@ class AuditLogCardView(MethodView):
                 }
             )
 
-        return catalog.render(
-            "shared.cards.partials.AuditLogContent",
-            rows=rows,
-            page_size=page_size,
-            offset=offset,
-            has_more=page.has_more,
-            filters=filters,
-            card_id=request.args.get("card_id", "auditlog"),
-            col_span=request.args.get("col_span", 0, type=int),
-            title=request.args.get("title", "Audit Log"),
-            empty_message=request.args.get("empty_message", "No audit log entries"),
+        body_only = request.args.get("body_only", "") == "true"
+        template_name = (
+            "shared.cards.partials.AuditLogBody"
+            if body_only
+            else "shared.cards.partials.AuditLogContent"
         )
+        render_kwargs: dict = {
+            "rows": rows,
+            "page_size": page_size,
+            "offset": offset,
+            "has_more": page.has_more,
+            "filters": filters,
+            "card_id": request.args.get("card_id", "auditlog"),
+            "empty_message": request.args.get("empty_message", "No audit log entries"),
+        }
+        if not body_only:
+            render_kwargs["col_span"] = request.args.get("col_span", 0, type=int)
+            render_kwargs["title"] = request.args.get("title", "Audit Log")
+        return catalog.render(template_name, **render_kwargs)
 
 
 bp.add_url_rule(

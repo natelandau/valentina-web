@@ -84,6 +84,31 @@
       </li>
     {% endfor %}
   </ul>
+
+  {# Prev/Next controls #}
+  <div class="flex justify-end mt-2">
+    <div class="join">
+      {% set prev_offset = [offset - page_size, 0] | max %}
+      {# djlint:off #}
+      <button class="join-item btn btn-sm" aria-label="Previous page"
+              {% if offset == 0 %}disabled{% endif %}
+              hx-get="{{ build_fragment_url('shared_cards.audit_log',
+                         offset=prev_offset, page_size=page_size, card_id=card_id,
+                         body_only='true', **filters) }}"
+              hx-target="#{{ card_id }}-body" hx-swap="innerHTML">
+        <i class="fa-solid fa-chevron-left"></i>
+      </button>
+      <button class="join-item btn btn-sm" aria-label="Next page"
+              {% if not has_more %}disabled{% endif %}
+              hx-get="{{ build_fragment_url('shared_cards.audit_log',
+                         offset=(offset + page_size), page_size=page_size, card_id=card_id,
+                         body_only='true', **filters) }}"
+              hx-target="#{{ card_id }}-body" hx-swap="innerHTML">
+        <i class="fa-solid fa-chevron-right"></i>
+      </button>
+      {# djlint:on #}
+    </div>
+  </div>
 {% else %}
   <p class="text-base-content/60 text-sm">{{ empty_message }}</p>
 {% endif %}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -464,6 +465,99 @@ class TestAuditLogCardEndpoint:
 
         # Then the "Character:" label is not in the output (scope-skip)
         assert b"Character:" not in response.data
+
+    @pytest.mark.usefixtures("_audit_log_rows")
+    def test_prev_button_disabled_at_offset_zero(
+        self, client: FlaskClient, mock_global_context
+    ) -> None:
+        """Verify the Prev button is disabled when offset=0."""
+        # When rendering the first page
+        response = client.get("/cards/audit-log")
+
+        # Then the Prev button tag carries the `disabled` attribute
+        match = re.search(
+            r'<button[^>]*aria-label="Previous page"[^>]*>',
+            response.data.decode(),
+        )
+        assert match, "Previous page button not found"
+        assert "disabled" in match.group(0)
+
+    def test_next_button_disabled_when_no_more(
+        self, client: FlaskClient, fake_vclient, mock_global_context
+    ) -> None:
+        """Verify the Next button is disabled when the API reports no more pages."""
+        # Given a single-item page (fake_vclient sets total == len(items), so has_more=False)
+        log = AuditLogFactory.build(
+            user_id=None,
+            campaign_id=None,
+            character_id=None,
+            book_id=None,
+            chapter_id=None,
+            changes=None,
+        )
+        fake_vclient.set_response(
+            Routes.COMPANIES_AUDIT_LOGS_LIST,
+            items=[log.model_dump(mode="json")],
+        )
+
+        # When rendering
+        response = client.get("/cards/audit-log")
+
+        # Then the Next button tag carries the `disabled` attribute
+        match = re.search(
+            r'<button[^>]*aria-label="Next page"[^>]*>',
+            response.data.decode(),
+        )
+        assert match, "Next page button not found"
+        assert "disabled" in match.group(0)
+
+    def test_pagination_urls_carry_filters(
+        self, client: FlaskClient, mock_global_context, mocker
+    ) -> None:
+        """Verify Prev/Next URLs include active filters and body_only=true."""
+        # Given a patched page with has_more=True (the fake client can't express
+        # has_more=True because it always sets total == len(items); patch the helper.)
+        items = [
+            AuditLogFactory.build(
+                user_id=None,
+                campaign_id=None,
+                character_id=None,
+                book_id=None,
+                chapter_id=None,
+                changes=None,
+            )
+            for _ in range(10)
+        ]
+        mock_page = mocker.MagicMock(items=items, has_more=True, total=25, offset=0)
+        mocker.patch(
+            "vweb.routes.fragments_shared_cards.views.get_audit_log_page",
+            autospec=True,
+            return_value=mock_page,
+        )
+
+        # When rendering with an active filter
+        response = client.get("/cards/audit-log?campaign_id=c-1")
+
+        # Then Next URL carries the filter and body_only flag
+        html = response.data.decode()
+        assert "body_only=true" in html
+        assert "campaign_id=c-1" in html
+        assert "offset=10" in html  # next page offset
+
+    @pytest.mark.usefixtures("_audit_log_rows")
+    def test_body_only_renders_body_without_card_chrome(
+        self, client: FlaskClient, mock_global_context
+    ) -> None:
+        """Verify body_only=true renders the inner body without outer card shell."""
+        # When requesting with body_only=true
+        response = client.get("/cards/audit-log?body_only=true")
+
+        # Then the full-card chrome is NOT in the output but the list IS
+        assert response.status_code == 200
+        # The outer card shell is absent
+        assert b'id="auditlog"' not in response.data
+        # But the list of rows is present
+        assert b'class="list ' in response.data
 
 
 class TestAuditLogWrapperComponent:
