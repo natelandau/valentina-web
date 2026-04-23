@@ -266,16 +266,16 @@ class TestResolveActingUser:
         assert name == user.username
         assert user.id in url
 
-    def test_unresolvable_id_returns_raw_id_empty_url(
+    def test_unresolvable_id_returns_deleted_sentinel(
         self, app: Flask, mock_global_context: GlobalContext
     ) -> None:
-        """Verify an unknown acting_user_id falls back to (id, '')."""
+        """Verify an unknown acting_user_id falls back to ('[deleted]', '')."""
         # When resolving an unknown ID
         with app.test_request_context():
             name, url = resolve_acting_user("unknown-user", mock_global_context)
 
-        # Then the raw ID is returned with no URL
-        assert name == "unknown-user"
+        # Then the deleted sentinel is returned with no URL
+        assert name == "[deleted]"
         assert url == ""
 
 

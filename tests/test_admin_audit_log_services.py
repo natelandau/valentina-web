@@ -166,7 +166,7 @@ class TestResolveEntities:
     def test_unresolvable_id_falls_back(
         self, app: Flask, mock_global_context: GlobalContext
     ) -> None:
-        """Verify an unknown user_id falls back to raw ID with None URL."""
+        """Verify an unknown user_id falls back to the deleted sentinel with no URL."""
         # Given an audit log with a user_id not in context
         log = AuditLogFactory.build(
             user_id="unknown-user-id",
@@ -180,11 +180,11 @@ class TestResolveEntities:
             # When resolving entities
             result = resolve_entities(log, mock_global_context)
 
-        # Then the raw ID is returned with no URL
+        # Then the deleted sentinel is returned with no URL
         assert len(result) == 1
         label, name, url = result[0]
         assert label == "User"
-        assert name == "unknown-user-id"
+        assert name == "[deleted]"
         assert url is None
 
     def test_multiple_entity_ids_resolved(
@@ -267,9 +267,11 @@ class TestResolveEntities:
         assert result[1][2] is not None
         assert book.id in result[1][2]
 
-    def test_chapter_id_shows_raw_id(self, app: Flask, mock_global_context: GlobalContext) -> None:
-        """Verify chapter_id is shown as raw ID with no URL."""
-        # Given an audit log with a chapter_id
+    def test_unresolvable_chapter_shows_deleted_sentinel(
+        self, app: Flask, mock_global_context: GlobalContext
+    ) -> None:
+        """Verify an unknown chapter_id falls back to the deleted sentinel with no URL."""
+        # Given an audit log with a chapter_id that isn't in context
         log = AuditLogFactory.build(
             user_id=None,
             campaign_id=None,
@@ -282,9 +284,9 @@ class TestResolveEntities:
             # When resolving entities
             result = resolve_entities(log, mock_global_context)
 
-        # Then chapter shows raw ID with no URL
+        # Then the deleted sentinel is returned with no URL
         assert len(result) == 1
         label, name, url = result[0]
         assert label == "Chapter"
-        assert name == "chapter-abc"
+        assert name == "[deleted]"
         assert url is None

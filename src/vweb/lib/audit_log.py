@@ -23,6 +23,10 @@ if TYPE_CHECKING:
 
 ENTITY_TYPES: list[str] = sorted(get_args(AuditLog.model_fields["entity_type"].annotation))
 
+# Display-name sentinel shown in the audit log UI when an entity ID can't be
+# resolved in the request-scoped GlobalContext (e.g. the entity was deleted).
+_DELETED_SENTINEL = "[deleted]"
+
 
 @dataclass(frozen=True)
 class FieldDiff:
@@ -128,7 +132,7 @@ def resolve_acting_user(
     user = next((u for u in context.users if u.id == acting_user_id), None)
     if user:
         return (user.username, url_for("profile.profile", user_id=user.id))
-    return (acting_user_id, "")
+    return (_DELETED_SENTINEL, "")
 
 
 def resolve_entities(
@@ -169,7 +173,7 @@ def resolve_entities(
         results.append(_resolve_book(log.book_id, log.campaign_id, context))
 
     if log.chapter_id and log.chapter_id not in skip_ids:
-        results.append(("Chapter", log.chapter_id, None))
+        results.append(_resolve_chapter(log.chapter_id, log.book_id, log.campaign_id, context))
 
     return results
 
@@ -178,7 +182,7 @@ def _resolve_user(user_id: str, context: GlobalContext) -> tuple[str, str, str |
     user = next((u for u in context.users if u.id == user_id), None)
     if user:
         return ("User", user.username, url_for("profile.profile", user_id=user.id))
-    return ("User", user_id, None)
+    return ("User", _DELETED_SENTINEL, None)
 
 
 def _resolve_campaign(campaign_id: str, context: GlobalContext) -> tuple[str, str, str | None]:
@@ -189,7 +193,7 @@ def _resolve_campaign(campaign_id: str, context: GlobalContext) -> tuple[str, st
             campaign.name,
             url_for("campaign.campaign", campaign_id=campaign.id),
         )
-    return ("Campaign", campaign_id, None)
+    return ("Campaign", _DELETED_SENTINEL, None)
 
 
 def _resolve_character(character_id: str, context: GlobalContext) -> tuple[str, str, str | None]:
@@ -200,7 +204,7 @@ def _resolve_character(character_id: str, context: GlobalContext) -> tuple[str, 
             character.name,
             url_for("character_view.character", character_id=character.id),
         )
-    return ("Character", character_id, None)
+    return ("Character", _DELETED_SENTINEL, None)
 
 
 def _resolve_book(
@@ -221,7 +225,38 @@ def _resolve_book(
             book.name,
             url_for("book_view.book_detail", campaign_id=campaign_id, book_id=book.id),
         )
-    return ("Book", book.name if book else book_id, None)
+    return ("Book", book.name if book else _DELETED_SENTINEL, None)
+
+
+def _resolve_chapter(
+    chapter_id: str,
+    book_id: str | None,
+    campaign_id: str | None,
+    context: GlobalContext,
+) -> tuple[str, str, str | None]:
+    # Narrow search to the specific book when possible
+    if book_id and book_id in context.chapters_by_book:
+        chapters = context.chapters_by_book[book_id]
+    else:
+        chapters = [
+            chapter
+            for book_chapters in context.chapters_by_book.values()
+            for chapter in book_chapters
+        ]
+
+    chapter = next((c for c in chapters if c.id == chapter_id), None)
+    if chapter and campaign_id and book_id:
+        return (
+            "Chapter",
+            chapter.name,
+            url_for(
+                "chapter_view.chapter_detail",
+                campaign_id=campaign_id,
+                book_id=book_id,
+                chapter_id=chapter.id,
+            ),
+        )
+    return ("Chapter", chapter.name if chapter else _DELETED_SENTINEL, None)
 
 
 def get_audit_log_page(  # noqa: PLR0913
