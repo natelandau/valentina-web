@@ -58,9 +58,11 @@
                   </div>
                   <span class="badge badge-sm badge-outline">{{ user.role | title }}</span>
                 </div>
-                <div class="mt-1 text-xs opacity-60 flex items-center gap-2 [&>*+*]:before:content-['·'] [&>*+*]:before:mr-2">
+                <div class="mt-1 text-xs opacity-60 flex items-center gap-2">
                   <span class="font-mono"><i class="fa-solid fa-star"></i> {{ campaign_experience.xp_current if campaign_experience else 0 }} Available XP</span>
+                  <span aria-hidden="true">|</span>
                   <span class="font-mono">{{ campaign_experience.xp_total if campaign_experience else 0 }} Lifetime XP</span>
+                  <span aria-hidden="true">|</span>
                   <span class="font-mono">{{ campaign_experience.cool_points if campaign_experience else 0 }} CP</span>
                 </div>
               </a>

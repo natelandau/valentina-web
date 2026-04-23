@@ -12,12 +12,16 @@ from vclient import sync_companies_service
 from vclient.models.companies import CompanySettingsUpdate, CompanyUpdate
 
 from vweb import catalog
+from vweb.lib.audit_log import (
+    ENTITY_TYPES,
+    get_audit_log_page,
+    resolve_acting_user,
+    resolve_entities,
+)
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import is_admin, is_self
 from vweb.lib.jinja import htmx_response, hx_redirect
-from vweb.routes.admin import audit_log_services
 from vweb.routes.admin import services as admin_services
-from vweb.routes.admin.audit_log_services import ENTITY_TYPES
 
 if TYPE_CHECKING:
     from werkzeug.wrappers.response import Response
@@ -154,7 +158,7 @@ class AuditLogTableView(MethodView):
         date_from = request.args.get("date_from", "")
         date_to = request.args.get("date_to", "")
 
-        page = audit_log_services.get_audit_log_page(
+        page = get_audit_log_page(
             limit=PAGE_SIZE,
             offset=offset,
             entity_type=entity_type,
@@ -167,10 +171,8 @@ class AuditLogTableView(MethodView):
         context = g.global_context
         rows = []
         for log in page.items:
-            entities = audit_log_services.resolve_entities(log, context)
-            acting_name, acting_url = audit_log_services.resolve_acting_user(
-                log.acting_user_id, context
-            )
+            entities = resolve_entities(log, context)
+            acting_name, acting_url = resolve_acting_user(log.acting_user_id, context)
 
             rows.append(
                 {

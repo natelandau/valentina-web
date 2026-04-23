@@ -1,0 +1,114 @@
+{#def
+    rows: list, page_size: int, offset: int, has_more: bool, filters: dict,
+    card_id: str,
+    empty_message: str = "No audit log entries",
+#}
+
+{% if rows %}
+  <ul class="list bg-base-100 rounded-box shadow-md"
+      style="min-height: {{ page_size * 5.5 }}rem;">
+    {% for row in rows %}
+      <li class="list-row" x-data="{ open: false }">
+        <div class="list-col-grow min-w-0">
+          {# Line 1: description (left, truncated) + date (right) #}
+          <div class="flex items-center justify-between gap-2 min-w-0">
+            <span class="font-semibold truncate">
+              {{ row.log.description or row.log.summary or "" }}
+            </span>
+            <span class="text-xs opacity-60 whitespace-nowrap">
+              {{ row.log.date_created | humanize_date }}
+            </span>
+          </div>
+
+          {# Line 2: acting user (left) + related entity links (right) #}
+          <div class="flex items-center justify-between gap-2 text-xs mt-1 min-w-0">
+            <span>
+              {% set acting_name, acting_url = row.acting_user %}
+              {% if acting_url %}
+                <a href="{{ acting_url }}" class="link link-info link-hover">{{ acting_name }}</a>
+              {% elif acting_name %}
+                {{ acting_name }}
+              {% else %}
+                <span class="opacity-40 italic">system</span>
+              {% endif %}
+            </span>
+            <span class="flex flex-wrap gap-x-3 gap-y-1 opacity-80 text-right">
+              {% for label, name, url in row.entities %}
+                <span>
+                  <span class="opacity-60">{{ label }}:</span>
+                  {% if url %}
+                    <a href="{{ url }}" class="link link-info link-hover">{{ name }}</a>
+                  {% else %}
+                    {{ name }}
+                  {% endif %}
+                </span>
+              {% endfor %}
+            </span>
+          </div>
+
+          {# Line 3: collapsible changes panel — only if there is anything to show #}
+          {% if row.field_diffs or row.other_entries %}
+            <div class="mt-2">
+              {# djlint:off #}
+              <button type="button" class="text-xs link link-hover"
+                      @click="open = !open" :aria-expanded="open">
+                <i class="fa-solid" :class="open ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
+                <span x-text="open ? 'Hide changes' : 'Show changes'">Show changes</span>
+              </button>
+              {# djlint:on #}
+
+              <div x-show="open" x-cloak class="mt-2">
+                {% if row.field_diffs %}
+                  <div class="grid grid-cols-2 gap-3 text-xs">
+                    <div class="opacity-60 font-semibold uppercase tracking-wide">Old</div>
+                    <div class="opacity-60 font-semibold uppercase tracking-wide">New</div>
+                    {% for diff in row.field_diffs %}
+                      <div class="col-span-2 opacity-70 font-medium">{{ diff.field }}</div>
+                      <div class="rounded bg-base-200 p-2">{{ diff.old }}</div>
+                      <div class="rounded bg-base-200 p-2">{{ diff.new }}</div>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+
+                {% if row.other_entries %}
+                  <ul class="mt-2 text-xs opacity-70 list-disc pl-4">
+                    {% for entry in row.other_entries %}
+                      <li><span class="font-medium">{{ entry.key }}:</span> {{ entry.value }}</li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+              </div>
+            </div>
+          {% endif %}
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+
+  {# Prev/Next controls #}
+  <div class="flex justify-end mt-2">
+    <div class="join">
+      {% set prev_offset = [offset - page_size, 0] | max %}
+      {# djlint:off #}
+      <button class="join-item btn btn-sm" aria-label="Previous page"
+              {% if offset == 0 %}disabled{% endif %}
+              hx-get="{{ build_fragment_url('shared_cards.audit_log',
+                         offset=prev_offset, page_size=page_size, card_id=card_id,
+                         body_only='true', **filters) }}"
+              hx-target="#{{ card_id }}-body" hx-swap="innerHTML">
+        <i class="fa-solid fa-chevron-left"></i>
+      </button>
+      <button class="join-item btn btn-sm" aria-label="Next page"
+              {% if not has_more %}disabled{% endif %}
+              hx-get="{{ build_fragment_url('shared_cards.audit_log',
+                         offset=(offset + page_size), page_size=page_size, card_id=card_id,
+                         body_only='true', **filters) }}"
+              hx-target="#{{ card_id }}-body" hx-swap="innerHTML">
+        <i class="fa-solid fa-chevron-right"></i>
+      </button>
+      {# djlint:on #}
+    </div>
+  </div>
+{% else %}
+  <p class="text-base-content/60 text-sm">{{ empty_message }}</p>
+{% endif %}

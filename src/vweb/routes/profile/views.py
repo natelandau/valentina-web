@@ -42,17 +42,12 @@ class ProfileView(MethodView):
 
         user_characters = [ch for ch in ctx.characters if ch.user_player_id == user_id]
 
-        # Fetch statistics
-        svc = sync_users_service(on_behalf_of=session["user_id"], company_id=session["company_id"])
-        statistics = svc.get_statistics(user_id)
-
         experience_rows, lifetime_xp, lifetime_cool_points = _build_experience_rows(user_id)
 
         return catalog.render(
             "profile.Profile",
             user=user,
             user_characters=user_characters,
-            statistics=statistics,
             lifetime_xp=lifetime_xp,
             lifetime_cool_points=lifetime_cool_points,
             experience_rows=experience_rows,

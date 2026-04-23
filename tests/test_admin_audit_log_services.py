@@ -12,7 +12,7 @@ from vclient.testing import (
     CharacterFactory,
 )
 
-from vweb.routes.admin.audit_log_services import get_audit_log_page, resolve_entities
+from vweb.lib.audit_log import get_audit_log_page, resolve_entities
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -29,7 +29,8 @@ class TestGetAuditLogPage:
         mock_svc = MagicMock()
         mock_svc.get_audit_log_page.return_value = MagicMock()
         mocker.patch(
-            "vweb.routes.admin.audit_log_services.sync_companies_service",
+            "vweb.lib.audit_log.sync_companies_service",
+            autospec=True,
             return_value=mock_svc,
         )
 
@@ -49,14 +50,19 @@ class TestGetAuditLogPage:
                 date_to="2026-01-31",
             )
 
-        # Then the API receives parsed kwargs including datetime objects
+        # Then the API receives parsed kwargs including datetime objects and None for unused filters
         mock_svc.get_audit_log_page.assert_called_once_with(
             "test-company-id",
             limit=20,
             offset=10,
+            acting_user_id="user-123",
+            user_id=None,
+            campaign_id=None,
+            book_id=None,
+            chapter_id=None,
+            character_id=None,
             entity_type="USER",
             operation="CREATE",
-            acting_user_id="user-123",
             date_from=datetime.fromisoformat("2026-01-01"),
             date_to=datetime.fromisoformat("2026-01-31"),
         )
@@ -67,7 +73,8 @@ class TestGetAuditLogPage:
         mock_svc = MagicMock()
         mock_svc.get_audit_log_page.return_value = MagicMock()
         mocker.patch(
-            "vweb.routes.admin.audit_log_services.sync_companies_service",
+            "vweb.lib.audit_log.sync_companies_service",
+            autospec=True,
             return_value=mock_svc,
         )
 
@@ -87,14 +94,19 @@ class TestGetAuditLogPage:
                 date_to="",
             )
 
-        # Then empty filters are passed as None
+        # Then all filters are passed as None (empty strings coerced to None)
         mock_svc.get_audit_log_page.assert_called_once_with(
             "test-company-id",
             limit=20,
             offset=0,
+            acting_user_id=None,
+            user_id=None,
+            campaign_id=None,
+            book_id=None,
+            chapter_id=None,
+            character_id=None,
             entity_type=None,
             operation=None,
-            acting_user_id=None,
             date_from=None,
             date_to=None,
         )
@@ -154,7 +166,7 @@ class TestResolveEntities:
     def test_unresolvable_id_falls_back(
         self, app: Flask, mock_global_context: GlobalContext
     ) -> None:
-        """Verify an unknown user_id falls back to raw ID with None URL."""
+        """Verify an unknown user_id falls back to the deleted sentinel with no URL."""
         # Given an audit log with a user_id not in context
         log = AuditLogFactory.build(
             user_id="unknown-user-id",
@@ -168,11 +180,11 @@ class TestResolveEntities:
             # When resolving entities
             result = resolve_entities(log, mock_global_context)
 
-        # Then the raw ID is returned with no URL
+        # Then the deleted sentinel is returned with no URL
         assert len(result) == 1
         label, name, url = result[0]
         assert label == "User"
-        assert name == "unknown-user-id"
+        assert name == "[deleted]"
         assert url is None
 
     def test_multiple_entity_ids_resolved(
@@ -255,9 +267,11 @@ class TestResolveEntities:
         assert result[1][2] is not None
         assert book.id in result[1][2]
 
-    def test_chapter_id_shows_raw_id(self, app: Flask, mock_global_context: GlobalContext) -> None:
-        """Verify chapter_id is shown as raw ID with no URL."""
-        # Given an audit log with a chapter_id
+    def test_unresolvable_chapter_shows_deleted_sentinel(
+        self, app: Flask, mock_global_context: GlobalContext
+    ) -> None:
+        """Verify an unknown chapter_id falls back to the deleted sentinel with no URL."""
+        # Given an audit log with a chapter_id that isn't in context
         log = AuditLogFactory.build(
             user_id=None,
             campaign_id=None,
@@ -270,9 +284,9 @@ class TestResolveEntities:
             # When resolving entities
             result = resolve_entities(log, mock_global_context)
 
-        # Then chapter shows raw ID with no URL
+        # Then the deleted sentinel is returned with no URL
         assert len(result) == 1
         label, name, url = result[0]
         assert label == "Chapter"
-        assert name == "chapter-abc"
+        assert name == "[deleted]"
         assert url is None

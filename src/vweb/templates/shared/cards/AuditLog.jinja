@@ -1,0 +1,41 @@
+{# Audit log lazy-load wrapper.
+   card_id must be unique per page when multiple audit log cards coexist — Prev/Next
+   targets #<card_id>-body; collisions will cause both cards to swap the same element. #}
+{#def
+    acting_user_id: str = "",
+    user_id: str = "",
+    campaign_id: str = "",
+    book_id: str = "",
+    chapter_id: str = "",
+    character_id: str = "",
+    page_size: int = 10,
+    col_span: int = 0,
+    card_id: str = "auditlog",
+    title: str = "Audit Log",
+    empty_message: str = "No audit log entries",
+#}
+
+{% set url = build_fragment_url(
+    "shared_cards.audit_log",
+    acting_user_id=acting_user_id,
+    user_id=user_id,
+    campaign_id=campaign_id,
+    book_id=book_id,
+    chapter_id=chapter_id,
+    character_id=character_id,
+    page_size=page_size,
+    col_span=col_span,
+    card_id=card_id,
+    title=title,
+    empty_message=empty_message,
+) %}
+
+{% set grid_col_span = "col-span-" ~ col_span if col_span > 0 else "" %}
+
+<div hx-get="{{ url }}" hx-trigger="load" hx-swap="outerHTML"{% if grid_col_span %} class="{{ grid_col_span }}"{% endif %}>
+  <div class="card surface-card{% if grid_col_span %} {{ grid_col_span }}{% endif %}">
+    <div class="card-body flex items-center justify-center py-12">
+      <span class="loading loading-spinner loading-md"></span>
+    </div>
+  </div>
+</div>

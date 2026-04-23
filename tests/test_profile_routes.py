@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.testing import RollStatisticsFactory, UserFactory
+from vclient.testing import UserFactory
 
 from vweb.lib.global_context import GlobalContext
 
@@ -62,13 +62,8 @@ def _mock_profile_api(mocker, profile_context) -> MagicMock:
     """
     mocker.patch("vweb.lib.hooks.load_global_context", return_value=profile_context)
     mocker.patch("vweb.lib.hooks.clear_global_context_cache")
-    mocker.patch(
-        "vweb.routes.campaign.views.get_campaign_statistics",
-        return_value=RollStatisticsFactory.build(),
-    )
 
     mock_svc = MagicMock()
-    mock_svc.get_statistics.return_value = RollStatisticsFactory.build()
     mock_svc.list_all_quickrolls.return_value = []
     mocker.patch("vweb.routes.profile.views.sync_users_service", return_value=mock_svc)
 
@@ -116,6 +111,17 @@ class TestProfileGet:
         """Verify 404 for a user that doesn't exist."""
         response = client.get("/profile/nonexistent-id")
         assert response.status_code == 404
+
+    @pytest.mark.usefixtures("_mock_profile_api")
+    def test_profile_renders_lazy_statistics_url(self, client: FlaskClient) -> None:
+        """Verify Profile renders the /cards/statistics lazy-load URL with user_id."""
+        # Given a profile for an existing user
+        # When requesting the profile page
+        response = client.get("/profile/test-user-id")
+
+        # Then the rendered HTML includes the lazy-load URL scoped to the user
+        assert b"/cards/statistics?" in response.data
+        assert b"user_id=test-user-id" in response.data
 
 
 class TestProfileEdit:

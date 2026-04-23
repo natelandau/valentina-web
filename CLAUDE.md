@@ -79,6 +79,10 @@ Flask `flash()` messages render inside `<div id="flash-messages">` via `<shared.
 return htmx_response_with_flash(content)
 ```
 
+### Shared lazy-loaded cards
+
+Reusable HTMX-lazy cards under `templates/shared/cards/` — `<shared.cards.Statistics>` and `<shared.cards.RecentDiceRolls>`. Each wrapper emits an `hx-get` placeholder pointing at `/cards/...`; the endpoints live in `routes/fragments_shared_cards/views.py`. Scope via `campaign_id` / `character_id` / `user_id` props (Statistics: exactly one; Dice rolls: ≥1, combinable). Content partials (endpoint-rendered) live in `templates/shared/cards/partials/`. Wrappers build URLs via the `build_fragment_url(endpoint, **kwargs)` Jinja global, which drops empty/None kwargs. Stats fetches go through the generic `get_statistics(scope_type, scope_id)` cache helper in `lib/statistics_cache.py` (30s TTL).
+
 ### JinjaX Gotchas
 
 - **Dynamic props unquoted**: `<Comp prop={{ expr }} />`. `prop="{{ x }}"` passes the literal text.
@@ -90,6 +94,10 @@ return htmx_response_with_flash(content)
 ### daisyUI Themes
 
 Use `@plugin "daisyui" { themes: name --default; }`. Do NOT use `@plugin "daisyui/theme" { name: "..." }` — that creates a custom theme with dark defaults.
+
+### Tailwind dynamic classes
+
+Tailwind v4's JIT scanner only sees **literal** class strings in templates at build time. Classes built at runtime (e.g. `"col-span-" ~ col_span`, `"text-" ~ color`) are invisible to the scanner and won't get CSS rules generated — the class lands in the rendered HTML but has no effect. Safelist them in `src/vweb/static/css/input.css` via `@source inline("...")`. Already covered: `col-span-1..4` + `col-span-full` and the daisyUI `link-*` variants.
 
 ## CRUD Table Framework (`lib/crud_view.py`)
 
