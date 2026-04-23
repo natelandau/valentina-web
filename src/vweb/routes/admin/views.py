@@ -12,10 +12,10 @@ from vclient import sync_companies_service
 from vclient.models.companies import CompanySettingsUpdate, CompanyUpdate
 
 from vweb import catalog
+from vweb.lib import audit_log as audit_log_services
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import is_admin, is_self
 from vweb.lib.jinja import htmx_response, hx_redirect
-from vweb.routes.admin import audit_log_services
 from vweb.routes.admin import services as admin_services
 from vweb.routes.admin.audit_log_services import ENTITY_TYPES
 

@@ -12,7 +12,7 @@ from vclient.testing import (
     CharacterFactory,
 )
 
-from vweb.routes.admin.audit_log_services import get_audit_log_page, resolve_entities
+from vweb.lib.audit_log import get_audit_log_page, resolve_entities
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -29,7 +29,7 @@ class TestGetAuditLogPage:
         mock_svc = MagicMock()
         mock_svc.get_audit_log_page.return_value = MagicMock()
         mocker.patch(
-            "vweb.routes.admin.audit_log_services.sync_companies_service",
+            "vweb.lib.audit_log.sync_companies_service",
             return_value=mock_svc,
         )
 
@@ -49,14 +49,19 @@ class TestGetAuditLogPage:
                 date_to="2026-01-31",
             )
 
-        # Then the API receives parsed kwargs including datetime objects
+        # Then the API receives parsed kwargs including datetime objects and None for unused filters
         mock_svc.get_audit_log_page.assert_called_once_with(
             "test-company-id",
             limit=20,
             offset=10,
+            acting_user_id="user-123",
+            user_id=None,
+            campaign_id=None,
+            book_id=None,
+            chapter_id=None,
+            character_id=None,
             entity_type="USER",
             operation="CREATE",
-            acting_user_id="user-123",
             date_from=datetime.fromisoformat("2026-01-01"),
             date_to=datetime.fromisoformat("2026-01-31"),
         )
@@ -67,7 +72,7 @@ class TestGetAuditLogPage:
         mock_svc = MagicMock()
         mock_svc.get_audit_log_page.return_value = MagicMock()
         mocker.patch(
-            "vweb.routes.admin.audit_log_services.sync_companies_service",
+            "vweb.lib.audit_log.sync_companies_service",
             return_value=mock_svc,
         )
 
@@ -87,14 +92,19 @@ class TestGetAuditLogPage:
                 date_to="",
             )
 
-        # Then empty filters are passed as None
+        # Then all filters are passed as None (empty strings coerced to None)
         mock_svc.get_audit_log_page.assert_called_once_with(
             "test-company-id",
             limit=20,
             offset=0,
+            acting_user_id=None,
+            user_id=None,
+            campaign_id=None,
+            book_id=None,
+            chapter_id=None,
+            character_id=None,
             entity_type=None,
             operation=None,
-            acting_user_id=None,
             date_from=None,
             date_to=None,
         )
