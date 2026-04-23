@@ -30,6 +30,7 @@ class TestGetAuditLogPage:
         mock_svc.get_audit_log_page.return_value = MagicMock()
         mocker.patch(
             "vweb.lib.audit_log.sync_companies_service",
+            autospec=True,
             return_value=mock_svc,
         )
 
@@ -73,6 +74,7 @@ class TestGetAuditLogPage:
         mock_svc.get_audit_log_page.return_value = MagicMock()
         mocker.patch(
             "vweb.lib.audit_log.sync_companies_service",
+            autospec=True,
             return_value=mock_svc,
         )
 

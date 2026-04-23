@@ -97,7 +97,8 @@ class TestAuditLogTable:
     def mock_empty_page(self, mocker) -> MagicMock:
         """Patch get_audit_log_page to return an empty page."""
         mock_svc_fn = mocker.patch(
-            "vweb.routes.admin.views.audit_log_services.get_audit_log_page",
+            "vweb.routes.admin.views.get_audit_log_page",
+            autospec=True,
         )
         mock_page = MagicMock()
         mock_page.items = []

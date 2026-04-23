@@ -9,17 +9,19 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, get_args
 
 from flask import session, url_for
 from markupsafe import Markup, escape
 from vclient import sync_companies_service
+from vclient.models.audit_logs import AuditLog
 
 if TYPE_CHECKING:
-    from vclient.models.audit_logs import AuditLog
     from vclient.models.pagination import PaginatedResponse
 
     from vweb.lib.global_context import GlobalContext
+
+ENTITY_TYPES: list[str] = sorted(get_args(AuditLog.model_fields["entity_type"].annotation))
 
 
 @dataclass(frozen=True)
