@@ -220,3 +220,136 @@ def test_format_change_value_scalars(value, expected_substring) -> None:
 
     # Then the substring is present
     assert expected_substring in str(result)
+
+
+from typing import TYPE_CHECKING  # noqa: E402
+
+from vclient.testing import (  # noqa: E402
+    AuditLogFactory,
+    CharacterFactory,
+)
+
+from vweb.lib.audit_log import resolve_acting_user, resolve_entities  # noqa: E402
+
+if TYPE_CHECKING:
+    from flask import Flask
+
+    from vweb.lib.global_context import GlobalContext
+
+
+class TestResolveActingUser:
+    """Tests for resolve_acting_user."""
+
+    def test_empty_id_returns_empty_strings(
+        self, app: Flask, mock_global_context: GlobalContext
+    ) -> None:
+        """Verify an empty/None acting_user_id returns ("", "")."""
+        # When resolving an empty ID
+        with app.test_request_context():
+            name, url = resolve_acting_user("", mock_global_context)
+
+        # Then both are empty strings
+        assert name == ""
+        assert url == ""
+
+    def test_known_user_returns_username_and_url(
+        self, app: Flask, mock_global_context: GlobalContext
+    ) -> None:
+        """Verify a known acting_user_id returns (username, profile_url)."""
+        # Given a user in context
+        user = mock_global_context.users[0]
+
+        # When resolving the user's ID
+        with app.test_request_context():
+            name, url = resolve_acting_user(user.id, mock_global_context)
+
+        # Then the tuple carries the username and a profile URL
+        assert name == user.username
+        assert user.id in url
+
+    def test_unresolvable_id_returns_raw_id_empty_url(
+        self, app: Flask, mock_global_context: GlobalContext
+    ) -> None:
+        """Verify an unknown acting_user_id falls back to (id, '')."""
+        # When resolving an unknown ID
+        with app.test_request_context():
+            name, url = resolve_acting_user("unknown-user", mock_global_context)
+
+        # Then the raw ID is returned with no URL
+        assert name == "unknown-user"
+        assert url == ""
+
+
+class TestResolveEntitiesSkipIds:
+    """Tests for resolve_entities' new skip_ids parameter."""
+
+    def test_skip_ids_none_matches_baseline(
+        self, app: Flask, mock_global_context: GlobalContext
+    ) -> None:
+        """Verify skip_ids=None behaves identically to no skip_ids."""
+        # Given a user in context
+        user = mock_global_context.users[0]
+        log = AuditLogFactory.build(
+            user_id=user.id,
+            campaign_id=None,
+            character_id=None,
+            book_id=None,
+            chapter_id=None,
+        )
+
+        # When resolving with skip_ids=None
+        with app.test_request_context():
+            result = resolve_entities(log, mock_global_context, skip_ids=None)
+
+        # Then the user is still in the result
+        assert len(result) == 1
+        assert result[0][0] == "User"
+
+    def test_skip_ids_omits_matching_entity(
+        self, app: Flask, mock_global_context: GlobalContext
+    ) -> None:
+        """Verify entities whose IDs are in skip_ids are omitted from the result."""
+        # Given a log with a user and a campaign, both in context
+        user = mock_global_context.users[0]
+        campaign = mock_global_context.campaigns[0]
+        log = AuditLogFactory.build(
+            user_id=user.id,
+            campaign_id=campaign.id,
+            character_id=None,
+            book_id=None,
+            chapter_id=None,
+        )
+
+        # When resolving with the user's ID in skip_ids
+        with app.test_request_context():
+            result = resolve_entities(log, mock_global_context, skip_ids={user.id})
+
+        # Then only the campaign appears, not the user
+        assert len(result) == 1
+        assert result[0][0] == "Campaign"
+
+    def test_skip_ids_with_multiple_ids(
+        self, app: Flask, mock_global_context: GlobalContext
+    ) -> None:
+        """Verify skip_ids with multiple IDs omits all matching entities."""
+        # Given a log with user, campaign, and character
+        user = mock_global_context.users[0]
+        campaign = mock_global_context.campaigns[0]
+        character = CharacterFactory.build()
+        mock_global_context.characters = [character]
+
+        log = AuditLogFactory.build(
+            user_id=user.id,
+            campaign_id=campaign.id,
+            character_id=character.id,
+            book_id=None,
+            chapter_id=None,
+        )
+
+        # When resolving with two IDs in skip_ids
+        with app.test_request_context():
+            result = resolve_entities(log, mock_global_context, skip_ids={user.id, character.id})
+
+        # Then only the campaign remains
+        assert len(result) == 1
+        assert result[0][0] == "Campaign"
