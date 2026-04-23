@@ -71,11 +71,12 @@ class CampaignView(MethodView):
         other_characters = [c for c in visible_characters if c.user_player_id != user_id]
 
         books = ctx.books_by_campaign.get(campaign_id, [])
-        campaign_statistics = get_campaign_statistics(campaign_id)
         campaign_experience = get_user_campaign_experience(user_id, campaign_id)
         chapter_count = get_chapter_count_for_campaign(campaign_id)
-        recent_dicerolls = get_recent_player_dicerolls(campaign_id)
 
+        # Statistics and Recent Dicerolls are fetched by HTMX-lazy-loaded fragments
+        # (see RecentDicerollsCardView / CampaignStatisticsCardView) so the overview
+        # paints without waiting on their remote calls.
         return catalog.render(
             "campaign.CampaignDetail",
             campaign=campaign,
@@ -83,9 +84,7 @@ class CampaignView(MethodView):
             other_characters=other_characters,
             books=books,
             chapter_count=chapter_count,
-            campaign_statistics=campaign_statistics,
             campaign_experience=campaign_experience,
-            recent_dicerolls=recent_dicerolls,
             user=g.requesting_user,
         )
 
@@ -93,6 +92,47 @@ class CampaignView(MethodView):
 bp.add_url_rule(
     "/campaign/<string:campaign_id>",
     view_func=CampaignView.as_view("campaign"),
+    methods=["GET"],
+)
+
+
+class RecentDicerollsCardView(MethodView):
+    """Lazy-loaded Recent Dicerolls card for the campaign overview."""
+
+    def get(self, campaign_id: str) -> str:
+        """Render the Recent Dicerolls card populated with the latest rolls."""
+        fetch_campaign_or_404(campaign_id)
+        rolls = get_recent_player_dicerolls(campaign_id)
+        return catalog.render(
+            "campaign.components.RecentDiceRollsCard",
+            rolls=rolls,
+        )
+
+
+bp.add_url_rule(
+    "/campaign/<string:campaign_id>/recent-dicerolls",
+    view_func=RecentDicerollsCardView.as_view("recent_dicerolls_card"),
+    methods=["GET"],
+)
+
+
+class CampaignStatisticsCardView(MethodView):
+    """Lazy-loaded campaign statistics card for the campaign overview."""
+
+    def get(self, campaign_id: str) -> str:
+        """Render the campaign statistics card with fresh (30s-cached) data."""
+        fetch_campaign_or_404(campaign_id)
+        statistics = get_campaign_statistics(campaign_id)
+        return catalog.render(
+            "shared.cards.StatisticsCard",
+            statistics=statistics,
+            col_span=2,
+        )
+
+
+bp.add_url_rule(
+    "/campaign/<string:campaign_id>/statistics",
+    view_func=CampaignStatisticsCardView.as_view("statistics_card"),
     methods=["GET"],
 )
 

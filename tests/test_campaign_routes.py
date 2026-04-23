@@ -10,6 +10,7 @@ from vclient.testing import (
 
 from tests.conftest import get_csrf
 from tests.helpers import assert_has_element, build_global_context
+from vweb.lib.api import DiceRollDisplay
 from vweb.lib.global_context import GlobalContext
 
 
@@ -28,8 +29,9 @@ class TestCampaignView:
         assert response.status_code == 200
         body = response.get_data(as_text=True)
         assert campaign.name in body
-        # And the Recent Dicerolls card is rendered (empty state OK for this smoke check)
-        assert "Recent Dicerolls" in body
+        # And the lazy-load placeholders for Recent Dicerolls and Statistics are wired
+        assert f"/campaign/{campaign.id}/recent-dicerolls" in body
+        assert f"/campaign/{campaign.id}/statistics" in body
 
     def test_stores_campaign_in_session(self, client, mock_global_context) -> None:
         """Verify the selected campaign ID is stored in the session."""
@@ -127,6 +129,68 @@ class TestCampaignView:
 
         # Then the experience card renders (with zero values since no campaign experience)
         assert response.status_code == 200
+
+
+class TestRecentDicerollsCardView:
+    """Tests for GET /campaign/<campaign_id>/recent-dicerolls (lazy-load fragment)."""
+
+    def test_renders_card_with_rolls(self, client, mock_global_context, mocker) -> None:
+        """Verify the fragment renders the Recent Dicerolls card populated with rolls."""
+        # Given a campaign and a fetcher that returns a single pre-resolved roll
+        from datetime import UTC, datetime
+
+        campaign = mock_global_context.campaigns[0]
+        roll = DiceRollDisplay(
+            id="r1",
+            character_id="char-1",
+            character_name="Hero",
+            num_dice=5,
+            dice_size=10,
+            trait_names=["Strength"],
+            result_type="SUCCESS",
+            result_humanized="3 successes",
+            date_created=datetime(2026, 4, 22, tzinfo=UTC),
+        )
+        mocker.patch(
+            "vweb.routes.campaign.views.get_recent_player_dicerolls",
+            return_value=[roll],
+        )
+
+        # When requesting the fragment
+        response = client.get(f"/campaign/{campaign.id}/recent-dicerolls")
+
+        # Then the card renders with the roll's content
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert "Recent Dicerolls" in body
+        assert "Hero" in body
+        assert "Strength" in body
+        assert "5d10" in body
+        assert "3 successes" in body
+
+    def test_returns_404_for_invalid_campaign(self, client) -> None:
+        """Verify 404 is returned for a non-existent campaign ID."""
+        response = client.get("/campaign/nonexistent-id/recent-dicerolls")
+        assert response.status_code == 404
+
+
+class TestCampaignStatisticsCardView:
+    """Tests for GET /campaign/<campaign_id>/statistics (lazy-load fragment)."""
+
+    def test_renders_statistics_card(self, client, mock_global_context) -> None:
+        """Verify the fragment renders the Statistics card (autouse mock supplies a RollStatistics)."""
+        campaign = mock_global_context.campaigns[0]
+
+        response = client.get(f"/campaign/{campaign.id}/statistics")
+
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert "Campaign Statistics" in body
+
+    def test_returns_404_for_invalid_campaign(self, client) -> None:
+        """Verify 404 is returned for a non-existent campaign ID."""
+        response = client.get("/campaign/nonexistent-id/statistics")
+        assert response.status_code == 404
 
 
 class TestCampaignEditFormView:

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     from vclient.models import CampaignBook, CampaignChapter, Character
     from vclient.models.campaigns import Campaign
+    from vclient.models.diceroll import RollResultType
     from vclient.models.users import CampaignExperience
 
 
@@ -259,8 +260,8 @@ class DiceRollDisplay:
     num_dice: int
     dice_size: int
     trait_names: list[str]
-    result_type: str | None
-    result_humanized: str
+    result_type: RollResultType | None
+    result_humanized: str | None
     date_created: datetime
 
 
@@ -310,7 +311,7 @@ def get_recent_player_dicerolls(campaign_id: str, limit: int = 50) -> list[DiceR
                 dice_size=roll.dice_size,
                 trait_names=trait_names,
                 result_type=roll.result.total_result_type if roll.result else None,
-                result_humanized=roll.result.total_result_humanized if roll.result else "",
+                result_humanized=roll.result.total_result_humanized if roll.result else None,
                 date_created=roll.date_created,
             )
         )
