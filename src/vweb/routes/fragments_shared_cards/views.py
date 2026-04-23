@@ -7,6 +7,8 @@ its ``hx-get`` at an endpoint here.
 
 from __future__ import annotations
 
+from typing import Any
+
 from flask import Blueprint, abort, g, request
 from flask.views import MethodView
 
@@ -145,7 +147,7 @@ class AuditLogCardView(MethodView):
             if body_only
             else "shared.cards.partials.AuditLogContent"
         )
-        render_kwargs: dict = {
+        render_kwargs: dict[str, Any] = {
             "rows": rows,
             "page_size": page_size,
             "offset": offset,

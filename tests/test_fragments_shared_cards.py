@@ -544,6 +544,11 @@ class TestAuditLogCardEndpoint:
         assert "campaign_id=c-1" in html
         assert "offset=10" in html  # next page offset
 
+        # And empty-valued filters are NOT in the URL (build_fragment_url drops them)
+        assert "acting_user_id=" not in html
+        assert "user_id=" not in html
+        assert "character_id=" not in html
+
     @pytest.mark.usefixtures("_audit_log_rows")
     def test_body_only_renders_body_without_card_chrome(
         self, client: FlaskClient, mock_global_context
