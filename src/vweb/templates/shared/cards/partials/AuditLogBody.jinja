@@ -8,7 +8,7 @@
   <ul class="list bg-base-100 rounded-box shadow-md"
       style="min-height: {{ page_size * 5.5 }}rem;">
     {% for row in rows %}
-      <li class="list-row">
+      <li class="list-row" x-data="{ open: false }">
         <div class="list-col-grow min-w-0">
           {# Line 1: date (left) + description (right, truncated) #}
           <div class="flex items-center justify-between gap-2 min-w-0">
@@ -45,6 +45,41 @@
               {% endfor %}
             </span>
           </div>
+
+          {# Line 3: collapsible changes panel — only if there is anything to show #}
+          {% if row.field_diffs or row.other_entries %}
+            <div class="mt-2">
+              {# djlint:off #}
+              <button type="button" class="text-xs link link-hover"
+                      @click="open = !open" :aria-expanded="open">
+                <i class="fa-solid" :class="open ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
+                <span x-text="open ? 'Hide changes' : 'Show changes'">Show changes</span>
+              </button>
+              {# djlint:on #}
+
+              <div x-show="open" x-cloak x-collapse class="mt-2">
+                {% if row.field_diffs %}
+                  <div class="grid grid-cols-2 gap-3 text-xs">
+                    <div class="opacity-60 font-semibold uppercase tracking-wide">Old</div>
+                    <div class="opacity-60 font-semibold uppercase tracking-wide">New</div>
+                    {% for diff in row.field_diffs %}
+                      <div class="col-span-2 opacity-70 font-medium">{{ diff.field }}</div>
+                      <div class="rounded bg-base-200 p-2">{{ diff.old }}</div>
+                      <div class="rounded bg-base-200 p-2">{{ diff.new }}</div>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+
+                {% if row.other_entries %}
+                  <ul class="mt-2 text-xs opacity-70 list-disc pl-4">
+                    {% for entry in row.other_entries %}
+                      <li><span class="font-medium">{{ entry.key }}:</span> {{ entry.value }}</li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+              </div>
+            </div>
+          {% endif %}
         </div>
       </li>
     {% endfor %}

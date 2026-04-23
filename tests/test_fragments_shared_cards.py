@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from vclient.testing import AuditLogFactory, RollStatisticsFactory, Routes
+from vclient.testing import AuditLogFactory, CharacterFactory, RollStatisticsFactory, Routes
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
@@ -361,6 +361,108 @@ class TestAuditLogCardEndpoint:
 
         # Then the empty message is in the response
         assert b"Nothing logged" in response.data
+
+    def test_no_changes_hides_toggle(
+        self, client: FlaskClient, fake_vclient, mock_global_context
+    ) -> None:
+        """Verify a row with changes=None has no expandable toggle (5a-A)."""
+        # Given a log with changes=None
+        log = AuditLogFactory.build(
+            changes=None,
+            user_id=None,
+            campaign_id=None,
+            character_id=None,
+            book_id=None,
+            chapter_id=None,
+        )
+        fake_vclient.set_response(
+            Routes.COMPANIES_AUDIT_LOGS_LIST,
+            items=[log.model_dump(mode="json")],
+        )
+
+        # When rendering the card
+        response = client.get("/cards/audit-log")
+
+        # Then the toggle button is not in the response
+        assert b"Show changes" not in response.data
+
+    def test_canonical_changes_render_old_new_grid(
+        self, client: FlaskClient, fake_vclient, mock_global_context
+    ) -> None:
+        """Verify canonical {old, new} changes render in the Old/New grid."""
+        # Given a log with a canonical change
+        log = AuditLogFactory.build(
+            changes={"name": {"old": "Alice", "new": "Bob"}},
+            user_id=None,
+            campaign_id=None,
+            character_id=None,
+            book_id=None,
+            chapter_id=None,
+        )
+        fake_vclient.set_response(
+            Routes.COMPANIES_AUDIT_LOGS_LIST,
+            items=[log.model_dump(mode="json")],
+        )
+
+        # When rendering the card
+        response = client.get("/cards/audit-log")
+
+        # Then the toggle is present and both values appear
+        assert b"Show changes" in response.data
+        assert b"Alice" in response.data
+        assert b"Bob" in response.data
+
+    def test_off_shape_changes_render_as_list(
+        self, client: FlaskClient, fake_vclient, mock_global_context
+    ) -> None:
+        """Verify off-shape entries appear in the other-entries list (5c-A)."""
+        # Given a log with a non-canonical change (flat scalar)
+        log = AuditLogFactory.build(
+            changes={"deleted_by": "user-1"},
+            user_id=None,
+            campaign_id=None,
+            character_id=None,
+            book_id=None,
+            chapter_id=None,
+        )
+        fake_vclient.set_response(
+            Routes.COMPANIES_AUDIT_LOGS_LIST,
+            items=[log.model_dump(mode="json")],
+        )
+
+        # When rendering the card
+        response = client.get("/cards/audit-log")
+
+        # Then the toggle is present and the off-shape entry appears
+        assert b"Show changes" in response.data
+        assert b"deleted_by" in response.data
+        assert b"user-1" in response.data
+
+    def test_scope_filter_hides_redundant_entity_link(
+        self, client: FlaskClient, fake_vclient, mock_global_context
+    ) -> None:
+        """Verify entity links matching an active scope filter are skipped."""
+        # Given a log scoped by character, with that same character present
+        character = CharacterFactory.build()
+        mock_global_context.characters = [character]
+        log = AuditLogFactory.build(
+            character_id=character.id,
+            user_id=None,
+            campaign_id=None,
+            book_id=None,
+            chapter_id=None,
+            changes=None,
+        )
+        fake_vclient.set_response(
+            Routes.COMPANIES_AUDIT_LOGS_LIST,
+            items=[log.model_dump(mode="json")],
+        )
+
+        # When rendering the card scoped to that character
+        response = client.get(f"/cards/audit-log?character_id={character.id}")
+
+        # Then the "Character:" label is not in the output (scope-skip)
+        assert b"Character:" not in response.data
 
 
 class TestAuditLogWrapperComponent:
