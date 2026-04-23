@@ -60,7 +60,7 @@
   {% if statistics and statistics.total_rolls > 0 %}
     <shared.cards.StatisticsCard statistics={{ statistics }} title={{ user.username ~ "'s Roll Statistics" }} />
   {% else %}
-    <div class="card bg-base-100 shadow-sm h-full">
+    <div class="card surface-card h-full">
       <div class="card-body">
         <h2 class="card-title">{{ user.username }}'s Roll Statistics</h2>
         <p class="text-base-content/60">No rolls recorded yet</p>
@@ -74,7 +74,7 @@
 
   {% set editable_param = "true" if is_own_profile else "false" %}
 
-  <div class="card bg-base-100 shadow-sm">
+  <div class="card surface-card">
     <div class="card-body">
       <div id="crud-quickrolls"
            hx-get="{{ url_for("profile.quickrolls", user_id=user.id) }}?editable={{ editable_param }}"

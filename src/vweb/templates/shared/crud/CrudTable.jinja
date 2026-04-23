@@ -116,7 +116,7 @@
   {# Mobile: card layout (hidden at md+) #}
   <div class="flex flex-col gap-3 md:hidden">
     {% for item in items %}
-      <div class="card card-border bg-base-200/50" {% if pagination > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"{% endif %}>
+      <div class="card surface-card" {% if pagination > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"{% endif %}>
         <div class="card-body p-4 gap-1">
           <h3 class="card-title text-lg">{{ item[fields[0]] | default("", true) | title }}</h3>
 

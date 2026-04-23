@@ -12,7 +12,7 @@
     </ul>
   </div>
 {% endif %}
-<div class="lg:col-span-2 card bg-base-100 shadow-sm">
+<div class="lg:col-span-2 card surface-card">
   <div class="card-body">
     <form id="manual-traits-form"
           hx-post="{{ url_for('character_create.manual_finalize', campaign_id=campaign.id) }}"

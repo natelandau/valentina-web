@@ -41,7 +41,7 @@
 <div class="grid grid-cols-1 md:grid-cols-2 {% if is_storyteller() %}lg:grid-cols-3{% endif %} gap-4">
   {% if is_storyteller() %}
     {# Quick Generate card - storyteller only #}
-    <div class="card bg-base-100 shadow-sm">
+    <div class="card surface-card">
       <div class="card-body">
         <h3 class="card-title text-lg">Quick Generate</h3>
         <span class="badge badge-neutral badge-sm">Storyteller Only</span>
@@ -99,7 +99,7 @@
   {% endif %}
 
   {# Generation Session card #}
-  <div class="card bg-base-100 shadow-sm">
+  <div class="card surface-card">
     <div class="card-body">
       <h3 class="card-title text-lg">Roll a Random Character</h3>
       <div class="prose prose-sm max-w-none">
@@ -173,7 +173,7 @@
   </div>
 
   {# Manual Creation card #}
-  <div class="card bg-base-100 shadow-sm">
+  <div class="card surface-card">
     <div class="card-body">
       <h3 class="card-title text-lg">Manual Creation</h3>
       <div class="prose prose-sm max-w-none">
