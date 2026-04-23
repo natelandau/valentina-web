@@ -3,15 +3,27 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import pytest
+from vclient.testing import (
+    AuditLogFactory,
+    CharacterFactory,
+)
 
 from vweb.lib.audit_log import (
     FieldDiff,
     OtherEntry,
     format_change_value,
+    resolve_acting_user,
+    resolve_entities,
     split_changes,
 )
+
+if TYPE_CHECKING:
+    from flask import Flask
+
+    from vweb.lib.global_context import GlobalContext
 
 
 class TestFormatChangeValue:
@@ -220,21 +232,6 @@ def test_format_change_value_scalars(value, expected_substring) -> None:
 
     # Then the substring is present
     assert expected_substring in str(result)
-
-
-from typing import TYPE_CHECKING  # noqa: E402
-
-from vclient.testing import (  # noqa: E402
-    AuditLogFactory,
-    CharacterFactory,
-)
-
-from vweb.lib.audit_log import resolve_acting_user, resolve_entities  # noqa: E402
-
-if TYPE_CHECKING:
-    from flask import Flask
-
-    from vweb.lib.global_context import GlobalContext
 
 
 class TestResolveActingUser:

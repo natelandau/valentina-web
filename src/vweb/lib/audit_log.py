@@ -110,7 +110,7 @@ def resolve_acting_user(
     Returns two empty strings when the ID is None or empty.
 
     Args:
-        acting_user_id: The user ID from AuditLog.acting_user_id (may be None/empty).
+        acting_user_id: The user ID from AuditLog.acting_user_id.
         context: The request-scoped GlobalContext populated by the before_request hook.
 
     Returns:
@@ -135,7 +135,7 @@ def resolve_entities(
     """Map populated entity IDs on an audit log to (label, display_name, url) tuples.
 
     Checks entity IDs in a fixed order (user, campaign, character, book, chapter).
-    Any ID in ``skip_ids`` is omitted — the shared audit log card uses this to hide
+    Any ID in `skip_ids` is omitted — the shared audit log card uses this to hide
     entity links that duplicate an already-active scope filter.
 
     Args:
