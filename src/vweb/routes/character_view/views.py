@@ -86,13 +86,6 @@ class CharacterView(MethodView):
                     company_id=session["company_id"],
                 )
                 data["assets"] = char_svc.list_all_assets(character.id)
-            case "stats":
-                char_svc = sync_characters_service(
-                    on_behalf_of=user.id,
-                    company_id=session["company_id"],
-                )
-                data["statistics"] = char_svc.get_statistics(character.id)
-
         return data
 
     @staticmethod
@@ -134,7 +127,7 @@ class CharacterView(MethodView):
             case "stats":
                 return catalog.render(
                     "character_view.partials.StatsContent",
-                    statistics=section_data["statistics"],
+                    character=section_data["character"],
                 )
             case _:
                 msg = f"Unknown section: {section}"

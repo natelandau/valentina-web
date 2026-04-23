@@ -263,20 +263,30 @@ class DiceRollDisplay:
     result_type: RollResultType | None
     result_humanized: str | None
     date_created: datetime
+    comment: str | None
 
 
-def get_recent_player_dicerolls(campaign_id: str, limit: int = 50) -> list[DiceRollDisplay]:
-    """Return recent dice rolls made for player characters in a campaign.
+def get_recent_player_dicerolls(
+    campaign_id: str = "",
+    *,
+    character_id: str = "",
+    user_id: str = "",
+    limit: int = 50,
+) -> list[DiceRollDisplay]:
+    """Return recent dice rolls filtered by one or more scopes.
 
-    Fetch up to ``limit`` most-recent rolls for the campaign (the API already
-    returns them newest-first) and keep only those whose character is a
-    PLAYER-type character in the current campaign. Because filtering happens
-    after the fetch, the returned list may be shorter than ``limit`` when
-    storyteller/NPC rolls intersperse — acceptable for an overview preview.
+    Fetch up to ``limit`` most-recent rolls matching the provided scopes
+    (combined AND on the API side). When the only scope passed is
+    ``campaign_id``, additionally post-filter to rolls whose character is a
+    PLAYER in that campaign — that keeps the campaign-overview view free of
+    NPC/storyteller noise. When a ``character_id`` or ``user_id`` is supplied,
+    trust the API scope and skip the post-filter.
 
     Args:
-        campaign_id: The campaign whose rolls to surface.
-        limit: The maximum number of rolls to fetch from the API.
+        campaign_id: Campaign scope (optional).
+        character_id: Character scope (optional).
+        user_id: User scope (optional).
+        limit: Maximum number of rolls to fetch from the API.
 
     Returns:
         Display-ready rows in the API's newest-first order.
@@ -284,35 +294,51 @@ def get_recent_player_dicerolls(campaign_id: str, limit: int = 50) -> list[DiceR
     service = sync_dicerolls_service(
         on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
     )
-    page = service.get_page(campaignid=campaign_id, limit=limit, offset=0)
+    page = service.get_page(
+        campaignid=campaign_id or None,
+        characterid=character_id or None,
+        userid=user_id or None,
+        limit=limit,
+        offset=0,
+    )
 
+    # Post-filter only when the sole scope is a campaign — keeps the campaign
+    # overview free of NPC/storyteller rolls that share the campaign_id filter.
     ctx = g.global_context
-    player_characters = {
-        character.id: character
-        for character in ctx.characters_by_campaign.get(campaign_id, [])
-        if character.type == "PLAYER"
-    }
+    apply_player_filter = bool(campaign_id) and not (character_id or user_id)
+    if apply_player_filter:
+        characters_by_id: dict[str, Character] = {
+            character.id: character
+            for character in ctx.characters_by_campaign.get(campaign_id, [])
+            if character.type == "PLAYER"
+        }
+    else:
+        characters_by_id = {c.id: c for c in ctx.characters}
+
     all_traits = get_all_traits()
 
     displays: list[DiceRollDisplay] = []
     for roll in page.items:
-        character = player_characters.get(roll.character_id) if roll.character_id else None
-        if character is None:
+        character = characters_by_id.get(roll.character_id) if roll.character_id else None
+        if apply_player_filter and character is None:
             continue
+        character_name = character.name if character else ""
+        character_id_display = character.id if character else (roll.character_id or "")
 
         trait_names = [all_traits[tid].name for tid in roll.trait_ids if tid in all_traits]
 
         displays.append(
             DiceRollDisplay(
                 id=roll.id,
-                character_id=character.id,
-                character_name=character.name,
+                character_id=character_id_display,
+                character_name=character_name,
                 num_dice=roll.num_dice,
                 dice_size=roll.dice_size,
                 trait_names=trait_names,
                 result_type=roll.result.total_result_type if roll.result else None,
                 result_humanized=roll.result.total_result_humanized if roll.result else None,
                 date_created=roll.date_created,
+                comment=roll.comment,
             )
         )
     return displays

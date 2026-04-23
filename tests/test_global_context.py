@@ -293,66 +293,6 @@ def test_fetch_global_data_returns_all_characters_unfiltered(app, fake_vclient) 
     assert "Other Char" in char_names
 
 
-@pytest.mark.usefixtures("mock_cache_store")
-def test_get_campaign_statistics_returns_stats(app, mocker) -> None:
-    """Verify get_campaign_statistics fetches and returns campaign statistics."""
-    from vclient.testing import CompanyFactory, RollStatisticsFactory, UserFactory
-
-    from vweb.lib.global_context import GlobalContext, get_campaign_statistics
-
-    # Given a mocked campaigns service returning stats
-    expected_stats = RollStatisticsFactory.build()
-    mock_svc = mocker.MagicMock()
-    mock_svc.get_statistics.return_value = expected_stats
-    mocker.patch("vweb.lib.global_context.sync_campaigns_service", return_value=mock_svc)
-
-    # When fetching campaign statistics
-    with app.test_request_context():
-        from flask import g
-
-        g.requesting_user = UserFactory.build(id="test-user-id")
-        g.global_context = GlobalContext(
-            company=CompanyFactory.build(id="test-company-id"),
-            users=[],
-            campaigns=[],
-        )
-        result = get_campaign_statistics("camp-1")
-
-    # Then the stats are returned
-    assert result is expected_stats
-
-
-@pytest.mark.usefixtures("mock_cache_store")
-def test_get_campaign_statistics_caches_result(app, mocker) -> None:
-    """Verify get_campaign_statistics returns cached result on second call."""
-    from vclient.testing import CompanyFactory, RollStatisticsFactory, UserFactory
-
-    from vweb.lib.global_context import GlobalContext, get_campaign_statistics
-
-    # Given a mocked campaigns service
-    expected_stats = RollStatisticsFactory.build()
-    mock_svc = mocker.MagicMock()
-    mock_svc.get_statistics.return_value = expected_stats
-    mocker.patch("vweb.lib.global_context.sync_campaigns_service", return_value=mock_svc)
-
-    # When fetching stats twice
-    with app.test_request_context():
-        from flask import g
-
-        g.requesting_user = UserFactory.build(id="test-user-id")
-        g.global_context = GlobalContext(
-            company=CompanyFactory.build(id="test-company-id"),
-            users=[],
-            campaigns=[],
-        )
-        first = get_campaign_statistics("camp-1")
-        second = get_campaign_statistics("camp-1")
-
-    # Then the API is called only once
-    assert first is second
-    mock_svc.get_statistics.assert_called_once()
-
-
 @pytest.mark.usefixtures("_fake_vclient_data")
 def test_fetch_global_data_returns_books_by_campaign(app, fake_vclient) -> None:
     """Verify _fetch_global_data populates books_by_campaign."""

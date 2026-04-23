@@ -1,6 +1,6 @@
 {# def
     statistics: RollStatistics,
-    title: str = "Campaign Statistics",
+    title: str = "Statistics",
     col_span: int = 0,
 #}
 
@@ -30,7 +30,6 @@
         <div class="stat">
           <div class="stat-title">Most Used Trait</div>
           <div class="stat-value">
-            {# NOTE: add truncate class here if the word overflows the container #}
             {{ statistics.top_traits[0].name }}
           </div>
           <div class="stat-desc">

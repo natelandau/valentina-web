@@ -7,7 +7,6 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from flask import g
 from loguru import logger
 from vclient import (
     sync_books_service,
@@ -27,7 +26,6 @@ if TYPE_CHECKING:
         CampaignChapter,
         Character,
         Company,
-        RollStatistics,
         User,
     )
 
@@ -168,26 +166,3 @@ def clear_global_context_cache(company_id: str, user_id: str) -> None:
     """
     cache.delete(_ts_key(company_id))
     cache.delete(f"global_ctx:{company_id}:{user_id}")
-
-
-def get_campaign_statistics(campaign_id: str) -> RollStatistics:
-    """Fetch campaign statistics with a 30-second cache TTL.
-
-    Args:
-        campaign_id: The campaign to fetch statistics for.
-
-    Returns:
-        RollStatistics for the campaign.
-    """
-    cache_key = f"campaign_stats:{campaign_id}"
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    user_id = g.requesting_user.id
-    company_id = g.global_context.company.id
-    stats = sync_campaigns_service(on_behalf_of=user_id, company_id=company_id).get_statistics(
-        campaign_id
-    )
-    cache.set(cache_key, stats, timeout=30)
-    return stats

@@ -2,6 +2,7 @@
     rolls: list,
     col_span: int = 1,
     pagination: int = 5,
+    title: str = "Recent Dicerolls",
     empty_message: str = "No dicerolls yet",
 #}
 
@@ -17,7 +18,7 @@
 
 <div class="card surface-card {{ grid_col_span }}">
   <div class="card-body">
-    <h2 class="card-title">Recent Dicerolls</h2>
+    <h2 class="card-title">{{ title }}</h2>
 
     {% if rolls %}
       {% if pagination > 0 %}
@@ -45,6 +46,9 @@
                   <span>·</span>
                   <span class="font-mono">{{ roll.num_dice }}d{{ roll.dice_size }}</span>
                 </div>
+                {% if roll.comment %}
+                  <p class="text-xs italic opacity-60 mt-1 line-clamp-2 break-words">{{ roll.comment }}</p>
+                {% endif %}
               </div>
 
               {# Right column: result on top, humanized result below — both plain text, right-aligned to the list edge #}

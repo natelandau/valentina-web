@@ -37,27 +37,8 @@
 
       <shared.cards.NumberedListCard title={{ campaign.name ~ " Books" }} items={{ books }} pagination={{ 5 }} item_urls={{ book_urls }} empty_message="No books in this campaign" />
 
-      {# Recent Dicerolls and Statistics are HTMX-lazy-loaded so their API calls don't block the overview paint #}
-      <div hx-get={{ url_for('campaign.recent_dicerolls_card', campaign_id=campaign.id) }}
-           hx-trigger="load"
-           hx-swap="outerHTML">
-        <div class="card surface-card col-span-1">
-          <div class="card-body flex items-center justify-center py-12">
-            <span class="loading loading-spinner loading-md"></span>
-          </div>
-        </div>
-      </div>
-
-      <div hx-get={{ url_for('campaign.statistics_card', campaign_id=campaign.id) }}
-           hx-trigger="load"
-           hx-swap="outerHTML"
-           class="col-span-2">
-        <div class="card surface-card h-full">
-          <div class="card-body flex items-center justify-center py-12">
-            <span class="loading loading-spinner loading-md"></span>
-          </div>
-        </div>
-      </div>
+      <shared.cards.RecentDiceRolls campaign_id={{ campaign.id }} col_span={{ 1 }} />
+      <shared.cards.Statistics campaign_id={{ campaign.id }} col_span={{ 2 }} />
 
     </div>
   </div>

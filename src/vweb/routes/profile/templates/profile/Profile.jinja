@@ -1,7 +1,6 @@
 {#def
     user,
     user_characters: list = [],
-    statistics = None,
     lifetime_xp: int = 0,
     lifetime_cool_points: int = 0,
     experience_rows: list = [],
@@ -57,16 +56,7 @@
     <profile.components.ExperienceCard user_id={{ user.id }} lifetime_xp={{ lifetime_xp }} lifetime_cool_points={{ lifetime_cool_points }} experience_rows={{ experience_rows }} />
   </div>
 
-  {% if statistics and statistics.total_rolls > 0 %}
-    <shared.cards.StatisticsCard statistics={{ statistics }} title={{ user.username ~ "'s Roll Statistics" }} />
-  {% else %}
-    <div class="card surface-card h-full">
-      <div class="card-body">
-        <h2 class="card-title">{{ user.username }}'s Roll Statistics</h2>
-        <p class="text-base-content/60">No rolls recorded yet</p>
-      </div>
-    </div>
-  {% endif %}
+  <shared.cards.Statistics user_id={{ user.id }} title={{ user.username ~ "'s Roll Statistics" }} />
 </div>
 
 <!-- Quickrolls CRUD table -->

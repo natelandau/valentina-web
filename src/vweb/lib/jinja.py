@@ -221,6 +221,31 @@ def static_url(filename: str) -> str:
     return f"{base}?v={version}"
 
 
+def build_fragment_url(endpoint: str, **kwargs: object) -> str:
+    """Build an HTMX fragment URL, dropping kwargs with empty or None values.
+
+    Resolve ``endpoint`` via ``url_for`` with all kwargs whose values are
+    non-empty and non-None. Flask sends known path variables to the URL path
+    and unknown kwargs to the query string, so the same helper works for any
+    endpoint — you don't need to pre-split which kwargs are path vars.
+
+    Used by lazy-card wrappers so parents can pass sparse props without the
+    URL ending up full of ``&foo=&bar=`` noise.
+
+    Args:
+        endpoint: The Flask endpoint name to resolve.
+        **kwargs: Query string parameters (and any path variables the endpoint
+            requires). Empty strings and ``None`` are dropped.
+
+    Returns:
+        A URL string with kwargs URL-encoded into the path and/or query.
+    """
+    filtered: dict[str, Any] = {
+        key: value for key, value in kwargs.items() if value is not None and value != ""
+    }
+    return url_for(endpoint, **filtered)
+
+
 def hx_redirect(url: str) -> Response:
     """Return an empty 200 response with an ``HX-Redirect`` header.
 
@@ -311,6 +336,7 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
     jinja_globals["app_name"] = s.app_name
     jinja_globals["version"] = vweb.__version__
     jinja_globals["static_url"] = static_url
+    jinja_globals["build_fragment_url"] = build_fragment_url
     jinja_globals["oauth_discord_enabled"] = bool(s.oauth.discord.client_id)
     jinja_globals["oauth_github_enabled"] = bool(s.oauth.github.client_id)
     jinja_globals["oauth_google_enabled"] = bool(s.oauth.google.client_id)

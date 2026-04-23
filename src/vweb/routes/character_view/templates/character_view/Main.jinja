@@ -6,7 +6,6 @@
     notes: list[Note] = [],
     inventory: list[InventoryItem] = [],
     assets: list[Asset] = [],
-    statistics: dict = {},
     concept: CharacterConcept | None = None,
     dictionary_terms: list[DictionaryTerm] = [],
 #}
@@ -83,7 +82,7 @@
     {% elif active_section == "images" %}
       <character_view.partials.ImagesContent character={{ character }} assets={{ assets }} />
     {% elif active_section == "stats" %}
-      <character_view.partials.StatsContent statistics={{ statistics }} />
+      <character_view.partials.StatsContent character={{ character }} />
     {% endif %}
 
   </div>

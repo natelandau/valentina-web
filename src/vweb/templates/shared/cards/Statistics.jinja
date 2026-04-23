@@ -1,0 +1,28 @@
+{# Statistics lazy-load wrapper.
+   col_span default 0 = "no col-span class"; callers using a grid should pass col_span explicitly. #}
+{#def
+    campaign_id: str = "",
+    character_id: str = "",
+    user_id: str = "",
+    col_span: int = 0,
+    title: str = "Statistics",
+#}
+
+{% set url = build_fragment_url(
+    "shared_cards.statistics",
+    campaign_id=campaign_id,
+    character_id=character_id,
+    user_id=user_id,
+    col_span=col_span,
+    title=title,
+) %}
+
+{% set grid_col_span = "col-span-" ~ col_span if col_span > 0 else "" %}
+
+<div hx-get="{{ url }}" hx-trigger="load" hx-swap="outerHTML"{% if grid_col_span %} class="{{ grid_col_span }}"{% endif %}>
+  <div class="card surface-card h-full{% if grid_col_span %} {{ grid_col_span }}{% endif %}">
+    <div class="card-body flex items-center justify-center py-12">
+      <span class="loading loading-spinner loading-md"></span>
+    </div>
+  </div>
+</div>

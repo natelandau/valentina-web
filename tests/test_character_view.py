@@ -152,3 +152,15 @@ class TestCharacterSectionGet:
         body = response.get_data(as_text=True)
         assert 'id="character-nav"' in body
         assert 'hx-swap-oob="true"' in body
+
+    def test_stats_section_renders_lazy_statistics_url(self, client, mock_character_lookup) -> None:
+        """Verify the stats section renders the /cards/statistics lazy-load URL scoped by character."""
+        # Given a character from the mocked context
+        char, _ = mock_character_lookup
+
+        # When requesting the stats section
+        response = client.get(f"/character/{char.id}/stats")
+
+        # Then the rendered HTML includes the lazy-load URL scoped to the character
+        assert b"/cards/statistics?" in response.data
+        assert f"character_id={char.id}".encode() in response.data

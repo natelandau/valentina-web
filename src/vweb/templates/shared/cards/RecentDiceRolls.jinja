@@ -1,0 +1,34 @@
+{# Recent Dicerolls lazy-load wrapper.
+   col_span defaults to 1 (single-column placement) — matches the typical dashboard layout. #}
+{#def
+    campaign_id: str = "",
+    character_id: str = "",
+    user_id: str = "",
+    col_span: int = 1,
+    pagination: int = 5,
+    limit: int = 50,
+    title: str = "Recent Dicerolls",
+    empty_message: str = "No dicerolls yet",
+#}
+
+{% set url = build_fragment_url(
+    "shared_cards.dice_rolls",
+    campaign_id=campaign_id,
+    character_id=character_id,
+    user_id=user_id,
+    col_span=col_span,
+    pagination=pagination,
+    limit=limit,
+    title=title,
+    empty_message=empty_message,
+) %}
+
+{% set grid_col_span = "col-span-" ~ col_span if col_span > 0 else "" %}
+
+<div hx-get="{{ url }}" hx-trigger="load" hx-swap="outerHTML"{% if grid_col_span %} class="{{ grid_col_span }}"{% endif %}>
+  <div class="card surface-card{% if grid_col_span %} {{ grid_col_span }}{% endif %}">
+    <div class="card-body flex items-center justify-center py-12">
+      <span class="loading loading-spinner loading-md"></span>
+    </div>
+  </div>
+</div>
