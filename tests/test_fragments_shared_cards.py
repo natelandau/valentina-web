@@ -564,6 +564,39 @@ class TestAuditLogCardEndpoint:
         # But the list of rows is present
         assert b'class="list ' in response.data
 
+    def test_body_only_pagination_urls_are_also_body_only(
+        self, client: FlaskClient, mock_global_context, mocker
+    ) -> None:
+        """Verify Prev/Next URLs inside a body_only response still carry body_only=true."""
+        # Given a patched page with has_more=True
+        items = [
+            AuditLogFactory.build(
+                user_id=None,
+                campaign_id=None,
+                character_id=None,
+                book_id=None,
+                chapter_id=None,
+                changes=None,
+            )
+            for _ in range(5)
+        ]
+        mock_page = mocker.MagicMock(items=items, has_more=True, total=25, offset=10)
+        mocker.patch(
+            "vweb.routes.fragments_shared_cards.views.get_audit_log_page",
+            autospec=True,
+            return_value=mock_page,
+        )
+
+        # When requesting a body_only page with an active filter and non-zero offset
+        response = client.get("/cards/audit-log?offset=10&body_only=true&campaign_id=c-1")
+
+        # Then the outer card chrome is absent (body_only render confirmed)
+        html = response.data.decode()
+        assert 'id="auditlog"' not in html
+        # And pagination links still carry body_only=true plus the active filter
+        assert "body_only=true" in html
+        assert "campaign_id=c-1" in html
+
 
 class TestAuditLogWrapperComponent:
     """Tests that the <shared.cards.AuditLog /> wrapper renders correct HTMX."""

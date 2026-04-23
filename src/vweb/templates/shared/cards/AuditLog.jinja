@@ -1,4 +1,6 @@
-{# Audit log lazy-load wrapper. #}
+{# Audit log lazy-load wrapper.
+   card_id must be unique per page when multiple audit log cards coexist — Prev/Next
+   targets #<card_id>-body; collisions will cause both cards to swap the same element. #}
 {#def
     acting_user_id: str = "",
     user_id: str = "",
