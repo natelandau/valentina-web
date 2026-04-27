@@ -1,3 +1,23 @@
+## v0.7.0 (2026-04-27)
+
+### Feat
+
+- **character**: migrate to new campaign view
+- **audit-log**: shared lazy-loaded audit log card (#30)
+- **campaign**: add lazy-loaded Recent Dicerolls card (#28)
+- campaign/book/chapter redesign (#27)
+- redesign global header and campaign dashboard (#26)
+
+### Fix
+
+- **user**: remove back home button
+- commit random fixes
+- **campaign**: improve mobile card display
+
+### Refactor
+
+- **ui**: migrate remaining cards to surface-card utility (#29)
+
 ## v0.6.0 (2026-04-19)
 
 ### Feat
