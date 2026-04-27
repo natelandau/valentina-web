@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 bp = Blueprint("character_view", __name__)
 
-SECTIONS = ("sheet", "info", "profile", "images", "stats")
+SECTIONS = ("sheet", "profile", "inventory", "notes", "images", "stats")
 
 
 class CharacterView(MethodView):
@@ -48,7 +48,7 @@ class CharacterView(MethodView):
         """Fetch the API data required by a specific tab section's template.
 
         Args:
-            section: One of the SECTIONS values (sheet, info, profile, images, stats).
+            section: One of the SECTIONS values (sheet, profile, inventory, notes, images, stats).
             character: The character being viewed. Must not be None.
             campaign: The campaign the character belongs to. Must not be None.
 
@@ -69,7 +69,6 @@ class CharacterView(MethodView):
                 data["full_sheet"] = full_sheet
                 data["dictionary_terms"] = get_all_terms()
             case "profile":
-                svc = CharacterSheetService(character, user)
                 data["concept"] = (
                     sync_character_blueprint_service(company_id=session["company_id"]).get_concept(
                         concept_id=character.concept_id
@@ -78,7 +77,8 @@ class CharacterView(MethodView):
                     else None
                 )
                 data["dictionary_terms"] = get_all_terms()
-            case "info":
+            case "inventory" | "notes":
+                # Both are CRUD-table tabs; the table fetches its own data lazily.
                 pass
             case "images":
                 char_svc = sync_characters_service(
@@ -103,13 +103,9 @@ class CharacterView(MethodView):
             case "sheet":
                 return catalog.render(
                     "character_view.partials.SheetContent",
+                    character=section_data["character"],
                     full_sheet=section_data["full_sheet"],
                     dictionary_terms=section_data["dictionary_terms"],
-                )
-            case "info":
-                return catalog.render(
-                    "character_view.partials.InfoContent",
-                    character=section_data["character"],
                 )
             case "profile":
                 return catalog.render(
@@ -117,6 +113,16 @@ class CharacterView(MethodView):
                     character=section_data["character"],
                     concept=section_data.get("concept"),
                     dictionary_terms=section_data["dictionary_terms"],
+                )
+            case "inventory":
+                return catalog.render(
+                    "character_view.partials.InventoryContent",
+                    character=section_data["character"],
+                )
+            case "notes":
+                return catalog.render(
+                    "character_view.partials.NotesContent",
+                    character=section_data["character"],
                 )
             case "images":
                 return catalog.render(
@@ -138,11 +144,19 @@ class CharacterView(MethodView):
 
         Args:
             character_id: The character's unique identifier.
-            section: One of the SECTIONS values (sheet, info, profile, images, stats).
+            section: One of the SECTIONS values (sheet, profile, inventory, notes, images, stats).
 
         Returns:
             Rendered HTML string or a redirect/error response.
         """
+        if section == "info":
+            target = url_for(
+                "character_view.character", character_id=character_id, section="inventory"
+            )
+            if request.headers.get("HX-Request"):
+                return hx_redirect(target)
+            return redirect(target)
+
         if section not in SECTIONS:
             section = "sheet"
 
@@ -151,20 +165,12 @@ class CharacterView(MethodView):
         if not character or not campaign:
             if request.headers.get("HX-Request"):
                 return hx_redirect(url_for("index.index"))
-
             return redirect(url_for("index.index"))
 
         section_data = self._fetch_section_data(section, character, campaign)
 
         if request.headers.get("HX-Request"):
-            content = CharacterView._render_section(section, section_data)
-            nav = catalog.render(
-                "character_view.components.CharacterNav",
-                character_id=character_id,
-                active_section=section,
-                oob=True,
-            )
-            return htmx_response(content, nav)
+            return CharacterView._render_section(section, section_data)
 
         return catalog.render(
             "character_view.Main",
@@ -298,24 +304,24 @@ bp.add_url_rule(
 # ---------------------------------------------------------------------------
 _notes_view = CharacterNotesTableView.as_view("character_notes")
 bp.add_url_rule(
-    "/character/<string:parent_id>/notes",
+    "/character/<string:parent_id>/notes/items",
     defaults={"item_id": None},
     view_func=_notes_view,
     methods=["GET", "POST"],
 )
 bp.add_url_rule(
-    "/character/<string:parent_id>/notes/<string:item_id>",
+    "/character/<string:parent_id>/notes/items/<string:item_id>",
     view_func=_notes_view,
     methods=["POST", "DELETE"],
 )
 bp.add_url_rule(
-    "/character/<string:parent_id>/notes/form",
+    "/character/<string:parent_id>/notes/items/form",
     defaults={"item_id": None},
     view_func=CharacterNotesTableView.as_view("character_notes_form"),
     methods=["GET"],
 )
 bp.add_url_rule(
-    "/character/<string:parent_id>/notes/form/<string:item_id>",
+    "/character/<string:parent_id>/notes/items/form/<string:item_id>",
     view_func=CharacterNotesTableView.as_view("character_notes_form_edit"),
     methods=["GET"],
 )
@@ -326,24 +332,24 @@ bp.add_url_rule(
 # ---------------------------------------------------------------------------
 _inventory_view = CharacterInventoryTableView.as_view("character_inventory")
 bp.add_url_rule(
-    "/character/<string:parent_id>/inventory",
+    "/character/<string:parent_id>/inventory/items",
     defaults={"item_id": None},
     view_func=_inventory_view,
     methods=["GET", "POST"],
 )
 bp.add_url_rule(
-    "/character/<string:parent_id>/inventory/<string:item_id>",
+    "/character/<string:parent_id>/inventory/items/<string:item_id>",
     view_func=_inventory_view,
     methods=["POST", "DELETE"],
 )
 bp.add_url_rule(
-    "/character/<string:parent_id>/inventory/form",
+    "/character/<string:parent_id>/inventory/items/form",
     defaults={"item_id": None},
     view_func=CharacterInventoryTableView.as_view("character_inventory_form"),
     methods=["GET"],
 )
 bp.add_url_rule(
-    "/character/<string:parent_id>/inventory/form/<string:item_id>",
+    "/character/<string:parent_id>/inventory/items/form/<string:item_id>",
     view_func=CharacterInventoryTableView.as_view("character_inventory_form_edit"),
     methods=["GET"],
 )

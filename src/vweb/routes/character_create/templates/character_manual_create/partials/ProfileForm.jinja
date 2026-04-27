@@ -18,7 +18,7 @@
 
     {% if mode == "edit" %}
       {% set post_url = url_for('character_create.manual_profile', campaign_id=campaign.id) ~ '?character_id=' ~ character_id %}
-      {% set target_id = "#tab-content" %}
+      {% set target_id = "#character-tab-content" %}
     {% else %}
       {% set post_url = url_for('character_create.manual_profile', campaign_id=campaign.id) %}
       {% set target_id = "#manual-create-content" %}
@@ -321,7 +321,7 @@
       {# Buttons #}
       <div class="flex gap-2 mt-6 justify-end">
         {% if mode == "edit" %}
-          <shared.CommonButton variant="cancel" hx-get={{ url_for('character_view.character', character_id=character_id, section='sheet') }} hx-target="#tab-content" hx-swap="innerHTML">Cancel</shared.CommonButton>
+          <shared.CommonButton variant="cancel" hx-get={{ url_for('character_view.character', character_id=character_id, section='sheet') }} hx-target="#character-tab-content" hx-swap="innerHTML">Cancel</shared.CommonButton>
           <shared.CommonButton variant="submit">
             <span class="loading loading-spinner htmx-indicator"></span>
             Save

@@ -1,0 +1,201 @@
+{#def
+    character,
+    campaign,
+    active_section: str = "sheet",
+    full_sheet = None,
+    concept = None,
+    assets: list = [],
+    dictionary_terms: list = [],
+#}
+
+{% set can_edit = can_edit_character(character) %}
+
+{% set sub_tabs = [
+  {"key": "sheet",     "label": "Sheet",     "url": url_for('character_view.character', character_id=character.id, section='sheet')},
+  {"key": "profile",   "label": "Profile",   "url": url_for('character_view.character', character_id=character.id, section='profile')},
+  {"key": "inventory", "label": "Inventory", "url": url_for('character_view.character', character_id=character.id, section='inventory')},
+  {"key": "notes",     "label": "Notes",     "url": url_for('character_view.character', character_id=character.id, section='notes')},
+  {"key": "images",    "label": "Images",    "url": url_for('character_view.character', character_id=character.id, section='images')},
+  {"key": "stats",     "label": "Stats",     "url": url_for('character_view.character', character_id=character.id, section='stats')},
+] %}
+
+<div id="character-content-card" class="surface-card">
+  <div class="card-body p-4 sm:p-6 flex flex-col gap-5" x-data>
+
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div class="min-w-0">
+        <div class="text-xs uppercase tracking-wider opacity-60">{{ character.character_class | title }}</div>
+        <h2 class="font-serif text-3xl sm:text-4xl leading-tight mt-1 truncate">{{ character.name_full }}</h2>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <button class="btn btn-sm btn-neutral"
+                x-data
+                @click="$dispatch('open-dice-roll', { characterId: '{{ character.id }}', characterName: '{{ character.name | normalize_string }}' })">
+          <i class="fa-solid fa-dice"></i> Roll Dice
+        </button>
+
+        {% if can_edit %}
+          <a href="{{ url_for('character_trait_edit.XP', character_id=character.id) }}"
+             class="btn btn-sm">
+            <i class="fa-solid fa-bolt"></i> Spend XP
+          </a>
+
+          <details class="dropdown dropdown-end"
+                   @click.outside="$el.removeAttribute('open')">
+            <summary class="btn btn-sm btn-ghost">
+              <i class="fa-solid fa-ellipsis"></i>
+              <span class="sr-only">More character actions</span>
+            </summary>
+            <ul class="menu dropdown-content bg-base-100 rounded-box z-10 w-56 p-2 shadow-md border border-base-300">
+              <li>
+                <button type="button"
+                        hx-get="{{ url_for('character_create.manual_profile', campaign_id=campaign.id) }}?character_id={{ character.id }}"
+                        hx-target="#character-tab-content"
+                        hx-swap="innerHTML">
+                  <i class="fa-regular fa-pen-to-square"></i> Edit Profile
+                </button>
+              </li>
+              {% if character.starting_points > 0 %}
+                <li>
+                  <a href="{{ url_for('character_trait_edit.STARTING_POINTS', character_id=character.id) }}">
+                    <i class="fa-solid fa-star"></i> Spend Starting Points
+                  </a>
+                </li>
+              {% endif %}
+              {% if can_edit_traits_free(character) %}
+                <li>
+                  <a href="{{ url_for('character_trait_edit.NO_COST', character_id=character.id) }}">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Free Trait Edit
+                  </a>
+                </li>
+              {% endif %}
+              <li>
+                <button type="button"
+                        @click="document.getElementById('character-image-upload-input').click()">
+                  <i class="fa-regular fa-image"></i> Upload Image
+                </button>
+              </li>
+              <li class="border-t border-base-300 mt-1 pt-1">
+                <button class="text-error hover:bg-error/10"
+                        @click="document.getElementById('character-delete-modal').showModal()">
+                  <i class="fa-solid fa-trash-can"></i> Delete Character
+                </button>
+              </li>
+            </ul>
+          </details>
+        {% endif %}
+      </div>
+    </div>
+
+    <nav aria-label="Character sections"
+         class="border-b border-base-300/60 relative"
+         x-data='priorityNav({{ {"items": sub_tabs, "active": active_section} | tojson }})'
+         x-cloak>
+
+      {# Hidden measurement row — positioned off-screen, always renders every
+         tab at its natural width so the layout engine can tell us what fits. #}
+      <div x-ref="measure"
+           aria-hidden="true"
+           class="invisible absolute -left-[9999px] top-0 flex flex-nowrap tabs tabs-border tabs-sm">
+        {% for item in sub_tabs %}
+          <span data-measure-tab class="tab">{{ item.label }}</span>
+        {% endfor %}
+        <span data-measure-more class="tab">More <i class="fa-solid fa-chevron-down text-xs ml-1.5"></i></span>
+      </div>
+
+      <div role="tablist"
+           x-ref="bar"
+           class="tabs tabs-border tabs-sm items-stretch flex-nowrap transition-opacity duration-150"
+           :class="{ 'opacity-0': !ready }">
+        {% for item in sub_tabs %}
+          <a role="tab"
+             class="tab"
+             :class="{ 'tab-active font-semibold': active === '{{ item.key }}' }"
+             x-show="layout.visible.some(v => v.key === '{{ item.key }}')"
+             href="{{ item.url }}"
+             hx-get="{{ item.url }}"
+             hx-target="#character-tab-content"
+             hx-swap="innerHTML"
+             hx-push-url="true"
+             @click="active = '{{ item.key }}'">
+            {{ item.label }}
+          </a>
+        {% endfor %}
+
+        <div class="dropdown dropdown-end ml-auto"
+             :class="{ 'hidden': layout.hidden.length === 0 }"
+             @click.outside="open = false"
+             @keydown.escape.window="open = false">
+          <button type="button"
+                  class="tab"
+                  :class="{ 'tab-active': open }"
+                  :aria-expanded="open.toString()"
+                  @click="open = !open">
+            <span>More</span>
+            <i class="fa-solid fa-chevron-down text-xs ml-1.5 transition-transform duration-150"
+               :class="{ 'rotate-180': open }"></i>
+          </button>
+          <ul x-show="open"
+              x-transition:enter="transition ease-out duration-150"
+              x-transition:enter-start="opacity-0 -translate-y-1"
+              x-transition:enter-end="opacity-100 translate-y-0"
+              x-transition:leave="transition ease-in duration-100"
+              x-transition:leave-start="opacity-100 translate-y-0"
+              x-transition:leave-end="opacity-0 -translate-y-1"
+              class="menu dropdown-content bg-base-100 rounded-box z-10 w-56 p-2 mt-2 shadow-md border border-base-300">
+            {% for item in sub_tabs %}
+              <li x-show="layout.hidden.some(h => h.key === '{{ item.key }}')">
+                <a href="{{ item.url }}"
+                   hx-get="{{ item.url }}"
+                   hx-target="#character-tab-content"
+                   hx-swap="innerHTML"
+                   hx-push-url="true"
+                   :class="{ 'menu-active font-semibold': active === '{{ item.key }}' }"
+                   @click="active = '{{ item.key }}'; open = false">
+                  {{ item.label }}
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <div id="character-tab-content">
+      {% if active_section == "sheet" %}
+        <character_view.partials.SheetContent character={{ character }} full_sheet={{ full_sheet }} dictionary_terms={{ dictionary_terms }} />
+      {% elif active_section == "profile" %}
+        <character_view.partials.ProfileContent character={{ character }} concept={{ concept }} dictionary_terms={{ dictionary_terms }} />
+      {% elif active_section == "inventory" %}
+        <character_view.partials.InventoryContent character={{ character }} />
+      {% elif active_section == "notes" %}
+        <character_view.partials.NotesContent character={{ character }} />
+      {% elif active_section == "images" %}
+        <character_view.partials.ImagesContent character={{ character }} assets={{ assets }} />
+      {% elif active_section == "stats" %}
+        <character_view.partials.StatsContent character={{ character }} />
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# Sibling of the card so HTMX tab swaps don't re-render the file input element
+   (preserves any picker state across navigation). #}
+{% if can_edit %}
+  <form id="character-image-upload-form"
+        class="hidden"
+        hx-post="{{ url_for('character_view.image_upload', character_id=character.id) }}"
+        hx-target="#images-content"
+        hx-swap="outerHTML"
+        hx-select="#images-content"
+        hx-encoding="multipart/form-data"
+        hx-disabled-elt="find button"
+        x-data="{ maxSize: {{ MAX_IMAGE_SIZE }}, maxSizeMb: {{ MAX_IMAGE_SIZE // 1024 // 1024 }} }">
+    <input type="file"
+           id="character-image-upload-input"
+           name="image"
+           accept="image/jpeg,image/png,image/webp,image/gif"
+           @change="if ($event.target.files[0]?.size > maxSize) { alert('File is too large. Maximum size is ' + maxSizeMb + ' MB.'); $event.target.value = ''; return; } $el.closest('form').requestSubmit();" />
+  </form>
+{% endif %}

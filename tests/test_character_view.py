@@ -136,22 +136,22 @@ class TestCharacterDelete:
 class TestCharacterSectionGet:
     """Tests for GET /character/<id>/<section> via HTMX."""
 
-    def test_htmx_section_returns_content_and_oob_nav(self, client, mock_character_lookup) -> None:
-        """Verify HTMX section request returns section content and OOB CharacterNav."""
+    def test_htmx_section_returns_inner_content_only(self, client, mock_character_lookup) -> None:
+        """Verify HTMX section request returns the inner content fragment without an OOB nav swap."""
         # Given a valid character
         char, _ = mock_character_lookup
 
         # When requesting a section via HTMX
         response = client.get(
-            f"/character/{char.id}/info",
+            f"/character/{char.id}/profile",
             headers={"HX-Request": "true"},
         )
 
-        # Then the response contains the section content and OOB nav
+        # Then the response is the inner content fragment, no OOB CharacterNav
         assert response.status_code == 200
         body = response.get_data(as_text=True)
-        assert 'id="character-nav"' in body
-        assert 'hx-swap-oob="true"' in body
+        assert 'id="character-nav"' not in body
+        assert 'hx-swap-oob="true"' not in body
 
     def test_stats_section_renders_lazy_statistics_url(self, client, mock_character_lookup) -> None:
         """Verify the stats section renders the /cards/statistics lazy-load URL scoped by character."""
@@ -164,3 +164,32 @@ class TestCharacterSectionGet:
         # Then the rendered HTML includes the lazy-load URL scoped to the character
         assert b"/cards/statistics?" in response.data
         assert f"character_id={char.id}".encode() in response.data
+
+    def test_info_section_redirects_to_inventory(self, client, mock_character_lookup) -> None:
+        """Verify legacy /character/<id>/info redirects to /character/<id>/inventory."""
+        # Given a valid character
+        char, _ = mock_character_lookup
+
+        # When hitting the legacy info URL
+        response = client.get(f"/character/{char.id}/info", follow_redirects=False)
+
+        # Then a 302 to /character/<id>/inventory is returned
+        assert response.status_code == 302
+        assert response.headers["Location"].endswith(f"/character/{char.id}/inventory")
+
+    def test_info_section_redirects_to_inventory_for_htmx(
+        self, client, mock_character_lookup
+    ) -> None:
+        """Verify legacy /character/<id>/info under HTMX returns HX-Redirect to inventory."""
+        # Given a valid character
+        char, _ = mock_character_lookup
+
+        # When hitting the legacy info URL via HTMX
+        response = client.get(
+            f"/character/{char.id}/info",
+            headers={"HX-Request": "true"},
+        )
+
+        # Then an HX-Redirect to inventory is sent
+        assert response.status_code == 200
+        assert response.headers["HX-Redirect"].endswith(f"/character/{char.id}/inventory")

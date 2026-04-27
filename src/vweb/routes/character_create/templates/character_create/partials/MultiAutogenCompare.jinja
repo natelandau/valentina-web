@@ -51,7 +51,7 @@
              @change="selectedCharId = '{{ item.character.id }}'; selectedCharName = '{{ item.character.name_full or 'Character ' ~ loop.index }}'" />
       <div class="tab-content bg-base-100 border-base-300 p-6">
 
-        <character_view.partials.SheetContent full_sheet={{ item.full_sheet }} can_edit={{ False }} />
+        <character_view.partials.SheetContent character={{ item.character }} full_sheet={{ item.full_sheet }} />
 
       </div>
     {% endfor %}

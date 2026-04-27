@@ -2,75 +2,21 @@
 
 {% set images_editable = can_edit_character(character) %}
 
-<div id="images-content">
-  {# Header row: title + upload button #}
-  <div class="flex justify-between items-center mb-4">
-    <h2 class="card-title">Images</h2>
-    {% if images_editable %}
-      <form hx-post="{{ url_for('character_view.image_upload', character_id=character.id) }}"
-            hx-target="#images-content"
-            hx-swap="outerHTML"
-            hx-select="#images-content"
-            hx-encoding="multipart/form-data"
-            x-data="{ maxSize: {{ MAX_IMAGE_SIZE }}, maxSizeMb: {{ MAX_IMAGE_SIZE // 1024 // 1024 }} }">
-        <input type="file"
-               name="image"
-               accept="image/jpeg,image/png,image/webp,image/gif"
-               class="hidden"
-               x-ref="fileInput"
-               @change=" if ($refs.fileInput.files[0]?.size > maxSize) { alert('File is too large. Maximum size is ' + maxSizeMb + ' MB.'); $refs.fileInput.value = ''; return; } $el.closest('form').requestSubmit(); " />
-        <shared.CommonButton variant="add" extra_class="btn-sm" btn_type="button" @click="$refs.fileInput.click()">
-        <i class="fa-solid fa-plus"></i> Upload Image
-        </shared.CommonButton>
-      </form>
-    {% endif %}
-  </div>
+{% set delete_urls = {} %}
+{% for asset in assets %}
+  {% set _ = delete_urls.update({asset.id: url_for('character_view.image_delete', character_id=character.id, asset_id=asset.id)}) %}
+{% endfor %}
 
+<div id="images-content">
   {% if assets %}
-    <div id="image-carousel" class="carousel w-full rounded-box">
-      {% for asset in assets %}
-        <div id="slide{{ loop.index }}" class="carousel-item w-full flex-col">
-          <div class="relative flex justify-center bg-base-200 rounded-box overflow-hidden w-full">
-            <img src="{{ asset.public_url }}"
-                 alt="{{ asset.original_filename }}"
-                 class="max-h-[calc(100vh-18rem)] max-w-full object-contain" />
-            {% if assets | length > 1 %}
-              <div class="absolute left-5 right-5 top-1/2 flex -translate-y-1/2 transform justify-between">
-                <a href="#slide{{ loop.index - 1 if loop.index > 1 else assets | length }}"
-                   class="btn btn-circle btn-sm opacity-70 hover:opacity-100"><i class="fa-solid fa-chevron-left"></i></a>
-                <a href="#slide{{ loop.index + 1 if loop.index < assets | length else 1 }}"
-                   class="btn btn-circle btn-sm opacity-70 hover:opacity-100"><i class="fa-solid fa-chevron-right"></i></a>
-              </div>
-            {% endif %}
-          </div>
-          <div class="flex justify-between items-center mt-2 px-1">
-            {% if assets | length > 1 %}
-              <div class="flex gap-2">
-                {% for sibling in assets %}
-                  <a href="#slide{{ loop.index }}" class="btn btn-xs">{{ loop.index }}</a>
-                {% endfor %}
-              </div>
-            {% else %}
-              <div></div>
-            {% endif %}
-            {% if images_editable %}
-              <button class="btn btn-error btn-soft btn-xs"
-                      hx-delete="{{ url_for('character_view.image_delete', character_id=character.id, asset_id=asset.id) }}"
-                      hx-target="#images-content"
-                      hx-swap="outerHTML"
-                      hx-select="#images-content"
-                      hx-confirm="Delete this image? This cannot be undone."
-                      aria-label="Delete image">
-                <i class="fa-solid fa-trash-can"></i>
-              </button>
-            {% endif %}
-          </div>
-        </div>
-      {% endfor %}
-    </div>
+    <shared.ImageCarousel assets={{ assets }}
+                          delete_urls={{ delete_urls }}
+                          editable={{ images_editable }}
+                          carousel_id="character-image-carousel"
+                          swap_target="images-content" />
   {% elif images_editable %}
     <p class="text-base-content/60 italic text-sm py-8 text-center">
-      No images uploaded yet.
+      No images uploaded yet. Use <span class="font-medium">More → Upload Image</span> to add one.
     </p>
   {% else %}
     <p class="text-base-content/60 italic text-sm py-8 text-center">

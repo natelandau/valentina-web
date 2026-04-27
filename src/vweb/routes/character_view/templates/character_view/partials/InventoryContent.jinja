@@ -1,0 +1,12 @@
+{# def character #}
+
+{% set editable_param = 'true' if can_edit_character(character) else 'false' %}
+
+<div id="crud-inventory"
+     hx-get="{{ url_for("character_view.character_inventory", parent_id=character.id) }}?editable={{ editable_param }}"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+  <div class="flex justify-center py-8">
+    <span class="loading loading-spinner loading-lg"></span>
+  </div>
+</div>

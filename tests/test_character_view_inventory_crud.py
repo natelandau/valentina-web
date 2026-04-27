@@ -58,7 +58,7 @@ class TestCharacterInventoryGet:
     def test_get_table_returns_200(self, client, mock_inventory_handler) -> None:
         """Verify GET returns the inventory table HTML."""
         response = client.get(
-            "/character/char-123/inventory",
+            "/character/char-123/inventory/items",
             headers={"HX-Request": "true"},
         )
         assert response.status_code == 200
@@ -67,7 +67,7 @@ class TestCharacterInventoryGet:
     def test_default_sort_is_first_sortable_field(self, client, mock_inventory_handler) -> None:
         """Verify table defaults to sorting by first sortable column ascending."""
         response = client.get(
-            "/character/char-123/inventory",
+            "/character/char-123/inventory/items",
             headers={"HX-Request": "true"},
         )
         body = response.get_data(as_text=True)
@@ -76,7 +76,7 @@ class TestCharacterInventoryGet:
     def test_sort_descending(self, client, mock_inventory_handler) -> None:
         """Verify descending sort reverses item order."""
         response = client.get(
-            "/character/char-123/inventory?sort=-name",
+            "/character/char-123/inventory/items?sort=-name",
             headers={"HX-Request": "true"},
         )
         body = response.get_data(as_text=True)
@@ -85,7 +85,7 @@ class TestCharacterInventoryGet:
     def test_nonsortable_field_falls_back(self, client, mock_inventory_handler) -> None:
         """Verify sorting by a non-sortable field falls back to default."""
         response = client.get(
-            "/character/char-123/inventory?sort=description",
+            "/character/char-123/inventory/items?sort=description",
             headers={"HX-Request": "true"},
         )
         body = response.get_data(as_text=True)
@@ -98,7 +98,7 @@ class TestCharacterInventoryEditable:
     def test_hides_buttons_when_not_editable(self, client, mock_inventory_handler) -> None:
         """Verify table with editable=false hides Add/Edit/Delete."""
         response = client.get(
-            "/character/char-123/inventory?editable=false",
+            "/character/char-123/inventory/items?editable=false",
             headers={"HX-Request": "true"},
         )
         body = response.get_data(as_text=True)
@@ -109,7 +109,7 @@ class TestCharacterInventoryEditable:
     def test_shows_buttons_when_editable(self, client, mock_inventory_handler) -> None:
         """Verify table with editable=true shows Add/Edit/Delete."""
         response = client.get(
-            "/character/char-123/inventory?editable=true",
+            "/character/char-123/inventory/items?editable=true",
             headers={"HX-Request": "true"},
         )
         body = response.get_data(as_text=True)

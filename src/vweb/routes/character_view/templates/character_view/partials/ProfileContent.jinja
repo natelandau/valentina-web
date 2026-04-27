@@ -3,40 +3,36 @@
     dictionary_terms: list[DictionaryTerm] = [],
 #}
 
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-  {# Bio #}
-  <div class="card surface-card">
-    <div class="card-body">
-      <h2 class="card-title">Biography</h2>
-      {% if character.biography and character.biography != "None" %}
-        <p class="prose max-w-none">{{ character.biography }}</p>
-      {% else %}
-        <p class="text-base-content/40 italic text-sm">
-          No biography written yet.
-        </p>
-      {% endif %}
-    </div>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+  <div>
+    <h3 class="font-serif text-xl mb-2">Biography</h3>
+    {% if character.biography and character.biography != "None" %}
+      <p class="prose max-w-none">{{ character.biography }}</p>
+    {% else %}
+      <p class="text-base-content/40 italic text-sm">
+        No biography written yet.
+      </p>
+    {% endif %}
   </div>
-  {# Concept #}
+
   {% if concept %}
-    <div class="card surface-card">
-      <div class="card-body">
-        <h2 class="card-title">Concept: {{ concept.name }}</h2>
-        <p class="prose max-w-none">{{ concept.description }}</p>
-        {% if character.specialties %}
-          <h4 class="text-lg font-semibold text-base-content/50">Specialties</h4>
-          <table class="table table-sm [&_tr>*]:border-none [&_td]:py-0.5 [&_td]:px-1">
-            {% for specialty in character.specialties %}
-              <tr>
-                <th class="prose max-w-none font-medium">{{ specialty.name }}</th>
-                <td class="prose max-w-none">
-                  {{ specialty.description | from_markdown | link_terms("html") }}
-                </td>
-              </tr>
-            {% endfor %}
-          </table>
-        {% endif %}
-      </div>
+    <div>
+      <h3 class="font-serif text-xl mb-2">Concept: {{ concept.name }}</h3>
+      <p class="prose max-w-none">{{ concept.description }}</p>
+      {% if character.specialties %}
+        <h4 class="text-lg font-semibold text-base-content/50 mt-4">Specialties</h4>
+        <table class="table table-sm [&_tr>*]:border-none [&_td]:py-0.5 [&_td]:px-1">
+          {% for specialty in character.specialties %}
+            <tr>
+              <th class="prose max-w-none font-medium">{{ specialty.name }}</th>
+              <td class="prose max-w-none">
+                {{ specialty.description | from_markdown | link_terms("html") }}
+              </td>
+            </tr>
+          {% endfor %}
+        </table>
+      {% endif %}
     </div>
   {% endif %}
 </div>

@@ -54,7 +54,7 @@ class TestCharacterNotesGet:
     def test_get_table_returns_200(self, client, mock_notes_handler) -> None:
         """Verify GET returns the notes table HTML."""
         response = client.get(
-            "/character/char-123/notes",
+            "/character/char-123/notes/items",
             headers={"HX-Request": "true"},
         )
         assert response.status_code == 200
@@ -63,7 +63,7 @@ class TestCharacterNotesGet:
     def test_get_add_form_returns_200(self, client, mock_notes_handler) -> None:
         """Verify GET /form returns the add form."""
         response = client.get(
-            "/character/char-123/notes/form",
+            "/character/char-123/notes/items/form",
             headers={"HX-Request": "true"},
         )
         assert response.status_code == 200
@@ -72,7 +72,7 @@ class TestCharacterNotesGet:
     def test_get_edit_form_returns_200(self, client, mock_notes_handler) -> None:
         """Verify GET /form/<id> returns the edit form with populated data."""
         response = client.get(
-            "/character/char-123/notes/form/note-789",
+            "/character/char-123/notes/items/form/note-789",
             headers={"HX-Request": "true"},
         )
         assert response.status_code == 200
@@ -85,7 +85,7 @@ class TestCharacterNotesPost:
     def test_create_item_returns_refetch(self, client, mock_notes_handler) -> None:
         """Verify POST creates item and returns a refetch snippet."""
         response = client.post(
-            "/character/char-123/notes",
+            "/character/char-123/notes/items",
             data={"title": "New Note", "content": "New content"},
             headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)},
         )
@@ -97,7 +97,7 @@ class TestCharacterNotesPost:
     def test_update_item_returns_refetch(self, client, mock_notes_handler) -> None:
         """Verify POST with item_id updates and returns a refetch snippet."""
         response = client.post(
-            "/character/char-123/notes/note-789",
+            "/character/char-123/notes/items/note-789",
             data={"title": "Updated", "content": "Updated content"},
             headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)},
         )
@@ -108,7 +108,7 @@ class TestCharacterNotesPost:
         """Verify POST with validation errors re-renders form with error messages."""
         mock_notes_handler.validate.return_value = ["Title is required"]
         response = client.post(
-            "/character/char-123/notes",
+            "/character/char-123/notes/items",
             data={"title": "", "content": ""},
             headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)},
         )
@@ -122,7 +122,7 @@ class TestCharacterNotesDelete:
     def test_delete_item_returns_refetch(self, client, mock_notes_handler) -> None:
         """Verify DELETE removes item and returns a refetch snippet."""
         response = client.delete(
-            "/character/char-123/notes/note-789",
+            "/character/char-123/notes/items/note-789",
             headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)},
         )
         assert response.status_code == 200
