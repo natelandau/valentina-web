@@ -4,7 +4,7 @@
     col_span: int = 0,
 #}
 
-{% set grid_col_span = "col-span-" ~ col_span if col_span > 0 else "" %}
+{% set grid_col_span = "lg:col-span-" ~ col_span if col_span > 0 else "" %}
 
 <div class="card surface-card h-full {{ grid_col_span }}">
   <div class="card-body">

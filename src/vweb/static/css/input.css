@@ -1,8 +1,11 @@
 @import "tailwindcss";
 @source "../templates/**/*.jinja";
 @source inline("link link-hover link-primary link-accent link-info link-success link-warning link-error link-neutral link-secondary");
-/* Safelist col-span classes used dynamically by shared card wrappers ("col-span-" ~ col_span) */
-@source inline("col-span-1 col-span-2 col-span-3 col-span-4 col-span-full");
+/* Safelist col-span classes used dynamically by shared card wrappers ("lg:col-span-" ~ col_span).
+   Cards span columns only at lg+ since parent grids are grid-cols-1 lg:grid-cols-N — without the
+   lg: prefix, col-span-N on a single-column mobile grid creates implicit columns and squishes
+   sibling cards into half-width. */
+@source inline("lg:col-span-1 lg:col-span-2 lg:col-span-3 lg:col-span-4 lg:col-span-full");
 @plugin "@tailwindcss/typography";
 
 @theme {

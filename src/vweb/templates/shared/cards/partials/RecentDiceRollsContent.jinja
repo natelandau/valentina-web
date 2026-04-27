@@ -6,7 +6,7 @@
     empty_message: str = "No dicerolls yet",
 #}
 
-{% set grid_col_span = "col-span-" ~ col_span if col_span > 0 else "" %}
+{% set grid_col_span = "lg:col-span-" ~ col_span if col_span > 0 else "" %}
 
 {# Label + weight/color classes per RollResultType; None falls back to the Pending entry #}
 {% set result_styles = {
@@ -34,7 +34,7 @@
 
               {# Left column: character/traits on top, date/dice notation below. list-col-grow flexes to fill and pushes the result column to the right edge. #}
               <div class="list-col-grow min-w-0">
-                <div class="flex items-center gap-2 min-w-0">
+                <div class="flex flex-col sm:flex-row sm:items-center gap-0 sm:gap-2 min-w-0">
                   <a href="{{ url_for('character_view.character', character_id=roll.character_id) }}"
                      class="uppercase font-semibold tracking-wide truncate min-w-0">{{ roll.character_name }}</a>
                   {% if roll.trait_names %}

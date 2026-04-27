@@ -10,8 +10,8 @@
     {% for row in rows %}
       <li class="list-row" x-data="{ open: false }">
         <div class="list-col-grow min-w-0">
-          {# Line 1: description (left, truncated) + date (right) #}
-          <div class="flex items-center justify-between gap-2 min-w-0">
+          {# Line 1: description (left, truncated) + date (right). Stacks vertically on mobile. #}
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2 min-w-0">
             <span class="font-semibold truncate">
               {{ row.log.description or row.log.summary or "" }}
             </span>
@@ -20,8 +20,8 @@
             </span>
           </div>
 
-          {# Line 2: acting user (left) + related entity links (right) #}
-          <div class="flex items-center justify-between gap-2 text-xs mt-1 min-w-0">
+          {# Line 2: acting user (left) + related entity links (right). Stacks vertically on mobile. #}
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2 text-xs mt-1 min-w-0">
             <span>
               {% set acting_name, acting_url = row.acting_user %}
               {% if acting_url %}
@@ -32,7 +32,7 @@
                 <span class="opacity-40 italic">system</span>
               {% endif %}
             </span>
-            <span class="flex flex-wrap gap-x-3 gap-y-1 opacity-80 text-right">
+            <span class="flex flex-col sm:flex-row sm:flex-wrap gap-x-3 gap-y-1 opacity-80 sm:text-right">
               {% for label, name, url in row.entities %}
                 <span>
                   <span class="opacity-60">{{ label }}:</span>

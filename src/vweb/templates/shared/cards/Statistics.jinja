@@ -17,7 +17,7 @@
     title=title,
 ) %}
 
-{% set grid_col_span = "col-span-" ~ col_span if col_span > 0 else "" %}
+{% set grid_col_span = "lg:col-span-" ~ col_span if col_span > 0 else "" %}
 
 <div hx-get="{{ url }}" hx-trigger="load" hx-swap="outerHTML"{% if grid_col_span %} class="{{ grid_col_span }}"{% endif %}>
   <div class="card surface-card h-full{% if grid_col_span %} {{ grid_col_span }}{% endif %}">

@@ -10,7 +10,7 @@
     exclude_current_user: bool = true,
 #}
 
-{% set grid_col_span = "col-span-" ~ col_span if col_span > 0 else "" %}
+{% set grid_col_span = "lg:col-span-" ~ col_span if col_span > 0 else "" %}
 
 {% set current_user = g.requesting_user %}
 
@@ -60,10 +60,6 @@
                 </div>
                 <div class="mt-1 text-xs opacity-60 flex items-center gap-2">
                   <span class="font-mono"><i class="fa-solid fa-star"></i> {{ campaign_experience.xp_current if campaign_experience else 0 }} Available XP</span>
-                  <span aria-hidden="true">|</span>
-                  <span class="font-mono">{{ campaign_experience.xp_total if campaign_experience else 0 }} Lifetime XP</span>
-                  <span aria-hidden="true">|</span>
-                  <span class="font-mono">{{ campaign_experience.cool_points if campaign_experience else 0 }} CP</span>
                 </div>
               </a>
             </div>

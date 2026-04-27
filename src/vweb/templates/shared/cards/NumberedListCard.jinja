@@ -12,7 +12,7 @@
     oob: bool = False,
 #}
 
-{% set grid_col_span = "col-span-" ~ col_span if col_span > 0 else "" %}
+{% set grid_col_span = "lg:col-span-" ~ col_span if col_span > 0 else "" %}
 
 <div {% if card_id %}id="{{ card_id }}"{% endif %}
      {% if oob %}hx-swap-oob="true"{% endif %}

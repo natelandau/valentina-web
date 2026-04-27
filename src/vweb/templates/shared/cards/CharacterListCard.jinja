@@ -11,7 +11,7 @@
     link_user_profile: bool = False,
 #}
 
-{% set grid_col_span = "col-span-" ~ col_span if col_span > 0 else "" %}
+{% set grid_col_span = "lg:col-span-" ~ col_span if col_span > 0 else "" %}
 
 <div class="card surface-card {{ grid_col_span }}">
   <div class="card-body">
@@ -59,7 +59,7 @@
                   <span class="font-thin truncate">{{ character.character_class | title }}</span>
                 </div>
                 <div class="text-xs opacity-60">
-                  <div class="mt-1 text-xs opacity-60 flex items-center gap-2">
+                  <div class="mt-1 text-xs opacity-60 flex flex-col sm:flex-row sm:items-center gap-0 sm:gap-2">
                     {% set ns = namespace(first=True) %}
 
                     {% if show_type %}
@@ -68,14 +68,14 @@
                     {% endif %}
 
                     {% if link_user_profile %}
-                      {% if not ns.first %}<span aria-hidden="true">|</span>{% endif %}
+                      {% if not ns.first %}<span aria-hidden="true" class="hidden sm:inline">|</span>{% endif %}
                       <a href="{{ url_for('profile.profile', user_id=character.user_player_id) }}"
                          class="link link-info link-hover">{{ user_map.get(character.user_player_id, "Unknown") }}</a>
                       {% set ns.first = False %}
                     {% endif %}
 
                     {% if show_campaign %}
-                      {% if not ns.first %}<span aria-hidden="true">|</span>{% endif %}
+                      {% if not ns.first %}<span aria-hidden="true" class="hidden sm:inline">|</span>{% endif %}
                       <span><span class="font-semibold">Campaign:</span> {{ campaign_map.get(character.campaign_id, "Unknown") }}</span>
                       {% set ns.first = False %}
                     {% endif %}
