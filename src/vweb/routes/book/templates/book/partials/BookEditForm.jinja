@@ -53,7 +53,7 @@
     </fieldset>
 
     <div class="flex gap-2 justify-end">
-      <shared.CommonButton variant="cancel" hx-get={{ url_for('book_view.book_detail', campaign_id=campaign.id, book_id=book.id) }} hx-target="#book-content" hx-swap="outerHTML">
+      <shared.CommonButton variant="cancel" hx-get={{ url_for('book_view.book_detail', campaign_id=campaign.id, book_id=book.id) }} hx-target="#book-content" hx-swap="outerHTML" hx-select="#book-content">
       Cancel
       </shared.CommonButton>
       <shared.CommonButton variant="submit">Save</shared.CommonButton>
