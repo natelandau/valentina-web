@@ -47,6 +47,8 @@ _SCANNER_BLOCKED_PREFIXES = (
     "/kube",
     "/var/",
     "/cpanel",
+    "/sitemap",
+    "/api/",
 )
 _SCANNER_BLOCKED_SUFFIXES = (
     ".php",
@@ -54,10 +56,12 @@ _SCANNER_BLOCKED_SUFFIXES = (
     ".aspx",
     ".jsp",
     ".cgi",
+    ".xml",
+    ".txt",
+    ".log",
     "config.json",
     ".yml",
     "mcp.json",
-    "sitemap.xml",
 )
 _SCANNER_BLOCKED_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\.env\.?|phpinfo"),  # .env, .env.production, .env.local, .env.backup, etc.
