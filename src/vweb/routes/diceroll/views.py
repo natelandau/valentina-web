@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import cast, get_args
+from typing import TYPE_CHECKING, cast, get_args
+from urllib.parse import urlparse
 
-from flask import Blueprint, abort, request
+from flask import Blueprint, abort, make_response, request, url_for
 from flask.views import MethodView
 from vclient.constants import DiceSize
 from vclient.exceptions import APIError, ValidationError
@@ -20,20 +21,52 @@ from vweb.routes.diceroll.services import (
     perform_trait_roll,
 )
 
+if TYPE_CHECKING:
+    from werkzeug.wrappers import Response
+
 bp = Blueprint("diceroll", __name__)
 
 
-class DiceRollContentView(MethodView):
-    """Render the full dice roll modal content with all three tab forms."""
+def _safe_back_url(character_id: str) -> str:
+    """Return the page the user came from, or the character page as a fallback.
 
-    def get(self, character_id: str) -> str:
-        """Return the dice roll modal interior for a character.
+    Honors `Referer` only when it's an http(s) same-origin URL outside the dice-roll
+    routes. Roll-page referrers are rejected so Back cannot ping-pong between roll
+    pages (e.g. /roll/A -> /roll/B -> /roll/A).
+    """
+    fallback = url_for("character_view.character", character_id=character_id)
+    referrer = request.referrer
+    if not referrer:
+        return fallback
+
+    parsed = urlparse(referrer)
+    # Reject non-http(s) schemes (javascript:, data:, vbscript:, ...) to prevent
+    # script execution when the back link is clicked.
+    if parsed.scheme and parsed.scheme not in ("http", "https"):
+        return fallback
+    if parsed.netloc and parsed.netloc != urlparse(request.host_url).netloc:
+        return fallback
+    if parsed.path == "/roll" or parsed.path.startswith("/roll/"):
+        return fallback
+    return referrer
+
+
+class DiceRollContentView(MethodView):
+    """Render the dice roll UI with all three tab forms."""
+
+    def get(self, character_id: str) -> Response:
+        """Return the dice roll UI as fragment (HTMX/desktop modal) or full page (mobile).
+
+        Mobile users navigate directly to this URL via `<a href>`, getting the full-page
+        version; desktop modal triggers fire an HTMX request and receive the fragment that
+        slots into the modal body. The response varies on HX-Request so downstream caches
+        don't serve the wrong representation.
 
         Args:
             character_id: The character's unique identifier.
 
         Returns:
-            Rendered HTML with tabs, forms, and empty results panel.
+            Rendered HTML, fragment for HTMX or full page wrapped in PageLayout otherwise.
         """
         character, campaign = get_character_and_campaign(character_id)
         if not character or not campaign:
@@ -41,12 +74,25 @@ class DiceRollContentView(MethodView):
 
         roll_ctx = get_roll_context(character=character, campaign=campaign)
 
-        return catalog.render(
-            "diceroll.DiceRollContent",
-            character=character,
-            campaign=campaign,
-            roll_context=roll_ctx,
-        )
+        if request.headers.get("HX-Request"):
+            body = catalog.render(
+                "diceroll.DiceRollContent",
+                character=character,
+                campaign=campaign,
+                roll_context=roll_ctx,
+            )
+        else:
+            body = catalog.render(
+                "diceroll.DiceRollPage",
+                character=character,
+                campaign=campaign,
+                roll_context=roll_ctx,
+                back_url=_safe_back_url(character_id),
+            )
+
+        response = make_response(body)
+        response.headers["Vary"] = "HX-Request"
+        return response
 
 
 class DiceRollCustomView(MethodView):

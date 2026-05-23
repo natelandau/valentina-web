@@ -1,0 +1,18 @@
+{#def character, campaign, roll_context, back_url=None #}
+{% set character_display_name = character.name | normalize_string %}
+<shared.PageLayout title={{ "Roll Dice: " ~ character_display_name }}>
+  <div class="flex flex-col gap-4">
+    <div class="flex items-center justify-between gap-3">
+      <h1 class="font-bold text-xl">Roll Dice: {{ character_display_name }}</h1>
+      {% if back_url %}
+        <a href="{{ back_url }}"
+           class="link link-primary text-sm inline-flex items-center gap-1">
+          <i class="fa-solid fa-arrow-left text-xs"></i> Back
+        </a>
+      {% endif %}
+    </div>
+    <div class="surface-card">
+      <diceroll.DiceRollContent character={{ character }} campaign={{ campaign }} roll_context={{ roll_context }} />
+    </div>
+  </div>
+</shared.PageLayout>
