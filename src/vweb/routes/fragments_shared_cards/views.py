@@ -71,7 +71,7 @@ class DiceRollsCardView(MethodView):
             campaign_id=campaign_id,
             character_id=character_id,
             user_id=user_id,
-            limit=request.args.get("limit", 50, type=int),
+            limit=request.args.get("limit", 25, type=int),
         )
         return catalog.render(
             "shared.cards.partials.RecentDiceRollsContent",
