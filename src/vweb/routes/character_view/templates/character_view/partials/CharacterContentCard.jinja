@@ -124,7 +124,7 @@
         {% endfor %}
 
         <div class="dropdown dropdown-end ml-auto"
-             :class="{ 'hidden': layout.hidden.length === 0 }"
+             :class="{ 'hidden': layout.hidden.length === 0, 'dropdown-open': open }"
              @click.outside="open = false"
              @keydown.escape.window="open = false">
           <button type="button"
