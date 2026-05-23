@@ -1,3 +1,12 @@
+## v0.7.1 (2026-05-23)
+
+### Fix
+
+- minor mobile improvements (#36)
+- **diceroll**: use a full page on mobile (#35)
+- decrease recent-rolls page count (#34)
+- **nav**: show overflow items in priority nav More dropdown
+
 ## v0.7.0 (2026-04-27)
 
 ### Feat
