@@ -271,7 +271,7 @@ def get_recent_player_dicerolls(
     *,
     character_id: str = "",
     user_id: str = "",
-    limit: int = 50,
+    limit: int = 25,
 ) -> list[DiceRollDisplay]:
     """Return recent dice rolls filtered by one or more scopes.
 

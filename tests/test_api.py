@@ -356,6 +356,6 @@ class TestGetRecentPlayerDicerollsScopes:
             characterid=None,
             userid="u-42",
             character_type=None,
-            limit=50,
+            limit=25,
             offset=0,
         )
