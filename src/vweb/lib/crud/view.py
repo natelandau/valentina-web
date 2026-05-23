@@ -59,7 +59,7 @@ class CrudTableView(MethodView):
     columns: ClassVar[tuple[Column, ...]]
     form_component: ClassVar[str]
     table_id: ClassVar[str]
-    pagination: ClassVar[int] = 0
+    page_size: ClassVar[int] = 0
 
     # Derived class-level attributes, computed once by __init_subclass__
     fields: ClassVar[tuple[str, ...]]
@@ -189,7 +189,7 @@ class CrudTableView(MethodView):
             sort_dir=sort_dir,
             editable=editable,
             extra_params=f"&editable={editable_param}",
-            pagination=self.pagination,
+            page_size=self.page_size,
         )
 
     def _render_form(

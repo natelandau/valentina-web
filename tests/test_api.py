@@ -200,68 +200,6 @@ class TestGetRecentPlayerDicerolls:
             characters=characters,
         )
 
-    def test_filters_out_non_player_characters_and_rolls_without_character(
-        self, app, fake_vclient, mocker
-    ) -> None:
-        """Verify only rolls for PLAYER-type characters in the campaign are returned."""
-        # Given player, storyteller, and no-character rolls
-        campaign = CampaignFactory.build(id="camp-1")
-        user = UserFactory.build(id="user-1", username="alice", role="PLAYER")
-        player_char = CharacterFactory.build(
-            id="char-player", type="PLAYER", name="Hero", campaign_id=campaign.id
-        )
-        storyteller_char = CharacterFactory.build(
-            id="char-st", type="STORYTELLER", name="Villain", campaign_id=campaign.id
-        )
-
-        player_roll = DicerollFactory.build(
-            id="r1",
-            character_id="char-player",
-            user_id="user-1",
-            dice_size=10,
-            trait_ids=[],
-            result=make_dice_roll_result(),
-        )
-        storyteller_roll = DicerollFactory.build(
-            id="r2",
-            character_id="char-st",
-            user_id="user-1",
-            dice_size=10,
-            trait_ids=[],
-            result=make_dice_roll_result(),
-        )
-        no_character_roll = DicerollFactory.build(
-            id="r3",
-            character_id=None,
-            user_id="user-1",
-            dice_size=10,
-            trait_ids=[],
-            result=make_dice_roll_result(),
-        )
-
-        fake_vclient.set_response(
-            Routes.DICEROLLS_LIST,
-            items=[player_roll, storyteller_roll, no_character_roll],
-        )
-        mocker.patch("vweb.lib.api.get_all_traits", return_value={})
-
-        ctx = self._make_context(
-            user=user, characters=[player_char, storyteller_char], campaign=campaign
-        )
-
-        with app.test_request_context("/"):
-            session["company_id"] = "test-company-id"
-            g.global_context = ctx
-            g.requesting_user = user
-
-            # When fetching recent player dicerolls
-            result = get_recent_player_dicerolls(campaign.id)
-
-        # Then only the player character's roll is kept
-        assert [row.id for row in result] == ["r1"]
-        assert result[0].character_name == "Hero"
-        assert result[0].dice_size == 10
-
     def test_resolves_trait_names_and_preserves_api_order(self, app, fake_vclient, mocker) -> None:
         """Verify trait names resolve and the API's newest-first order is preserved as-is."""
         # Given two player rolls returned by the API in newest-first order
@@ -337,11 +275,14 @@ class TestGetRecentPlayerDicerolls:
 
         # Then the service is scoped to the requesting user and company
         service_factory.assert_called_once_with(on_behalf_of=user.id, company_id="test-company-id")
-        # And the page fetch is scoped to the campaign with the requested limit
+        # And the page fetch is scoped to the campaign with the requested limit,
+        # with character_type="PLAYER" so the API drops storyteller/NPC rolls
+        # before applying the limit.
         fake_service.get_page.assert_called_once_with(
             campaignid=campaign.id,
             characterid=None,
             userid=None,
+            character_type="PLAYER",
             limit=25,
             offset=0,
         )
@@ -351,7 +292,7 @@ class TestGetRecentPlayerDicerollsScopes:
     """Tests for scope-based filtering in get_recent_player_dicerolls."""
 
     def test_character_id_scope_skips_player_filter(self, app, fake_vclient, mocker) -> None:
-        """Verify character-scoped calls pass character_id to the API and skip the PLAYER post-filter."""
+        """Verify character-scoped calls trust the API scope and do not set character_type."""
         # Given a diceroll for an NPC character (would be filtered out in campaign-only mode)
         campaign = CampaignFactory.build(id="camp-1")
         user = UserFactory.build(id="user-1", role="PLAYER")
@@ -408,46 +349,13 @@ class TestGetRecentPlayerDicerollsScopes:
             session["company_id"] = mock_global_context.company.id
             get_recent_player_dicerolls(campaign_id="", user_id="u-42")
 
-        # Then userid="u-42" is forwarded to get_page
+        # Then userid="u-42" is forwarded to get_page, and character_type is unset
+        # so non-player rolls for that user are still returned.
         fake_service.get_page.assert_called_once_with(
             campaignid=None,
             characterid=None,
             userid="u-42",
-            limit=50,
+            character_type=None,
+            limit=25,
             offset=0,
         )
-
-    def test_campaign_only_still_applies_player_filter(self, app, fake_vclient, mocker) -> None:
-        """Verify campaign-only scope preserves the PLAYER-characters post-filter."""
-        # Given an NPC roll in a campaign (NPC character not in the campaign's PLAYER list)
-        campaign = CampaignFactory.build(id="camp-1")
-        user = UserFactory.build(id="user-1", role="PLAYER")
-        player_char = CharacterFactory.build(
-            id="char-player", type="PLAYER", name="Hero", campaign_id=campaign.id
-        )
-
-        roll = DicerollFactory.build(
-            id="r-npc",
-            character_id="not-a-player-character",
-            user_id="user-1",
-            dice_size=10,
-            trait_ids=[],
-            result=make_dice_roll_result(),
-        )
-        fake_vclient.set_response(Routes.DICEROLLS_LIST, items=[roll])
-        mocker.patch("vweb.lib.api.get_all_traits", return_value={})
-
-        ctx = build_global_context(
-            user_role=user.role, user=user, campaign=campaign, characters=[player_char]
-        )
-
-        with app.test_request_context("/"):
-            session["company_id"] = "test-company-id"
-            g.global_context = ctx
-            g.requesting_user = user
-
-            # When requesting rolls with only a campaign scope
-            result = get_recent_player_dicerolls(campaign_id=campaign.id)
-
-        # Then the roll is filtered out
-        assert result == []

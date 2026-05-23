@@ -40,7 +40,7 @@ class CampaignNotesTableView(CrudTableView):
         Column("content", "Content", markdown=True, sortable=False),
     )
     form_component = "shared.crud.NoteForm"
-    pagination = 10
+    page_size = 10
 
     def _build_handler(self) -> CrudHandler[Any]:
         """Instantiate handler using campaign_id from the URL path."""

@@ -271,16 +271,15 @@ def get_recent_player_dicerolls(
     *,
     character_id: str = "",
     user_id: str = "",
-    limit: int = 50,
+    limit: int = 25,
 ) -> list[DiceRollDisplay]:
     """Return recent dice rolls filtered by one or more scopes.
 
     Fetch up to ``limit`` most-recent rolls matching the provided scopes
     (combined AND on the API side). When the only scope passed is
-    ``campaign_id``, additionally post-filter to rolls whose character is a
-    PLAYER in that campaign — that keeps the campaign-overview view free of
-    NPC/storyteller noise. When a ``character_id`` or ``user_id`` is supplied,
-    trust the API scope and skip the post-filter.
+    ``campaign_id``, additionally filter to PLAYER-character rolls on the API
+    side — keeps the campaign-overview view free of NPC/storyteller noise
+    without burning ``limit`` slots on rolls that would be discarded.
 
     Args:
         campaign_id: Campaign scope (optional).
@@ -294,34 +293,23 @@ def get_recent_player_dicerolls(
     service = sync_dicerolls_service(
         on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
     )
+    apply_player_filter = bool(campaign_id) and not (character_id or user_id)
     page = service.get_page(
         campaignid=campaign_id or None,
         characterid=character_id or None,
         userid=user_id or None,
+        character_type="PLAYER" if apply_player_filter else None,
         limit=limit,
         offset=0,
     )
 
-    # Post-filter only when the sole scope is a campaign — keeps the campaign
-    # overview free of NPC/storyteller rolls that share the campaign_id filter.
     ctx = g.global_context
-    apply_player_filter = bool(campaign_id) and not (character_id or user_id)
-    if apply_player_filter:
-        characters_by_id: dict[str, Character] = {
-            character.id: character
-            for character in ctx.characters_by_campaign.get(campaign_id, [])
-            if character.type == "PLAYER"
-        }
-    else:
-        characters_by_id = {c.id: c for c in ctx.characters}
-
+    characters_by_id: dict[str, Character] = {c.id: c for c in ctx.characters}
     all_traits = get_all_traits()
 
     displays: list[DiceRollDisplay] = []
     for roll in page.items:
         character = characters_by_id.get(roll.character_id) if roll.character_id else None
-        if apply_player_filter and character is None:
-            continue
         character_name = character.name if character else ""
         character_id_display = character.id if character else (roll.character_id or "")
 

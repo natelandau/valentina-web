@@ -71,13 +71,13 @@ class DiceRollsCardView(MethodView):
             campaign_id=campaign_id,
             character_id=character_id,
             user_id=user_id,
-            limit=request.args.get("limit", 50, type=int),
+            limit=request.args.get("limit", 25, type=int),
         )
         return catalog.render(
             "shared.cards.partials.RecentDiceRollsContent",
             rolls=rolls,
             col_span=request.args.get("col_span", 1, type=int),
-            pagination=request.args.get("pagination", 5, type=int),
+            page_size=request.args.get("page_size", 5, type=int),
             title=request.args.get("title", "Recent Dicerolls"),
             empty_message=request.args.get("empty_message", "No dicerolls yet"),
         )
