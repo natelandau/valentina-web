@@ -31,34 +31,36 @@
           hx-disabled-elt="find button[type='submit']"
           class="space-y-3">
 
-      <fieldset class="fieldset">
-        <legend class="fieldset-legend">Trait 1 *</legend>
-        <select name="trait_one_id"
-                required
-                class="select select-bordered w-full"
-                @change="traitOneValue = parseInt($event.target.selectedOptions[0]?.dataset.value || 0)">
-          <option value="" data-value="0">-- Select --</option>
-          {% for ct in roll_context.character_traits | sort(attribute='trait.name') %}
-            <option value="{{ ct.trait.id }}" data-value="{{ ct.value }}">
-              {{ ct.trait.name }} ({{ ct.value }})
-            </option>
-          {% endfor %}
-        </select>
-      </fieldset>
+      <div class="flex gap-3">
+        <fieldset class="fieldset flex-1 min-w-0">
+          <legend class="fieldset-legend">Trait 1 *</legend>
+          <select name="trait_one_id"
+                  required
+                  class="select select-bordered w-full"
+                  @change="traitOneValue = parseInt($event.target.selectedOptions[0]?.dataset.value || 0)">
+            <option value="" data-value="0">-- Select --</option>
+            {% for ct in roll_context.character_traits | sort(attribute='trait.name') %}
+              <option value="{{ ct.trait.id }}" data-value="{{ ct.value }}">
+                {{ ct.trait.name }} ({{ ct.value }})
+              </option>
+            {% endfor %}
+          </select>
+        </fieldset>
 
-      <fieldset class="fieldset">
-        <legend class="fieldset-legend">Trait 2</legend>
-        <select name="trait_two_id"
-                class="select select-bordered w-full"
-                @change="traitTwoValue = parseInt($event.target.selectedOptions[0]?.dataset.value || 0)">
-          <option value="" data-value="0">None</option>
-          {% for ct in roll_context.character_traits | sort(attribute='trait.name') %}
-            <option value="{{ ct.trait.id }}" data-value="{{ ct.value }}">
-              {{ ct.trait.name }} ({{ ct.value }})
-            </option>
-          {% endfor %}
-        </select>
-      </fieldset>
+        <fieldset class="fieldset flex-1 min-w-0">
+          <legend class="fieldset-legend">Trait 2</legend>
+          <select name="trait_two_id"
+                  class="select select-bordered w-full"
+                  @change="traitTwoValue = parseInt($event.target.selectedOptions[0]?.dataset.value || 0)">
+            <option value="" data-value="0">None</option>
+            {% for ct in roll_context.character_traits | sort(attribute='trait.name') %}
+              <option value="{{ ct.trait.id }}" data-value="{{ ct.value }}">
+                {{ ct.trait.name }} ({{ ct.value }})
+              </option>
+            {% endfor %}
+          </select>
+        </fieldset>
+      </div>
 
       <div class="text-base-content/70 px-1">
         Pool: <span class="font-semibold text-base-content"

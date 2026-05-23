@@ -87,6 +87,90 @@ class TestDiceRollContentView:
         body = response.get_data(as_text=True)
         assert f"/roll/{char.id}/custom" in body
 
+    def test_returns_full_page_on_direct_navigation(
+        self, client: FlaskClient, mock_diceroll_deps
+    ) -> None:
+        """Verify GET without HX-Request returns the full page wrapped in PageLayout."""
+        # Given a valid character
+        char, _, _ = mock_diceroll_deps
+
+        # When navigating directly (no HX-Request header)
+        response = client.get(f"/roll/{char.id}")
+
+        # Then a full HTML document is returned with the form content embedded
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert "<!DOCTYPE html>" in body
+        assert f"/roll/{char.id}/custom" in body
+
+    def test_back_link_uses_same_origin_referrer(
+        self, client: FlaskClient, mock_diceroll_deps
+    ) -> None:
+        """Verify the back link points at the same-origin referrer the user came from."""
+        # Given a valid character and a referer pointing at the campaign page
+        char, _, _ = mock_diceroll_deps
+
+        # When navigating to the roll page from the campaign page
+        response = client.get(
+            f"/roll/{char.id}",
+            headers={"Referer": "http://localhost/campaigns/camp-1"},
+        )
+
+        # Then the back link reflects that origin page
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert 'href="http://localhost/campaigns/camp-1"' in body
+
+    def test_back_link_falls_back_when_referrer_missing(
+        self, client: FlaskClient, mock_diceroll_deps
+    ) -> None:
+        """Verify the back link falls back to the character page without a referrer."""
+        # Given a valid character and no Referer header
+        char, _, _ = mock_diceroll_deps
+
+        # When navigating directly (no Referer)
+        response = client.get(f"/roll/{char.id}")
+
+        # Then the back link points at the character page
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert f'href="/character/{char.id}"' in body
+
+    def test_back_link_rejects_cross_origin_referrer(
+        self, client: FlaskClient, mock_diceroll_deps
+    ) -> None:
+        """Verify a cross-origin referrer is ignored to prevent open-redirect-style links."""
+        # Given a valid character and an off-site referer
+        char, _, _ = mock_diceroll_deps
+
+        # When navigating with a cross-origin Referer
+        response = client.get(
+            f"/roll/{char.id}",
+            headers={"Referer": "http://evil.example.com/phish"},
+        )
+
+        # Then the back link falls back to the character page, not the off-site URL
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert "evil.example.com" not in body
+        assert f'href="/character/{char.id}"' in body
+
+    def test_back_link_rejects_self_referrer(self, client: FlaskClient, mock_diceroll_deps) -> None:
+        """Verify a referrer pointing at the roll page itself doesn't loop the user back."""
+        # Given a valid character and a referer pointing at the roll page
+        char, _, _ = mock_diceroll_deps
+
+        # When the referrer is the roll page itself (e.g. after a refresh)
+        response = client.get(
+            f"/roll/{char.id}",
+            headers={"Referer": f"http://localhost/roll/{char.id}"},
+        )
+
+        # Then the back link falls back to the character page
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert f'href="/character/{char.id}"' in body
+
     def test_returns_404_when_character_not_found(self, client: FlaskClient, mocker) -> None:
         """Verify 404 when character doesn't exist."""
         # Given no character found

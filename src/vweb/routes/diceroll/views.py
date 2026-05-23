@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from typing import cast, get_args
+from urllib.parse import urlparse
 
-from flask import Blueprint, abort, request
+from flask import Blueprint, abort, request, url_for
 from flask.views import MethodView
 from vclient.constants import DiceSize
 from vclient.exceptions import APIError, ValidationError
@@ -23,17 +24,40 @@ from vweb.routes.diceroll.services import (
 bp = Blueprint("diceroll", __name__)
 
 
+def _safe_back_url(character_id: str) -> str:
+    """Return the page the user came from, or the character page as a fallback.
+
+    Honors `Referer` only when it's same-origin and not the roll page itself (which would
+    bounce the user right back here on click).
+    """
+    fallback = url_for("character_view.character", character_id=character_id)
+    referrer = request.referrer
+    if not referrer:
+        return fallback
+
+    parsed = urlparse(referrer)
+    if parsed.netloc and parsed.netloc != urlparse(request.host_url).netloc:
+        return fallback
+    if parsed.path.startswith(f"/roll/{character_id}"):
+        return fallback
+    return referrer
+
+
 class DiceRollContentView(MethodView):
-    """Render the full dice roll modal content with all three tab forms."""
+    """Render the dice roll UI with all three tab forms."""
 
     def get(self, character_id: str) -> str:
-        """Return the dice roll modal interior for a character.
+        """Return the dice roll UI as fragment (HTMX/desktop modal) or full page (mobile).
+
+        Mobile users navigate directly to this URL via `<a href>`, getting the full-page
+        version; desktop modal triggers fire an HTMX request and receive the fragment that
+        slots into the modal body.
 
         Args:
             character_id: The character's unique identifier.
 
         Returns:
-            Rendered HTML with tabs, forms, and empty results panel.
+            Rendered HTML — fragment for HTMX, full page wrapped in PageLayout otherwise.
         """
         character, campaign = get_character_and_campaign(character_id)
         if not character or not campaign:
@@ -41,11 +65,20 @@ class DiceRollContentView(MethodView):
 
         roll_ctx = get_roll_context(character=character, campaign=campaign)
 
+        if request.headers.get("HX-Request"):
+            return catalog.render(
+                "diceroll.DiceRollContent",
+                character=character,
+                campaign=campaign,
+                roll_context=roll_ctx,
+            )
+
         return catalog.render(
-            "diceroll.DiceRollContent",
+            "diceroll.DiceRollPage",
             character=character,
             campaign=campaign,
             roll_context=roll_ctx,
+            back_url=_safe_back_url(character_id),
         )
 
 

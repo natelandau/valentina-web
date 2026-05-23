@@ -29,7 +29,11 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
-        <button class="btn btn-sm btn-neutral"
+        <a href="{{ url_for('diceroll.content', character_id=character.id) }}"
+           class="btn btn-sm btn-neutral md:hidden">
+          <i class="fa-solid fa-dice"></i> Roll Dice
+        </a>
+        <button class="btn btn-sm btn-neutral hidden md:inline-flex"
                 x-data
                 @click="$dispatch('open-dice-roll', { characterId: '{{ character.id }}', characterName: '{{ character.name | normalize_string }}' })">
           <i class="fa-solid fa-dice"></i> Roll Dice
