@@ -8,7 +8,7 @@
     add_button_attrs: str = "",
     editable: bool = False,
     col_span: int = 0,
-    pagination: int = 0,
+    page_size: int = 0,
     oob: bool = False,
 #}
 
@@ -28,18 +28,18 @@
     </div>
 
     {% if items %}
-      {% if pagination > 0 %}
-        <div x-data="{ currentPage: 1, pageSize: {{ pagination }}, totalItems: {{ items|length }}, get totalPages() { return Math.ceil(this.totalItems / this.pageSize) }, listHeight: 0 }"
+      {% if page_size > 0 %}
+        <div x-data="{ currentPage: 1, pageSize: {{ page_size }}, totalItems: {{ items|length }}, get totalPages() { return Math.ceil(this.totalItems / this.pageSize) }, listHeight: 0 }"
              x-init="$nextTick(() => { listHeight = $refs.list.offsetHeight })">
         {% endif %}
 
         <ul class="list bg-base-100 rounded-box shadow-md"
-            {% if pagination > 0 %}x-ref="list" :style="listHeight ? 'min-height:' + listHeight + 'px' : ''"{% endif %}>
+            {% if page_size > 0 %}x-ref="list" :style="listHeight ? 'min-height:' + listHeight + 'px' : ''"{% endif %}>
           {% for item in items | sort(attribute="number") %}
 
             {% set item_url = item_urls.get(item.id, "#") %}
 
-            <li class="list-row hover:bg-neutral/80 hover:text-neutral-content transition-colors" {% if pagination > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"
+            <li class="list-row hover:bg-neutral/80 hover:text-neutral-content transition-colors" {% if page_size > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"
             {% endif %}
             >
             <div class="text-4xl font-thin opacity-30 tabular-nums text-nowrap">
@@ -77,7 +77,7 @@
         {% endfor %}
       </ul>
 
-      {% if pagination > 0 %}
+      {% if page_size > 0 %}
         <shared.cards.Pagination />
       </div>
     {% endif %}

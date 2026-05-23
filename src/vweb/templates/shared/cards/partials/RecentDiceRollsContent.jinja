@@ -1,7 +1,7 @@
 {#def
     rolls: list,
     col_span: int = 1,
-    pagination: int = 5,
+    page_size: int = 5,
     title: str = "Recent Dicerolls",
     empty_message: str = "No dicerolls yet",
 #}
@@ -21,16 +21,16 @@
     <h2 class="card-title">{{ title }}</h2>
 
     {% if rolls %}
-      {% if pagination > 0 %}
-        <div x-data="{ currentPage: 1, pageSize: {{ pagination }}, totalItems: {{ rolls|length }}, get totalPages() { return Math.ceil(this.totalItems / this.pageSize) }, listHeight: 0 }"
+      {% if page_size > 0 %}
+        <div x-data="{ currentPage: 1, pageSize: {{ page_size }}, totalItems: {{ rolls|length }}, get totalPages() { return Math.ceil(this.totalItems / this.pageSize) }, listHeight: 0 }"
              x-init="$nextTick(() => { listHeight = $refs.list.offsetHeight })">
       {% endif %}
 
         <ul class="list bg-base-100 rounded-box shadow-md"
-            {% if pagination > 0 %}x-ref="list" :style="listHeight ? 'min-height:' + listHeight + 'px' : ''"{% endif %}>
+            {% if page_size > 0 %}x-ref="list" :style="listHeight ? 'min-height:' + listHeight + 'px' : ''"{% endif %}>
           {% for roll in rolls %}
             <li class="list-row"
-                {% if pagination > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"{% endif %}>
+                {% if page_size > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"{% endif %}>
 
               {# Left column: character/traits on top, date/dice notation below. list-col-grow flexes to fill and pushes the result column to the right edge. #}
               <div class="list-col-grow min-w-0">
@@ -71,7 +71,7 @@
           {% endfor %}
         </ul>
 
-      {% if pagination > 0 %}
+      {% if page_size > 0 %}
         <shared.cards.Pagination />
         </div>
       {% endif %}

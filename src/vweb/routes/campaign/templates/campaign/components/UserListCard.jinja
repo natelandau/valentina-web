@@ -4,7 +4,7 @@
     card_id: str = "",
     empty_message: str = "No items found",
     col_span: int = 0,
-    pagination: int = 0,
+    page_size: int = 0,
     campaign_id: str,
     show_self_experience: bool = true,
     exclude_current_user: bool = true,
@@ -33,17 +33,17 @@
     {% endif %}
 
     {% if filtered_users %}
-      {% if pagination > 0 %}
-        <div x-data="{ currentPage: 1, pageSize: {{ pagination }}, totalItems: {{ filtered_users|length }}, get totalPages() { return Math.ceil(this.totalItems / this.pageSize) }, listHeight: 0 }"
+      {% if page_size > 0 %}
+        <div x-data="{ currentPage: 1, pageSize: {{ page_size }}, totalItems: {{ filtered_users|length }}, get totalPages() { return Math.ceil(this.totalItems / this.pageSize) }, listHeight: 0 }"
              x-init="$nextTick(() => { listHeight = $refs.list.offsetHeight })">
         {% endif %}
         <ul class="list bg-base-100 rounded-box shadow-md"
-            {% if pagination > 0 %}x-ref="list" :style="listHeight ? 'min-height:' + listHeight + 'px' : ''"{% endif %}>
+            {% if page_size > 0 %}x-ref="list" :style="listHeight ? 'min-height:' + listHeight + 'px' : ''"{% endif %}>
           {% for user in filtered_users | sort(attribute="username") %}
 
             {% set campaign_experience = user.campaign_experience | selectattr("campaign_id", "equalto", campaign_id) | first | default(None, true) %}
 
-            <li class="list-row hover:bg-neutral/80 hover:text-neutral-content transition-colors" {% if pagination > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"
+            <li class="list-row hover:bg-neutral/80 hover:text-neutral-content transition-colors" {% if page_size > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"
             {% endif %}
             >
 
@@ -86,7 +86,7 @@
         {% endfor %}
       </ul>
 
-      {% if pagination > 0 %}
+      {% if page_size > 0 %}
         <shared.cards.Pagination />
       </div>
     {% endif %}

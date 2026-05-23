@@ -7,7 +7,7 @@
     add_url: str = "",
     empty_message: str = "No characters found",
     col_span: int = 0,
-    pagination: int = 0,
+    page_size: int = 0,
     link_user_profile: bool = False,
 #}
 
@@ -41,15 +41,15 @@
         {% endfor %}
       {% endif %}
 
-      {% if pagination > 0 %}
-        <div x-data="{ currentPage: 1, pageSize: {{ pagination }}, totalItems: {{ characters|length }}, get totalPages() { return Math.ceil(this.totalItems / this.pageSize) }, listHeight: 0 }"
+      {% if page_size > 0 %}
+        <div x-data="{ currentPage: 1, pageSize: {{ page_size }}, totalItems: {{ characters|length }}, get totalPages() { return Math.ceil(this.totalItems / this.pageSize) }, listHeight: 0 }"
              x-init="$nextTick(() => { listHeight = $refs.list.offsetHeight })">
         {% endif %}
 
         <ul class="list bg-base-100 rounded-box shadow-md"
-            {% if pagination > 0 %}x-ref="list" :style="listHeight ? 'min-height:' + listHeight + 'px' : ''"{% endif %}>
+            {% if page_size > 0 %}x-ref="list" :style="listHeight ? 'min-height:' + listHeight + 'px' : ''"{% endif %}>
           {% for character in characters %}
-            <li class="list-row hover:bg-neutral/80 hover:text-neutral-content transition-colors {% if character.type == "STORYTELLER" %}bg-primary/10{% endif %}" {% if pagination > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"
+            <li class="list-row hover:bg-neutral/80 hover:text-neutral-content transition-colors {% if character.type == "STORYTELLER" %}bg-primary/10{% endif %}" {% if page_size > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"
             {% endif %}
             >
             <div class="list-col-grow min-w-0">
@@ -127,7 +127,7 @@
         {% endfor %}
       </ul>
 
-      {% if pagination > 0 %}
+      {% if page_size > 0 %}
         <shared.cards.Pagination />
       </div>
     {% endif %}

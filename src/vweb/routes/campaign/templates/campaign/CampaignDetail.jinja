@@ -17,11 +17,11 @@
 
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-    <shared.cards.CharacterListCard title="Your Characters" characters={{ user_characters }} show_type={{ is_storyteller() }} show_add_button={{ true }} add_url={{ url_for('character_create.selection_page', campaign_id=campaign.id) }} empty_message="No characters in this campaign" pagination={{ 5 }} />
+    <shared.cards.CharacterListCard title="Your Characters" characters={{ user_characters }} show_type={{ is_storyteller() }} show_add_button={{ true }} add_url={{ url_for('character_create.selection_page', campaign_id=campaign.id) }} empty_message="No characters in this campaign" page_size={{ 5 }} />
 
-    <campaign.components.UserListCard title="All Players" users={{ g.global_context.users }} pagination={{ 3 }} campaign_id={{ campaign.id }} />
+    <campaign.components.UserListCard title="All Players" users={{ g.global_context.users }} page_size={{ 3 }} campaign_id={{ campaign.id }} />
 
-    <shared.cards.CharacterListCard title="Other Players' Characters" characters={{ other_characters }} show_type={{ is_storyteller() }} empty_message="No other players' characters" pagination={{ 5 }} link_user_profile={{ true }} />
+    <shared.cards.CharacterListCard title="Other Players' Characters" characters={{ other_characters }} show_type={{ is_storyteller() }} empty_message="No other players' characters" page_size={{ 5 }} link_user_profile={{ true }} />
 
     {% if is_storyteller() %}
       <shared.cards.AuditLog campaign_id={{ campaign.id }} col_span={{ 2 }} page_size={{ 5 }} title="Recent Activity" />
@@ -32,7 +32,7 @@
       {% set _ = book_urls.update({book.id: url_for('book_view.book_detail', campaign_id=book.campaign_id, book_id=book.id)}) %}
     {% endfor %}
 
-<shared.cards.NumberedListCard title={{ campaign.name ~ " Books" }} items={{ books }} pagination={{ 5 }} item_urls={{ book_urls }} empty_message="No books in this campaign" /> #}
+<shared.cards.NumberedListCard title={{ campaign.name ~ " Books" }} items={{ books }} page_size={{ 5 }} item_urls={{ book_urls }} empty_message="No books in this campaign" /> #}
 
     <shared.cards.RecentDiceRolls campaign_id={{ campaign.id }} col_span={{ 1 }} />
     <shared.cards.Statistics campaign_id={{ campaign.id }} col_span={{ 2 }} />

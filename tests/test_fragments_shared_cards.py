@@ -224,14 +224,12 @@ class TestRecentDiceRollsWrapperComponent:
 
         # When rendering the wrapper with a character scope
         with client.application.test_request_context():
-            html = catalog.render(
-                "shared.cards.RecentDiceRolls", character_id="ch-1", pagination=10
-            )
+            html = catalog.render("shared.cards.RecentDiceRolls", character_id="ch-1", page_size=10)
 
-        # Then the hx-get URL is /cards/dice-rolls with character_id and pagination in the query
+        # Then the hx-get URL is /cards/dice-rolls with character_id and page_size in the query
         assert "/cards/dice-rolls" in html
         assert "character_id=ch-1" in html
-        assert "pagination=10" in html
+        assert "page_size=10" in html
 
     def test_wrapper_drops_empty_scope_kwargs(
         self, client: FlaskClient, mock_global_context
