@@ -102,17 +102,34 @@
         {% endif %}
 
       </div>
-      <div class="flex gap-1">
-
-        {% set edit_attrs = 'hx-get="' ~ url_for("dictionary.term_form_edit", term_id=term.id) ~ '" hx-target="#term-detail" hx-swap="innerHTML"' %}
-
-        {% set tooltip_text = "Global terms cannot be edited" if term.source_type is not none else "" %}
-
-        <shared.CommonButton variant="edit" tooltip_text={{ tooltip_text }} disabled={{ term.source_type is not none }} extra_attrs={{ edit_attrs }}>Edit</shared.CommonButton>
-        {# djlint:off #}
-          <shared.CommonButton variant="delete" disabled={{ term.source_type is not none }} btn_type="button" hx-on:click="document.getElementById('delete-term-modal').showModal()" tooltip_text={{ tooltip_text }}>Delete</shared.CommonButton>
-        {# djlint:on #}
-      </div>
+      {% if term.source_type is none %}
+        <details x-data
+                 class="dropdown dropdown-end"
+                 @click.outside="$el.removeAttribute('open')">
+          <summary class="btn btn-sm btn-ghost">
+            <i class="fa-solid fa-ellipsis"></i>
+            <span>Edit</span>
+            <i class="fa-solid fa-chevron-down text-xs"></i>
+          </summary>
+          <ul class="menu dropdown-content bg-base-100 rounded-box z-10 w-48 p-2 shadow-md border border-base-300">
+            <li>
+              <button type="button"
+                      hx-get="{{ url_for('dictionary.term_form_edit', term_id=term.id) }}"
+                      hx-target="#term-detail"
+                      hx-swap="innerHTML">
+                <i class="fa-regular fa-pen-to-square"></i> Edit Term
+              </button>
+            </li>
+            <li class="border-t border-base-300 mt-1 pt-1">
+              <button type="button"
+                      class="text-error hover:bg-error/10"
+                      @click="document.getElementById('delete-term-modal').showModal()">
+                <i class="fa-solid fa-trash-can"></i> Delete Term
+              </button>
+            </li>
+          </ul>
+        </details>
+      {% endif %}
     </div>
 
     {% if term.synonyms %}

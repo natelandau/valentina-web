@@ -1,9 +1,12 @@
 {# def character #}
 
 {% set ns = namespace(user_player_owner=none) %}
+
 {% for user in global_context().users %}
   {% if user.id == character.user_player_id %}
+
     {% set ns.user_player_owner = user %}
+
     {% break %}
   {% endif %}
 {% endfor %}
@@ -15,33 +18,44 @@
   ("Nature", character.nature | title if character.nature else none),
   ("Age", character.age if character.age else none),
   ("Game Version", character.game_version | title if character.game_version else none),
+  ("Player", ns.user_player_owner.username if ns.user_player_owner else none),
 ] %}
 
 {% set system_rows = [] %}
+
 {% if character.character_class in ["VAMPIRE", "GHOUL"] and character.vampire_attributes %}
+
   {% set system_rows = [
-    ("Clan", character.vampire_attributes.clan_name if character.vampire_attributes.clan_name else none),
-    ("Generation", character.vampire_attributes.generation if character.vampire_attributes.generation else none),
-    ("Sire", character.vampire_attributes.sire if character.vampire_attributes.sire else none),
-  ] %}
+      ("Clan", character.vampire_attributes.clan_name if character.vampire_attributes.clan_name else none),
+      ("Generation", character.vampire_attributes.generation if character.vampire_attributes.generation else none),
+      ("Sire", character.vampire_attributes.sire if character.vampire_attributes.sire else none),
+    ] %}
+
 {% elif character.character_class == "WEREWOLF" and character.werewolf_attributes %}
+
   {% set system_rows = [
-    ("Tribe", character.werewolf_attributes.tribe_name if character.werewolf_attributes.tribe_name else none),
-    ("Auspice", character.werewolf_attributes.auspice_name if character.werewolf_attributes.auspice_name else none),
-    ("Pack Name", character.werewolf_attributes.pack_name if character.werewolf_attributes.pack_name else none),
-  ] %}
+      ("Tribe", character.werewolf_attributes.tribe_name if character.werewolf_attributes.tribe_name else none),
+      ("Auspice", character.werewolf_attributes.auspice_name if character.werewolf_attributes.auspice_name else none),
+      ("Pack Name", character.werewolf_attributes.pack_name if character.werewolf_attributes.pack_name else none),
+    ] %}
+
 {% elif character.character_class == "MAGE" and character.mage_attributes %}
+
   {% set system_rows = [
-    ("Sphere", character.mage_attributes.sphere if character.mage_attributes.sphere else none),
-    ("Tradition", character.mage_attributes.tradition if character.mage_attributes.tradition else none),
-  ] %}
+      ("Sphere", character.mage_attributes.sphere if character.mage_attributes.sphere else none),
+      ("Tradition", character.mage_attributes.tradition if character.mage_attributes.tradition else none),
+    ] %}
+
 {% elif character.character_class == "HUNTER" and character.hunter_attributes %}
+
   {% set system_rows = [
-    ("Creed", character.hunter_attributes.creed if character.hunter_attributes.creed else none),
-  ] %}
+      ("Creed", character.hunter_attributes.creed if character.hunter_attributes.creed else none),
+    ] %}
+
 {% endif %}
 
 {% set visible_system_rows = system_rows | rejectattr(1, 'none') | list %}
+
 {% set can_edit = can_edit_character(character) %}
 
 <div class="flex flex-col gap-5 text-sm">
@@ -49,41 +63,44 @@
   <dl class="flex flex-col divide-y divide-base-300/60">
     {% for label, value in identity if value is not none %}
       <div class="flex justify-between items-baseline py-2 first:pt-0 last:pb-0 gap-3">
-        <dt class="text-xs uppercase tracking-wider opacity-60">{{ label }}</dt>
-        <dd class="font-medium text-right">{{ value }}</dd>
+        <dt class="text-xs uppercase tracking-wider opacity-60">
+          {{ label }}
+        </dt>
+        <dd class="font-medium text-right">
+          {% if label | lower == "player" %}
+            <a href="{{ url_for('profile.profile', user_id=ns.user_player_owner.id) }}"
+               class="link link-hover link-primary font-medium">
+              {{ ns.user_player_owner.username }}
+            </a>
+          {% else %}
+            {{ value }}
+          {% endif %}
+        </dd>
       </div>
     {% endfor %}
-  </dl>
-
-  {% if visible_system_rows %}
-    <dl class="flex flex-col divide-y divide-base-300/60">
+    {% if visible_system_rows %}
       {% for label, value in visible_system_rows %}
         <div class="flex justify-between items-baseline py-2 first:pt-0 last:pb-0 gap-3">
-          <dt class="text-xs uppercase tracking-wider opacity-60">{{ label }}</dt>
-          <dd class="font-medium text-right">{{ value }}</dd>
+          <dt class="text-xs uppercase tracking-wider opacity-60">
+            {{ label }}
+          </dt>
+          <dd class="font-medium text-right">
+            {{ value }}
+          </dd>
         </div>
       {% endfor %}
-    </dl>
-  {% endif %}
+    {% endif %}
+  </dl>
 
   <div class="flex flex-wrap gap-2">
     {% if character.status == "ALIVE" %}
-      <span class="badge badge-success badge-soft">Alive</span>
+      <span class="badge badge-sm badge-success badge-soft">Alive</span>
     {% else %}
-      <span class="badge badge-error badge-soft">Deceased</span>
+      <span class="badge badge-sm badge-error badge-soft">Deceased</span>
     {% endif %}
     {% if can_edit %}
-      <span class="badge badge-outline">{{ character.type | title }} Character</span>
+      <span class="badge badge-sm badge-outline">{{ character.type | title }} Character</span>
     {% endif %}
   </div>
 
-  {% if ns.user_player_owner %}
-    <div class="flex justify-between items-baseline gap-3">
-      <span class="text-xs uppercase tracking-wider opacity-60">Played by</span>
-      <a href="{{ url_for('profile.profile', user_id=ns.user_player_owner.id) }}"
-         class="link link-hover link-primary font-medium">
-        {{ ns.user_player_owner.username }}
-      </a>
-    </div>
-  {% endif %}
 </div>

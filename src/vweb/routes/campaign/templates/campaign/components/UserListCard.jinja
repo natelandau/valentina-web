@@ -27,9 +27,13 @@
     </div>
 
     {% if exclude_current_user %}
+
       {% set filtered_users = users | rejectattr("id", "equalto", current_user.id) | list %}
+
     {% else %}
+
       {% set filtered_users = users %}
+
     {% endif %}
 
     {% if filtered_users %}
@@ -56,7 +60,7 @@
                   <div class="uppercase font-semibold text-nowrap tracking-wide">
                     {{ user.username }}
                   </div>
-                  <span class="badge badge-sm badge-outline">{{ user.role | title }}</span>
+                  <span class="badge badge-xs badge-outline">{{ user.role | title }}</span>
                 </div>
                 <div class="mt-1 text-xs opacity-60 flex items-center gap-2">
                   <span class="font-mono"><i class="fa-solid fa-star"></i> {{ campaign_experience.xp_current if campaign_experience else 0 }} Available XP</span>

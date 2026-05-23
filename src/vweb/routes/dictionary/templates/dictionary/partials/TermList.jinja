@@ -6,7 +6,7 @@
     </div>
   {% else %}
     <div class="overflow-y-auto" style="max-height: calc(100vh - 10rem);">
-      <table class="table table-pin-rows table-sm bg-base-200">
+      <table class="table table-pin-rows lg:table-sm bg-base-200">
 
         {% set ns = namespace(current_letter="") %}
 
@@ -32,7 +32,7 @@
                 <a href="{{ term.link }}"
                    target="_blank"
                    rel="noopener"
-                   class="flex items-center justify-between gap-1">
+                   class="flex items-center justify-between gap-1 py-1 lg:py-0">
                   <span>{{ term.term | title }}</span>
                   <i class="fa-solid fa-arrow-up-right-from-square text-primary text-xs"></i>
                 </a>
@@ -40,7 +40,7 @@
 
                 {% set detail_url = url_for('dictionary.term_detail', term_id=term.id) %}
 
-                <a href="{{ detail_url }}" class="block lg:hidden">{{ term.term }}</a>
+                <a href="{{ detail_url }}" class="block lg:hidden py-1">{{ term.term }}</a>
                 <a hx-get="{{ detail_url }}"
                    hx-target="#term-detail"
                    hx-swap="innerHTML"
