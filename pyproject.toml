@@ -1,22 +1,22 @@
 [project]
     authors = [{ name = "Nate Landau", email = "github@natelandau.com" }]
     dependencies = [
-        "authlib>=1.7.0",
+        "authlib>=1.7.2",
         "flask-caching>=2.4.0",
         "flask-debugtoolbar>=0.16.0",
         "flask-session>=0.8.0",
         "flask-talisman>=1.1.0",
         "flask-wtf>=1.3.0",
-        "flask>=3.1.3",
-        "gunicorn>=25.3.0",
-        "humanize>=4.15.0",
+        "flask>=3.1.3, <4.0.0",
+        "gunicorn>=26.0.0",
+        "humanize>=4.15.0, <5.0.0",
         "jinja2-fragments>=1.12.0",
         "jinjax>=0.63",
         "loguru>=0.7.3",
         "markdown2>=2.5.5",
-        "pydantic-settings>=2.14.0",
-        "redis>=7.4.0",
-        "requests>=2.33.1",
+        "pydantic-settings>=2.14.1",
+        "redis>=7.4.0,<8.0.0",
+        "requests>=2.34.2,<3.0.0",
         "valentina-python-client[testing]>=2.0.0",
     ]
     description = "Web client for the Valentina Noir API."
@@ -35,22 +35,22 @@
 
 [dependency-groups]
     dev = [
-        "commitizen>=4.15.0",
+        "commitizen>=4.16.2",
         "djlint>=1.36.4",
         "duty>=1.9.0",
-        "prek>=0.3.11",
+        "prek>=0.4.1",
         "pytest-clarity>=1.0.1",
         "pytest-cov>=7.1.0",
-        "pytest-devtools>=1.0.0",
+        "pytest-devtools>=1.2.0",
         "pytest-mock>=3.15.1",
         "pytest-repeat>=0.9.4",
         "pytest-sugar>=1.1.1",
         "pytest-timeout>=2.4.0",
         "pytest-xdist>=3.8.0",
-        "ruff>=0.15.12",
+        "ruff>=0.15.14",
         "shellcheck-py>=0.11.0.1",
-        "ty>=0.0.34",
-        "typos>=1.46.0",
+        "ty>=0.0.39",
+        "typos>=1.46.2",
         "yamllint>=1.38.0",
     ]
 
@@ -194,3 +194,6 @@
         line-ending               = "auto"
         quote-style               = "double"
         skip-magic-trailing-comma = false
+
+[tool.ty.terminal]
+    error-on-warning = true
