@@ -34,7 +34,7 @@
                     <td class="text-lg">
                       <character_view.components.TermTooltip name={{ character_trait.trait.name }} dictionary_terms={{ dictionary_terms }} />
                     </td>
-                    <td class="text-right text-bold">
+                    <td class="text-right text-bold whitespace-nowrap">
                       {% if category.name not in ["Gifts", "Rites"] %}
                         <shared.character.DotRating num={{ character_trait.value }} maximum={{ character_trait.trait.max_value }} />
                       {% endif %}
@@ -57,7 +57,7 @@
                           <character_view.components.TermTooltip name={{ character_trait.trait.name }} dictionary_terms={{ dictionary_terms }} />
                         </span>
                       </td>
-                      <td class="text-right text-bold">
+                      <td class="text-right text-bold whitespace-nowrap">
                         <shared.character.DotRating num={{ character_trait.value }} maximum={{ character_trait.trait.max_value }} />
                       </td>
                     </tr>
