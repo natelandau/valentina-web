@@ -68,6 +68,48 @@ class TestSettingsValidation:
         )
         assert settings.env == "production"
 
+    def test_force_https_defaults_on_in_production(self) -> None:
+        """Verify force_https defaults to True when env is production."""
+        settings = Settings(
+            _env_file=None,
+            env="production",
+            secret_key="production-secret-key",  # noqa: S106
+            redis=RedisSettings(url="redis://localhost:6379/0"),
+            api=APISettings(
+                base_url="http://localhost:8080",
+                api_key="test-api-key",
+            ),
+        )
+        assert settings.force_https is True
+
+    def test_force_https_defaults_off_in_development(self) -> None:
+        """Verify force_https defaults to False when env is development."""
+        settings = Settings(
+            _env_file=None,
+            env="development",
+            redis=RedisSettings(),
+            api=APISettings(
+                base_url="http://localhost:8080",
+                api_key="test-api-key",
+            ),
+        )
+        assert settings.force_https is False
+
+    def test_force_https_can_be_disabled_in_production(self) -> None:
+        """Verify force_https can be explicitly disabled for local prod-mode runs."""
+        settings = Settings(
+            _env_file=None,
+            env="production",
+            force_https=False,
+            secret_key="production-secret-key",  # noqa: S106
+            redis=RedisSettings(url="redis://localhost:6379/0"),
+            api=APISettings(
+                base_url="http://localhost:8080",
+                api_key="test-api-key",
+            ),
+        )
+        assert settings.force_https is False
+
     def test_production_env_with_default_secret_key_raises(self) -> None:
         """Verify production mode rejects the default secret key."""
         with pytest.raises(ValueError, match=r"secret_key.*default.*production"):

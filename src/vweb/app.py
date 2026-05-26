@@ -226,6 +226,7 @@ def main() -> None:
         # restarts automatically.
         app.run(host=settings.host, port=settings.port, debug=True, use_reloader=True)
     else:
+        import os
         import subprocess
         import sys
 
@@ -248,6 +249,17 @@ def main() -> None:
                 "--access-logformat",
                 f'{ip_atom} %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"',
             ]
-        cmd.append("vweb:create_app()")
+        env = os.environ.copy()
+        if sys.platform == "darwin":
+            # On macOS, gunicorn's control-socket thread initializes the Objective-C
+            # runtime in the master, making every re-forked worker fork-unsafe and
+            # crash-looping them with an NSCharacterSet abort. Drop the control
+            # socket to keep the master fork-safe, and disable the fork-safety guard
+            # as a backstop for other libraries that may init Objective-C. Production
+            # is Linux, where neither applies, so this only affects local prod runs.
+            cmd.append("--no-control-socket")
+            env.setdefault("OBJC_DISABLE_INITIALIZE_FORK_SAFETY", "YES")
 
-        sys.exit(subprocess.call(cmd))  # noqa: S603
+        cmd.append("vweb:create_app()")  # the WSGI target must be the final argument
+
+        sys.exit(subprocess.call(cmd, env=env))  # noqa: S603

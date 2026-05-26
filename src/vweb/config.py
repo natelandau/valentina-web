@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8089
 
+    # Enforce HTTPS (Talisman redirect + secure cookies). Defaults on in production,
+    # where a TLS-terminating proxy fronts the app. Set false to run prod-mode
+    # locally over plain HTTP, where no proxy supplies X-Forwarded-Proto.
+    force_https: bool = Field(default_factory=lambda data: data["env"] == "production")
+
     access_log: str = "-"
     access_log_ip_header: str | None = None
     trusted_proxy_depth: int = 1

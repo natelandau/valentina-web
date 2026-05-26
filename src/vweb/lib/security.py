@@ -63,8 +63,8 @@ def configure_security(app: Flask, s: Settings) -> None:
     }
     Talisman(
         app,
-        force_https=s.env == "production",
-        session_cookie_secure=s.env == "production",
+        force_https=s.force_https,
+        session_cookie_secure=s.force_https,
         session_cookie_http_only=True,
         content_security_policy=csp,
     )
