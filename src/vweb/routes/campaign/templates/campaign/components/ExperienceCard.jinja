@@ -33,7 +33,7 @@
     </svg>
     </shared.CommonButton>
   </div>
-  <div class="stats shadow-sm">
+  <div class="stats scrollbar-none shadow-sm">
     <div class="stat">
       <div class="stat-title">Available XP</div>
       <div class="stat-value text-success">
@@ -46,15 +46,12 @@
       {% endif %}
     </div>
     <div class="stat">
-      <div class="stat-title">Total XP</div>
+      <div class="stat-title">Lifetime XP</div>
       <div class="stat-value">
         {{ current_user_experience.xp_total if current_user_experience else 0 }}
       </div>
-    </div>
-    <div class="stat">
-      <div class="stat-title">Cool Points</div>
-      <div class="stat-value">
-        {{ current_user_experience.cool_points if current_user_experience else 0 }}
+      <div class="stat-desc">
+        {{ current_user_experience.cool_points if current_user_experience else 0 }} Cool Points
       </div>
     </div>
   </div>
