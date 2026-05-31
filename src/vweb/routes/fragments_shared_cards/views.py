@@ -15,6 +15,7 @@ from flask.views import MethodView
 from vweb import catalog
 from vweb.lib.api import get_recent_player_dicerolls
 from vweb.lib.audit_log import (
+    ENTITY_TYPES,
     get_audit_log_page,
     resolve_acting_user,
     resolve_entities,
@@ -147,6 +148,7 @@ class AuditLogCardView(MethodView):
             )
 
         body_only = request.args.get("body_only", "") == "true"
+        show_filters = request.args.get("show_filters", "") == "true"
         template_name = (
             "shared.cards.partials.AuditLogBody"
             if body_only
@@ -164,6 +166,10 @@ class AuditLogCardView(MethodView):
         if not body_only:
             render_kwargs["col_span"] = request.args.get("col_span", 0, type=int)
             render_kwargs["title"] = request.args.get("title", "Audit Log")
+            render_kwargs["show_filters"] = show_filters
+            render_kwargs["current_filters"] = filters
+            render_kwargs["users"] = g.global_context.users if show_filters else []
+            render_kwargs["entity_types"] = ENTITY_TYPES if show_filters else []
         return catalog.render(template_name, **render_kwargs)
 
 

@@ -634,6 +634,38 @@ class TestAuditLogCardEndpoint:
         assert "operation=UPDATE" in body
 
 
+class TestAuditLogFilters:
+    """show_filters toggles the filter bar on the shared card."""
+
+    def test_show_filters_renders_filter_bar(
+        self, client: FlaskClient, mocker, audit_rows: list
+    ) -> None:
+        """Verify show_filters=true renders the filter bar with options."""
+        # Given an audit log page
+        _set_page(mocker, audit_rows, has_more=False)
+
+        # When requesting the card with filters enabled
+        response = client.get("/cards/audit-log?show_filters=true")
+
+        # Then the filter bar and its controls render
+        body = response.get_data(as_text=True)
+        assert "auditlog-filters" in body
+        assert "Entity Type" in body
+        assert "Operation" in body
+
+    def test_filters_hidden_by_default(self, client: FlaskClient, mocker, audit_rows: list) -> None:
+        """Verify the filter bar is absent when show_filters is not set."""
+        # Given an audit log page
+        _set_page(mocker, audit_rows, has_more=False)
+
+        # When requesting the card normally
+        response = client.get("/cards/audit-log?campaign_id=c1")
+
+        # Then no filter bar is rendered
+        body = response.get_data(as_text=True)
+        assert "auditlog-filters" not in body
+
+
 class TestAuditLogWrapperComponent:
     """Tests that the <shared.cards.AuditLog /> wrapper renders correct HTMX."""
 
