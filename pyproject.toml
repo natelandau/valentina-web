@@ -123,6 +123,7 @@
 
 [tool.ruff] # https://github.com/charliermarsh/ruff
 
+    cache-dir      = ".cache/ruff"
     exclude        = [".cache", ".git", ".venv", "_build", "build", "dist"]
     fix            = true
     line-length    = 100
