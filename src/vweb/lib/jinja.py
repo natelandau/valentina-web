@@ -24,10 +24,12 @@ from vweb.lib.guards import (
     can_grant_experience,
     can_manage_campaign,
     is_admin,
+    is_approved_user,
     is_self,
     is_storyteller,
 )
 from vweb.lib.options_cache import get_options
+from vweb.lib.system_status_cache import get_system_health
 from vweb.routes.dictionary.cache import get_all_terms
 
 if TYPE_CHECKING:
@@ -353,8 +355,10 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
     jinja_globals["requesting_user"] = _get_requesting_user
     jinja_globals["get_all_traits"] = get_all_traits
     jinja_globals["get_options"] = get_options
+    jinja_globals["get_system_health"] = get_system_health
     jinja_globals["MAX_IMAGE_SIZE"] = MAX_IMAGE_SIZE
     jinja_globals["is_admin"] = is_admin
+    jinja_globals["is_approved_user"] = is_approved_user
     jinja_globals["is_storyteller"] = is_storyteller
     jinja_globals["is_self"] = is_self
     jinja_globals["can_manage_campaign"] = can_manage_campaign

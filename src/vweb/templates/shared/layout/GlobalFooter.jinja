@@ -5,7 +5,19 @@
          width="64"
          height="64"
          class="rounded-box">
-    <p>{{ app_name }} v{{ version }}</p>
+    <p class="text-neutral-content/70">
+      {{ app_name }} <span class="font-mono">v{{ version }}</span>
+      {% if is_approved_user() %}
+
+        {% set health = get_system_health() %}
+
+        &nbsp;&nbsp; | &nbsp;&nbsp;API <span class="font-mono">v{{ health.version }}</span>
+        <br>
+        Database: {{ health.database_status }} (<span class="font-mono">{{ health.database_latency_ms }} ms</span>)
+        <br>
+        Cache: {{ health.cache_status }} (<span class="font-mono">{{ health.cache_latency_ms }} ms</span>)
+      {% endif %}
+    </p>
   </aside>
   <nav class="grid-flow-col items-center gap-4 md:place-self-center md:justify-self-end">
     <a href="https://github.com/natelandau/valentina-noir">
