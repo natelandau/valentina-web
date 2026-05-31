@@ -270,6 +270,27 @@ def _audit_log_rows(fake_vclient, mock_global_context) -> list[AuditLog]:
     return logs
 
 
+@pytest.fixture
+def audit_rows() -> list[AuditLog]:
+    """Build audit log rows without seeding vclient, for use with _set_page."""
+    return AuditLogFactory.batch(3)
+
+
+def _set_page(mocker, items: list[AuditLog], *, has_more: bool = False) -> None:
+    """Patch get_audit_log_page to return items with controllable has_more.
+
+    The fake vclient always sets has_more=False (total == len(items)). This helper
+    patches the helper directly so tests can express has_more=True without relying
+    on the fake client's internal pagination logic.
+    """
+    mock_page = mocker.MagicMock(items=items, has_more=has_more, total=len(items) + int(has_more))
+    mocker.patch(
+        "vweb.routes.fragments_shared_cards.views.get_audit_log_page",
+        autospec=True,
+        return_value=mock_page,
+    )
+
+
 class TestAuditLogCardEndpoint:
     """Tests for GET /cards/audit-log."""
 
@@ -594,6 +615,23 @@ class TestAuditLogCardEndpoint:
         # And pagination links still carry body_only=true plus the active filter
         assert "body_only=true" in html
         assert "campaign_id=c-1" in html
+
+    def test_admin_filters_threaded_into_pagination(
+        self, client: FlaskClient, mocker: MockerFixture, audit_rows: list
+    ) -> None:
+        """Verify entity_type and operation filters appear in the pagination URLs."""
+        # Given a full page with more available
+        _set_page(mocker, audit_rows, has_more=True)
+
+        # When requesting with admin filters set
+        response = client.get(
+            "/cards/audit-log?campaign_id=c1&entity_type=CAMPAIGN&operation=UPDATE&page_size=3"
+        )
+
+        # Then the filters are carried into the Next/Prev button URLs
+        body = response.get_data(as_text=True)
+        assert "entity_type=CAMPAIGN" in body
+        assert "operation=UPDATE" in body
 
 
 class TestAuditLogWrapperComponent:
