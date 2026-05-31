@@ -47,7 +47,9 @@
       <shared.layout.GlobalFooter />
     </div>
 
-    {% if global_context() and can_manage_campaign() %}<shared.layout.CampaignCreateModal />{% endif %}
+    {% if global_context() and can_manage_campaign() %}
+      <shared.layout.CampaignCreateModal />
+    {% endif %}
 
     {# ------------------ Bottom of the page ------------------ #}
     <script src="https://unpkg.com/htmx.org@2.0.4"
@@ -56,8 +58,12 @@
     <script defer src="https://unpkg.com/alpinejs@3/dist/cdn.min.js"></script>
     <script src="https://kit.fontawesome.com/29b83b145f.js"
             crossorigin="anonymous"></script>
-    <script src="{{ static_url('js/dice-tumble.js') }}"></script>
-    <script src="{{ static_url('js/section-nav.js') }}"></script>
+
+    {% if is_approved_user() %}
+      <script src="{{ static_url('js/dice-tumble.js') }}"></script>
+      <script src="{{ static_url('js/section-nav.js') }}"></script>
+    {% endif %}
+
     {{ scripts_extra }}
   </body>
 </html>

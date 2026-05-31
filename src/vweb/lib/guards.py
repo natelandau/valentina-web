@@ -36,6 +36,17 @@ def is_self(user_id: str) -> bool:
     return user is not None and user.id == user_id
 
 
+def is_approved_user() -> bool:
+    """Check whether the requesting user is logged in and has an approved, active account.
+
+    Use to gate UI and routes that should only appear for usable accounts —
+    excludes both UNAPPROVED (pending) and DEACTIVATED users, and fails closed
+    when nobody is logged in.
+    """
+    user = _current_user()
+    return user is not None and user.role in ("ADMIN", "STORYTELLER", "PLAYER")
+
+
 def is_admin() -> bool:
     """Check whether the requesting user has the ADMIN role.
 

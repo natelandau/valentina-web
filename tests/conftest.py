@@ -13,6 +13,7 @@ from vclient.testing import (
     CampaignFactory,
     CompanyFactory,
     SyncFakeVClient,
+    SystemHealthFactory,
     UserFactory,
 )
 
@@ -139,6 +140,11 @@ def _mock_api(mocker, mock_global_context) -> None:
 
     mock_dict_svc = mocker.patch("vweb.routes.dictionary.cache.sync_dictionary_service")
     mock_dict_svc.return_value.list_all.return_value = []
+
+    # The footer renders system health for approved users, so every page render
+    # would otherwise hit the live health endpoint.
+    mock_system_svc = mocker.patch("vweb.lib.system_status_cache.sync_system_service")
+    mock_system_svc.return_value.health.return_value = SystemHealthFactory.build()
 
     mocker.patch(
         "vweb.lib.options_cache.sync_options_service",

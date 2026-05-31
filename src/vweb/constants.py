@@ -17,6 +17,8 @@ CACHE_BLUEPRINT_SHEET_SECTIONS_PREFIX: Final[str] = "bp_sheet_sections:"
 CACHE_BLUEPRINT_CATEGORIES_PREFIX: Final[str] = "bp_categories:"
 CACHE_DICTIONARY_KEY: Final[str] = "dictionary_terms"
 CACHE_DICTIONARY_TTL: Final[int] = 60 * 60  # 1 hour
+CACHE_SYSTEM_STATUS_KEY: Final[str] = "system_status"
+CACHE_SYSTEM_STATUS_TTL: Final[int] = 30  # 30 seconds — one shared API call across all users
 
 MAX_IMAGE_SIZE: Final[int] = 10 * 1024 * 1024  # 10 MB
 ALLOWED_IMAGE_TYPES: Final[frozenset[str]] = frozenset(
