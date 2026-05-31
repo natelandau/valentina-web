@@ -306,7 +306,7 @@ class TestAuditLogCardEndpoint:
     def test_filters_forwarded_to_vclient(
         self, client: FlaskClient, mock_global_context, mocker
     ) -> None:
-        """Verify all filter query args are forwarded to get_audit_log_page."""
+        """Verify all ten filter query args are forwarded to get_audit_log_page."""
         # Given a patched get_audit_log_page
         mock_page = mocker.MagicMock(items=[], has_more=False, total=0)
         mock_fn = mocker.patch(
@@ -315,11 +315,13 @@ class TestAuditLogCardEndpoint:
             return_value=mock_page,
         )
 
-        # When requesting with all six filter kwargs populated
+        # When requesting with all ten filter kwargs populated
         response = client.get(
             "/cards/audit-log"
             "?acting_user_id=a1&user_id=u1&campaign_id=c1"
             "&book_id=b1&chapter_id=ch1&character_id=char1"
+            "&entity_type=CAMPAIGN&operation=UPDATE"
+            "&date_from=2025-01-01&date_to=2025-02-01"
             "&page_size=15&offset=30"
         )
 
@@ -332,6 +334,10 @@ class TestAuditLogCardEndpoint:
         assert kwargs["book_id"] == "b1"
         assert kwargs["chapter_id"] == "ch1"
         assert kwargs["character_id"] == "char1"
+        assert kwargs["entity_type"] == "CAMPAIGN"
+        assert kwargs["operation"] == "UPDATE"
+        assert kwargs["date_from"] == "2025-01-01"
+        assert kwargs["date_to"] == "2025-02-01"
         assert kwargs["limit"] == 15
         assert kwargs["offset"] == 30
 
