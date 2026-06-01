@@ -689,6 +689,32 @@ class TestAuditLogFilters:
         body = response.get_data(as_text=True)
         assert "auditlog-filters" not in body
 
+    def test_filter_values_are_xss_safe(
+        self, client: FlaskClient, mocker, audit_rows: list
+    ) -> None:
+        """Verify a quote-injection payload in a filter value cannot break out of the Alpine x-data string."""
+        import re
+
+        # Given a malicious filter value attempting JS string breakout
+        _set_page(mocker, audit_rows, has_more=False)
+        payload = "';alert(1)//"
+
+        # When the filter bar is rendered with that value seeded back in
+        response = client.get(f"/cards/audit-log?show_filters=true&entity_type={payload}")
+
+        # Then the x-data block seeds the value with tojson unicode escaping (no JS breakout).
+        # Pull out the x-data attribute specifically so pagination hx-get URLs don't interfere.
+        body = response.get_data(as_text=True)
+        match = re.search(r"x-data='(\{.*?\})'", body, re.DOTALL)
+        assert match, "x-data block not found in response"
+        x_data_block = match.group(0)
+
+        # The raw single quote must NOT appear unescaped inside the x-data attribute
+        assert "';alert(1)//" not in x_data_block  # no raw breakout
+        assert "&#39;;alert(1)//" not in x_data_block  # no html-entity form the parser would decode
+        # tojson encodes the single quote as ' to prevent JS string breakout
+        assert "\\u0027;alert(1)//" in x_data_block
+
 
 class TestAuditLogWrapperComponent:
     """Tests that the <shared.cards.AuditLog /> wrapper renders correct HTMX."""
@@ -724,3 +750,4 @@ class TestAuditLogWrapperComponent:
         assert "user_id=" not in html
         assert "character_id=" not in html
         assert "book_id=" not in html
+        assert "show_filters=" not in html
