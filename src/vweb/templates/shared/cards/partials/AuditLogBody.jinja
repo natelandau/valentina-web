@@ -85,26 +85,31 @@
     {% endfor %}
   </ul>
 
-  {# Prev/Next controls #}
-  <div class="flex justify-end mt-2">
+  {# Pagination: Gmail-style item range (no total, so it survives an unbounded log)
+     plus Newer/Older controls. Log is newest-first, so "Newer" steps toward offset 0
+     and "Older" steps further back in time. #}
+  {% set range_start = offset + 1 %}
+  {% set range_end = offset + (rows | length) %}
+  {% set prev_offset = [offset - page_size, 0] | max %}
+  <div class="flex items-center justify-between mt-2">
+    <span class="text-xs opacity-70 tabular-nums">{{ range_start }}-{{ range_end }}</span>
     <div class="join">
-      {% set prev_offset = [offset - page_size, 0] | max %}
       {# djlint:off #}
-      <button class="join-item btn btn-sm" aria-label="Previous page"
+      <button class="join-item btn btn-sm" aria-label="Newer entries"
               {% if offset == 0 %}disabled{% endif %}
               hx-get="{{ build_fragment_url('shared_cards.audit_log',
                          offset=prev_offset, page_size=page_size, card_id=card_id,
                          body_only='true', **filters) }}"
               hx-target="#{{ card_id }}-body" hx-swap="innerHTML">
-        <i class="fa-solid fa-chevron-left"></i>
+        <i class="fa-solid fa-chevron-left"></i> Newer
       </button>
-      <button class="join-item btn btn-sm" aria-label="Next page"
+      <button class="join-item btn btn-sm" aria-label="Older entries"
               {% if not has_more %}disabled{% endif %}
               hx-get="{{ build_fragment_url('shared_cards.audit_log',
                          offset=(offset + page_size), page_size=page_size, card_id=card_id,
                          body_only='true', **filters) }}"
               hx-target="#{{ card_id }}-body" hx-swap="innerHTML">
-        <i class="fa-solid fa-chevron-right"></i>
+        Older <i class="fa-solid fa-chevron-right"></i>
       </button>
       {# djlint:on #}
     </div>

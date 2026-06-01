@@ -501,10 +501,10 @@ class TestAuditLogCardEndpoint:
 
         # Then the Prev button tag carries the `disabled` attribute
         match = re.search(
-            r'<button[^>]*aria-label="Previous page"[^>]*>',
+            r'<button[^>]*aria-label="Newer entries"[^>]*>',
             response.data.decode(),
         )
-        assert match, "Previous page button not found"
+        assert match, "Newer entries button not found"
         assert "disabled" in match.group(0)
 
     def test_next_button_disabled_when_no_more(
@@ -530,10 +530,10 @@ class TestAuditLogCardEndpoint:
 
         # Then the Next button tag carries the `disabled` attribute
         match = re.search(
-            r'<button[^>]*aria-label="Next page"[^>]*>',
+            r'<button[^>]*aria-label="Older entries"[^>]*>',
             response.data.decode(),
         )
-        assert match, "Next page button not found"
+        assert match, "Older entries button not found"
         assert "disabled" in match.group(0)
 
     def test_pagination_urls_carry_filters(
