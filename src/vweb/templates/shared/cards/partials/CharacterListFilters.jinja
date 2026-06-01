@@ -1,71 +1,65 @@
-{# Character list filter row. Each select renders only when the roster holds more
-   than one distinct value for that dimension, so a single-valued list shows no
-   control. Selecting a value fires an HTMX GET that re-renders only the card
-   body server-side; Alpine holds the form state and powers Clear (display only,
-   no filtering logic). #}
+{# Character list filter controls, shown inside the collapsible panel. Each
+   select renders only when the roster holds more than one distinct value for
+   that dimension. The Alpine state (player/char_class/selected_type + clear)
+   lives on the parent scope in CharacterListContent; here the selects bind to
+   it via x-model and changes fire an HTMX GET that re-renders the card body
+   server-side. #}
 {#def
     card_id: str,
     body_url: str,
     player_options: list = [],
     class_options: list = [],
     type_options: list = [],
-    player: str = "",
-    char_class: str = "",
-    selected_type: str = "",
 #}
 
 {% set show_player = player_options | length > 1 %}
 {% set show_class = class_options | length > 1 %}
 {% set show_type = type_options | length > 1 %}
 
-{% if show_player or show_class or show_type %}
-  {# djlint:off #}
-  <div id="{{ card_id }}-filters"
-       x-data='{ player: {{ player | tojson }}, char_class: {{ char_class | tojson }}, selected_type: {{ selected_type | tojson }}, clear() { this.player = ""; this.char_class = ""; this.selected_type = ""; this.$nextTick(() => htmx.trigger(this.$el, "filter-cleared")) } }'
-       hx-get="{{ body_url }}"
-       hx-trigger="change, filter-cleared"
-       hx-target="#{{ card_id }}-body"
-       hx-include="this"
-       hx-swap="innerHTML">
-  {# djlint:on #}
-    <div class="flex flex-wrap items-end gap-3">
-      {% if show_player %}
-        <fieldset class="fieldset">
-          <legend class="fieldset-legend">Player</legend>
-          <select name="player" x-model="player" class="select select-sm w-44">
-            <option value="">All players</option>
-            {% for player_id, username in player_options %}
-              <option value="{{ player_id }}">{{ username }}</option>
-            {% endfor %}
-          </select>
-        </fieldset>
-      {% endif %}
+<div id="{{ card_id }}-filters"
+     x-ref="filterForm"
+     hx-get="{{ body_url }}"
+     hx-trigger="change, filter-cleared"
+     hx-target="#{{ card_id }}-body"
+     hx-include="this"
+     hx-swap="innerHTML">
+  <div class="flex flex-wrap items-end gap-3">
+    {% if show_player %}
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Player</legend>
+        <select name="player" x-model="player" class="select select-sm w-44">
+          <option value="">All players</option>
+          {% for player_id, username in player_options %}
+            <option value="{{ player_id }}">{{ username }}</option>
+          {% endfor %}
+        </select>
+      </fieldset>
+    {% endif %}
 
-      {% if show_class %}
-        <fieldset class="fieldset">
-          <legend class="fieldset-legend">Class</legend>
-          <select name="char_class" x-model="char_class" class="select select-sm w-40">
-            <option value="">All classes</option>
-            {% for klass in class_options %}
-              <option value="{{ klass }}">{{ klass | title }}</option>
-            {% endfor %}
-          </select>
-        </fieldset>
-      {% endif %}
+    {% if show_class %}
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Class</legend>
+        <select name="char_class" x-model="char_class" class="select select-sm w-40">
+          <option value="">All classes</option>
+          {% for klass in class_options %}
+            <option value="{{ klass }}">{{ klass | title }}</option>
+          {% endfor %}
+        </select>
+      </fieldset>
+    {% endif %}
 
-      {% if show_type %}
-        <fieldset class="fieldset">
-          <legend class="fieldset-legend">Type</legend>
-          <select name="type" x-model="selected_type" class="select select-sm w-48">
-            <option value="">All types</option>
-            {% for type_value, label in type_options %}
-              <option value="{{ type_value }}">{{ label }}</option>
-            {% endfor %}
-          </select>
-        </fieldset>
-      {% endif %}
+    {% if show_type %}
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Type</legend>
+        <select name="type" x-model="selected_type" class="select select-sm w-48">
+          <option value="">All types</option>
+          {% for type_value, label in type_options %}
+            <option value="{{ type_value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </fieldset>
+    {% endif %}
 
-      <button type="button" class="btn btn-ghost btn-sm" @click="clear()">Clear</button>
-    </div>
+    <button type="button" class="btn btn-ghost btn-sm" @click="clear()">Clear</button>
   </div>
-{% endif %}
+</div>

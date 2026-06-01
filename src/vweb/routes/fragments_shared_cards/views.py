@@ -274,6 +274,10 @@ class CharacterListCardView(MethodView):
         else:
             player_options, class_options, type_options = [], [], []
 
+        # Only surface the filter control when at least one dimension can actually
+        # narrow the list — a single-valued roster needs no filters.
+        has_filters = len(player_options) > 1 or len(class_options) > 1 or len(type_options) > 1
+
         show_add_button = request.args.get("show_add_button", "") == "true"
         campaign_id = request.args.get("campaign_id", "")
         add_url = (
@@ -294,7 +298,7 @@ class CharacterListCardView(MethodView):
             link_user_profile=link_user_profile,
             show_add_button=show_add_button,
             add_url=add_url,
-            show_filters=show_filters,
+            has_filters=has_filters,
             empty_message=empty_message,
             filters_active=filters_active,
             campaign_id=campaign_id,
