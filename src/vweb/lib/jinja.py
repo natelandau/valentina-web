@@ -18,6 +18,7 @@ from vweb.config import get_settings
 from vweb.constants import MAX_IMAGE_SIZE, STATIC_PATH, TEMPLATES_PATH
 from vweb.lib.api import get_active_campaign, get_user_campaign_experience
 from vweb.lib.blueprint_cache import get_all_traits
+from vweb.lib.character_list import character_type_label
 from vweb.lib.guards import (
     can_edit_character,
     can_edit_traits_free,
@@ -354,6 +355,7 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
 
     jinja_globals["requesting_user"] = _get_requesting_user
     jinja_globals["get_all_traits"] = get_all_traits
+    jinja_globals["character_type_label"] = character_type_label
     jinja_globals["get_options"] = get_options
     jinja_globals["get_system_health"] = get_system_health
     jinja_globals["MAX_IMAGE_SIZE"] = MAX_IMAGE_SIZE

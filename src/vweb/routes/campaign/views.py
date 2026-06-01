@@ -13,7 +13,6 @@ from vweb.lib.api import (
     get_campaign_name,
     get_chapter_count_for_campaign,
     get_user_campaign_experience,
-    get_visible_characters_for_campaign,
     validate_and_submit_experience,
 )
 from vweb.lib.global_context import clear_global_context_cache
@@ -65,10 +64,6 @@ class CampaignView(MethodView):
 
         ctx = g.global_context
         user_id = session["user_id"]
-        visible_characters = get_visible_characters_for_campaign(campaign_id)
-        user_characters = [c for c in visible_characters if c.user_player_id == user_id]
-        other_characters = [c for c in visible_characters if c.user_player_id != user_id]
-
         books = ctx.books_by_campaign.get(campaign_id, [])
         campaign_experience = get_user_campaign_experience(user_id, campaign_id)
         chapter_count = get_chapter_count_for_campaign(campaign_id)
@@ -76,8 +71,6 @@ class CampaignView(MethodView):
         return catalog.render(
             "campaign.CampaignDetail",
             campaign=campaign,
-            user_characters=user_characters,
-            other_characters=other_characters,
             books=books,
             chapter_count=chapter_count,
             campaign_experience=campaign_experience,

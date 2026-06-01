@@ -40,18 +40,19 @@ class ProfileView(MethodView):
         if user is None:
             abort(404)
 
-        user_characters = [ch for ch in ctx.characters if ch.user_player_id == user_id]
+        # The character list itself now loads via the lazy CharacterListCard
+        # (scoped by user_id); only the headline count is needed here.
+        character_count = sum(1 for ch in ctx.characters if ch.user_player_id == user_id)
 
         experience_rows, lifetime_xp, lifetime_cool_points = _build_experience_rows(user_id)
 
         return catalog.render(
             "profile.Profile",
             user=user,
-            user_characters=user_characters,
             lifetime_xp=lifetime_xp,
             lifetime_cool_points=lifetime_cool_points,
             experience_rows=experience_rows,
-            character_count=len(user_characters),
+            character_count=character_count,
         )
 
     def post(self, user_id: str) -> str | Response:

@@ -1,0 +1,102 @@
+{# Full character list card: header, a collapsible filter panel, and the lazy
+   body. Rendered on the wrapper's initial load. The filter state (open +
+   selected values) lives on a single Alpine scope shared by the header toggle
+   (for the active-count badge) and the panel; filtering itself is server-side
+   via the body_only re-fetch. #}
+{#def
+    card_id: str,
+    title: str,
+    characters: list = [],
+    page_size: int = 0,
+    col_span: int = 0,
+    show_type: bool = False,
+    show_campaign: bool = False,
+    link_user_profile: bool = False,
+    show_add_button: bool = False,
+    add_url: str = "",
+    has_filters: bool = False,
+    empty_message: str = "No characters found",
+    filters_active: bool = False,
+    campaign_id: str = "",
+    bucket: str = "all",
+    user_id: str = "",
+    player_options: list = [],
+    class_options: list = [],
+    type_options: list = [],
+    player: str = "",
+    char_class: str = "",
+    selected_type: str = "",
+#}
+
+{% set grid_col_span = "lg:col-span-" ~ col_span if col_span > 0 else "" %}
+
+{% set body_url = build_fragment_url(
+    "shared_cards.character_list",
+    body_only="true",
+    campaign_id=campaign_id,
+    bucket=bucket,
+    user_id=user_id,
+    page_size=page_size,
+    show_type="true" if show_type else "",
+    show_campaign="true" if show_campaign else "",
+    link_user_profile="true" if link_user_profile else "",
+    empty_message=empty_message,
+) %}
+
+<div class="card surface-card {{ grid_col_span }}" id="{{ card_id }}">
+  <div class="card-body">
+    {# djlint:off #}
+    <div {% if has_filters %}x-data='{ open: false, player: {{ player | tojson }}, char_class: {{ char_class | tojson }}, selected_type: {{ selected_type | tojson }}, get activeCount() { return [this.player, this.char_class, this.selected_type].filter(Boolean).length }, clear() { this.player = ""; this.char_class = ""; this.selected_type = ""; this.$nextTick(() => htmx.trigger(this.$refs.filterForm, "filter-cleared")) } }'{% endif %}>
+    {# djlint:on #}
+      <div class="flex items-center justify-between gap-2">
+        <h2 class="card-title">{{ title }}</h2>
+        <div class="flex items-center gap-2">
+          {% if has_filters %}
+            <button type="button"
+                    class="btn btn-sm btn-ghost gap-1"
+                    :class="open && 'btn-active'"
+                    :aria-expanded="open"
+                    aria-label="Toggle filters"
+                    @click="open = !open">
+              <i class="fa-solid fa-filter" aria-hidden="true"></i>
+              Filter
+              <span class="badge badge-xs badge-primary"
+                    x-show="activeCount > 0"
+                    x-cloak
+                    x-text="activeCount"></span>
+            </button>
+          {% endif %}
+          {% if show_add_button %}
+            {% if add_url %}
+              <shared.CommonButton variant="add" extra_class="btn-sm" href={{ add_url }}>+ Add New</shared.CommonButton>
+            {% else %}
+              <shared.CommonButton variant="add" extra_class="btn-sm" disabled={{ true }}>+ Add New</shared.CommonButton>
+            {% endif %}
+          {% endif %}
+        </div>
+      </div>
+
+      {% if has_filters %}
+        <div x-show="open" x-cloak class="mt-3">
+          <shared.cards.partials.CharacterListFilters
+              card_id={{ card_id }}
+              body_url={{ body_url }}
+              player_options={{ player_options }}
+              class_options={{ class_options }}
+              type_options={{ type_options }} />
+        </div>
+      {% endif %}
+    </div>
+
+    <div id="{{ card_id }}-body">
+      <shared.cards.partials.CharacterListBody
+          characters={{ characters }}
+          page_size={{ page_size }}
+          show_type={{ show_type }}
+          show_campaign={{ show_campaign }}
+          link_user_profile={{ link_user_profile }}
+          empty_message={{ empty_message }}
+          filters_active={{ filters_active }} />
+    </div>
+  </div>
+</div>

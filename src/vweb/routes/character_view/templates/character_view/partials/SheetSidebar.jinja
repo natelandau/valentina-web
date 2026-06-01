@@ -99,7 +99,7 @@
       <span class="badge badge-sm badge-error badge-soft">Deceased</span>
     {% endif %}
     {% if can_edit %}
-      <span class="badge badge-sm badge-outline">{{ character.type | title }} Character</span>
+      <shared.CharacterTypeBadge character_type={{ character.type }} />
     {% endif %}
   </div>
 

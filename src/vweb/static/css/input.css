@@ -104,6 +104,32 @@
   }
 }
 
+/* Character type chips — shared by the character list rows and the sheet sidebar
+   so the same type reads identically on both pages. A soft token tint with dark
+   -content text keeps each chip a quiet category label, never mistaken for a
+   link. The three player-facing types sit at equal visual weight; DEVELOPER
+   renders no chip. Apply alongside daisyUI `badge badge-xs`. */
+.badge-character-type {
+  text-transform: none;
+  font-weight: 400;
+  letter-spacing: normal;
+}
+.badge-character-type-player {
+  background-color: oklch(from var(--color-primary) l c h / 0.12);
+  border-color: oklch(from var(--color-primary) l c h / 0.2);
+  color: var(--color-primary-content);
+}
+.badge-character-type-npc {
+  background-color: oklch(from var(--color-secondary) l c h / 0.16);
+  border-color: oklch(from var(--color-secondary) l c h / 0.24);
+  color: var(--color-secondary-content);
+}
+.badge-character-type-storyteller {
+  background-color: oklch(from var(--color-accent) l c h / 0.12);
+  border-color: oklch(from var(--color-accent) l c h / 0.2);
+  color: var(--color-accent-content);
+}
+
 /* Let daisyUI .link classes override @tailwindcss/typography prose link styles */
 .prose .link {
   color: currentColor;

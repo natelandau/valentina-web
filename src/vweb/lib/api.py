@@ -33,11 +33,33 @@ def count_notes(service: Any, parent_id: str) -> int:
         return 0
 
 
+def filter_visible_characters(characters: list[Character]) -> list[Character]:
+    """Filter characters to those the requesting user is allowed to see.
+
+    The single home for the character visibility rule, shared by every list the
+    user sees (campaign rosters and profile rosters alike) so the same character
+    is never visible in one place and hidden in another. Everyone sees PLAYER-
+    and NPC-type characters; only storytellers (and admins) additionally see
+    STORYTELLER-type characters; DEVELOPER characters are never shown.
+
+    Args:
+        characters: The characters to filter.
+
+    Returns:
+        The subset the requesting user may see, in the input order.
+    """
+    privileged = is_storyteller()
+    return [
+        character
+        for character in characters
+        if character.type in ("PLAYER", "NPC") or (privileged and character.type == "STORYTELLER")
+    ]
+
+
 def get_visible_characters_for_campaign(campaign_id: str) -> list[Character]:
     """Return characters in the campaign visible to the current user, sorted A-Z.
 
-    Apply the standard visibility rule: everyone sees PLAYER-type characters;
-    only storytellers (and admins) additionally see STORYTELLER-type characters.
+    Apply the standard visibility rule via :func:`filter_visible_characters`.
     Sort is case-insensitive by character name.
 
     Args:
@@ -47,12 +69,7 @@ def get_visible_characters_for_campaign(campaign_id: str) -> list[Character]:
         A sorted list of visible characters.
     """
     all_characters = g.global_context.characters_by_campaign.get(campaign_id, [])
-    privileged = is_storyteller()
-    visible = [
-        character
-        for character in all_characters
-        if character.type == "PLAYER" or (privileged and character.type == "STORYTELLER")
-    ]
+    visible = filter_visible_characters(all_characters)
     return sorted(visible, key=lambda character: character.name.lower())
 
 

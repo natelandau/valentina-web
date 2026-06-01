@@ -1,6 +1,5 @@
 {#def
     user,
-    user_characters: list = [],
     lifetime_xp: int = 0,
     lifetime_cool_points: int = 0,
     experience_rows: list = [],
@@ -85,7 +84,7 @@
 
 <!-- Characters list -->
 <div class="mt-6">
-  <shared.cards.CharacterListCard title="Characters" characters={{ user_characters }} show_campaign={{ true }} show_type={{ true }} empty_message="No characters yet" />
+  <shared.cards.CharacterListCard title="Characters" user_id={{ user.id }} show_campaign={{ true }} show_type={{ true }} empty_message="No characters yet" card_id="profile-characters" />
 </div>
 <shared.diceroll.DiceRollModal />
 </shared.PageLayout>
