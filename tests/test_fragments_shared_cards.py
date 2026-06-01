@@ -911,6 +911,29 @@ class TestCharacterListCardEndpoint:
         assert "Owned B" in body
         assert "Not Owned" not in body
 
+    def test_link_user_profile_skips_link_for_ownerless_npc(
+        self, client: FlaskClient, mocker: MockerFixture
+    ) -> None:
+        """Verify an NPC with no owner renders without a profile link instead of crashing."""
+        # Given a campaign whose roster includes an NPC with no owning player
+        campaign = CampaignFactory.build(name="Test Campaign")
+        npc = CharacterFactory.build(
+            name="Ownerless Npc", type="NPC", user_player_id=None, campaign_id=campaign.id
+        )
+        ctx, _ = _character_context([npc], campaign=campaign)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+
+        # When requesting the card with profile links enabled (the "Other Players" box)
+        response = client.get(
+            f"/cards/character-list?campaign_id={campaign.id}&bucket=all&link_user_profile=true"
+        )
+        body = response.get_data(as_text=True)
+
+        # Then the NPC renders without a profile link, and url_for(user_id=None) does not 500
+        assert response.status_code == 200
+        assert "Ownerless Npc" in body
+        assert "/profile/None" not in body
+
     def test_user_scope_returns_all_context_characters_without_type_filtering(
         self, client: FlaskClient, mocker: MockerFixture
     ) -> None:

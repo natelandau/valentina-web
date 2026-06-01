@@ -25,15 +25,16 @@ def _current_user() -> User | None:
     return getattr(g, "requesting_user", None)
 
 
-def is_self(user_id: str) -> bool:
+def is_self(user_id: str | None) -> bool:
     """Check whether ``user_id`` identifies the requesting user.
 
     Use for "does the requesting user own this user-scoped resource?" checks
     (profile edits, quickrolls, personal settings) so the rule has one home
-    and one name.
+    and one name. ``None`` (e.g. an ownerless NPC's ``user_player_id``) is never
+    the requesting user, so it returns ``False``.
     """
     user = _current_user()
-    return user is not None and user.id == user_id
+    return user is not None and user_id is not None and user.id == user_id
 
 
 def is_approved_user() -> bool:
