@@ -7,6 +7,7 @@ its ``hx-get`` at an endpoint here.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from flask import Blueprint, abort, g, request
@@ -15,6 +16,7 @@ from flask.views import MethodView
 from vweb import catalog
 from vweb.lib.api import get_recent_player_dicerolls
 from vweb.lib.audit_log import (
+    ENTITY_TYPES,
     get_audit_log_page,
     resolve_acting_user,
     resolve_entities,
@@ -100,9 +102,10 @@ class AuditLogCardView(MethodView):
     def get(self) -> str:
         """Return an HTMX fragment for the audit log card, scoped by optional filter args.
 
-        Reads up to six filter query args (acting_user_id, user_id, campaign_id, book_id,
-        chapter_id, character_id) plus page_size and offset. Scope-active entity IDs are
-        excluded from per-row entity links to avoid redundant context.
+        Reads up to ten filter query args (acting_user_id, user_id, campaign_id, book_id,
+        chapter_id, character_id, entity_type, operation, date_from, date_to) plus
+        page_size and offset. Scope-active entity IDs are excluded from per-row entity
+        links to avoid redundant context.
         """
         filter_keys = (
             "acting_user_id",
@@ -111,10 +114,18 @@ class AuditLogCardView(MethodView):
             "book_id",
             "chapter_id",
             "character_id",
+            "entity_type",
+            "operation",
+            "date_from",
+            "date_to",
         )
         filters = {key: request.args.get(key, "") for key in filter_keys}
         page_size = request.args.get("page_size", 10, type=int)
         offset = request.args.get("offset", 0, type=int)
+        # card_id is interpolated into JS getElementById calls and DOM id attributes in the
+        # template, so restrict it to a DOM-id-safe charset to prevent injection.
+        raw_card_id = request.args.get("card_id", "auditlog")
+        card_id = re.sub(r"[^A-Za-z0-9_-]", "", raw_card_id) or "auditlog"
 
         page = get_audit_log_page(limit=page_size, offset=offset, **filters)
 
@@ -142,6 +153,7 @@ class AuditLogCardView(MethodView):
             )
 
         body_only = request.args.get("body_only", "") == "true"
+        show_filters = request.args.get("show_filters", "") == "true"
         template_name = (
             "shared.cards.partials.AuditLogBody"
             if body_only
@@ -153,12 +165,15 @@ class AuditLogCardView(MethodView):
             "offset": offset,
             "has_more": page.has_more,
             "filters": filters,
-            "card_id": request.args.get("card_id", "auditlog"),
+            "card_id": card_id,
             "empty_message": request.args.get("empty_message", "No audit log entries"),
         }
         if not body_only:
             render_kwargs["col_span"] = request.args.get("col_span", 0, type=int)
             render_kwargs["title"] = request.args.get("title", "Audit Log")
+            render_kwargs["show_filters"] = show_filters
+            render_kwargs["users"] = context.users if show_filters else []
+            render_kwargs["entity_types"] = ENTITY_TYPES if show_filters else []
         return catalog.render(template_name, **render_kwargs)
 
 

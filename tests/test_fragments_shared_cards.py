@@ -270,6 +270,27 @@ def _audit_log_rows(fake_vclient, mock_global_context) -> list[AuditLog]:
     return logs
 
 
+@pytest.fixture
+def audit_rows() -> list[AuditLog]:
+    """Build audit log rows without seeding vclient, for use with _set_page."""
+    return AuditLogFactory.batch(3)
+
+
+def _set_page(mocker, items: list[AuditLog], *, has_more: bool = False) -> None:
+    """Patch get_audit_log_page to return items with controllable has_more.
+
+    The fake vclient always sets has_more=False (total == len(items)). This helper
+    patches the helper directly so tests can express has_more=True without relying
+    on the fake client's internal pagination logic.
+    """
+    mock_page = mocker.MagicMock(items=items, has_more=has_more, total=len(items) + int(has_more))
+    mocker.patch(
+        "vweb.routes.fragments_shared_cards.views.get_audit_log_page",
+        autospec=True,
+        return_value=mock_page,
+    )
+
+
 class TestAuditLogCardEndpoint:
     """Tests for GET /cards/audit-log."""
 
@@ -285,7 +306,7 @@ class TestAuditLogCardEndpoint:
     def test_filters_forwarded_to_vclient(
         self, client: FlaskClient, mock_global_context, mocker
     ) -> None:
-        """Verify all filter query args are forwarded to get_audit_log_page."""
+        """Verify all ten filter query args are forwarded to get_audit_log_page."""
         # Given a patched get_audit_log_page
         mock_page = mocker.MagicMock(items=[], has_more=False, total=0)
         mock_fn = mocker.patch(
@@ -294,11 +315,13 @@ class TestAuditLogCardEndpoint:
             return_value=mock_page,
         )
 
-        # When requesting with all six filter kwargs populated
+        # When requesting with all ten filter kwargs populated
         response = client.get(
             "/cards/audit-log"
             "?acting_user_id=a1&user_id=u1&campaign_id=c1"
             "&book_id=b1&chapter_id=ch1&character_id=char1"
+            "&entity_type=CAMPAIGN&operation=UPDATE"
+            "&date_from=2025-01-01&date_to=2025-02-01"
             "&page_size=15&offset=30"
         )
 
@@ -311,6 +334,10 @@ class TestAuditLogCardEndpoint:
         assert kwargs["book_id"] == "b1"
         assert kwargs["chapter_id"] == "ch1"
         assert kwargs["character_id"] == "char1"
+        assert kwargs["entity_type"] == "CAMPAIGN"
+        assert kwargs["operation"] == "UPDATE"
+        assert kwargs["date_from"] == "2025-01-01"
+        assert kwargs["date_to"] == "2025-02-01"
         assert kwargs["limit"] == 15
         assert kwargs["offset"] == 30
 
@@ -474,10 +501,10 @@ class TestAuditLogCardEndpoint:
 
         # Then the Prev button tag carries the `disabled` attribute
         match = re.search(
-            r'<button[^>]*aria-label="Previous page"[^>]*>',
+            r'<button[^>]*aria-label="Newer entries"[^>]*>',
             response.data.decode(),
         )
-        assert match, "Previous page button not found"
+        assert match, "Newer entries button not found"
         assert "disabled" in match.group(0)
 
     def test_next_button_disabled_when_no_more(
@@ -503,10 +530,10 @@ class TestAuditLogCardEndpoint:
 
         # Then the Next button tag carries the `disabled` attribute
         match = re.search(
-            r'<button[^>]*aria-label="Next page"[^>]*>',
+            r'<button[^>]*aria-label="Older entries"[^>]*>',
             response.data.decode(),
         )
-        assert match, "Next page button not found"
+        assert match, "Older entries button not found"
         assert "disabled" in match.group(0)
 
     def test_pagination_urls_carry_filters(
@@ -595,6 +622,114 @@ class TestAuditLogCardEndpoint:
         assert "body_only=true" in html
         assert "campaign_id=c-1" in html
 
+    def test_admin_filters_threaded_into_pagination(
+        self, client: FlaskClient, mocker: MockerFixture, audit_rows: list
+    ) -> None:
+        """Verify entity_type and operation filters appear in the pagination URLs."""
+        # Given a full page with more available
+        _set_page(mocker, audit_rows, has_more=True)
+
+        # When requesting with admin filters set
+        response = client.get(
+            "/cards/audit-log?campaign_id=c1&entity_type=CAMPAIGN&operation=UPDATE&page_size=3"
+        )
+
+        # Then the filters are carried into the Next/Prev button URLs
+        body = response.get_data(as_text=True)
+        assert "entity_type=CAMPAIGN" in body
+        assert "operation=UPDATE" in body
+
+    def test_min_height_capped_for_large_page_size(
+        self, client: FlaskClient, mocker, audit_rows: list
+    ) -> None:
+        """Verify the body min-height is capped so a large page_size does not over-stretch."""
+        # Given an audit log page requested with a large page size
+        _set_page(mocker, audit_rows, has_more=False)
+
+        # When rendering with page_size well above the cap
+        response = client.get("/cards/audit-log?campaign_id=c1&page_size=25")
+
+        # Then min-height is capped at the 10-row equivalent (10 * 5.5 = 55.0rem)
+        body = response.get_data(as_text=True)
+        assert "min-height: 55.0rem" in body
+
+
+class TestAuditLogFilters:
+    """show_filters toggles the filter bar on the shared card."""
+
+    def test_show_filters_renders_filter_bar(
+        self, client: FlaskClient, mocker, audit_rows: list, mock_global_context
+    ) -> None:
+        """Verify show_filters=true renders the filter bar with options."""
+        # Given an audit log page
+        _set_page(mocker, audit_rows, has_more=False)
+
+        # When requesting the card with filters enabled
+        response = client.get("/cards/audit-log?show_filters=true")
+
+        # Then the filter bar and its controls render
+        body = response.get_data(as_text=True)
+        assert "auditlog-filters" in body
+        assert "Entity Type" in body
+        assert "Operation" in body
+
+        # And the acting-user dropdown is populated from the global context users
+        user = mock_global_context.users[0]
+        assert user.username in body
+
+    def test_filters_hidden_by_default(self, client: FlaskClient, mocker, audit_rows: list) -> None:
+        """Verify the filter bar is absent when show_filters is not set."""
+        # Given an audit log page
+        _set_page(mocker, audit_rows, has_more=False)
+
+        # When requesting the card normally
+        response = client.get("/cards/audit-log?campaign_id=c1")
+
+        # Then no filter bar is rendered
+        body = response.get_data(as_text=True)
+        assert "auditlog-filters" not in body
+
+    def test_filter_values_are_xss_safe(
+        self, client: FlaskClient, mocker, audit_rows: list
+    ) -> None:
+        """Verify a quote-injection payload in a filter value cannot break out of the Alpine x-data string."""
+        import re
+
+        # Given a malicious filter value attempting JS string breakout
+        _set_page(mocker, audit_rows, has_more=False)
+        payload = "';alert(1)//"
+
+        # When the filter bar is rendered with that value seeded back in
+        response = client.get(f"/cards/audit-log?show_filters=true&entity_type={payload}")
+
+        # Then the x-data block seeds the value with tojson unicode escaping (no JS breakout).
+        # Pull out the x-data attribute specifically so pagination hx-get URLs don't interfere.
+        body = response.get_data(as_text=True)
+        match = re.search(r"x-data='(\{.*?\})'", body, re.DOTALL)
+        assert match, "x-data block not found in response"
+        x_data_block = match.group(0)
+
+        # The raw single quote must NOT appear unescaped inside the x-data attribute
+        assert "';alert(1)//" not in x_data_block  # no raw breakout
+        assert "&#39;;alert(1)//" not in x_data_block  # no html-entity form the parser would decode
+        # tojson encodes the single quote as ' to prevent JS string breakout
+        assert "\\u0027;alert(1)//" in x_data_block
+
+    def test_card_id_is_sanitized(self, client: FlaskClient, mocker, audit_rows: list) -> None:
+        """Verify a malicious card_id is stripped to a DOM-id-safe slug, blocking injection."""
+        # Given a card_id carrying a JS-breakout payload
+        _set_page(mocker, audit_rows, has_more=False)
+        payload = "x');alert(1)//"
+
+        # When the card renders with that card_id
+        response = client.get(f"/cards/audit-log?show_filters=true&card_id={payload}")
+
+        # Then the dangerous characters are gone and only the safe slug remains
+        body = response.get_data(as_text=True)
+        assert "');alert(1)//" not in body
+        assert "&#39;);alert(1)//" not in body
+        assert 'id="xalert1-filters"' in body  # quotes/parens/semicolons/slashes stripped
+
 
 class TestAuditLogWrapperComponent:
     """Tests that the <shared.cards.AuditLog /> wrapper renders correct HTMX."""
@@ -630,3 +765,4 @@ class TestAuditLogWrapperComponent:
         assert "user_id=" not in html
         assert "character_id=" not in html
         assert "book_id=" not in html
+        assert "show_filters=" not in html

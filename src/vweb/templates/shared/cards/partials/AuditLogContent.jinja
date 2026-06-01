@@ -3,6 +3,9 @@
     card_id: str, col_span: int = 0,
     title: str = "Audit Log",
     empty_message: str = "No audit log entries",
+    show_filters: bool = False,
+    users: list = [],
+    entity_types: list = [],
 #}
 
 {% set grid_col_span = "lg:col-span-" ~ col_span if col_span > 0 else "" %}
@@ -10,6 +13,15 @@
 <div class="card surface-card {{ grid_col_span }}" id="{{ card_id }}">
   <div class="card-body">
     <h2 class="card-title">{{ title }}</h2>
+
+    {% if show_filters %}
+      <shared.cards.partials.AuditLogFilters
+        card_id={{ card_id }}
+        page_size={{ page_size }}
+        users={{ users }}
+        entity_types={{ entity_types }}
+        filters={{ filters }} />
+    {% endif %}
 
     <div id="{{ card_id }}-body">
       <shared.cards.partials.AuditLogBody

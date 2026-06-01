@@ -1,4 +1,4 @@
-"""Tests for the /admin audit log page and HTMX table endpoint."""
+"""Tests for the /admin audit log page."""
 
 from __future__ import annotations
 
@@ -48,10 +48,10 @@ class TestAuditLogRouteRegistered:
         rules = {r.rule for r in app.url_map.iter_rules()}
         assert "/admin" in rules
 
-    def test_audit_log_table_url_exists(self, app: Flask) -> None:
-        """Verify the /admin/audit-log endpoint is registered."""
+    def test_audit_log_table_url_removed(self, app: Flask) -> None:
+        """Verify the legacy /admin/audit-log endpoint is no longer registered."""
         rules = {r.rule for r in app.url_map.iter_rules()}
-        assert "/admin/audit-log" in rules
+        assert "/admin/audit-log" not in rules
 
 
 class TestAuditLogAccessControl:
@@ -74,71 +74,14 @@ class TestAuditLogPage:
     """GET /admin renders the full audit log page."""
 
     def test_renders_audit_log_page(self, client: FlaskClient) -> None:
-        """Verify GET /admin returns 200 with audit log content."""
+        """Verify GET /admin embeds the shared audit log card with filters enabled."""
+        # When loading the admin audit log page
         response = client.get("/admin")
 
+        # Then it renders the shared card wrapper pointed at the fragment endpoint
         assert response.status_code == 200
         body = response.get_data(as_text=True)
         assert "Audit Log" in body
-        assert "audit-log-content" in body
-
-
-@pytest.mark.usefixtures("_mock_audit_api")
-class TestAuditLogTable:
-    """GET /admin/audit-log returns HTMX table rows."""
-
-    def test_returns_table_rows(self, client: FlaskClient) -> None:
-        """Verify GET /admin/audit-log returns table row HTML."""
-        response = client.get("/admin/audit-log", headers={"HX-Request": "true"})
-
-        assert response.status_code == 200
-
-    @pytest.fixture
-    def mock_empty_page(self, mocker) -> MagicMock:
-        """Patch get_audit_log_page to return an empty page."""
-        mock_svc_fn = mocker.patch(
-            "vweb.routes.admin.views.get_audit_log_page",
-            autospec=True,
-        )
-        mock_page = MagicMock()
-        mock_page.items = []
-        mock_page.total = 0
-        mock_page.has_more = False
-        mock_svc_fn.return_value = mock_page
-        return mock_svc_fn
-
-    def test_passes_filters_as_query_params(
-        self, client: FlaskClient, mock_empty_page: MagicMock
-    ) -> None:
-        """Verify filter query params are forwarded to the service."""
-        client.get(
-            "/admin/audit-log?entity_type=CHARACTER&operation=UPDATE&acting_user_id=u1",
-            headers={"HX-Request": "true"},
-        )
-
-        mock_empty_page.assert_called_once_with(
-            limit=20,
-            offset=0,
-            entity_type="CHARACTER",
-            operation="UPDATE",
-            acting_user_id="u1",
-            date_from="",
-            date_to="",
-        )
-
-    def test_pagination_offset(self, client: FlaskClient, mock_empty_page: MagicMock) -> None:
-        """Verify offset query param is forwarded for pagination."""
-        client.get(
-            "/admin/audit-log?offset=40",
-            headers={"HX-Request": "true"},
-        )
-
-        mock_empty_page.assert_called_once_with(
-            limit=20,
-            offset=40,
-            entity_type="",
-            operation="",
-            acting_user_id="",
-            date_from="",
-            date_to="",
-        )
+        assert "/cards/audit-log" in body
+        assert "show_filters=true" in body
+        assert "page_size=25" in body

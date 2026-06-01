@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlencode
 
 from flask import Blueprint, flash, g, redirect, request, session, url_for
 from flask.views import MethodView
@@ -12,12 +11,6 @@ from vclient import sync_companies_service
 from vclient.models.companies import CompanySettingsUpdate, CompanyUpdate
 
 from vweb import catalog
-from vweb.lib.audit_log import (
-    ENTITY_TYPES,
-    get_audit_log_page,
-    resolve_acting_user,
-    resolve_entities,
-)
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import is_admin, is_self
 from vweb.lib.jinja import htmx_response, hx_redirect
@@ -128,78 +121,14 @@ def _format_pydantic_errors(exc: ValidationError) -> dict[str, str]:
     return errors
 
 
-PAGE_SIZE = 20
-
-
 class AuditLogView(MethodView):
-    """Display the full audit log page with filters and lazy-loaded table."""
+    """Render the audit log page shell; the embedded card lazy-loads its data."""
 
     def get(self) -> str:
-        """Render the audit log page shell with empty table that loads via HTMX."""
-        users = g.global_context.users
+        """Render the page shell. The shared card fetches and paginates entries."""
         return catalog.render(
             "admin.AuditLogPage",
-            users=users,
-            entity_types=ENTITY_TYPES,
             pending_count=g.global_context.pending_user_count,
-        )
-
-
-class AuditLogTableView(MethodView):
-    """HTMX endpoint returning audit log table rows with pagination."""
-
-    def get(self) -> str:
-        """Return rendered table rows for the current filter/offset combination."""
-        offset = request.args.get("offset", 0, type=int)
-        is_initial = offset == 0
-        entity_type = request.args.get("entity_type", "")
-        operation = request.args.get("operation", "")
-        acting_user_id = request.args.get("acting_user_id", "")
-        date_from = request.args.get("date_from", "")
-        date_to = request.args.get("date_to", "")
-
-        page = get_audit_log_page(
-            limit=PAGE_SIZE,
-            offset=offset,
-            entity_type=entity_type,
-            operation=operation,
-            acting_user_id=acting_user_id,
-            date_from=date_from,
-            date_to=date_to,
-        )
-
-        context = g.global_context
-        rows = []
-        for log in page.items:
-            entities = resolve_entities(log, context)
-            acting_name, acting_url = resolve_acting_user(log.acting_user_id, context)
-
-            rows.append(
-                {
-                    "log": log,
-                    "entities": entities,
-                    "acting_user_name": acting_name,
-                    "acting_user_url": acting_url,
-                }
-            )
-
-        filters = {
-            "entity_type": entity_type,
-            "operation": operation,
-            "acting_user_id": acting_user_id,
-            "date_from": date_from,
-            "date_to": date_to,
-        }
-        new_offset = offset + PAGE_SIZE
-
-        return catalog.render(
-            "admin.partials.AuditLogTable",
-            rows=rows,
-            total=page.total,
-            offset=new_offset,
-            has_more=page.has_more,
-            filter_params=urlencode({k: v for k, v in filters.items() if v}),
-            is_initial=is_initial,
         )
 
 
@@ -357,9 +286,6 @@ class MergeUserView(MethodView):
 
 
 bp.add_url_rule("", view_func=AuditLogView.as_view("audit_log"), methods=["GET"])
-bp.add_url_rule(
-    "/audit-log", view_func=AuditLogTableView.as_view("audit_log_table"), methods=["GET"]
-)
 bp.add_url_rule("/settings", view_func=SettingsView.as_view("settings"), methods=["GET", "POST"])
 bp.add_url_rule("/users", view_func=UsersView.as_view("users"), methods=["GET"])
 bp.add_url_rule(

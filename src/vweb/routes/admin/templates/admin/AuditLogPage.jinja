@@ -1,4 +1,4 @@
-{#def users, entity_types, pending_count=0 #}
+{#def pending_count=0 #}
 {% set cally_script = '<script type="module" src="https://cdn.jsdelivr.net/npm/cally/dist/cally.js"></script>' %}
 {% set current_campaign = active_campaign() %}
 <shared.PageLayout title="Audit Log" scripts_extra={{ cally_script }}>
@@ -15,21 +15,6 @@
 
     <admin.components.AdminTabs active="audit_log" pending_count={{ pending_count }} />
 
-    <div class="card surface-card">
-      <div class="card-body p-0">
-        <admin.components.AuditLogFilters
-          users={{ users }}
-          entity_types={{ entity_types }} />
-
-        <div id="audit-log-content"
-             hx-get="{{ url_for('admin.audit_log_table') }}"
-             hx-trigger="load, filter-changed from:#audit-filters"
-             hx-include="#audit-filters">
-          <div class="text-center py-8">
-            <span class="loading loading-spinner loading-md"></span>
-          </div>
-        </div>
-      </div>
-    </div>
+    <shared.cards.AuditLog show_filters={{ true }} page_size={{ 25 }} title="Audit Log" />
   </div>
 </shared.PageLayout>
