@@ -105,6 +105,37 @@ class TestManualProfileView:
         assert 'value="Ada"' in body
         assert 'value="Lovelace"' in body
 
+    def test_create_post_inline_errors_on_api_rejection(self, client, mocker, fake_vclient) -> None:
+        """Verify an API rejection of a submitted character type shows an inline error."""
+        from vclient.testing import Routes
+
+        # Given a player whose crafted character_type the API will reject
+        ctx = build_global_context(user_role="PLAYER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        _mock_form_options(mocker)
+        fake_vclient.set_error(Routes.CHARACTERS_CREATE, status_code=403)
+
+        csrf = get_csrf(client)
+
+        # When submitting the profile form with a forbidden character_type
+        response = client.post(
+            f"/campaign/{campaign.id}/characters/profile_edit",
+            data={
+                "name_first": "Ada",
+                "name_last": "Lovelace",
+                "game_version": "V5",
+                "character_class": "MORTAL",
+                "character_type": "STORYTELLER",
+                "csrf_token": csrf,
+            },
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the profile form re-renders with an inline error alert (not a 500)
+        assert response.status_code == 200
+        assert_shows_error(response)
+
 
 class TestManualTraitsView:
     """Tests for POST /campaign/<id>/characters/profile_edit/traits."""

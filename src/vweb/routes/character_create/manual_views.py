@@ -334,13 +334,14 @@ class ManualProfileView(MethodView):
                 session["temp_character_created_at"] = time.monotonic()
         except APIError as exc:
             logger.exception("Failed to save temporary character")
-            flash(str(exc), "error")
+            errors = {"_general": exc.detail or exc.message or "Failed to save profile"}
             form_options = fetch_form_options()
             return catalog.render(
                 "character_manual_create.partials.ProfileForm",
                 campaign=campaign,
                 form_options=form_options,
                 form_data=form_data,
+                errors=errors,
             )
 
         char_id = temp_char_id or session["temp_character_id"]
