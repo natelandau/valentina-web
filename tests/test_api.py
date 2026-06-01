@@ -24,6 +24,7 @@ from vweb.lib.api import (
     get_chapter_count_for_campaign,
     get_chapters_for_book,
     get_recent_player_dicerolls,
+    get_visible_characters_for_campaign,
 )
 from vweb.lib.global_context import GlobalContext
 
@@ -359,3 +360,55 @@ class TestGetRecentPlayerDicerollsScopes:
             limit=25,
             offset=0,
         )
+
+
+class TestGetVisibleCharactersForCampaign:
+    """Tests for type-based visibility in ``get_visible_characters_for_campaign``."""
+
+    @staticmethod
+    def _all_type_characters(campaign_id: str) -> list:
+        """Build one character of every type for the given campaign."""
+        return [
+            CharacterFactory.build(type="PLAYER", name="Player One", campaign_id=campaign_id),
+            CharacterFactory.build(type="NPC", name="Npc One", campaign_id=campaign_id),
+            CharacterFactory.build(type="STORYTELLER", name="Story One", campaign_id=campaign_id),
+            CharacterFactory.build(type="DEVELOPER", name="Dev One", campaign_id=campaign_id),
+        ]
+
+    def test_player_sees_player_and_npc_but_not_storyteller(self, app) -> None:
+        """Verify players see PLAYER and NPC characters but never STORYTELLER or DEVELOPER."""
+        # Given a campaign holding one character of each type, viewed by a player
+        campaign = CampaignFactory.build(name="Visibility Campaign")
+        ctx = build_global_context(
+            user_role="PLAYER",
+            campaign=campaign,
+            characters=self._all_type_characters(campaign.id),
+        )
+
+        # When listing visible characters
+        with app.test_request_context():
+            g.global_context = ctx
+            g.requesting_user = ctx.users[0]
+            visible = get_visible_characters_for_campaign(campaign.id)
+
+        # Then only PLAYER and NPC characters are returned
+        assert {character.type for character in visible} == {"PLAYER", "NPC"}
+
+    def test_storyteller_additionally_sees_storyteller_characters(self, app) -> None:
+        """Verify storytellers also see STORYTELLER characters, but still not DEVELOPER."""
+        # Given a campaign holding one character of each type, viewed by a storyteller
+        campaign = CampaignFactory.build(name="Visibility Campaign")
+        ctx = build_global_context(
+            user_role="STORYTELLER",
+            campaign=campaign,
+            characters=self._all_type_characters(campaign.id),
+        )
+
+        # When listing visible characters
+        with app.test_request_context():
+            g.global_context = ctx
+            g.requesting_user = ctx.users[0]
+            visible = get_visible_characters_for_campaign(campaign.id)
+
+        # Then PLAYER, NPC, and STORYTELLER characters are returned
+        assert {character.type for character in visible} == {"PLAYER", "NPC", "STORYTELLER"}

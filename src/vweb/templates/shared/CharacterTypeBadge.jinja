@@ -1,0 +1,18 @@
+{#def
+    character_type: str,
+    size: str = "badge-sm",
+#}
+
+{# Shared character-type chip used by the character list rows and the sheet
+   sidebar. Coloring lives in input.css (.badge-character-type*); `size` takes a
+   daisyUI badge size class (e.g. "badge-xs", "badge-sm") so callers can scale it
+   to context. DEVELOPER is intentionally absent so it renders nothing. #}
+{% set type_styles = {
+    "PLAYER": {"class": "badge-character-type-player", "label": "Player Character"},
+    "NPC": {"class": "badge-character-type-npc", "label": "NPC"},
+    "STORYTELLER": {"class": "badge-character-type-storyteller", "label": "Storyteller Character"},
+} %}
+
+{% if character_type in type_styles %}
+  <span class="badge {{ size }} badge-character-type {{ type_styles[character_type].class }}">{{ type_styles[character_type].label }}</span>
+{% endif %}

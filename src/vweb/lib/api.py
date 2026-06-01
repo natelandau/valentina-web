@@ -36,9 +36,9 @@ def count_notes(service: Any, parent_id: str) -> int:
 def get_visible_characters_for_campaign(campaign_id: str) -> list[Character]:
     """Return characters in the campaign visible to the current user, sorted A-Z.
 
-    Apply the standard visibility rule: everyone sees PLAYER-type characters;
-    only storytellers (and admins) additionally see STORYTELLER-type characters.
-    Sort is case-insensitive by character name.
+    Apply the standard visibility rule: everyone sees PLAYER- and NPC-type
+    characters; only storytellers (and admins) additionally see the hidden
+    STORYTELLER-type characters. Sort is case-insensitive by character name.
 
     Args:
         campaign_id: The campaign to list characters for.
@@ -51,7 +51,7 @@ def get_visible_characters_for_campaign(campaign_id: str) -> list[Character]:
     visible = [
         character
         for character in all_characters
-        if character.type == "PLAYER" or (privileged and character.type == "STORYTELLER")
+        if character.type in ("PLAYER", "NPC") or (privileged and character.type == "STORYTELLER")
     ]
     return sorted(visible, key=lambda character: character.name.lower())
 
