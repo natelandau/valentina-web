@@ -911,11 +911,15 @@ class TestCharacterListCardEndpoint:
         assert "Owned B" in body
         assert "Not Owned" not in body
 
-    def test_user_scope_hides_storyteller_characters_from_non_storyteller(
+    def test_user_scope_returns_all_context_characters_without_type_filtering(
         self, client: FlaskClient, mocker: MockerFixture
     ) -> None:
-        """Verify a profile's storyteller characters stay hidden from non-storyteller viewers."""
-        # Given a target user owning a player and a storyteller character, viewed by a player
+        """Verify user-scoped card returns every owned character verbatim from the context.
+
+        The API already scopes the roster by role via the on-behalf-of header, so
+        the card no longer applies client-side type filtering.
+        """
+        # Given a target user owning a player and a storyteller character
         player_char = CharacterFactory.build(
             name="Owned Player", type="PLAYER", user_player_id="u-target"
         )
@@ -925,31 +929,10 @@ class TestCharacterListCardEndpoint:
         ctx, _ = _character_context([player_char, story_char], user_role="PLAYER")
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
 
-        # When a non-storyteller requests the user-scoped card
+        # When the user-scoped card is requested
         body = client.get("/cards/character-list?user_id=u-target").get_data(as_text=True)
 
-        # Then the storyteller character is filtered out, matching the campaign rule
-        assert "Owned Player" in body
-        assert "Owned Storyteller" not in body
-
-    def test_user_scope_shows_storyteller_characters_to_storyteller(
-        self, client: FlaskClient, mocker: MockerFixture
-    ) -> None:
-        """Verify storytellers see storyteller characters on a profile, like in a campaign."""
-        # Given the same roster, viewed by a storyteller
-        player_char = CharacterFactory.build(
-            name="Owned Player", type="PLAYER", user_player_id="u-target"
-        )
-        story_char = CharacterFactory.build(
-            name="Owned Storyteller", type="STORYTELLER", user_player_id="u-target"
-        )
-        ctx, _ = _character_context([player_char, story_char], user_role="STORYTELLER")
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
-
-        # When a storyteller requests the user-scoped card
-        body = client.get("/cards/character-list?user_id=u-target").get_data(as_text=True)
-
-        # Then both characters render
+        # Then both characters render because the API already filtered the bucket
         assert "Owned Player" in body
         assert "Owned Storyteller" in body
 

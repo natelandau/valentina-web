@@ -16,7 +16,6 @@ from flask.views import MethodView
 from vweb import catalog
 from vweb.lib.api import (
     fetch_campaign_or_404,
-    filter_visible_characters,
     get_recent_player_dicerolls,
     get_visible_characters_for_campaign,
 )
@@ -225,8 +224,7 @@ class CharacterListCardView(MethodView):
 
         if user_id:
             owned = [c for c in g.global_context.characters if c.user_player_id == user_id]
-            visible = filter_visible_characters(owned)
-            return sorted(visible, key=lambda character: character.name.lower())
+            return sorted(owned, key=lambda character: character.name.lower())
 
         return abort(400)
 

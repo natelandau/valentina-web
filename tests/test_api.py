@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from flask import g, session
 from vclient.testing import (
@@ -27,6 +28,9 @@ from vweb.lib.api import (
     get_visible_characters_for_campaign,
 )
 from vweb.lib.global_context import GlobalContext
+
+if TYPE_CHECKING:
+    from vclient.models import Character
 
 
 def _build_ctx(campaigns: list) -> GlobalContext:
@@ -363,52 +367,49 @@ class TestGetRecentPlayerDicerollsScopes:
 
 
 class TestGetVisibleCharactersForCampaign:
-    """Tests for type-based visibility in ``get_visible_characters_for_campaign``."""
+    """Tests for ``get_visible_characters_for_campaign``.
+
+    The API already scopes the roster by role via the on-behalf-of header, so
+    this helper performs no type filtering; it only reads the campaign's bucket
+    from the context and sorts by name.
+    """
 
     @staticmethod
-    def _all_type_characters(campaign_id: str) -> list:
-        """Build one character of every type for the given campaign."""
+    def _campaign_characters(campaign_id: str) -> list[Character]:
+        """Build the real character types for the given campaign, name-unsorted."""
         return [
+            CharacterFactory.build(type="STORYTELLER", name="Story One", campaign_id=campaign_id),
             CharacterFactory.build(type="PLAYER", name="Player One", campaign_id=campaign_id),
             CharacterFactory.build(type="NPC", name="Npc One", campaign_id=campaign_id),
-            CharacterFactory.build(type="STORYTELLER", name="Story One", campaign_id=campaign_id),
-            CharacterFactory.build(type="DEVELOPER", name="Dev One", campaign_id=campaign_id),
         ]
 
-    def test_player_sees_player_and_npc_but_not_storyteller(self, app) -> None:
-        """Verify players see PLAYER and NPC characters but never STORYTELLER or DEVELOPER."""
-        # Given a campaign holding one character of each type, viewed by a player
+    def test_returns_context_roster_sorted_without_filtering(self, app) -> None:
+        """Verify the helper returns the campaign roster verbatim, sorted by name."""
+        # Given a campaign whose context bucket already reflects API role scoping
         campaign = CampaignFactory.build(name="Visibility Campaign")
         ctx = build_global_context(
             user_role="PLAYER",
             campaign=campaign,
-            characters=self._all_type_characters(campaign.id),
+            characters=self._campaign_characters(campaign.id),
         )
 
-        # When listing visible characters
+        # When listing characters for the campaign
         with app.test_request_context():
             g.global_context = ctx
-            g.requesting_user = ctx.users[0]
             visible = get_visible_characters_for_campaign(campaign.id)
 
-        # Then only PLAYER and NPC characters are returned
-        assert {character.type for character in visible} == {"PLAYER", "NPC"}
+        # Then every character in the bucket is returned, sorted A-Z by name
+        assert [character.name for character in visible] == ["Npc One", "Player One", "Story One"]
 
-    def test_storyteller_additionally_sees_storyteller_characters(self, app) -> None:
-        """Verify storytellers also see STORYTELLER characters, but still not DEVELOPER."""
-        # Given a campaign holding one character of each type, viewed by a storyteller
-        campaign = CampaignFactory.build(name="Visibility Campaign")
-        ctx = build_global_context(
-            user_role="STORYTELLER",
-            campaign=campaign,
-            characters=self._all_type_characters(campaign.id),
-        )
+    def test_returns_empty_list_for_unknown_campaign(self, app) -> None:
+        """Verify an unknown campaign id yields an empty list, not an error."""
+        # Given a context with no characters for the requested campaign
+        ctx = build_global_context(user_role="PLAYER")
 
-        # When listing visible characters
+        # When listing characters for a campaign id not in the bucket
         with app.test_request_context():
             g.global_context = ctx
-            g.requesting_user = ctx.users[0]
-            visible = get_visible_characters_for_campaign(campaign.id)
+            visible = get_visible_characters_for_campaign("missing-campaign-id")
 
-        # Then PLAYER, NPC, and STORYTELLER characters are returned
-        assert {character.type for character in visible} == {"PLAYER", "NPC", "STORYTELLER"}
+        # Then the result is empty
+        assert visible == []
