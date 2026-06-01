@@ -24,8 +24,8 @@ from vweb.lib.api import (
     get_active_campaign,
     get_chapter_count_for_campaign,
     get_chapters_for_book,
+    get_characters_for_campaign,
     get_recent_player_dicerolls,
-    get_visible_characters_for_campaign,
 )
 from vweb.lib.global_context import GlobalContext
 
@@ -366,8 +366,8 @@ class TestGetRecentPlayerDicerollsScopes:
         )
 
 
-class TestGetVisibleCharactersForCampaign:
-    """Tests for ``get_visible_characters_for_campaign``.
+class TestGetCharactersForCampaign:
+    """Tests for ``get_characters_for_campaign``.
 
     The API already scopes the roster by role via the on-behalf-of header, so
     this helper performs no type filtering; it only reads the campaign's bucket
@@ -396,10 +396,14 @@ class TestGetVisibleCharactersForCampaign:
         # When listing characters for the campaign
         with app.test_request_context():
             g.global_context = ctx
-            visible = get_visible_characters_for_campaign(campaign.id)
+            characters = get_characters_for_campaign(campaign.id)
 
         # Then every character in the bucket is returned, sorted A-Z by name
-        assert [character.name for character in visible] == ["Npc One", "Player One", "Story One"]
+        assert [character.name for character in characters] == [
+            "Npc One",
+            "Player One",
+            "Story One",
+        ]
 
     def test_returns_empty_list_for_unknown_campaign(self, app) -> None:
         """Verify an unknown campaign id yields an empty list, not an error."""
@@ -409,7 +413,7 @@ class TestGetVisibleCharactersForCampaign:
         # When listing characters for a campaign id not in the bucket
         with app.test_request_context():
             g.global_context = ctx
-            visible = get_visible_characters_for_campaign("missing-campaign-id")
+            characters = get_characters_for_campaign("missing-campaign-id")
 
         # Then the result is empty
-        assert visible == []
+        assert characters == []

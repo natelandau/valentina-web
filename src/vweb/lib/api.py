@@ -32,7 +32,7 @@ def count_notes(service: Any, parent_id: str) -> int:
         return 0
 
 
-def get_visible_characters_for_campaign(campaign_id: str) -> list[Character]:
+def get_characters_for_campaign(campaign_id: str) -> list[Character]:
     """Return the campaign's characters from the global context, sorted A-Z.
 
     The API already scopes the character list to what the requesting user may
