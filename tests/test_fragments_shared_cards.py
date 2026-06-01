@@ -715,6 +715,21 @@ class TestAuditLogFilters:
         # tojson encodes the single quote as ' to prevent JS string breakout
         assert "\\u0027;alert(1)//" in x_data_block
 
+    def test_card_id_is_sanitized(self, client: FlaskClient, mocker, audit_rows: list) -> None:
+        """Verify a malicious card_id is stripped to a DOM-id-safe slug, blocking injection."""
+        # Given a card_id carrying a JS-breakout payload
+        _set_page(mocker, audit_rows, has_more=False)
+        payload = "x');alert(1)//"
+
+        # When the card renders with that card_id
+        response = client.get(f"/cards/audit-log?show_filters=true&card_id={payload}")
+
+        # Then the dangerous characters are gone and only the safe slug remains
+        body = response.get_data(as_text=True)
+        assert "');alert(1)//" not in body
+        assert "&#39;);alert(1)//" not in body
+        assert 'id="xalert1-filters"' in body  # quotes/parens/semicolons/slashes stripped
+
 
 class TestAuditLogWrapperComponent:
     """Tests that the <shared.cards.AuditLog /> wrapper renders correct HTMX."""

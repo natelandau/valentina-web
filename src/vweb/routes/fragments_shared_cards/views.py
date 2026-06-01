@@ -7,6 +7,7 @@ its ``hx-get`` at an endpoint here.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from flask import Blueprint, abort, g, request
@@ -121,6 +122,10 @@ class AuditLogCardView(MethodView):
         filters = {key: request.args.get(key, "") for key in filter_keys}
         page_size = request.args.get("page_size", 10, type=int)
         offset = request.args.get("offset", 0, type=int)
+        # card_id is interpolated into JS getElementById calls and DOM id attributes in the
+        # template, so restrict it to a DOM-id-safe charset to prevent injection.
+        raw_card_id = request.args.get("card_id", "auditlog")
+        card_id = re.sub(r"[^A-Za-z0-9_-]", "", raw_card_id) or "auditlog"
 
         page = get_audit_log_page(limit=page_size, offset=offset, **filters)
 
@@ -160,7 +165,7 @@ class AuditLogCardView(MethodView):
             "offset": offset,
             "has_more": page.has_more,
             "filters": filters,
-            "card_id": request.args.get("card_id", "auditlog"),
+            "card_id": card_id,
             "empty_message": request.args.get("empty_message", "No audit log entries"),
         }
         if not body_only:
