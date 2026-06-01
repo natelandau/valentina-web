@@ -104,11 +104,11 @@
   }
 }
 
-/* Character type chips — shared by the character list rows and the sheet sidebar
+/* Character type chips - shared by the character list rows and the sheet sidebar
    so the same type reads identically on both pages. A soft token tint with dark
    -content text keeps each chip a quiet category label, never mistaken for a
-   link. The three player-facing types sit at equal visual weight; DEVELOPER
-   renders no chip. Apply alongside daisyUI `badge badge-xs`. */
+   link. The three player-facing types sit at equal visual weight. Apply
+   alongside daisyUI `badge badge-xs`. */
 .badge-character-type {
   text-transform: none;
   font-weight: 400;

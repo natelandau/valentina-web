@@ -188,7 +188,7 @@ class TestFetchFormOptions:
 
         mock_opts = ApiOptions(
             characters=CharacterOptions(
-                character_type=["PLAYER", "NPC", "STORYTELLER", "DEVELOPER"],
+                character_type=["PLAYER", "NPC", "STORYTELLER"],
                 character_class=["VAMPIRE", "WEREWOLF", "MAGE", "HUNTER", "GHOUL", "MORTAL"],
                 autogen_experience_level=["NEW", "INTERMEDIATE", "ADVANCED", "ELITE"],
                 ability_focus=["JACK_OF_ALL_TRADES", "BALANCED", "SPECIALIST"],

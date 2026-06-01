@@ -79,15 +79,14 @@ class TestPresentTypeOptions:
 
     def test_returns_present_types_in_order_with_labels(self) -> None:
         """Verify only present player-facing types are returned, in display order."""
-        # Given a roster with NPC and PLAYER (and a DEVELOPER that must be ignored)
+        # Given a roster with NPC and PLAYER characters
         characters = [
             CharacterFactory.build(type="NPC"),
             CharacterFactory.build(type="PLAYER"),
-            CharacterFactory.build(type="DEVELOPER"),
         ]
 
         # When building type options
         options = present_type_options(characters)
 
-        # Then PLAYER and NPC appear in order with labels; DEVELOPER is excluded
+        # Then PLAYER and NPC appear in display order with their labels
         assert options == [("PLAYER", "Player Character"), ("NPC", "NPC")]

@@ -35,7 +35,7 @@ SAMPLE_RAW: dict = {
         "AutoGenExperienceLevel": ["NEW", "INTERMEDIATE", "ADVANCED", "ELITE"],
         "CharacterClass": ["VAMPIRE", "WEREWOLF", "MAGE", "HUNTER", "GHOUL", "MORTAL"],
         "CharacterStatus": ["ALIVE", "DEAD"],
-        "CharacterType": ["PLAYER", "NPC", "STORYTELLER", "DEVELOPER"],
+        "CharacterType": ["PLAYER", "NPC", "STORYTELLER"],
         "GameVersion": ["V4", "V5"],
         "HunterCreed": ["ENTREPRENEURIAL", "FAITHFUL"],
         "HunterEdgeType": ["ASSETS", "APTITUDES", "ENDOWMENTS"],
@@ -96,7 +96,7 @@ class TestParseOptions:
         result = _parse_options(SAMPLE_RAW)
 
         assert "VAMPIRE" in result.characters.character_class
-        assert result.characters.character_type == ["PLAYER", "NPC", "STORYTELLER", "DEVELOPER"]
+        assert result.characters.character_type == ["PLAYER", "NPC", "STORYTELLER"]
         assert result.characters.inventory_item_type == [
             "BOOK",
             "CONSUMABLE",

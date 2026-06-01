@@ -85,7 +85,7 @@
             <legend class="fieldset-legend">Character Type *</legend>
             <select name="character_type" class="select select-bordered w-full" required>
               <option value="">-- Select Type --</option>
-              {% for t in get_options().characters.character_type if t not in ["DEVELOPER", "NPC"] %}
+              {% for t in get_options().characters.character_type if t != "NPC" %}
                 <option value="{{ t }}">{{ t | title }}</option>
               {% endfor %}
             </select>

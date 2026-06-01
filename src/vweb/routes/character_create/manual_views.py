@@ -38,6 +38,24 @@ _TRAIT_PREFIX: str = "trait:"
 _SESSION_TTL_SECONDS: int = 30 * 60  # 30 minutes
 
 
+def _map_pydantic_errors(exc: PydanticValidationError) -> dict[str, str]:
+    """Convert a PydanticValidationError into a template-friendly error dict.
+
+    Profile fields are already checked by validate_profile before the payload is
+    built, so a pydantic error here means a value the form cannot surface inline
+    (e.g. a crafted "type"). Collect all messages under "_general" so the user
+    always receives visible feedback.
+
+    Args:
+        exc: The validation error raised by a CharacterCreate or CharacterUpdate call.
+
+    Returns:
+        Dict with a single "_general" key mapping to the combined error messages.
+    """
+    messages = [err["msg"] for err in exc.errors()]
+    return {"_general": "; ".join(messages)}
+
+
 def _clear_temp_session() -> None:
     """Remove temporary character creation data from the session."""
     session.pop("temp_character_id", None)
@@ -240,6 +258,33 @@ class ManualProfileView(MethodView):
         flash("Profile updated successfully", "success")
         return hx_redirect(url_for("character_view.character", character_id=character_id))
 
+    def _render_create_form(
+        self,
+        campaign: Campaign,
+        form_data: dict[str, str],
+        errors: dict[str, str],
+    ) -> str:
+        """Render the profile form in create mode with errors.
+
+        Centralizes the repeated catalog.render call so all error paths in
+        _post_create stay DRY and automatically pick up the latest form_options.
+
+        Args:
+            campaign: The campaign object.
+            form_data: Form data to re-populate.
+            errors: Validation or API errors keyed by field name.
+
+        Returns:
+            Rendered ProfileForm HTML in create mode.
+        """
+        return catalog.render(
+            "character_manual_create.partials.ProfileForm",
+            campaign=campaign,
+            form_options=fetch_form_options(),
+            form_data=form_data,
+            errors=errors,
+        )
+
     def _post_create(
         self,
         campaign: Campaign,
@@ -257,14 +302,7 @@ class ManualProfileView(MethodView):
         campaign_id = campaign.id
         errors = validate_profile(form_data)
         if errors:
-            form_options = fetch_form_options()
-            return catalog.render(
-                "character_manual_create.partials.ProfileForm",
-                campaign=campaign,
-                form_options=form_options,
-                form_data=form_data,
-                errors=errors,
-            )
+            return self._render_create_form(campaign, form_data, errors)
 
         character_class = cast("CharacterClass", form_data["character_class"])
         game_version = cast("GameVersion", form_data["game_version"])
@@ -332,16 +370,17 @@ class ManualProfileView(MethodView):
                 new_char = svc.create(create_payload)
                 session["temp_character_id"] = new_char.id
                 session["temp_character_created_at"] = time.monotonic()
+        except PydanticValidationError as exc:
+            return self._render_create_form(campaign, form_data, _map_pydantic_errors(exc))
+        except ValidationError as exc:
+            errors = {p["field"]: p["message"] for p in exc.invalid_parameters}
+            if exc.detail:
+                errors["_general"] = exc.detail
+            return self._render_create_form(campaign, form_data, errors)
         except APIError as exc:
             logger.exception("Failed to save temporary character")
-            flash(str(exc), "error")
-            form_options = fetch_form_options()
-            return catalog.render(
-                "character_manual_create.partials.ProfileForm",
-                campaign=campaign,
-                form_options=form_options,
-                form_data=form_data,
-            )
+            errors = {"_general": exc.detail or exc.message or "Failed to save profile"}
+            return self._render_create_form(campaign, form_data, errors)
 
         char_id = temp_char_id or session["temp_character_id"]
         character = svc.get(char_id)

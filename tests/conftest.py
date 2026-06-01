@@ -161,7 +161,7 @@ def _mock_api(mocker, mock_global_context) -> None:
                             "GHOUL",
                             "MORTAL",
                         ],
-                        "CharacterType": ["PLAYER", "NPC", "STORYTELLER", "DEVELOPER"],
+                        "CharacterType": ["PLAYER", "NPC", "STORYTELLER"],
                         "AutoGenExperienceLevel": ["NEW", "INTERMEDIATE", "ADVANCED", "ELITE"],
                         "AbilityFocus": ["JACK_OF_ALL_TRADES", "BALANCED", "SPECIALIST"],
                         "InventoryItemType": [

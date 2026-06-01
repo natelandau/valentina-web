@@ -13,8 +13,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from vclient.models import Character
 
-# Player-facing character types in display order. DEVELOPER is intentionally
-# omitted; it is never labeled or offered as a filter (see CharacterTypeBadge).
+# Player-facing character types in display order, shared with CharacterTypeBadge.
 CHARACTER_TYPE_ORDER: tuple[str, ...] = ("PLAYER", "NPC", "STORYTELLER")
 
 # Labels shared with the CharacterTypeBadge chips so the filter reads the same.

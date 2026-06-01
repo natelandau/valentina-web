@@ -7,8 +7,8 @@
    sidebar. Coloring lives in input.css (.badge-character-type*); labels come
    from the character_type_label Jinja global so they stay in sync with the
    filter options. `size` takes a daisyUI badge size class (e.g. "badge-xs",
-   "badge-sm") so callers can scale it to context. DEVELOPER is intentionally
-   absent so it renders nothing. #}
+   "badge-sm") so callers can scale it to context. Unknown types render
+   nothing. #}
 {% set type_classes = {
     "PLAYER": "badge-character-type-player",
     "NPC": "badge-character-type-npc",

@@ -10,7 +10,6 @@ from vclient import sync_dicerolls_service
 from vclient.exceptions import APIError
 
 from vweb.lib.blueprint_cache import get_all_traits
-from vweb.lib.guards import is_storyteller
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -33,44 +32,21 @@ def count_notes(service: Any, parent_id: str) -> int:
         return 0
 
 
-def filter_visible_characters(characters: list[Character]) -> list[Character]:
-    """Filter characters to those the requesting user is allowed to see.
+def get_characters_for_campaign(campaign_id: str) -> list[Character]:
+    """Return the campaign's characters from the global context, sorted A-Z.
 
-    The single home for the character visibility rule, shared by every list the
-    user sees (campaign rosters and profile rosters alike) so the same character
-    is never visible in one place and hidden in another. Everyone sees PLAYER-
-    and NPC-type characters; only storytellers (and admins) additionally see
-    STORYTELLER-type characters; DEVELOPER characters are never shown.
-
-    Args:
-        characters: The characters to filter.
-
-    Returns:
-        The subset the requesting user may see, in the input order.
-    """
-    privileged = is_storyteller()
-    return [
-        character
-        for character in characters
-        if character.type in ("PLAYER", "NPC") or (privileged and character.type == "STORYTELLER")
-    ]
-
-
-def get_visible_characters_for_campaign(campaign_id: str) -> list[Character]:
-    """Return characters in the campaign visible to the current user, sorted A-Z.
-
-    Apply the standard visibility rule via :func:`filter_visible_characters`.
-    Sort is case-insensitive by character name.
+    The API already scopes the character list to what the requesting user may
+    see (via the on-behalf-of header), so no client-side type filtering is
+    applied here. Sort is case-insensitive by character name.
 
     Args:
         campaign_id: The campaign to list characters for.
 
     Returns:
-        A sorted list of visible characters.
+        The campaign's characters, sorted by name.
     """
-    all_characters = g.global_context.characters_by_campaign.get(campaign_id, [])
-    visible = filter_visible_characters(all_characters)
-    return sorted(visible, key=lambda character: character.name.lower())
+    characters = g.global_context.characters_by_campaign.get(campaign_id, [])
+    return sorted(characters, key=lambda character: character.name.lower())
 
 
 def get_active_campaign() -> Campaign | None:

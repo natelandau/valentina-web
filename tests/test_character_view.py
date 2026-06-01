@@ -193,3 +193,29 @@ class TestCharacterSectionGet:
         # Then an HX-Redirect to inventory is sent
         assert response.status_code == 200
         assert response.headers["HX-Redirect"].endswith(f"/character/{char.id}/inventory")
+
+
+class TestSheetSidebarOwnerLink:
+    """Tests for the character sheet sidebar's player-profile link."""
+
+    def test_npc_without_owner_renders_without_profile_link(self, app) -> None:
+        """Verify an ownerless NPC renders the sheet sidebar without a profile link or crash."""
+        from flask import g
+
+        from tests.helpers import build_global_context
+        from vweb import catalog
+
+        # Given an NPC with no owning player, viewed by a storyteller
+        npc = CharacterFactory.build(
+            name="Sentinel", type="NPC", user_player_id=None, character_class="MORTAL"
+        )
+        ctx = build_global_context(user_role="STORYTELLER")
+
+        # When rendering the sheet sidebar
+        with app.test_request_context():
+            g.global_context = ctx
+            g.requesting_user = ctx.users[0]
+            html = catalog.render("character_view.partials.SheetSidebar", character=npc)
+
+        # Then it renders without building a profile URL (no owner to link to)
+        assert "/profile/" not in html

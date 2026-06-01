@@ -57,7 +57,8 @@
                     <span class="text-xs opacity-60 flex flex-wrap items-center gap-x-2 gap-y-1">
                       {% set ns = namespace(first=True) %}
 
-                      {% if link_user_profile %}
+                      {# Ownerless characters (NPCs) have no player profile to link to. #}
+                      {% if link_user_profile and character.user_player_id %}
                         <a href="{{ url_for('profile.profile', user_id=character.user_player_id) }}"
                            class="link link-info link-hover">{{ user_map.get(character.user_player_id, "Unknown") }}</a>
                         {% set ns.first = False %}
