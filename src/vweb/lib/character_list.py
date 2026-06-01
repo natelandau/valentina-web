@@ -25,6 +25,21 @@ CHARACTER_TYPE_LABELS: dict[str, str] = {
 }
 
 
+def character_type_label(character_type: str) -> str:
+    """Return the display label for a character type.
+
+    Registered as a Jinja global so templates (the CharacterTypeBadge chip) read
+    labels from the same source as the filter options, preventing drift.
+
+    Args:
+        character_type: A character type value (e.g. ``"PLAYER"``).
+
+    Returns:
+        The human-readable label, or a title-cased fallback for unknown types.
+    """
+    return CHARACTER_TYPE_LABELS.get(character_type, character_type.title())
+
+
 def filter_characters(
     characters: list[Character],
     *,

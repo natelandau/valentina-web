@@ -4,15 +4,17 @@
 #}
 
 {# Shared character-type chip used by the character list rows and the sheet
-   sidebar. Coloring lives in input.css (.badge-character-type*); `size` takes a
-   daisyUI badge size class (e.g. "badge-xs", "badge-sm") so callers can scale it
-   to context. DEVELOPER is intentionally absent so it renders nothing. #}
-{% set type_styles = {
-    "PLAYER": {"class": "badge-character-type-player", "label": "Player Character"},
-    "NPC": {"class": "badge-character-type-npc", "label": "NPC"},
-    "STORYTELLER": {"class": "badge-character-type-storyteller", "label": "Storyteller Character"},
+   sidebar. Coloring lives in input.css (.badge-character-type*); labels come
+   from the character_type_label Jinja global so they stay in sync with the
+   filter options. `size` takes a daisyUI badge size class (e.g. "badge-xs",
+   "badge-sm") so callers can scale it to context. DEVELOPER is intentionally
+   absent so it renders nothing. #}
+{% set type_classes = {
+    "PLAYER": "badge-character-type-player",
+    "NPC": "badge-character-type-npc",
+    "STORYTELLER": "badge-character-type-storyteller",
 } %}
 
-{% if character_type in type_styles %}
-  <span class="badge {{ size }} badge-character-type {{ type_styles[character_type].class }}">{{ type_styles[character_type].label }}</span>
+{% if character_type in type_classes %}
+  <span class="badge {{ size }} badge-character-type {{ type_classes[character_type] }}">{{ character_type_label(character_type) }}</span>
 {% endif %}
