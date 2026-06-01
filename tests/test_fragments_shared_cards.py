@@ -6,7 +6,17 @@ import re
 from typing import TYPE_CHECKING
 
 import pytest
-from vclient.testing import AuditLogFactory, CharacterFactory, RollStatisticsFactory, Routes
+from vclient.testing import (
+    AuditLogFactory,
+    CampaignFactory,
+    CharacterFactory,
+    CompanyFactory,
+    RollStatisticsFactory,
+    Routes,
+    UserFactory,
+)
+
+from vweb.lib.global_context import GlobalContext
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
@@ -766,3 +776,231 @@ class TestAuditLogWrapperComponent:
         assert "character_id=" not in html
         assert "book_id=" not in html
         assert "show_filters=" not in html
+
+
+def _character_context(
+    characters: list, *, user_role: str = "PLAYER", campaign=None
+) -> tuple[GlobalContext, object]:
+    """Build a GlobalContext populated for the character list endpoint.
+
+    Populates both ``characters_by_campaign`` (campaign scope) and ``characters``
+    (user scope), and a requesting user with id ``test-user-id`` so visibility
+    and bucket splits resolve.
+    """
+    campaign = campaign or CampaignFactory.build(name="Test Campaign")
+    company = CompanyFactory.build(name="Test Company")
+    user = UserFactory.build(id="test-user-id", company_id="test-company-id", role=user_role)
+
+    by_campaign: dict[str, list] = {campaign.id: []}
+    for character in characters:
+        by_campaign.setdefault(character.campaign_id, []).append(character)
+
+    ctx = GlobalContext(
+        company=company,
+        users=[user],
+        campaigns=[campaign],
+        books_by_campaign={campaign.id: []},
+        characters_by_campaign=by_campaign,
+        characters=list(characters),
+        resources_modified_at="2026-01-01T00:00:00+00:00",
+    )
+    return ctx, campaign
+
+
+class TestCharacterListCardEndpoint:
+    """Tests for GET /cards/character-list."""
+
+    def test_no_scope_returns_400(self, client: FlaskClient) -> None:
+        """Verify a request with neither campaign nor user scope is rejected."""
+        # When requesting the card with no scope
+        response = client.get("/cards/character-list")
+
+        # Then the endpoint aborts with 400
+        assert response.status_code == 400
+
+    def test_campaign_scope_all_renders_roster(
+        self, client: FlaskClient, mocker: MockerFixture
+    ) -> None:
+        """Verify campaign scope with bucket=all renders every visible character."""
+        # Given a campaign with two player characters from different owners
+        campaign = CampaignFactory.build(name="Test Campaign")
+        mine = CharacterFactory.build(
+            name="My Hero", type="PLAYER", user_player_id="test-user-id", campaign_id=campaign.id
+        )
+        theirs = CharacterFactory.build(
+            name="Their Hero", type="PLAYER", user_player_id="other-user", campaign_id=campaign.id
+        )
+        ctx, campaign = _character_context([mine, theirs], campaign=campaign)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+
+        # When requesting the all-bucket card
+        response = client.get(f"/cards/character-list?campaign_id={campaign.id}&bucket=all")
+        body = response.get_data(as_text=True)
+
+        # Then both characters render
+        assert response.status_code == 200
+        assert "My Hero" in body
+        assert "Their Hero" in body
+
+    def test_bucket_mine_limits_to_session_user(
+        self, client: FlaskClient, mocker: MockerFixture
+    ) -> None:
+        """Verify bucket=mine shows only the requesting user's characters."""
+        # Given a roster split across the session user and another owner
+        campaign = CampaignFactory.build(name="Test Campaign")
+        mine = CharacterFactory.build(
+            name="My Hero", type="PLAYER", user_player_id="test-user-id", campaign_id=campaign.id
+        )
+        theirs = CharacterFactory.build(
+            name="Their Hero", type="PLAYER", user_player_id="other-user", campaign_id=campaign.id
+        )
+        ctx, campaign = _character_context([mine, theirs], campaign=campaign)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+
+        # When requesting the mine bucket
+        response = client.get(f"/cards/character-list?campaign_id={campaign.id}&bucket=mine")
+        body = response.get_data(as_text=True)
+
+        # Then only the session user's character renders
+        assert "My Hero" in body
+        assert "Their Hero" not in body
+
+    def test_bucket_others_excludes_session_user(
+        self, client: FlaskClient, mocker: MockerFixture
+    ) -> None:
+        """Verify bucket=others hides the requesting user's characters."""
+        # Given a roster split across the session user and another owner
+        campaign = CampaignFactory.build(name="Test Campaign")
+        mine = CharacterFactory.build(
+            name="My Hero", type="PLAYER", user_player_id="test-user-id", campaign_id=campaign.id
+        )
+        theirs = CharacterFactory.build(
+            name="Their Hero", type="PLAYER", user_player_id="other-user", campaign_id=campaign.id
+        )
+        ctx, campaign = _character_context([mine, theirs], campaign=campaign)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+
+        # When requesting the others bucket
+        response = client.get(f"/cards/character-list?campaign_id={campaign.id}&bucket=others")
+        body = response.get_data(as_text=True)
+
+        # Then only the other owner's character renders
+        assert "Their Hero" in body
+        assert "My Hero" not in body
+
+    def test_user_scope_renders_owned_characters(
+        self, client: FlaskClient, mocker: MockerFixture
+    ) -> None:
+        """Verify user scope renders the target user's characters across campaigns."""
+        # Given two characters owned by the target user and one owned by someone else
+        owned_a = CharacterFactory.build(name="Owned A", user_player_id="u-target")
+        owned_b = CharacterFactory.build(name="Owned B", user_player_id="u-target")
+        not_owned = CharacterFactory.build(name="Not Owned", user_player_id="u-other")
+        ctx, _ = _character_context([owned_a, owned_b, not_owned])
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+
+        # When requesting the user-scoped card
+        response = client.get("/cards/character-list?user_id=u-target")
+        body = response.get_data(as_text=True)
+
+        # Then only that user's characters render
+        assert response.status_code == 200
+        assert "Owned A" in body
+        assert "Owned B" in body
+        assert "Not Owned" not in body
+
+    def test_type_filter_narrows_results(self, client: FlaskClient, mocker: MockerFixture) -> None:
+        """Verify the type filter param narrows the rendered body."""
+        # Given a campaign with one player and one NPC character
+        campaign = CampaignFactory.build(name="Test Campaign")
+        player = CharacterFactory.build(
+            name="Player One", type="PLAYER", user_player_id="test-user-id", campaign_id=campaign.id
+        )
+        npc = CharacterFactory.build(
+            name="Npc One", type="NPC", user_player_id="test-user-id", campaign_id=campaign.id
+        )
+        ctx, campaign = _character_context([player, npc], campaign=campaign)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+
+        # When requesting the body filtered to NPC
+        response = client.get(
+            f"/cards/character-list?campaign_id={campaign.id}&bucket=all&type=NPC&body_only=true"
+        )
+        body = response.get_data(as_text=True)
+
+        # Then only the NPC renders
+        assert "Npc One" in body
+        assert "Player One" not in body
+
+    def test_type_filter_shown_only_when_multiple_types_present(
+        self, client: FlaskClient, mocker: MockerFixture
+    ) -> None:
+        """Verify the type filter appears only when the roster has more than one type."""
+        # Given a campaign with both PLAYER and NPC characters
+        campaign = CampaignFactory.build(name="Mixed Campaign")
+        player = CharacterFactory.build(
+            name="Player One", type="PLAYER", user_player_id="test-user-id", campaign_id=campaign.id
+        )
+        npc = CharacterFactory.build(
+            name="Npc One", type="NPC", user_player_id="test-user-id", campaign_id=campaign.id
+        )
+        ctx, campaign = _character_context([player, npc], campaign=campaign)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+
+        # When rendering the full card with mixed types
+        mixed = client.get(
+            f"/cards/character-list?campaign_id={campaign.id}&bucket=all&show_type=true"
+        ).get_data(as_text=True)
+
+        # Then the type select is present
+        assert 'name="type"' in mixed
+        assert "All types" in mixed
+
+    def test_type_filter_hidden_when_single_type(
+        self, client: FlaskClient, mocker: MockerFixture
+    ) -> None:
+        """Verify a single-type roster renders no type filter control."""
+        # Given a campaign whose characters are all the same type and owner
+        campaign = CampaignFactory.build(name="Single Type Campaign")
+        one = CharacterFactory.build(
+            name="Player One", type="PLAYER", user_player_id="test-user-id", campaign_id=campaign.id
+        )
+        two = CharacterFactory.build(
+            name="Player Two", type="PLAYER", user_player_id="test-user-id", campaign_id=campaign.id
+        )
+        ctx, campaign = _character_context([one, two], campaign=campaign)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+
+        # When rendering the full card
+        body = client.get(
+            f"/cards/character-list?campaign_id={campaign.id}&bucket=mine&show_type=true"
+        ).get_data(as_text=True)
+
+        # Then no type filter is rendered
+        assert "All types" not in body
+
+    def test_show_filters_false_suppresses_all_filters(
+        self, client: FlaskClient, mocker: MockerFixture
+    ) -> None:
+        """Verify show_filters=false hides the filter row even with multiple values present."""
+        # Given a campaign with mixed types and owners (which would normally show filters)
+        campaign = CampaignFactory.build(name="Mixed Campaign")
+        player = CharacterFactory.build(
+            name="Player One", type="PLAYER", user_player_id="test-user-id", campaign_id=campaign.id
+        )
+        npc = CharacterFactory.build(
+            name="Npc One", type="NPC", user_player_id="other-user", campaign_id=campaign.id
+        )
+        ctx, campaign = _character_context([player, npc], campaign=campaign)
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+
+        # When rendering with filters disabled
+        body = client.get(
+            f"/cards/character-list?campaign_id={campaign.id}&bucket=all&show_type=true&show_filters=false"
+        ).get_data(as_text=True)
+
+        # Then no filter controls render, but the roster still does
+        assert "All types" not in body
+        assert 'name="type"' not in body
+        assert "Player One" in body
+        assert "Npc One" in body

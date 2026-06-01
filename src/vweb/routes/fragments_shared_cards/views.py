@@ -10,17 +10,26 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from flask import Blueprint, abort, g, request
+from flask import Blueprint, abort, g, request, session, url_for
 from flask.views import MethodView
 
 from vweb import catalog
-from vweb.lib.api import get_recent_player_dicerolls
+from vweb.lib.api import (
+    fetch_campaign_or_404,
+    get_recent_player_dicerolls,
+    get_visible_characters_for_campaign,
+)
 from vweb.lib.audit_log import (
     ENTITY_TYPES,
     get_audit_log_page,
     resolve_acting_user,
     resolve_entities,
     split_changes,
+)
+from vweb.lib.character_list import (
+    build_filter_options,
+    filter_characters,
+    present_type_options,
 )
 from vweb.lib.statistics_cache import ScopeType, get_statistics
 
@@ -180,5 +189,128 @@ class AuditLogCardView(MethodView):
 bp.add_url_rule(
     "/audit-log",
     view_func=AuditLogCardView.as_view("audit_log"),
+    methods=["GET"],
+)
+
+
+class CharacterListCardView(MethodView):
+    """Lazy character list card with server-side player/class/type filtering.
+
+    Scope resolves the roster the card shows, then optional filters narrow it.
+    Filtering is server-side so the only client-side logic is display paging.
+    """
+
+    def _scoped_characters(self) -> list:
+        """Resolve the pre-filter roster from the request's scope args.
+
+        Campaign scope (``campaign_id`` + ``bucket`` of mine/others/all) applies
+        the standard visibility rules then splits by owner; user scope
+        (``user_id``) returns that user's characters across campaigns. Aborts 400
+        when neither scope is supplied.
+        """
+        campaign_id = request.args.get("campaign_id", "")
+        user_id = request.args.get("user_id", "")
+
+        if campaign_id:
+            fetch_campaign_or_404(campaign_id)
+            characters = get_visible_characters_for_campaign(campaign_id)
+            bucket = request.args.get("bucket", "all")
+            current_user_id = session.get("user_id", "")
+            if bucket == "mine":
+                return [c for c in characters if c.user_player_id == current_user_id]
+            if bucket == "others":
+                return [c for c in characters if c.user_player_id != current_user_id]
+            return characters
+
+        if user_id:
+            owned = [c for c in g.global_context.characters if c.user_player_id == user_id]
+            return sorted(owned, key=lambda character: character.name.lower())
+
+        return abort(400)
+
+    def get(self) -> str:
+        """Return the character list card fragment (full card or body-only)."""
+        base = self._scoped_characters()
+
+        player = request.args.get("player", "").strip()
+        character_class = request.args.get("char_class", "").strip()
+        type_filter = request.args.get("type", "").strip()
+        filtered = filter_characters(
+            base,
+            player_id=player or None,
+            character_class=character_class or None,
+            type_filter=type_filter or None,
+        )
+
+        page_size = request.args.get("page_size", 0, type=int)
+        show_type = request.args.get("show_type", "") == "true"
+        show_campaign = request.args.get("show_campaign", "") == "true"
+        link_user_profile = request.args.get("link_user_profile", "") == "true"
+        empty_message = request.args.get("empty_message", "No characters found")
+        filters_active = bool(player or character_class or type_filter)
+
+        if request.args.get("body_only", "") == "true":
+            return catalog.render(
+                "shared.cards.partials.CharacterListBody",
+                characters=filtered,
+                page_size=page_size,
+                show_type=show_type,
+                show_campaign=show_campaign,
+                link_user_profile=link_user_profile,
+                empty_message=empty_message,
+                filters_active=filters_active,
+            )
+
+        # card_id is interpolated into DOM id attributes and hx-target selectors,
+        # so restrict it to a DOM-id-safe charset.
+        raw_card_id = request.args.get("card_id", "characterlist")
+        card_id = re.sub(r"[^A-Za-z0-9_-]", "", raw_card_id) or "characterlist"
+
+        show_filters = request.args.get("show_filters", "true") == "true"
+        if show_filters:
+            users_by_id = {user.id: user.username for user in g.global_context.users}
+            player_options, class_options = build_filter_options(base, users_by_id)
+            type_options = present_type_options(base)
+        else:
+            player_options, class_options, type_options = [], [], []
+
+        show_add_button = request.args.get("show_add_button", "") == "true"
+        campaign_id = request.args.get("campaign_id", "")
+        add_url = (
+            url_for("character_create.selection_page", campaign_id=campaign_id)
+            if show_add_button and campaign_id
+            else ""
+        )
+
+        return catalog.render(
+            "shared.cards.partials.CharacterListContent",
+            card_id=card_id,
+            title=request.args.get("title", "Characters"),
+            characters=filtered,
+            page_size=page_size,
+            col_span=request.args.get("col_span", 0, type=int),
+            show_type=show_type,
+            show_campaign=show_campaign,
+            link_user_profile=link_user_profile,
+            show_add_button=show_add_button,
+            add_url=add_url,
+            show_filters=show_filters,
+            empty_message=empty_message,
+            filters_active=filters_active,
+            campaign_id=campaign_id,
+            bucket=request.args.get("bucket", "all"),
+            user_id=request.args.get("user_id", ""),
+            player_options=player_options,
+            class_options=class_options,
+            type_options=type_options,
+            player=player,
+            char_class=character_class,
+            selected_type=type_filter,
+        )
+
+
+bp.add_url_rule(
+    "/character-list",
+    view_func=CharacterListCardView.as_view("character_list"),
     methods=["GET"],
 )

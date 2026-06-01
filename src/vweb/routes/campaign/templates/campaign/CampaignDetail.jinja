@@ -1,7 +1,5 @@
 {# def
     campaign = None,
-    user_characters: list = [],
-    other_characters: list = [],
     books: list = [],
     chapter_count: int = 0,
     campaign_experience = None,
@@ -17,11 +15,11 @@
 
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-    <shared.cards.CharacterListCard title="Your Characters" characters={{ user_characters }} show_type={{ is_storyteller() }} show_add_button={{ true }} add_url={{ url_for('character_create.selection_page', campaign_id=campaign.id) }} empty_message="No characters in this campaign" page_size={{ 5 }} />
+    <shared.cards.CharacterListCard title="Your Characters" campaign_id={{ campaign.id }} bucket="mine" show_type={{ true }} show_add_button={{ true }} show_filters={{ false }} empty_message="No characters in this campaign" page_size={{ 5 }} card_id="your-characters" />
 
     <campaign.components.UserListCard title="All Players" users={{ g.global_context.users }} page_size={{ 3 }} campaign_id={{ campaign.id }} />
 
-    <shared.cards.CharacterListCard title="Other Players' Characters" characters={{ other_characters }} show_type={{ is_storyteller() }} empty_message="No other players' characters" page_size={{ 5 }} link_user_profile={{ true }} />
+    <shared.cards.CharacterListCard title="Other Players' Characters" campaign_id={{ campaign.id }} bucket="others" show_type={{ true }} empty_message="No other players' characters" page_size={{ 5 }} link_user_profile={{ true }} card_id="other-characters" />
 
     {% if is_storyteller() %}
       <shared.cards.AuditLog campaign_id={{ campaign.id }} col_span={{ 2 }} page_size={{ 5 }} title="Recent Activity" />

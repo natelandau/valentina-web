@@ -1,0 +1,80 @@
+{# Full character list card: header, optional filter row, and the lazy body.
+   Rendered on the wrapper's initial load. Filter changes re-fetch only the body
+   (body_only) so the filter controls keep their state. #}
+{#def
+    card_id: str,
+    title: str,
+    characters: list = [],
+    page_size: int = 0,
+    col_span: int = 0,
+    show_type: bool = False,
+    show_campaign: bool = False,
+    link_user_profile: bool = False,
+    show_add_button: bool = False,
+    add_url: str = "",
+    show_filters: bool = True,
+    empty_message: str = "No characters found",
+    filters_active: bool = False,
+    campaign_id: str = "",
+    bucket: str = "all",
+    user_id: str = "",
+    player_options: list = [],
+    class_options: list = [],
+    type_options: list = [],
+    player: str = "",
+    char_class: str = "",
+    selected_type: str = "",
+#}
+
+{% set grid_col_span = "lg:col-span-" ~ col_span if col_span > 0 else "" %}
+
+{% set body_url = build_fragment_url(
+    "shared_cards.character_list",
+    body_only="true",
+    campaign_id=campaign_id,
+    bucket=bucket,
+    user_id=user_id,
+    page_size=page_size,
+    show_type="true" if show_type else "",
+    show_campaign="true" if show_campaign else "",
+    link_user_profile="true" if link_user_profile else "",
+    empty_message=empty_message,
+) %}
+
+<div class="card surface-card {{ grid_col_span }}" id="{{ card_id }}">
+  <div class="card-body">
+    <div class="flex items-center justify-between">
+      <h2 class="card-title">{{ title }}</h2>
+      {% if show_add_button %}
+        {% if add_url %}
+          <shared.CommonButton variant="add" extra_class="btn-sm" href={{ add_url }}>+ Add New</shared.CommonButton>
+        {% else %}
+          <shared.CommonButton variant="add" extra_class="btn-sm" disabled={{ true }}>+ Add New</shared.CommonButton>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    {% if show_filters %}
+      <shared.cards.partials.CharacterListFilters
+          card_id={{ card_id }}
+          body_url={{ body_url }}
+          player_options={{ player_options }}
+          class_options={{ class_options }}
+          type_options={{ type_options }}
+          player={{ player }}
+          char_class={{ char_class }}
+          selected_type={{ selected_type }} />
+    {% endif %}
+
+    <div id="{{ card_id }}-body">
+      <shared.cards.partials.CharacterListBody
+          characters={{ characters }}
+          page_size={{ page_size }}
+          show_type={{ show_type }}
+          show_campaign={{ show_campaign }}
+          link_user_profile={{ link_user_profile }}
+          empty_message={{ empty_message }}
+          filters_active={{ filters_active }} />
+    </div>
+  </div>
+</div>
