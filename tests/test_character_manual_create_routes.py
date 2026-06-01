@@ -136,6 +136,85 @@ class TestManualProfileView:
         assert response.status_code == 200
         assert_shows_error(response)
 
+    def test_create_post_inline_errors_on_validation_error(
+        self,
+        client,
+        mocker,
+        fake_vclient,  # noqa: ARG002
+    ) -> None:
+        """Verify a 422 field-level validation error from the API renders inline."""
+        from unittest.mock import MagicMock
+
+        from vclient.exceptions import ValidationError
+
+        # Given a player whose submission the API rejects with field-level errors
+        ctx = build_global_context(user_role="PLAYER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        _mock_form_options(mocker)
+
+        # Patch the service to raise a ValidationError with field-level detail
+        svc_mock = MagicMock()
+        svc_mock.create.side_effect = ValidationError(
+            message="Validation failed",
+            status_code=422,
+            response_data={
+                "invalid_parameters": [{"field": "name_first", "message": "Name already taken"}]
+            },
+        )
+        mocker.patch(
+            "vweb.routes.character_create.manual_views.sync_characters_service",
+            return_value=svc_mock,
+        )
+
+        csrf = get_csrf(client)
+
+        # When submitting the profile form
+        response = client.post(
+            f"/campaign/{campaign.id}/characters/profile_edit",
+            data={
+                "name_first": "Ada",
+                "name_last": "Lovelace",
+                "game_version": "V5",
+                "character_class": "MORTAL",
+                "csrf_token": csrf,
+            },
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the form re-renders with a field-level inline error (not a 500)
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert "text-error" in body
+
+    def test_create_post_inline_errors_on_invalid_character_type(self, client, mocker) -> None:
+        """Verify an invalid character_type value renders inline instead of a 500."""
+        # Given a player crafting an invalid character_type enum value
+        ctx = build_global_context(user_role="PLAYER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        _mock_form_options(mocker)
+
+        csrf = get_csrf(client)
+
+        # When submitting the profile form with a bogus character_type
+        response = client.post(
+            f"/campaign/{campaign.id}/characters/profile_edit",
+            data={
+                "name_first": "Ada",
+                "name_last": "Lovelace",
+                "game_version": "V5",
+                "character_class": "MORTAL",
+                "character_type": "NOT_A_REAL_TYPE",
+                "csrf_token": csrf,
+            },
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the form re-renders with an inline error alert (not a 500)
+        assert response.status_code == 200
+        assert_shows_error(response)
+
 
 class TestManualTraitsView:
     """Tests for POST /campaign/<id>/characters/profile_edit/traits."""
