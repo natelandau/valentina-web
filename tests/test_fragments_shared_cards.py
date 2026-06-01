@@ -644,7 +644,7 @@ class TestAuditLogFilters:
     """show_filters toggles the filter bar on the shared card."""
 
     def test_show_filters_renders_filter_bar(
-        self, client: FlaskClient, mocker, audit_rows: list
+        self, client: FlaskClient, mocker, audit_rows: list, mock_global_context
     ) -> None:
         """Verify show_filters=true renders the filter bar with options."""
         # Given an audit log page
@@ -658,6 +658,10 @@ class TestAuditLogFilters:
         assert "auditlog-filters" in body
         assert "Entity Type" in body
         assert "Operation" in body
+
+        # And the acting-user dropdown is populated from the global context users
+        user = mock_global_context.users[0]
+        assert user.username in body
 
     def test_filters_hidden_by_default(self, client: FlaskClient, mocker, audit_rows: list) -> None:
         """Verify the filter bar is absent when show_filters is not set."""

@@ -74,13 +74,17 @@ class TestAuditLogPage:
     """GET /admin renders the full audit log page."""
 
     def test_renders_audit_log_page(self, client: FlaskClient) -> None:
-        """Verify GET /admin returns 200 with audit log content."""
+        """Verify GET /admin embeds the shared audit log card with filters enabled."""
+        # When loading the admin audit log page
         response = client.get("/admin")
 
+        # Then it renders the shared card wrapper pointed at the fragment endpoint
         assert response.status_code == 200
         body = response.get_data(as_text=True)
         assert "Audit Log" in body
-        assert "audit-log-content" in body
+        assert "/cards/audit-log" in body
+        assert "show_filters=true" in body
+        assert "page_size=25" in body
 
 
 @pytest.mark.usefixtures("_mock_audit_api")

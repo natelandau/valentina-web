@@ -13,7 +13,6 @@ from vclient.models.companies import CompanySettingsUpdate, CompanyUpdate
 
 from vweb import catalog
 from vweb.lib.audit_log import (
-    ENTITY_TYPES,
     get_audit_log_page,
     resolve_acting_user,
     resolve_entities,
@@ -132,15 +131,12 @@ PAGE_SIZE = 20
 
 
 class AuditLogView(MethodView):
-    """Display the full audit log page with filters and lazy-loaded table."""
+    """Render the audit log page shell; the embedded card lazy-loads its data."""
 
     def get(self) -> str:
-        """Render the audit log page shell with empty table that loads via HTMX."""
-        users = g.global_context.users
+        """Render the page shell. The shared card fetches and paginates entries."""
         return catalog.render(
             "admin.AuditLogPage",
-            users=users,
-            entity_types=ENTITY_TYPES,
             pending_count=g.global_context.pending_user_count,
         )
 
