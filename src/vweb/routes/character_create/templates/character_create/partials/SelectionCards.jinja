@@ -85,8 +85,22 @@
             <legend class="fieldset-legend">Character Type *</legend>
             <select name="character_type" class="select select-bordered w-full" required>
               <option value="">-- Select Type --</option>
-              {% for t in get_options().characters.character_type if t != "NPC" %}
-                <option value="{{ t }}">{{ t | title }}</option>
+              {% for t in get_options().characters.character_type %}
+                {% if t == "PLAYER" %}
+                  <option value="{{ t }}">
+                    PLAYER: A regular player character attached to your account
+                  </option>
+                {% elif t == "NPC" %}
+                  <option value="{{ t }}">
+                    NPC: A non-player character that any player can view
+                  </option>
+                {% elif t == "STORYTELLER" %}
+                  <option value="{{ t }}">
+                    STORYTELLER: An NPC that is hidden from players but visible to storytellers
+                  </option>
+                {% else %}
+                  <option value="{{ t }}">{{ t | title }}</option>
+                {% endif %}
               {% endfor %}
             </select>
           </fieldset>

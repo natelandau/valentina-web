@@ -57,8 +57,8 @@ class TestManualProfileView:
         # Then 404 is returned
         assert response.status_code == 404
 
-    def test_character_type_hidden_for_player(self, client, mocker) -> None:
-        """Verify character_type dropdown is not shown to regular players."""
+    def test_character_type_omits_storyteller_for_player(self, client, mocker) -> None:
+        """Verify players see the character_type dropdown without the STORYTELLER option."""
         # Given a PLAYER user
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
@@ -68,12 +68,15 @@ class TestManualProfileView:
         # When requesting the profile form
         response = client.get(f"/campaign/{campaign.id}/characters/profile_edit")
 
-        # Then character_type select is not present
+        # Then the dropdown is present with PLAYER/NPC but not STORYTELLER
         body = response.get_data(as_text=True)
-        assert 'name="character_type"' not in body
+        assert 'name="character_type"' in body
+        assert 'value="PLAYER"' in body
+        assert 'value="NPC"' in body
+        assert 'value="STORYTELLER"' not in body
 
-    def test_character_type_shown_for_storyteller(self, client, mocker) -> None:
-        """Verify character_type dropdown appears for storytellers."""
+    def test_character_type_includes_storyteller_for_storyteller(self, client, mocker) -> None:
+        """Verify storytellers see the STORYTELLER option in the character_type dropdown."""
         # Given a STORYTELLER user
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
@@ -83,9 +86,10 @@ class TestManualProfileView:
         # When requesting the profile form
         response = client.get(f"/campaign/{campaign.id}/characters/profile_edit")
 
-        # Then character_type select is present
+        # Then the dropdown includes the STORYTELLER option
         body = response.get_data(as_text=True)
         assert 'name="character_type"' in body
+        assert 'value="STORYTELLER"' in body
 
     def test_prefills_from_query_params(self, client, mocker) -> None:
         """Verify form is prefilled from query parameters (back button support)."""
@@ -495,9 +499,10 @@ class TestProfileEditMode:
             headers={"HX-Request": "true"},
         )
 
-        body = response.get_data(as_text=True)
+        # Collapse whitespace so the assertions are insensitive to template formatting
+        body = " ".join(response.get_data(as_text=True).split())
         assert '<select class="select w-full" disabled>' in body
-        assert '<input type="hidden" name="game_version" value="V5"' in body
+        assert '<input type="hidden" name="game_version" value="V5" />' in body
 
     def test_edit_post_updates_and_redirects(self, client, mocker, fake_vclient) -> None:
         """Verify successful edit POST updates character and redirects."""

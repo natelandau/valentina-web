@@ -17,11 +17,17 @@
     {% endif %}
 
     {% if mode == "edit" %}
+
       {% set post_url = url_for('character_create.manual_profile', campaign_id=campaign.id) ~ '?character_id=' ~ character_id %}
+
       {% set target_id = "#character-tab-content" %}
+
     {% else %}
+
       {% set post_url = url_for('character_create.manual_profile', campaign_id=campaign.id) %}
+
       {% set target_id = "#manual-create-content" %}
+
     {% endif %}
 
     <form hx-post="{{ post_url }}"
@@ -93,7 +99,9 @@
             <select class="select w-full" disabled>
               <option selected>{{ form_data.get('game_version', '') }}</option>
             </select>
-            <input type="hidden" name="game_version" value="{{ form_data.get('game_version', '') }}" />
+            <input type="hidden"
+                   name="game_version"
+                   value="{{ form_data.get('game_version', '') }}" />
           {% else %}
             <select name="game_version"
                     class="validator select w-full {% if errors.get('game_version') %}select-error{% endif %}"
@@ -131,20 +139,28 @@
           {% endif %}
         </fieldset>
 
-        {# Character Type — storyteller/admin only #}
-        {% if is_storyteller() %}
-          <fieldset class="fieldset">
-            <legend class="fieldset-legend">Character Type</legend>
-            <select name="character_type" class="select w-full">
-              {% for t in get_options().characters.character_type %}
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">Character Type</legend>
+          <select name="character_type" class="select w-full">
+            {% for t in get_options().characters.character_type %}
+              {# STORYTELLER characters are storyteller-only; never offer the option to players #}
+              {% if t != "STORYTELLER" or is_storyteller() %}
                 <option value="{{ t }}"
                         {% if form_data.get("character_type", "PLAYER") == t %}selected{% endif %}>
-                  {{ t | title }}
+                  {% if t == "PLAYER" %}
+                    PLAYER: A regular player character attached to your account
+                  {% elif t == "NPC" %}
+                    NPC: A non-player character
+                  {% elif t == "STORYTELLER" %}
+                    STORYTELLER: An NPC that is hidden from players but visible to storytellers
+                  {% else %}
+                    {{ t | title }}
+                  {% endif %}
                 </option>
-              {% endfor %}
-            </select>
-          </fieldset>
-        {% endif %}
+              {% endif %}
+            {% endfor %}
+          </select>
+        </fieldset>
 
         {# Concept #}
         <fieldset class="fieldset">
@@ -323,8 +339,8 @@
         {% if mode == "edit" %}
           <shared.CommonButton variant="cancel" hx-get={{ url_for('character_view.character', character_id=character_id, section='sheet') }} hx-target="#character-tab-content" hx-swap="innerHTML">Cancel</shared.CommonButton>
           <shared.CommonButton variant="submit">
-            <span class="loading loading-spinner htmx-indicator"></span>
-            Save
+          <span class="loading loading-spinner htmx-indicator"></span>
+          Save
           </shared.CommonButton>
         {% else %}
           <a href="{{ url_for('character_create.selection_page', campaign_id=campaign.id) }}"

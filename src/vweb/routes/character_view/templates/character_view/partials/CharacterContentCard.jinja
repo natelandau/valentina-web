@@ -40,10 +40,13 @@
         </button>
 
         {% if can_edit %}
-          <a href="{{ url_for('character_trait_edit.XP', character_id=character.id) }}"
-             class="btn btn-sm">
-            <i class="fa-solid fa-bolt"></i> Spend XP
-          </a>
+          {# XP is a player-character concept; NPCs and storyteller characters never accrue it #}
+          {% if character.type == "PLAYER" %}
+            <a href="{{ url_for('character_trait_edit.XP', character_id=character.id) }}"
+               class="btn btn-sm">
+              <i class="fa-solid fa-bolt"></i> Spend XP
+            </a>
+          {% endif %}
 
           <details class="dropdown dropdown-end"
                    @click.outside="$el.removeAttribute('open')">
