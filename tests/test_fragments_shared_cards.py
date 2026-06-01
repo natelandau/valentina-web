@@ -639,6 +639,20 @@ class TestAuditLogCardEndpoint:
         assert "entity_type=CAMPAIGN" in body
         assert "operation=UPDATE" in body
 
+    def test_min_height_capped_for_large_page_size(
+        self, client: FlaskClient, mocker, audit_rows: list
+    ) -> None:
+        """Verify the body min-height is capped so a large page_size does not over-stretch."""
+        # Given an audit log page requested with a large page size
+        _set_page(mocker, audit_rows, has_more=False)
+
+        # When rendering with page_size well above the cap
+        response = client.get("/cards/audit-log?campaign_id=c1&page_size=25")
+
+        # Then min-height is capped at the 10-row equivalent (10 * 5.5 = 55.0rem)
+        body = response.get_data(as_text=True)
+        assert "min-height: 55.0rem" in body
+
 
 class TestAuditLogFilters:
     """show_filters toggles the filter bar on the shared card."""

@@ -6,7 +6,7 @@
 
 {% if rows %}
   <ul class="list bg-base-100 rounded-box shadow-md"
-      style="min-height: {{ page_size * 5.5 }}rem;">
+      style="min-height: {{ ([page_size, 10] | min) * 5.5 }}rem;">
     {% for row in rows %}
       <li class="list-row" x-data="{ open: false }">
         <div class="list-col-grow min-w-0">
