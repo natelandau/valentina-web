@@ -140,7 +140,7 @@ class TestManualProfileView:
         self,
         client,
         mocker,
-        fake_vclient,  # noqa: ARG002
+        fake_vclient,
     ) -> None:
         """Verify a 422 field-level validation error from the API renders inline."""
         from unittest.mock import MagicMock

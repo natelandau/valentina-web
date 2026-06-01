@@ -266,7 +266,7 @@ class ManualProfileView(MethodView):
     ) -> str:
         """Render the profile form in create mode with errors.
 
-        Centralises the repeated catalog.render call so all error paths in
+        Centralizes the repeated catalog.render call so all error paths in
         _post_create stay DRY and automatically pick up the latest form_options.
 
         Args:
