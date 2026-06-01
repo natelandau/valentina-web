@@ -1,13 +1,13 @@
-{#def card_id, page_size, users, entity_types, current_filters={} #}
+{#def card_id, page_size, users, entity_types, filters={} #}
 {# djlint:off #}
 <div id="{{ card_id }}-filters"
      class="flex flex-wrap items-end gap-3 p-4 border-b border-base-300"
      x-data='{
-        entity_type: {{ current_filters.get("entity_type", "") | tojson }},
-        operation: {{ current_filters.get("operation", "") | tojson }},
-        acting_user_id: {{ current_filters.get("acting_user_id", "") | tojson }},
-        date_from: {{ current_filters.get("date_from", "") | tojson }},
-        date_to: {{ current_filters.get("date_to", "") | tojson }},
+        entity_type: {{ filters.get("entity_type", "") | tojson }},
+        operation: {{ filters.get("operation", "") | tojson }},
+        acting_user_id: {{ filters.get("acting_user_id", "") | tojson }},
+        date_from: {{ filters.get("date_from", "") | tojson }},
+        date_to: {{ filters.get("date_to", "") | tojson }},
         clearFilters() {
             this.entity_type = "";
             this.operation = "";

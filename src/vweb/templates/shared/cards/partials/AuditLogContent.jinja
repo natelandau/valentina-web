@@ -6,7 +6,6 @@
     show_filters: bool = False,
     users: list = [],
     entity_types: list = [],
-    current_filters: dict = {},
 #}
 
 {% set grid_col_span = "lg:col-span-" ~ col_span if col_span > 0 else "" %}
@@ -21,7 +20,7 @@
         page_size={{ page_size }}
         users={{ users }}
         entity_types={{ entity_types }}
-        current_filters={{ current_filters }} />
+        filters={{ filters }} />
     {% endif %}
 
     <div id="{{ card_id }}-body">

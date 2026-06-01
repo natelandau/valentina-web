@@ -172,8 +172,7 @@ class AuditLogCardView(MethodView):
             render_kwargs["col_span"] = request.args.get("col_span", 0, type=int)
             render_kwargs["title"] = request.args.get("title", "Audit Log")
             render_kwargs["show_filters"] = show_filters
-            render_kwargs["current_filters"] = filters
-            render_kwargs["users"] = g.global_context.users if show_filters else []
+            render_kwargs["users"] = context.users if show_filters else []
             render_kwargs["entity_types"] = ENTITY_TYPES if show_filters else []
         return catalog.render(template_name, **render_kwargs)
 
