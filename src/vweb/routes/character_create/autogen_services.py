@@ -39,7 +39,7 @@ def generate_single(  # noqa: PLR0913
     Args:
         user_id: The requesting user's ID.
         campaign_id: The campaign to create the character in.
-        character_type: Required character type (PLAYER, NPC, STORYTELLER, DEVELOPER).
+        character_type: Required character type (PLAYER, NPC, STORYTELLER).
         character_class: Optional class (VAMPIRE, WEREWOLF, etc.).
         experience_level: Optional experience tier.
         skill_focus: Optional ability distribution focus.
