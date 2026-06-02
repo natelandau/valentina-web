@@ -105,7 +105,13 @@ def clear_campaign_content_cache(
         company_id: The company the scope belongs to.
         campaign_id: When given, evict that campaign's books cache.
         book_id: When given, evict that book's chapters cache.
+
+    Raises:
+        ValueError: If neither campaign_id nor book_id is provided.
     """
+    if campaign_id is None and book_id is None:
+        msg = "Provide at least one of campaign_id or book_id to clear."
+        raise ValueError(msg)
     if campaign_id is not None:
         cache.delete(_books_key(company_id, campaign_id))
     if book_id is not None:

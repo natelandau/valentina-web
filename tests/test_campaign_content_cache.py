@@ -2,22 +2,26 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 from vclient.testing import CampaignBookFactory, CampaignChapterFactory
 
 from vweb.extensions import cache
 from vweb.lib import campaign_content_cache as ccc
 
+if TYPE_CHECKING:
+    from flask.ctx import RequestContext
+
 
 @pytest.fixture(autouse=True)
-def _clear_cache(app):
+def _clear_cache(app) -> None:
     """Ensure each test starts with an empty cache."""
     with app.app_context():
         cache.clear()
-    yield
 
 
-def _set_request_context(app, mocker, stamp: str = "2026-01-01T00:00:00+00:00"):
+def _set_request_context(app, mocker, stamp: str = "2026-01-01T00:00:00+00:00") -> RequestContext:
     """Push an app context with a fake g.global_context stamp and a session company."""
     ctx = app.test_request_context("/")
     ctx.push()
@@ -85,6 +89,25 @@ def test_get_chapters_for_book_caches_and_sorts(app, mocker):
     ctx.pop()
 
 
+def test_get_chapters_refetches_on_stamp_change(app, mocker):
+    """Verify a changed company timestamp forces a chapters refetch."""
+    # Given cached chapters under one stamp
+    ctx = _set_request_context(app, mocker, stamp="stamp-A")
+    svc = mocker.patch.object(ccc, "sync_chapters_service")
+    svc.return_value.list_all.return_value = [CampaignChapterFactory.build(number=1)]
+    ccc.get_chapters_for_book("camp-1", "book-1")
+
+    # When the stamp changes
+    from flask import g
+
+    g.global_context.resources_modified_at = "stamp-B"
+    ccc.get_chapters_for_book("camp-1", "book-1")
+
+    # Then the service is hit again
+    assert svc.return_value.list_all.call_count == 2
+    ctx.pop()
+
+
 def test_clear_campaign_content_cache_evicts_scope(app, mocker):
     """Verify clearing a scope forces the next read to refetch."""
     # Given cached books for a campaign
@@ -99,4 +122,15 @@ def test_clear_campaign_content_cache_evicts_scope(app, mocker):
 
     # Then the service is hit again
     assert svc.return_value.list_all.call_count == 2
+    ctx.pop()
+
+
+def test_clear_campaign_content_cache_requires_a_scope(app, mocker):
+    """Verify clearing with no scope raises rather than silently doing nothing."""
+    # Given a request context
+    ctx = _set_request_context(app, mocker)
+
+    # When/Then clearing with neither scope raises ValueError
+    with pytest.raises(ValueError, match="at least one"):
+        ccc.clear_campaign_content_cache("comp-1")
     ctx.pop()
