@@ -16,6 +16,7 @@ from vweb.lib.api import (
     get_books_for_campaign,
     get_chapters_for_book,
 )
+from vweb.lib.campaign_content_cache import clear_campaign_content_cache
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_manage_campaign
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
@@ -163,6 +164,7 @@ class BookDetailView(MethodView):
         if number != book.number:
             updated_book = books_service.renumber(book_id, number)
         clear_global_context_cache(session["company_id"], session["user_id"])
+        clear_campaign_content_cache(session["company_id"], campaign_id=campaign_id)
 
         assets = books_service.list_all_assets(book_id)
         chapters = get_chapters_for_book(campaign_id, book_id)
@@ -194,6 +196,7 @@ class BookDetailView(MethodView):
         )
         books_service.delete(book.id)
         clear_global_context_cache(session["company_id"], session["user_id"])
+        clear_campaign_content_cache(session["company_id"], campaign_id=campaign_id)
 
         return hx_redirect(url_for("book_view.books_index", campaign_id=campaign_id))
 

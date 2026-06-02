@@ -126,3 +126,27 @@ class TestBookEditPermissions:
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
         response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/edit")
         assert response.status_code == 200
+
+
+@pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")
+class TestBookDelete:
+    """Tests for book delete cache invalidation."""
+
+    def test_delete_clears_campaign_content_cache(
+        self, client, mocker, mock_book, mock_campaign
+    ) -> None:
+        """Verify deleting a book invalidates the campaign's book-list cache."""
+        # Given a privileged user and a patched cache-clear
+        mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
+        clear_cache = mocker.patch("vweb.routes.book.views.clear_campaign_content_cache")
+        csrf = get_csrf(client)
+
+        # When deleting the book
+        client.delete(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}",
+            headers={"X-CSRFToken": csrf},
+        )
+
+        # Then the campaign's book cache is invalidated
+        _, kwargs = clear_cache.call_args
+        assert kwargs["campaign_id"] == mock_campaign.id

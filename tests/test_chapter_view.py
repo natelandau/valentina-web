@@ -47,7 +47,7 @@ def _mock_chapter_lookup(mocker, mock_book, mock_campaign, mock_chapters) -> Non
         return_value=(mock_book, mock_campaign),
     )
 
-    def _fetch_chapter(book_id: str, chapter_id: str) -> CampaignChapter:
+    def _fetch_chapter(campaign_id: str, book_id: str, chapter_id: str) -> CampaignChapter:
         return next((c for c in mock_chapters if c.id == chapter_id), mock_chapters[1])
 
     mocker.patch(
@@ -137,6 +137,25 @@ class TestChapterCreate:
         )
         assert response.status_code == 200
         assert b"book-chapters-card" in response.data
+
+    def test_create_clears_campaign_content_cache(
+        self, client, mocker, mock_campaign, mock_book
+    ) -> None:
+        """Verify creating a chapter invalidates the parent book's chapter cache."""
+        # Given a privileged user and a patched cache-clear
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+        clear_cache = mocker.patch("vweb.routes.chapter.views.clear_campaign_content_cache")
+        csrf = get_csrf(client)
+
+        # When creating a chapter
+        client.post(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter",
+            data={"name": "New Chapter", "number": "4", "csrf_token": csrf},
+        )
+
+        # Then the book's chapter cache is invalidated
+        _, kwargs = clear_cache.call_args
+        assert kwargs["book_id"] == mock_book.id
 
 
 @pytest.mark.usefixtures("_mock_chapter_lookup")
