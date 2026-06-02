@@ -311,6 +311,55 @@ class TestGetRecentPlayerDicerolls:
             offset=0,
         )
 
+    def test_caches_per_scope_and_user(self, app, mocker) -> None:
+        """Verify repeated identical scope+user reads hit the dicerolls service once."""
+        # Given a request context with a requesting user and company
+        with app.test_request_context("/"):
+            session["company_id"] = "comp-1"
+            g.requesting_user = mocker.MagicMock(id="user-1")
+            g.global_context = mocker.MagicMock(characters=[])
+            from vweb.extensions import cache
+
+            cache.clear()
+
+            svc = mocker.patch("vweb.lib.api.sync_dicerolls_service")
+            page = mocker.MagicMock()
+            page.items = []
+            svc.return_value.get_page.return_value = page
+            mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+
+            # When called twice with the same scope
+            get_recent_player_dicerolls(campaign_id="camp-1", limit=25)
+            get_recent_player_dicerolls(campaign_id="camp-1", limit=25)
+
+            # Then the underlying service is hit only once
+            svc.return_value.get_page.assert_called_once()
+
+    def test_cache_isolates_per_requesting_user(self, app, mocker) -> None:
+        """Verify the same scope cached for two different users triggers two service calls."""
+        # Given a request context with a requesting user and company
+        with app.test_request_context("/"):
+            session["company_id"] = "comp-1"
+            g.requesting_user = mocker.MagicMock(id="user-1")
+            g.global_context = mocker.MagicMock(characters=[])
+            from vweb.extensions import cache
+
+            cache.clear()
+
+            svc = mocker.patch("vweb.lib.api.sync_dicerolls_service")
+            page = mocker.MagicMock()
+            page.items = []
+            svc.return_value.get_page.return_value = page
+            mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+
+            # When called for two different requesting users in the same scope
+            get_recent_player_dicerolls(campaign_id="camp-1", limit=25)
+            g.requesting_user.id = "user-2"
+            get_recent_player_dicerolls(campaign_id="camp-1", limit=25)
+
+            # Then each user triggers its own service call
+            assert svc.return_value.get_page.call_count == 2
+
 
 class TestGetRecentPlayerDicerollsScopes:
     """Tests for scope-based filtering in get_recent_player_dicerolls."""

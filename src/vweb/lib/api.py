@@ -9,8 +9,11 @@ from flask import abort, g, session
 from vclient import sync_dicerolls_service
 from vclient.exceptions import APIError
 
+from vweb.extensions import cache
 from vweb.lib.blueprint_cache import get_all_traits
 from vweb.lib.campaign_content_cache import get_books_for_campaign, get_chapters_for_book
+
+_DICEROLLS_CACHE_TTL_SECONDS = 30
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -222,10 +225,22 @@ def get_recent_player_dicerolls(
 
     Returns:
         Display-ready rows in the API's newest-first order.
+
+    Note:
+        Results are cached for 30 seconds per scope and requesting user (the
+        API filters by ``on_behalf_of``, so the key must include the user id).
     """
-    service = sync_dicerolls_service(
-        on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
+    company_id = session["company_id"]
+    requesting_user_id = g.requesting_user.id
+    cache_key = (
+        f"dicerolls:{company_id}:{requesting_user_id}:"
+        f"{campaign_id}:{character_id}:{user_id}:{limit}"
     )
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    service = sync_dicerolls_service(on_behalf_of=requesting_user_id, company_id=company_id)
     apply_player_filter = bool(campaign_id) and not (character_id or user_id)
     page = service.get_page(
         campaignid=campaign_id or None,
@@ -262,6 +277,7 @@ def get_recent_player_dicerolls(
                 comment=roll.comment,
             )
         )
+    cache.set(cache_key, displays, timeout=_DICEROLLS_CACHE_TTL_SECONDS)
     return displays
 
 
