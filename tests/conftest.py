@@ -145,6 +145,13 @@ def _mock_api(mocker, mock_global_context) -> None:
     mock_dict_svc = mocker.patch("vweb.routes.dictionary.cache.sync_dictionary_service")
     mock_dict_svc.return_value.list_all.return_value = []
 
+    # Pages now fetch books/chapters lazily via campaign_content_cache; default to
+    # empty lists so full-page renders don't reach for the real API.
+    mock_books_svc = mocker.patch("vweb.lib.campaign_content_cache.sync_books_service")
+    mock_books_svc.return_value.list_all.return_value = []
+    mock_chapters_svc = mocker.patch("vweb.lib.campaign_content_cache.sync_chapters_service")
+    mock_chapters_svc.return_value.list_all.return_value = []
+
     # The footer renders system health for approved users, so every page render
     # would otherwise hit the live health endpoint.
     mock_system_svc = mocker.patch("vweb.lib.system_status_cache.sync_system_service")

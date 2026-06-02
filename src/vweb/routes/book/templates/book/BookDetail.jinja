@@ -5,6 +5,7 @@
     all_books: list = [],
     assets: list = [],
     note_count: int = 0,
+    chapter_counts: dict = {},
 #}
 <shared.PageLayout title={{ book.name }}>
 <div class="flex flex-col gap-4">
@@ -20,7 +21,8 @@
     <book.components.BookCarousel
         campaign={{ campaign }}
         books={{ all_books }}
-        current_book={{ book }} />
+        current_book={{ book }}
+        chapter_counts={{ chapter_counts }} />
   </div>
 
   <book.partials.BookContentCard
