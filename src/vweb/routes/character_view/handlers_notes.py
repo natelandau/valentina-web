@@ -6,6 +6,7 @@ from flask import g, session
 from vclient import sync_characters_service
 
 from vweb.lib.base_notes import BaseNotesHandler
+from vweb.lib.guards import can_edit_character
 
 
 class CharacterNotesHandler(BaseNotesHandler):
@@ -21,8 +22,13 @@ class CharacterNotesHandler(BaseNotesHandler):
         if character is None:
             msg = f"Character not found: {parent_id}"
             raise ValueError(msg)
+        self._character = character
 
         self._svc = sync_characters_service(
             on_behalf_of=session.get("user_id", ""),
             company_id=session["company_id"],
         )
+
+    def can_mutate(self) -> bool:
+        """Restrict create/update/delete to users allowed to edit the character."""
+        return can_edit_character(self._character)

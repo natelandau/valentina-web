@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 from vclient.testing import (
     CharacterConceptFactory,
     CharacterFactory,
@@ -57,9 +59,9 @@ class TestManualProfileView:
         # Then 404 is returned
         assert response.status_code == 404
 
-    def test_character_type_omits_storyteller_for_player(self, client, mocker) -> None:
-        """Verify players see the character_type dropdown without the STORYTELLER option."""
-        # Given a PLAYER user
+    def test_character_type_hidden_for_restricted_player(self, client, mocker) -> None:
+        """Verify a restricted player gets no type dropdown, only a hidden PLAYER input."""
+        # Given a PLAYER user under the default storyteller-only NPC setting
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
@@ -68,12 +70,12 @@ class TestManualProfileView:
         # When requesting the profile form
         response = client.get(f"/campaign/{campaign.id}/characters/profile_edit")
 
-        # Then the dropdown is present with PLAYER/NPC but not STORYTELLER
+        # Then no select is rendered and a hidden PLAYER input carries the type
         body = response.get_data(as_text=True)
+        assert '<select name="character_type"' not in body
+        assert 'type="hidden"' in body
         assert 'name="character_type"' in body
         assert 'value="PLAYER"' in body
-        assert 'value="NPC"' in body
-        assert 'value="STORYTELLER"' not in body
 
     def test_character_type_includes_storyteller_for_storyteller(self, client, mocker) -> None:
         """Verify storytellers see the STORYTELLER option in the character_type dropdown."""
@@ -90,6 +92,40 @@ class TestManualProfileView:
         body = response.get_data(as_text=True)
         assert 'name="character_type"' in body
         assert 'value="STORYTELLER"' in body
+
+    def test_character_type_shows_npc_for_unrestricted_player(self, client, mocker) -> None:
+        """Verify a player sees PLAYER and NPC (not STORYTELLER) when NPC mgmt is UNRESTRICTED."""
+        # Given a PLAYER user under an UNRESTRICTED permission_manage_npc setting
+        from vclient.models.companies import CompanySettings
+        from vclient.testing import CompanyFactory
+
+        company = CompanyFactory.build(
+            name="Test Company",
+            settings=CompanySettings(
+                character_autogen_xp_cost=0,
+                character_autogen_num_choices=3,
+                character_autogen_starting_points=0,
+                permission_manage_campaign="STORYTELLER",
+                permission_manage_npc="UNRESTRICTED",
+                permission_grant_xp="STORYTELLER",
+                permission_free_trait_changes="STORYTELLER",
+                permission_recoup_xp="DENIED",
+            ),
+        )
+        ctx = build_global_context(user_role="PLAYER", company=company)
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        _mock_form_options(mocker)
+
+        # When requesting the profile form
+        response = client.get(f"/campaign/{campaign.id}/characters/profile_edit")
+
+        # Then the dropdown is present with PLAYER and NPC but not STORYTELLER
+        body = response.get_data(as_text=True)
+        assert '<select name="character_type"' in body
+        assert 'value="PLAYER"' in body
+        assert 'value="NPC"' in body
+        assert 'value="STORYTELLER"' not in body
 
     def test_prefills_from_query_params(self, client, mocker) -> None:
         """Verify form is prefilled from query parameters (back button support)."""
@@ -218,6 +254,74 @@ class TestManualProfileView:
         # Then the form re-renders with an inline error alert (not a 500)
         assert response.status_code == 200
         assert_shows_error(response)
+
+    def test_create_rejects_npc_for_restricted_player(self, client, mocker) -> None:
+        """Verify a restricted player cannot create an NPC even with a crafted type."""
+        # Given a PLAYER under the default storyteller-only NPC setting
+        ctx = build_global_context(user_role="PLAYER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        _mock_form_options(mocker)
+
+        char_svc = MagicMock()
+        mocker.patch(
+            "vweb.routes.character_create.manual_views.sync_characters_service",
+            return_value=char_svc,
+        )
+        csrf = get_csrf(client)
+
+        # When submitting the profile form with a crafted NPC type
+        response = client.post(
+            f"/campaign/{campaign.id}/characters/profile_edit",
+            data={
+                "name_first": "Ada",
+                "name_last": "Lovelace",
+                "game_version": "V5",
+                "character_class": "MORTAL",
+                "character_type": "NPC",
+                "csrf_token": csrf,
+            },
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the form re-renders with an error and no character is created
+        assert response.status_code == 200
+        assert_shows_error(response)
+        char_svc.create.assert_not_called()
+
+    def test_create_rejects_storyteller_type_for_player(self, client, mocker) -> None:
+        """Verify a non-storyteller cannot create a STORYTELLER-type character."""
+        # Given a PLAYER (STORYTELLER type is always privileged-only)
+        ctx = build_global_context(user_role="PLAYER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        _mock_form_options(mocker)
+
+        char_svc = MagicMock()
+        mocker.patch(
+            "vweb.routes.character_create.manual_views.sync_characters_service",
+            return_value=char_svc,
+        )
+        csrf = get_csrf(client)
+
+        # When submitting the profile form with a crafted STORYTELLER type
+        response = client.post(
+            f"/campaign/{campaign.id}/characters/profile_edit",
+            data={
+                "name_first": "Ada",
+                "name_last": "Lovelace",
+                "game_version": "V5",
+                "character_class": "MORTAL",
+                "character_type": "STORYTELLER",
+                "csrf_token": csrf,
+            },
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the form re-renders with an error and no character is created
+        assert response.status_code == 200
+        assert_shows_error(response)
+        char_svc.create.assert_not_called()
 
 
 class TestManualTraitsView:
@@ -518,6 +622,10 @@ class TestProfileEditMode:
             campaign_id=campaign.id,
             game_version="V5",
             character_class="MORTAL",
+            user_player_id="test-user-id",
+        )
+        fake_vclient.set_response(
+            Routes.CHARACTERS_GET, model=character, params={"character_id": "char-123"}
         )
         fake_vclient.set_response(
             Routes.CHARACTERS_UPDATE, model=character, params={"character_id": "char-123"}
@@ -540,12 +648,21 @@ class TestProfileEditMode:
         assert response.status_code == 200
         assert "/character/char-123" in response.headers.get("HX-Redirect", "")
 
-    def test_edit_post_validation_error_rerenders(self, client, mocker) -> None:
+    def test_edit_post_validation_error_rerenders(self, client, mocker, fake_vclient) -> None:
         """Verify validation error in edit mode re-renders form with errors."""
+        from vclient.testing import Routes
+
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         _mock_form_options(mocker)
+
+        character = CharacterFactory.build(
+            id="char-123", campaign_id=campaign.id, user_player_id="test-user-id"
+        )
+        fake_vclient.set_response(
+            Routes.CHARACTERS_GET, model=character, params={"character_id": "char-123"}
+        )
 
         csrf = get_csrf(client)
 
@@ -574,6 +691,12 @@ class TestProfileEditMode:
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
         _mock_form_options(mocker)
 
+        character = CharacterFactory.build(
+            id="char-123", campaign_id=campaign.id, user_player_id="test-user-id"
+        )
+        fake_vclient.set_response(
+            Routes.CHARACTERS_GET, model=character, params={"character_id": "char-123"}
+        )
         fake_vclient.set_error(
             Routes.CHARACTERS_UPDATE, status_code=500, params={"character_id": "char-123"}
         )
@@ -595,3 +718,82 @@ class TestProfileEditMode:
         assert response.status_code == 200
         body = response.get_data(as_text=True)
         assert "alert-error" in body
+
+    def test_edit_denied_for_non_editor(self, client, mocker) -> None:
+        """Verify a player cannot edit a character they do not own."""
+        # Given a player and an existing player character owned by someone else
+        other_char = CharacterFactory.build(
+            id="char-other",
+            user_player_id="someone-else",
+            type="PLAYER",
+        )
+        ctx = build_global_context(user_role="PLAYER", characters=[other_char])
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        _mock_form_options(mocker)
+
+        char_svc = MagicMock()
+        char_svc.get.return_value = other_char
+        mocker.patch(
+            "vweb.routes.character_create.manual_views.sync_characters_service",
+            return_value=char_svc,
+        )
+        csrf = get_csrf(client)
+
+        # When submitting an edit for that character
+        response = client.post(
+            f"/campaign/{campaign.id}/characters/profile_edit?character_id=char-other",
+            data={
+                "name_first": "Ada",
+                "name_last": "Lovelace",
+                "game_version": "V5",
+                "character_class": "MORTAL",
+                "character_type": "PLAYER",
+                "csrf_token": csrf,
+            },
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the update is never attempted and the user is redirected away
+        char_svc.update.assert_not_called()
+        assert response.headers.get("HX-Redirect") is not None
+
+    def test_edit_rejects_npc_type_for_restricted_player(self, client, mocker) -> None:
+        """Verify a player who owns a character cannot switch its type to NPC when restricted."""
+        # Given a restricted player editing their OWN player character (passes the edit guard)
+        own_char = CharacterFactory.build(
+            id="char-own",
+            user_player_id="test-user-id",
+            type="PLAYER",
+        )
+        ctx = build_global_context(user_role="PLAYER", characters=[own_char])
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        _mock_form_options(mocker)
+
+        char_svc = MagicMock()
+        char_svc.get.return_value = own_char
+        mocker.patch(
+            "vweb.routes.character_create.manual_views.sync_characters_service",
+            return_value=char_svc,
+        )
+        csrf = get_csrf(client)
+
+        # When submitting an edit that switches the type to NPC
+        response = client.post(
+            f"/campaign/{campaign.id}/characters/profile_edit?character_id=char-own",
+            data={
+                "name_first": "Ada",
+                "name_last": "Lovelace",
+                "game_version": "V5",
+                "character_class": "MORTAL",
+                "character_type": "NPC",
+                "csrf_token": csrf,
+            },
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the form re-renders with an error and no update occurs
+        assert response.status_code == 200
+        assert_shows_error(response)
+        char_svc.update.assert_not_called()

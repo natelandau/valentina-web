@@ -11,6 +11,8 @@ from vclient.testing import (
     InventoryItemFactory,
 )
 
+from tests.conftest import get_csrf
+
 
 @pytest.fixture
 def _mock_character(mock_global_context) -> None:
@@ -116,3 +118,24 @@ class TestCharacterInventoryEditable:
         assert "Add Item" in body
         assert "Edit" in body
         assert "Delete" in body
+
+
+class TestCharacterInventoryPost:
+    """Tests for POST requests to character inventory CRUD."""
+
+    def test_post_denied_when_handler_blocks_mutation(self, client, mock_inventory_handler) -> None:
+        """Verify a create POST is 403 when the handler disallows mutation."""
+        # Given a handler that blocks mutation
+        mock_inventory_handler.can_mutate.return_value = False
+        csrf = get_csrf(client)
+
+        # When attempting to create an item
+        response = client.post(
+            "/character/char-123/inventory/items",
+            data={"name": "Sword", "type": "WEAPON", "csrf_token": csrf},
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the request is forbidden and no create occurs
+        assert response.status_code == 403
+        mock_inventory_handler.create_item.assert_not_called()

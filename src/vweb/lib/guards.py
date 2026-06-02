@@ -80,6 +80,19 @@ def can_manage_campaign() -> bool:
     return g.global_context.company.settings.permission_manage_campaign == "UNRESTRICTED"
 
 
+def can_manage_npcs() -> bool:
+    """Check whether the user may create or edit NPC characters.
+
+    Storytellers and admins always qualify; other players only qualify when the
+    company has opened NPC management to everyone. Dice rolling against an NPC is
+    never gated by this check.
+    """
+    if is_storyteller():
+        return True
+
+    return g.global_context.company.settings.permission_manage_npc == "UNRESTRICTED"
+
+
 def can_grant_experience(target_user_id: str) -> bool:
     """Check whether the user may grant experience to ``target_user_id``.
 
@@ -119,9 +132,18 @@ def can_edit_traits_free(character: Character) -> bool:
 def can_edit_character(character: Character) -> bool:
     """Check whether the user may edit ``character``.
 
-    Privileged users may edit any character; players may only edit their own.
+    Privileged users may edit any character. For NPCs, the company's
+    ``permission_manage_npc`` setting decides whether other players may edit.
+    STORYTELLER characters are always privileged-only. For player characters,
+    only the owner may edit.
     """
     if is_storyteller():
         return True
+
+    if character.type == "NPC":
+        return can_manage_npcs()
+
+    if character.type == "STORYTELLER":
+        return False
 
     return is_self(character.user_player_id)

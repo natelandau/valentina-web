@@ -24,6 +24,7 @@ from vweb.lib.guards import (
     can_edit_traits_free,
     can_grant_experience,
     can_manage_campaign,
+    can_manage_npcs,
     is_admin,
     is_approved_user,
     is_self,
@@ -364,6 +365,7 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
     jinja_globals["is_storyteller"] = is_storyteller
     jinja_globals["is_self"] = is_self
     jinja_globals["can_manage_campaign"] = can_manage_campaign
+    jinja_globals["can_manage_npcs"] = can_manage_npcs
     jinja_globals["can_grant_experience"] = can_grant_experience
     jinja_globals["can_edit_traits_free"] = can_edit_traits_free
     jinja_globals["can_edit_character"] = can_edit_character

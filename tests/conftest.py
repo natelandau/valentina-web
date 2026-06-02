@@ -31,6 +31,7 @@ _TEST_COMPANY_SETTINGS = CompanySettings(
     character_autogen_num_choices=3,
     character_autogen_starting_points=0,
     permission_manage_campaign="STORYTELLER",
+    permission_manage_npc="STORYTELLER",
     permission_grant_xp="STORYTELLER",
     permission_free_trait_changes="STORYTELLER",
     permission_recoup_xp="DENIED",
@@ -38,7 +39,10 @@ _TEST_COMPANY_SETTINGS = CompanySettings(
 
 
 def _build_company_with_settings(**kwargs):  # noqa: ANN202
-    kwargs.setdefault("settings", _TEST_COMPANY_SETTINGS)
+    # Hand each company its OWN copy of the default settings. Tests (e.g. guard_ctx)
+    # mutate company.settings in place; sharing one instance would leak those edits
+    # across tests and cause order-dependent failures.
+    kwargs.setdefault("settings", _TEST_COMPANY_SETTINGS.model_copy(deep=True))
     return _original_company_build(**kwargs)
 
 

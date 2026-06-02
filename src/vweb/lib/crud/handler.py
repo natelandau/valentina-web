@@ -16,6 +16,11 @@ class CrudHandler(Protocol[T_co]):
 
     Generic over the item type ``T_co`` so concrete handlers are verified
     against specific model types (e.g. ``CrudHandler[Note]``).
+
+    Optional mutation guard: a handler may define ``can_mutate(self) -> bool``
+    to gate create/update/delete. It is intentionally NOT a protocol member so
+    handlers without per-resource permissions need not implement it; the view
+    layer duck-types it and treats its absence as always-mutable.
     """
 
     def list_items(self) -> list[T_co]:
