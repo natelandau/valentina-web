@@ -43,7 +43,7 @@ def _fetch_global_data(company_id: str, user_id: str) -> GlobalContext:
 
     Args:
         company_id: The company to fetch data for.
-        user_id: The user whose perspective determines visible campaigns/characters/books.
+        user_id: The user whose perspective determines visible campaigns/characters.
 
     Returns:
         GlobalContext populated with fresh API data.
