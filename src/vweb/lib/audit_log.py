@@ -16,6 +16,8 @@ from markupsafe import Markup, escape
 from vclient import sync_companies_service
 from vclient.models.audit_logs import AuditLog
 
+from vweb.lib.api import get_books_for_campaign, get_chapters_for_book
+
 if TYPE_CHECKING:
     from vclient.models.pagination import PaginatedResponse
 
@@ -208,44 +210,38 @@ def _resolve_character(character_id: str, context: GlobalContext) -> tuple[str, 
 
 
 def _resolve_book(
-    book_id: str, campaign_id: str | None, context: GlobalContext
+    book_id: str,
+    campaign_id: str | None,
+    context: GlobalContext,  # noqa: ARG001
 ) -> tuple[str, str, str | None]:
-    # Narrow search to the specific campaign when possible
-    if campaign_id and campaign_id in context.books_by_campaign:
-        books = context.books_by_campaign[campaign_id]
-    else:
-        books = [
-            book for campaign_books in context.books_by_campaign.values() for book in campaign_books
-        ]
+    # Books are no longer preloaded; resolve only when the entry carries its campaign.
+    if not campaign_id:
+        return ("Book", _DELETED_SENTINEL, None)
 
-    book = next((b for b in books if b.id == book_id), None)
-    if book and campaign_id:
+    book = next((b for b in get_books_for_campaign(campaign_id) if b.id == book_id), None)
+    if book:
         return (
             "Book",
             book.name,
             url_for("book_view.book_detail", campaign_id=campaign_id, book_id=book.id),
         )
-    return ("Book", book.name if book else _DELETED_SENTINEL, None)
+    return ("Book", _DELETED_SENTINEL, None)
 
 
 def _resolve_chapter(
     chapter_id: str,
     book_id: str | None,
     campaign_id: str | None,
-    context: GlobalContext,
+    context: GlobalContext,  # noqa: ARG001
 ) -> tuple[str, str, str | None]:
-    # Narrow search to the specific book when possible
-    if book_id and book_id in context.chapters_by_book:
-        chapters = context.chapters_by_book[book_id]
-    else:
-        chapters = [
-            chapter
-            for book_chapters in context.chapters_by_book.values()
-            for chapter in book_chapters
-        ]
+    # Chapters are no longer preloaded; resolve only with both scoping IDs present.
+    if not campaign_id or not book_id:
+        return ("Chapter", _DELETED_SENTINEL, None)
 
-    chapter = next((c for c in chapters if c.id == chapter_id), None)
-    if chapter and campaign_id and book_id:
+    chapter = next(
+        (c for c in get_chapters_for_book(campaign_id, book_id) if c.id == chapter_id), None
+    )
+    if chapter:
         return (
             "Chapter",
             chapter.name,
@@ -256,7 +252,7 @@ def _resolve_chapter(
                 chapter_id=chapter.id,
             ),
         )
-    return ("Chapter", chapter.name if chapter else _DELETED_SENTINEL, None)
+    return ("Chapter", _DELETED_SENTINEL, None)
 
 
 def get_audit_log_page(  # noqa: PLR0913

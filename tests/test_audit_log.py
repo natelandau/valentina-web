@@ -9,12 +9,16 @@ import pytest
 from flask import session
 from vclient.testing import (
     AuditLogFactory,
+    CampaignBookFactory,
+    CampaignChapterFactory,
     CharacterFactory,
 )
 
 from vweb.lib.audit_log import (
     FieldDiff,
     OtherEntry,
+    _resolve_book,
+    _resolve_chapter,
     format_change_value,
     get_audit_log_page,
     resolve_acting_user,
@@ -352,6 +356,98 @@ class TestResolveEntitiesSkipIds:
         # Then only the campaign remains
         assert len(result) == 1
         assert result[0][0] == "Campaign"
+
+
+class TestResolveBook:
+    """Tests for _resolve_book's lazy-cache resolution."""
+
+    def test_falsy_campaign_id_returns_deleted_without_accessor(
+        self, app: Flask, mock_global_context: GlobalContext, mocker
+    ) -> None:
+        """Verify a falsy campaign_id returns the deleted sentinel without hitting the accessor."""
+        # Given a patched accessor that would otherwise return a book
+        mock_get_books = mocker.patch(
+            "vweb.lib.audit_log.get_books_for_campaign",
+            autospec=True,
+            return_value=[CampaignBookFactory.build()],
+        )
+
+        # When resolving a book with no campaign_id
+        with app.test_request_context():
+            result = _resolve_book("book-1", None, mock_global_context)
+
+        # Then the deleted sentinel is returned and the accessor was never called
+        assert result == ("Book", "[deleted]", None)
+        mock_get_books.assert_not_called()
+
+    def test_known_book_returns_name_and_url(
+        self, app: Flask, mock_global_context: GlobalContext, mocker
+    ) -> None:
+        """Verify a book found via the lazy accessor returns its name and detail URL."""
+        # Given a book the accessor will return for the campaign
+        book = CampaignBookFactory.build()
+        mocker.patch(
+            "vweb.lib.audit_log.get_books_for_campaign",
+            autospec=True,
+            return_value=[book],
+        )
+
+        # When resolving that book by its campaign
+        with app.test_request_context():
+            label, name, url = _resolve_book(book.id, "campaign-1", mock_global_context)
+
+        # Then the tuple carries the book name and a detail URL
+        assert label == "Book"
+        assert name == book.name
+        assert url is not None
+        assert book.id in url
+
+
+class TestResolveChapter:
+    """Tests for _resolve_chapter's lazy-cache resolution."""
+
+    def test_missing_book_id_returns_deleted_without_accessor(
+        self, app: Flask, mock_global_context: GlobalContext, mocker
+    ) -> None:
+        """Verify a missing book_id returns the deleted sentinel without hitting the accessor."""
+        # Given a patched accessor that would otherwise return a chapter
+        mock_get_chapters = mocker.patch(
+            "vweb.lib.audit_log.get_chapters_for_book",
+            autospec=True,
+            return_value=[CampaignChapterFactory.build()],
+        )
+
+        # When resolving a chapter with a campaign but no book_id
+        with app.test_request_context():
+            result = _resolve_chapter("chapter-1", None, "campaign-1", mock_global_context)
+
+        # Then the deleted sentinel is returned and the accessor was never called
+        assert result == ("Chapter", "[deleted]", None)
+        mock_get_chapters.assert_not_called()
+
+    def test_known_chapter_returns_name_and_url(
+        self, app: Flask, mock_global_context: GlobalContext, mocker
+    ) -> None:
+        """Verify a chapter found via the lazy accessor returns its name and detail URL."""
+        # Given a chapter the accessor will return for the book
+        chapter = CampaignChapterFactory.build()
+        mocker.patch(
+            "vweb.lib.audit_log.get_chapters_for_book",
+            autospec=True,
+            return_value=[chapter],
+        )
+
+        # When resolving that chapter by its campaign and book
+        with app.test_request_context():
+            label, name, url = _resolve_chapter(
+                chapter.id, "book-1", "campaign-1", mock_global_context
+            )
+
+        # Then the tuple carries the chapter name and a detail URL
+        assert label == "Chapter"
+        assert name == chapter.name
+        assert url is not None
+        assert chapter.id in url
 
 
 class TestGetAuditLogPage:
