@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from loguru import logger
 from vclient import (
-    sync_books_service,
     sync_campaigns_service,
-    sync_chapters_service,
     sync_characters_service,
     sync_companies_service,
     sync_users_service,
@@ -22,8 +19,6 @@ from vweb.extensions import cache
 if TYPE_CHECKING:
     from vclient.models import (
         Campaign,
-        CampaignBook,
-        CampaignChapter,
         Character,
         Company,
         User,
@@ -39,8 +34,6 @@ class GlobalContext:
     campaigns: list[Campaign]
     characters_by_campaign: dict[str, list[Character]] = field(default_factory=dict)
     characters: list[Character] = field(default_factory=list)
-    books_by_campaign: dict[str, list[CampaignBook]] = field(default_factory=dict)
-    chapters_by_book: dict[str, list[CampaignChapter]] = field(default_factory=dict)
     resources_modified_at: str = ""
     pending_user_count: int = 0
 
@@ -72,37 +65,10 @@ def _fetch_global_data(company_id: str, user_id: str) -> GlobalContext:
 
     characters: list[Character] = []
     characters_by_campaign: dict[str, list[Character]] = defaultdict(list)
-    books_by_campaign: dict[str, list[CampaignBook]] = {}
-    chapters_by_book: dict[str, list[CampaignChapter]] = {}
     if campaigns:
         characters = sync_characters_service(on_behalf_of=user_id, company_id=company_id).list_all()
         for char in characters:
             characters_by_campaign[char.campaign_id].append(char)
-
-        book_results = [
-            sync_books_service(
-                campaign_id=c.id, on_behalf_of=user_id, company_id=company_id
-            ).list_all()
-            for c in campaigns
-        ]
-        books_by_campaign = {c.id: books for c, books in zip(campaigns, book_results, strict=True)}
-
-        all_books = [
-            book for campaign_books in books_by_campaign.values() for book in campaign_books
-        ]
-        if all_books:
-
-            def _fetch_book_chapters(book: CampaignBook) -> tuple[str, list[CampaignChapter]]:
-                chapters = sync_chapters_service(
-                    campaign_id=book.campaign_id,
-                    book_id=book.id,
-                    on_behalf_of=user_id,
-                    company_id=company_id,
-                ).list_all()
-                return book.id, chapters
-
-            with ThreadPoolExecutor(max_workers=10) as pool:
-                chapters_by_book = dict(pool.map(_fetch_book_chapters, all_books))
 
     return GlobalContext(
         company=company,
@@ -110,8 +76,6 @@ def _fetch_global_data(company_id: str, user_id: str) -> GlobalContext:
         campaigns=campaigns,
         characters_by_campaign=characters_by_campaign,
         characters=characters,
-        books_by_campaign=books_by_campaign,
-        chapters_by_book=chapters_by_book,
         resources_modified_at=company.resources_modified_at.isoformat()
         if company.resources_modified_at
         else "",

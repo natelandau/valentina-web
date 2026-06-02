@@ -43,7 +43,6 @@ def _build_ctx(campaigns: list) -> GlobalContext:
         company=company,
         users=[user],
         campaigns=campaigns,
-        books_by_campaign={c.id: [] for c in campaigns},
         characters_by_campaign={c.id: [] for c in campaigns},
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )

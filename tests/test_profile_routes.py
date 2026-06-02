@@ -48,7 +48,6 @@ def profile_context(mock_global_context, profile_user, other_user) -> GlobalCont
         company=mock_global_context.company,
         users=[profile_user, other_user],
         campaigns=mock_global_context.campaigns,
-        books_by_campaign=mock_global_context.books_by_campaign,
         characters_by_campaign=mock_global_context.characters_by_campaign,
         resources_modified_at=mock_global_context.resources_modified_at,
     )

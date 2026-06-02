@@ -56,7 +56,6 @@ def guard_ctx(app: Flask) -> Callable[..., None]:
             company=company,
             users=[g.requesting_user],
             campaigns=[],
-            books_by_campaign={},
             characters_by_campaign={},
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )

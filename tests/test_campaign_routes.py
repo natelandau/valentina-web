@@ -83,7 +83,6 @@ class TestCampaignView:
             users=[user],
             campaigns=[campaign],
             characters_by_campaign={campaign.id: [my_char, other_char]},
-            books_by_campaign={campaign.id: []},
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
@@ -121,7 +120,6 @@ class TestCampaignView:
             users=[user],
             campaigns=[campaign],
             characters_by_campaign={campaign.id: []},
-            books_by_campaign={campaign.id: []},
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
@@ -281,7 +279,6 @@ class TestNavbarCampaignDropdown:
             users=[user],
             campaigns=[camp1, camp2],
             characters_by_campaign={camp1.id: [], camp2.id: []},
-            books_by_campaign={camp1.id: [], camp2.id: []},
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
@@ -305,7 +302,6 @@ class TestNavbarCampaignDropdown:
             users=[user],
             campaigns=[campaign],
             characters_by_campaign={campaign.id: []},
-            books_by_campaign={campaign.id: []},
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
@@ -330,7 +326,6 @@ class TestNavbarCampaignDropdown:
             users=[user],
             campaigns=[campaign],
             characters_by_campaign={campaign.id: []},
-            books_by_campaign={campaign.id: []},
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)

@@ -799,7 +799,6 @@ def _character_context(
         company=company,
         users=[user],
         campaigns=[campaign],
-        books_by_campaign={campaign.id: []},
         characters_by_campaign=by_campaign,
         characters=list(characters),
         resources_modified_at="2026-01-01T00:00:00+00:00",

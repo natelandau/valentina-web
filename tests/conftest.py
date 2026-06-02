@@ -119,7 +119,6 @@ def mock_global_context() -> GlobalContext:
         company=company,
         users=[user],
         campaigns=[campaign],
-        books_by_campaign={campaign.id: []},
         characters_by_campaign={campaign.id: []},
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )
