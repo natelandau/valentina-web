@@ -1,7 +1,6 @@
 {# def
     campaign = None,
     books: list = [],
-    chapter_count: int = 0,
     campaign_experience = None,
     user: User = None,
 #}
@@ -10,7 +9,7 @@
 <div class="flex flex-col gap-6">
 
   <shared.layout.CampaignBand active="overview" campaign_id={{ campaign.id }} show_admin={{ is_admin() }}>
-  <campaign.components.CampaignSummaryCard campaign={{ campaign }} books={{ books }} chapter_count={{ chapter_count }} />
+  <campaign.components.CampaignSummaryCard campaign={{ campaign }} books={{ books }} />
   </shared.layout.CampaignBand>
 
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">

@@ -1,7 +1,6 @@
 {#def
     campaign,
-    books: list = [],
-    chapter_count: int = 0
+    books: list = []
 #}
 
 <div id="campaign-summary-card">
@@ -32,7 +31,7 @@
         <div class="flex flex-wrap items-center gap-2">
           {% if books %}
             <span class="badge badge-outline badge-sm">
-              {{ books|length }} books · {{ chapter_count }} chapters
+              {{ books|length }} books
             </span>
           {% endif %}
           <span class="badge badge-outline badge-sm">
