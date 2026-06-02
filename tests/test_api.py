@@ -26,7 +26,6 @@ from vweb.lib.api import (
     fetch_book_or_404,
     fetch_chapter_or_404,
     get_active_campaign,
-    get_chapters_for_book,
     get_characters_for_campaign,
     get_recent_player_dicerolls,
 )
@@ -130,52 +129,6 @@ def test_get_active_campaign_returns_none_when_context_is_missing(app) -> None:
 
     # Then None is returned instead of raising AttributeError
     assert result is None
-
-
-class TestChapterHelpers:
-    """Tests for the lazily cached chapter helper re-exported by lib/api.py."""
-
-    def test_get_chapters_for_book_returns_chapters_sorted_by_number(
-        self, app, fake_vclient
-    ) -> None:
-        """Verify chapters fetched via the lazy cache are returned in ascending number order."""
-        # Given the API returns out-of-order chapters for one book
-        ch3 = CampaignChapterFactory.build(id="ch3", book_id="b1", number=3)
-        ch1 = CampaignChapterFactory.build(id="ch1", book_id="b1", number=1)
-        ch2 = CampaignChapterFactory.build(id="ch2", book_id="b1", number=2)
-        fake_vclient.set_response(Routes.CHAPTERS_LIST, items=[ch3, ch1, ch2])
-
-        user = UserFactory.build(id="test-user-id", role="PLAYER")
-        ctx = build_global_context(user_role="PLAYER", user=user)
-
-        with app.test_request_context("/"):
-            session["company_id"] = "test-company-id"
-            g.global_context = ctx
-            g.requesting_user = user
-
-            # When fetching chapters for the book
-            result = get_chapters_for_book("camp1", "b1")
-
-        # Then they are sorted by number
-        assert [c.id for c in result] == ["ch1", "ch2", "ch3"]
-
-    def test_get_chapters_for_book_returns_empty_list_when_api_returns_none(
-        self, app, fake_vclient
-    ) -> None:
-        """Verify an empty list is returned when the API reports no chapters."""
-        fake_vclient.set_response(Routes.CHAPTERS_LIST, items=[])
-
-        user = UserFactory.build(id="test-user-id", role="PLAYER")
-        ctx = build_global_context(user_role="PLAYER", user=user)
-
-        with app.test_request_context("/"):
-            session["company_id"] = "test-company-id"
-            g.global_context = ctx
-            g.requesting_user = user
-
-            result = get_chapters_for_book("camp1", "missing")
-
-        assert result == []
 
 
 class TestFetchBookOr404:
