@@ -10,7 +10,6 @@ from vclient.models import CampaignCreate, CampaignUpdate
 from vweb import catalog
 from vweb.lib.api import (
     fetch_campaign_or_404,
-    get_books_for_campaign,
     get_campaign_name,
     get_user_campaign_experience,
     validate_and_submit_experience,
@@ -63,13 +62,11 @@ class CampaignView(MethodView):
         session["last_campaign_id"] = campaign_id
 
         user_id = session["user_id"]
-        books = get_books_for_campaign(campaign_id)
         campaign_experience = get_user_campaign_experience(user_id, campaign_id)
 
         return catalog.render(
             "campaign.CampaignDetail",
             campaign=campaign,
-            books=books,
             campaign_experience=campaign_experience,
             user=g.requesting_user,
         )
