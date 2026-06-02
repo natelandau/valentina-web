@@ -139,12 +139,27 @@
           {% endif %}
         </fieldset>
 
-        <fieldset class="fieldset">
-          <legend class="fieldset-legend">Character Type</legend>
-          <select name="character_type" class="select w-full">
-            {% for t in get_options().characters.character_type %}
-              {# STORYTELLER characters are storyteller-only; never offer the option to players #}
-              {% if t != "STORYTELLER" or is_storyteller() %}
+        {# Allowed types: PLAYER always; NPC iff the user may manage NPCs;
+           STORYTELLER iff the user is a storyteller. A one-option list needs no
+           dropdown, so emit a hidden PLAYER input instead. #}
+        {%- set allowed_types = [] -%}
+        {%- for t in get_options().characters.character_type -%}
+          {%- if t == "PLAYER" -%}
+            {%- set _ = allowed_types.append(t) -%}
+          {%- elif t == "NPC" and can_manage_npcs() -%}
+            {%- set _ = allowed_types.append(t) -%}
+          {%- elif t == "STORYTELLER" and is_storyteller() -%}
+            {%- set _ = allowed_types.append(t) -%}
+          {%- endif -%}
+        {%- endfor -%}
+
+        {% if allowed_types | length <= 1 %}
+          <input type="hidden" name="character_type" value="PLAYER" />
+        {% else %}
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Character Type</legend>
+            <select name="character_type" class="select w-full">
+              {% for t in allowed_types %}
                 <option value="{{ t }}"
                         {% if form_data.get("character_type", "PLAYER") == t %}selected{% endif %}>
                   {% if t == "PLAYER" %}
@@ -157,10 +172,16 @@
                     {{ t | title }}
                   {% endif %}
                 </option>
-              {% endif %}
-            {% endfor %}
-          </select>
-        </fieldset>
+              {% endfor %}
+            </select>
+          </fieldset>
+        {% endif %}
+
+        {% if errors.get('character_type') %}
+          <div role="alert" class="alert alert-error mb-4">
+            <span>{{ errors['character_type'] }}</span>
+          </div>
+        {% endif %}
 
         {# Concept #}
         <fieldset class="fieldset">

@@ -31,6 +31,7 @@ _TEST_COMPANY_SETTINGS = CompanySettings(
     character_autogen_num_choices=3,
     character_autogen_starting_points=0,
     permission_manage_campaign="STORYTELLER",
+    permission_manage_npc="STORYTELLER",
     permission_grant_xp="STORYTELLER",
     permission_free_trait_changes="STORYTELLER",
     permission_recoup_xp="DENIED",

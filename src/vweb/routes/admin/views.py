@@ -94,6 +94,7 @@ def _build_update(form: dict[str, Any]) -> CompanyUpdate:
             "Starting Points",
         ),
         "permission_manage_campaign": _empty_to_none(form.get("permission_manage_campaign")),
+        "permission_manage_npc": _empty_to_none(form.get("permission_manage_npc")),
         "permission_grant_xp": _empty_to_none(form.get("permission_grant_xp")),
         "permission_free_trait_changes": _empty_to_none(form.get("permission_free_trait_changes")),
         "permission_recoup_xp": _empty_to_none(form.get("permission_recoup_xp")),

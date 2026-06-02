@@ -15,6 +15,7 @@ from vweb.lib.guards import (
     can_edit_traits_free,
     can_grant_experience,
     can_manage_campaign,
+    can_manage_npcs,
     is_admin,
     is_approved_user,
     is_self,
@@ -40,11 +41,13 @@ def guard_ctx(app: Flask) -> Callable[..., None]:
         role: str = "PLAYER",
         user_id: str = "user-1",
         permission_manage_campaign: str | None = "STORYTELLER",
+        permission_manage_npc: str | None = "STORYTELLER",
         permission_grant_xp: str | None = "STORYTELLER",
         permission_free_trait_changes: str | None = "STORYTELLER",
     ) -> None:
         company = CompanyFactory.build()
         company.settings.permission_manage_campaign = permission_manage_campaign
+        company.settings.permission_manage_npc = permission_manage_npc
         company.settings.permission_grant_xp = permission_grant_xp
         company.settings.permission_free_trait_changes = permission_free_trait_changes
 
@@ -254,9 +257,9 @@ def test_can_edit_character_privileged(guard_ctx, role) -> None:
 
 def test_can_edit_character_owner(guard_ctx) -> None:
     """Verify players may edit their own characters."""
-    # Given a player and their own character
+    # Given a player and their own player character
     guard_ctx(role="PLAYER", user_id="me")
-    character = CharacterFactory.build(user_player_id="me")
+    character = CharacterFactory.build(user_player_id="me", type="PLAYER")
 
     # When / Then
     assert can_edit_character(character) is True
@@ -264,9 +267,68 @@ def test_can_edit_character_owner(guard_ctx) -> None:
 
 def test_can_edit_character_non_owner_denied(guard_ctx) -> None:
     """Verify players may not edit characters owned by other users."""
-    # Given a player and someone else's character
+    # Given a player and someone else's player character
     guard_ctx(role="PLAYER", user_id="me")
-    character = CharacterFactory.build(user_player_id="someone-else")
+    character = CharacterFactory.build(user_player_id="someone-else", type="PLAYER")
+
+    # When / Then
+    assert can_edit_character(character) is False
+
+
+@pytest.mark.parametrize("role", ["ADMIN", "STORYTELLER"])
+def test_can_manage_npcs_privileged_roles_bypass_setting(guard_ctx, role) -> None:
+    """Verify privileged roles may manage NPCs even when the setting is restrictive."""
+    # Given a privileged user and a storyteller-only NPC setting
+    guard_ctx(role=role, permission_manage_npc="STORYTELLER")
+
+    # When / Then
+    assert can_manage_npcs() is True
+
+
+def test_can_manage_npcs_player_with_unrestricted_setting(guard_ctx) -> None:
+    """Verify players may manage NPCs when the company is UNRESTRICTED."""
+    # Given a player and an unrestricted NPC setting
+    guard_ctx(role="PLAYER", permission_manage_npc="UNRESTRICTED")
+
+    # When / Then
+    assert can_manage_npcs() is True
+
+
+def test_can_manage_npcs_player_restricted(guard_ctx) -> None:
+    """Verify players may not manage NPCs when the setting is storyteller-only."""
+    # Given a player and a storyteller-only NPC setting
+    guard_ctx(role="PLAYER", permission_manage_npc="STORYTELLER")
+
+    # When / Then
+    assert can_manage_npcs() is False
+
+
+@pytest.mark.parametrize("role", ["ADMIN", "STORYTELLER"])
+def test_can_edit_character_npc_privileged(guard_ctx, role) -> None:
+    """Verify privileged users may edit NPCs regardless of the restrictive setting."""
+    # Given a privileged user and an ownerless NPC under a restrictive setting
+    guard_ctx(role=role, user_id="me", permission_manage_npc="STORYTELLER")
+    character = CharacterFactory.build(user_player_id=None, type="NPC")
+
+    # When / Then
+    assert can_edit_character(character) is True
+
+
+def test_can_edit_character_npc_unrestricted_allows_player(guard_ctx) -> None:
+    """Verify any player may edit an NPC when the NPC setting is UNRESTRICTED."""
+    # Given a player and an NPC owned by someone else under an unrestricted setting
+    guard_ctx(role="PLAYER", user_id="me", permission_manage_npc="UNRESTRICTED")
+    character = CharacterFactory.build(user_player_id="someone-else", type="NPC")
+
+    # When / Then
+    assert can_edit_character(character) is True
+
+
+def test_can_edit_character_npc_restricted_denies_player(guard_ctx) -> None:
+    """Verify a player may not edit an NPC when the setting is storyteller-only."""
+    # Given a player and an NPC under a storyteller-only setting
+    guard_ctx(role="PLAYER", user_id="me", permission_manage_npc="STORYTELLER")
+    character = CharacterFactory.build(user_player_id="me", type="NPC")
 
     # When / Then
     assert can_edit_character(character) is False

@@ -115,6 +115,37 @@ class TestCharacterNotesPost:
         assert response.status_code == 200
         assert b"alert-error" in response.data
 
+    def test_post_denied_when_handler_blocks_mutation(self, client, mock_notes_handler) -> None:
+        """Verify a create POST is 403 when the handler disallows mutation."""
+        # Given a handler that blocks mutation (restricted NPC editing)
+        mock_notes_handler.can_mutate.return_value = False
+        csrf = get_csrf(client)
+
+        # When attempting to create a note
+        response = client.post(
+            "/character/char-123/notes/items",
+            data={"title": "X", "content": "Y", "csrf_token": csrf},
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the request is forbidden and no create occurs
+        assert response.status_code == 403
+        mock_notes_handler.create_item.assert_not_called()
+
+    def test_get_allowed_when_handler_blocks_mutation(self, client, mock_notes_handler) -> None:
+        """Verify viewing the table is still allowed when mutation is blocked."""
+        # Given a handler that blocks mutation
+        mock_notes_handler.can_mutate.return_value = False
+
+        # When requesting the table (read)
+        response = client.get(
+            "/character/char-123/notes/items",
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the table renders normally
+        assert response.status_code == 200
+
 
 class TestCharacterNotesDelete:
     """Tests for DELETE requests to character notes CRUD."""

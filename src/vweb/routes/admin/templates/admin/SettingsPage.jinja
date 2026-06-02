@@ -12,6 +12,7 @@
   {%- set num_choices_val = field_val("character_autogen_num_choices", (s.character_autogen_num_choices if s and s.character_autogen_num_choices is not none else "")) -%}
   {%- set starting_points_val = field_val("character_autogen_starting_points", (s.character_autogen_starting_points if s and s.character_autogen_starting_points is not none else "")) -%}
   {%- set perm_manage_val = field_val("permission_manage_campaign", (s.permission_manage_campaign if s and s.permission_manage_campaign else "")) -%}
+  {%- set perm_manage_npc_val = field_val("permission_manage_npc", (s.permission_manage_npc if s and s.permission_manage_npc else "")) -%}
   {%- set perm_grant_xp_val = field_val("permission_grant_xp", (s.permission_grant_xp if s and s.permission_grant_xp else "")) -%}
   {%- set perm_free_trait_val = field_val("permission_free_trait_changes", (s.permission_free_trait_changes if s and s.permission_free_trait_changes else "")) -%}
   {%- set perm_recoup_xp_val = field_val("permission_recoup_xp", (s.permission_recoup_xp if s and s.permission_recoup_xp else "")) -%}
@@ -179,6 +180,32 @@
             {% if errors.get("permission_manage_campaign") %}
               <p class="label text-error">
                 {{ errors["permission_manage_campaign"] }}
+              </p>
+            {% endif %}
+          </fieldset>
+
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Manage NPCs</legend>
+            <select name="permission_manage_npc" class="select w-full">
+              <option value="UNRESTRICTED"
+                      {% if perm_manage_npc_val == "UNRESTRICTED" %}selected{% endif %}>
+                Unrestricted
+              </option>
+              <option value="STORYTELLER"
+                      {% if perm_manage_npc_val == "STORYTELLER" %}selected{% endif %}>
+                Storyteller and Admin
+              </option>
+            </select>
+            <p class="label">
+              Who can create and manage NPCs and edit their traits, profile, notes, inventory, and images.
+              <br>
+              &nbsp;&nbsp;- Unrestricted: Any player can create and manage NPCs
+              <br>
+              &nbsp;&nbsp;- Storyteller and Admin: Only storytellers and admins can create and manage NPCs
+            </p>
+            {% if errors.get("permission_manage_npc") %}
+              <p class="label text-error">
+                {{ errors["permission_manage_npc"] }}
               </p>
             {% endif %}
           </fieldset>

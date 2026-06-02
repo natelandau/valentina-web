@@ -17,6 +17,7 @@ from vweb import catalog
 from vweb.lib.api import fetch_campaign_or_404
 from vweb.lib.character_sheet import CharacterSheetService
 from vweb.lib.global_context import clear_global_context_cache
+from vweb.lib.guards import can_edit_character, can_manage_npcs
 from vweb.lib.jinja import hx_redirect
 from vweb.routes.character_create import bp
 from vweb.routes.character_create.autogen_services import fetch_form_options
@@ -187,7 +188,7 @@ class ManualProfileView(MethodView):
             character_id=character_id,
         )
 
-    def _post_edit(
+    def _post_edit(  # noqa: PLR0911
         self,
         campaign: Campaign,
         character_id: str,
@@ -203,6 +204,15 @@ class ManualProfileView(MethodView):
         Returns:
             Rendered form with errors or HX-Redirect on success.
         """
+        svc = sync_characters_service(
+            on_behalf_of=session["user_id"],
+            company_id=session["company_id"],
+        )
+        character = svc.get(character_id)
+        if not can_edit_character(character):
+            flash("You are not authorized to edit this character", "error")
+            return hx_redirect(url_for("character_view.character", character_id=character_id))
+
         errors = validate_profile(form_data)
         if errors:
             return self._render_edit_form(campaign, character_id, form_data, errors)
@@ -216,10 +226,10 @@ class ManualProfileView(MethodView):
 
         char_type = cast("CharacterType", form_data.get("character_type") or "PLAYER")
 
-        svc = sync_characters_service(
-            on_behalf_of=session["user_id"],
-            company_id=session["company_id"],
-        )
+        if char_type == "NPC" and not can_manage_npcs():
+            errors = {"character_type": "You are not authorized to assign the NPC character type."}
+            return self._render_edit_form(campaign, character_id, form_data, errors)
+
         try:
             update_payload = CharacterUpdate(
                 character_class=character_class,
@@ -313,6 +323,11 @@ class ManualProfileView(MethodView):
         vampire_u, werewolf_u, hunter_u, _ = update_attrs
 
         char_type = cast("CharacterType", form_data.get("character_type") or "PLAYER")
+
+        if char_type == "NPC" and not can_manage_npcs():
+            errors = {"character_type": "You are not authorized to create NPCs."}
+            return self._render_create_form(campaign, form_data, errors)
+
         name_nick = form_data.get("name_nick") or None
         age = int(age_str) if age_str else None
         biography = form_data.get("biography") or None
@@ -415,7 +430,7 @@ class ManualTraitsView(MethodView):
         Returns:
             Minimal placeholder response.
         """
-        return "<p>Traits form submission — coming soon</p>"
+        return "<p>Traits form submission - coming soon</p>"
 
 
 bp.add_url_rule(

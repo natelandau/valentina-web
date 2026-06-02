@@ -1278,7 +1278,7 @@ wheels = [
 
 [[package]]
 name = "valentina-python-client"
-version = "2.2.0"
+version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -1287,9 +1287,9 @@ dependencies = [
     { name = "polyfactory" },
     { name = "pydantic", extra = ["email"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fc/2a/c1bd54ba1f880b08d7005867c4017f6d958d0a483969a1d3ddea07e6a819/valentina_python_client-2.2.0.tar.gz", hash = "sha256:be447e5376fb03461664ea7f6bed9276d3323941ddb61d00fd92fa0975961541", size = 113999, upload-time = "2026-06-01T17:36:18.391Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a8/5e/34dd68d31f5a24501cb7346f7e1d42098578c4e5efd659e589b87cd801b8/valentina_python_client-2.3.0.tar.gz", hash = "sha256:9d9e69633da94dd728a0808f4d72ee641c083d1c2a3ff585618556fc83daf24a", size = 116580, upload-time = "2026-06-02T15:27:53.654Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bf/7a/cac0a61605aa6fed6bfeecde2b516a7b32872124c00a61e1e6ae1090e822/valentina_python_client-2.2.0-py3-none-any.whl", hash = "sha256:fa8cf75a4c72c4038973b2ccaf6b93daa2339c597ab91a40c296e85d6cf9df6c", size = 170603, upload-time = "2026-06-01T17:36:17.176Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/19/eaa08bace8565da65c3cf93dd2af1dc832da0e83fd603174d708e5fdc1b2/valentina_python_client-2.3.0-py3-none-any.whl", hash = "sha256:58c9d50904844fb09d06f57bce410fa0be64313030857b5c194b1952a334a5b6", size = 172711, upload-time = "2026-06-02T15:27:52.384Z" },
 ]
 
 [package.optional-dependencies]
@@ -1360,7 +1360,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.14.1,<3.0.0" },
     { name = "redis", specifier = ">=7.4.0,<8.0.0" },
     { name = "requests", specifier = ">=2.34.2,<3.0.0" },
-    { name = "valentina-python-client", extras = ["testing"], specifier = ">=2.2.0" },
+    { name = "valentina-python-client", extras = ["testing"], specifier = ">=2.3.0" },
 ]
 
 [package.metadata.requires-dev]

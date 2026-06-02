@@ -80,6 +80,12 @@ class CrudTableView(MethodView):
                 (c.field for c in cls.columns if c.sortable), cls.columns[0].field
             )
 
+    @staticmethod
+    def _handler_allows_mutation(handler: CrudHandler[Any]) -> bool:
+        """Check an optional per-handler mutation guard, defaulting to allowed."""
+        can_mutate = getattr(handler, "can_mutate", None)
+        return can_mutate() if callable(can_mutate) else True
+
     def _build_handler(self) -> CrudHandler[Any]:
         """Instantiate the handler for the current request.
 
@@ -246,6 +252,8 @@ class CrudTableView(MethodView):
     def post(self, item_id: str | None = None, **kwargs: str) -> str:  # noqa: ARG002
         """Handle POST: create or update an item."""
         handler = self._build_handler()
+        if not self._handler_allows_mutation(handler):
+            abort(403)
         form_data = dict(request.form)
 
         errors = handler.validate(form_data)
@@ -273,6 +281,8 @@ class CrudTableView(MethodView):
     def delete(self, item_id: str | None = None, **kwargs: str) -> str:  # noqa: ARG002
         """Handle DELETE: remove an item and trigger a table refresh."""
         handler = self._build_handler()
+        if not self._handler_allows_mutation(handler):
+            abort(403)
 
         if not item_id:
             abort(400)

@@ -133,6 +133,7 @@ class TestSettingsGet:
                 character_autogen_num_choices=3,
                 character_autogen_starting_points=25,
                 permission_manage_campaign="STORYTELLER",
+                permission_manage_npc="STORYTELLER",
                 permission_grant_xp="UNRESTRICTED",
                 permission_free_trait_changes="WITHIN_24_HOURS",
                 permission_recoup_xp="UNRESTRICTED",
@@ -195,6 +196,18 @@ class TestSettingsGet:
         called_with = mock_companies_svc.get.call_args[0][0]
         assert called_with == "test-company-id"
 
+    def test_settings_page_renders_manage_npc_select(
+        self, client: FlaskClient, mock_companies_svc: MagicMock
+    ) -> None:
+        """Verify the settings page renders the Manage NPC permission control."""
+        # When loading the settings page
+        response = client.get("/admin/settings")
+
+        # Then the Manage NPC select is present
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert 'name="permission_manage_npc"' in body
+
 
 class TestSettingsPostSuccess:
     """POST /settings happy path."""
@@ -249,6 +262,7 @@ class TestSettingsPostSuccess:
                 "character_autogen_num_choices": "4",
                 "character_autogen_starting_points": "30",
                 "permission_manage_campaign": "STORYTELLER",
+                "permission_manage_npc": "UNRESTRICTED",
                 "permission_grant_xp": "UNRESTRICTED",
                 "permission_free_trait_changes": "",
             },
@@ -270,6 +284,7 @@ class TestSettingsPostSuccess:
         assert update_req.settings.character_autogen_num_choices == 4
         assert update_req.settings.character_autogen_starting_points == 30
         assert update_req.settings.permission_manage_campaign == "STORYTELLER"
+        assert update_req.settings.permission_manage_npc == "UNRESTRICTED"
         assert update_req.settings.permission_grant_xp == "UNRESTRICTED"
         assert update_req.settings.permission_free_trait_changes is None
 
