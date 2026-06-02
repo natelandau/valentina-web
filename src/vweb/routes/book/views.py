@@ -101,7 +101,7 @@ class BookDetailView(MethodView):
         )
         assets = books_service.list_all_assets(book.id)
 
-        chapters = get_chapters_for_book(book_id)
+        chapters = get_chapters_for_book(campaign_id, book_id)
         note_count = count_notes(books_service, book_id)
         all_books = get_books_for_campaign(campaign_id)
 
@@ -161,7 +161,7 @@ class BookDetailView(MethodView):
         clear_global_context_cache(session["company_id"], session["user_id"])
 
         assets = books_service.list_all_assets(book_id)
-        chapters = get_chapters_for_book(book_id)
+        chapters = get_chapters_for_book(campaign_id, book_id)
         note_count = count_notes(books_service, book_id)
 
         return _render_book_card(
@@ -211,7 +211,7 @@ class BookImageUploadView(MethodView):
         assets = upload_and_append_asset(
             svc=books_service, parent_id=book_id, file=request.files.get("image")
         )
-        chapters = get_chapters_for_book(book_id)
+        chapters = get_chapters_for_book(campaign_id, book_id)
         note_count = count_notes(books_service, book_id)
         content_html = _render_book_card(
             book=book,
@@ -240,7 +240,7 @@ class BookImageDeleteView(MethodView):
         handle_image_delete(svc=books_service, parent_id=book_id, asset_id=asset_id)
 
         assets = books_service.list_all_assets(book_id)
-        chapters = get_chapters_for_book(book_id)
+        chapters = get_chapters_for_book(campaign_id, book_id)
         note_count = count_notes(books_service, book_id)
         content_html = _render_book_card(
             book=book,

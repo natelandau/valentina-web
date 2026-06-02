@@ -70,8 +70,8 @@ class ChapterDetailView(MethodView):
     ) -> str:
         """Render the chapter detail page."""
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        chapter = fetch_chapter_or_404(book_id, chapter_id)
-        chapters = get_chapters_for_book(book_id)
+        chapter = fetch_chapter_or_404(campaign_id, book_id, chapter_id)
+        chapters = get_chapters_for_book(campaign_id, book_id)
 
         session["last_campaign_id"] = campaign_id
 
@@ -118,7 +118,7 @@ class ChapterEditView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        chapter = fetch_chapter_or_404(book_id, chapter_id)
+        chapter = fetch_chapter_or_404(campaign_id, book_id, chapter_id)
 
         return catalog.render(
             "chapter.partials.ChapterEditForm",
@@ -134,7 +134,7 @@ class ChapterEditView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        chapter = fetch_chapter_or_404(book_id, chapter_id)
+        chapter = fetch_chapter_or_404(campaign_id, book_id, chapter_id)
         chapters_service = _chapters_service(campaign_id, book_id)
 
         name = request.form.get("name", "").strip()
@@ -249,7 +249,7 @@ class ChapterImageUploadView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        chapter = fetch_chapter_or_404(book_id, chapter_id)
+        chapter = fetch_chapter_or_404(campaign_id, book_id, chapter_id)
         chapters_service = _chapters_service(campaign_id, book_id)
 
         assets = upload_and_append_asset(
@@ -275,7 +275,7 @@ class ChapterImageDeleteView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        chapter = fetch_chapter_or_404(book_id, chapter_id)
+        chapter = fetch_chapter_or_404(campaign_id, book_id, chapter_id)
         chapters_service = _chapters_service(campaign_id, book_id)
 
         handle_image_delete(svc=chapters_service, parent_id=chapter_id, asset_id=asset_id)
