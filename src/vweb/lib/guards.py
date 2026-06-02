@@ -133,13 +133,17 @@ def can_edit_character(character: Character) -> bool:
     """Check whether the user may edit ``character``.
 
     Privileged users may edit any character. For NPCs, the company's
-    ``permission_manage_npc`` setting decides whether other players may edit;
-    for player characters, only the owner may.
+    ``permission_manage_npc`` setting decides whether other players may edit.
+    STORYTELLER characters are always privileged-only. For player characters,
+    only the owner may edit.
     """
     if is_storyteller():
         return True
 
     if character.type == "NPC":
         return can_manage_npcs()
+
+    if character.type == "STORYTELLER":
+        return False
 
     return is_self(character.user_player_id)

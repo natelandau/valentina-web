@@ -185,12 +185,16 @@ class CharacterTraitsView(MethodView):
             post_url=url_for(f"character_trait_edit.{self.spend_type}", character_id=character_id),
         )
 
-    def post(self, character_id: str) -> str | Response:  # noqa: PLR0911
+    def post(self, character_id: str) -> str | Response:  # noqa: C901, PLR0911
         """Post the character traits form."""
         requesting_user = g.requesting_user
         character, campaign = get_character_and_campaign(character_id)
         if not character or not campaign:
             return hx_redirect(url_for("index.index"))
+
+        if not can_edit_character(character):
+            flash("You are not authorized to update this character", "error")
+            return hx_redirect(url_for("character_view.character", character_id=character_id))
 
         get_method_url = url_for(
             f"character_trait_edit.{self.spend_type}", character_id=character_id

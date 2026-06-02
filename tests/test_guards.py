@@ -332,3 +332,13 @@ def test_can_edit_character_npc_restricted_denies_player(guard_ctx) -> None:
 
     # When / Then
     assert can_edit_character(character) is False
+
+
+def test_can_edit_character_storyteller_type_denies_owning_player(guard_ctx) -> None:
+    """Verify a player may not edit a STORYTELLER-type character even when they own it."""
+    # Given a player who owns a STORYTELLER-type character (always privileged-only)
+    guard_ctx(role="PLAYER", user_id="me", permission_manage_npc="UNRESTRICTED")
+    character = CharacterFactory.build(user_player_id="me", type="STORYTELLER")
+
+    # When / Then
+    assert can_edit_character(character) is False

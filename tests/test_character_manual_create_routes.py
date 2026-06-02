@@ -289,6 +289,40 @@ class TestManualProfileView:
         assert_shows_error(response)
         char_svc.create.assert_not_called()
 
+    def test_create_rejects_storyteller_type_for_player(self, client, mocker) -> None:
+        """Verify a non-storyteller cannot create a STORYTELLER-type character."""
+        # Given a PLAYER (STORYTELLER type is always privileged-only)
+        ctx = build_global_context(user_role="PLAYER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        _mock_form_options(mocker)
+
+        char_svc = MagicMock()
+        mocker.patch(
+            "vweb.routes.character_create.manual_views.sync_characters_service",
+            return_value=char_svc,
+        )
+        csrf = get_csrf(client)
+
+        # When submitting the profile form with a crafted STORYTELLER type
+        response = client.post(
+            f"/campaign/{campaign.id}/characters/profile_edit",
+            data={
+                "name_first": "Ada",
+                "name_last": "Lovelace",
+                "game_version": "V5",
+                "character_class": "MORTAL",
+                "character_type": "STORYTELLER",
+                "csrf_token": csrf,
+            },
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the form re-renders with an error and no character is created
+        assert response.status_code == 200
+        assert_shows_error(response)
+        char_svc.create.assert_not_called()
+
 
 class TestManualTraitsView:
     """Tests for POST /campaign/<id>/characters/profile_edit/traits."""

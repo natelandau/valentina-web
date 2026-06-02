@@ -17,7 +17,7 @@ from vweb import catalog
 from vweb.lib.api import fetch_campaign_or_404
 from vweb.lib.character_sheet import CharacterSheetService
 from vweb.lib.global_context import clear_global_context_cache
-from vweb.lib.guards import can_edit_character, can_manage_npcs
+from vweb.lib.guards import can_edit_character, can_manage_npcs, is_storyteller
 from vweb.lib.jinja import hx_redirect
 from vweb.routes.character_create import bp
 from vweb.routes.character_create.autogen_services import fetch_form_options
@@ -55,6 +55,20 @@ def _map_pydantic_errors(exc: PydanticValidationError) -> dict[str, str]:
     """
     messages = [err["msg"] for err in exc.errors()]
     return {"_general": "; ".join(messages)}
+
+
+def _character_type_permission_error(char_type: str) -> str | None:
+    """Return an authorization error if the user may not assign ``char_type``.
+
+    NPCs require NPC-management permission; STORYTELLER characters are always
+    storyteller/admin-only. Returns None when the type is permitted, so callers
+    can use it as a single gate for both the create and edit flows.
+    """
+    if char_type == "NPC" and not can_manage_npcs():
+        return "You are not authorized to assign the NPC character type."
+    if char_type == "STORYTELLER" and not is_storyteller():
+        return "You are not authorized to assign the storyteller character type."
+    return None
 
 
 def _clear_temp_session() -> None:
@@ -208,7 +222,11 @@ class ManualProfileView(MethodView):
             on_behalf_of=session["user_id"],
             company_id=session["company_id"],
         )
-        character = svc.get(character_id)
+        try:
+            character = svc.get(character_id)
+        except APIError as exc:
+            errors = {"_general": exc.detail or exc.message or "Failed to load character"}
+            return self._render_edit_form(campaign, character_id, form_data, errors)
         if not can_edit_character(character):
             flash("You are not authorized to edit this character", "error")
             return hx_redirect(url_for("character_view.character", character_id=character_id))
@@ -226,9 +244,11 @@ class ManualProfileView(MethodView):
 
         char_type = cast("CharacterType", form_data.get("character_type") or "PLAYER")
 
-        if char_type == "NPC" and not can_manage_npcs():
-            errors = {"character_type": "You are not authorized to assign the NPC character type."}
-            return self._render_edit_form(campaign, character_id, form_data, errors)
+        type_error = _character_type_permission_error(char_type)
+        if type_error:
+            return self._render_edit_form(
+                campaign, character_id, form_data, {"character_type": type_error}
+            )
 
         try:
             update_payload = CharacterUpdate(
@@ -324,9 +344,9 @@ class ManualProfileView(MethodView):
 
         char_type = cast("CharacterType", form_data.get("character_type") or "PLAYER")
 
-        if char_type == "NPC" and not can_manage_npcs():
-            errors = {"character_type": "You are not authorized to create NPCs."}
-            return self._render_create_form(campaign, form_data, errors)
+        type_error = _character_type_permission_error(char_type)
+        if type_error:
+            return self._render_create_form(campaign, form_data, {"character_type": type_error})
 
         name_nick = form_data.get("name_nick") or None
         age = int(age_str) if age_str else None
