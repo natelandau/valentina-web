@@ -9,6 +9,14 @@ Invalidation mirrors GlobalContext: cache values carry the company
 which keeps other users eventually consistent. Because the stamp's bump semantics
 are not guaranteed, mutation handlers also call ``clear_campaign_content_cache`` so
 the acting user always sees their own edit on the next request.
+
+Cache keys are scoped to ``company + campaign`` (books) and ``company + book``
+(chapters) WITHOUT a requesting-user component. This is deliberate and safe: books
+and chapters are campaign-wide content, not per-user-filtered data, and a user who
+cannot see a campaign never reaches these accessors (campaign membership is enforced
+earlier via the global context / ``fetch_campaign_or_404``). Contrast with the
+dice-rolls cache and the global context, which ARE per-user keyed because they carry
+user-visibility-filtered data.
 """
 
 from __future__ import annotations

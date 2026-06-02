@@ -171,6 +171,8 @@ class TestBookDelete:
             headers={"X-CSRFToken": csrf},
         )
 
-        # Then the campaign's book cache is invalidated
+        # Then both the campaign's book cache and the deleted book's chapters cache
+        # are invalidated
         _, kwargs = clear_cache.call_args
         assert kwargs["campaign_id"] == mock_campaign.id
+        assert kwargs["book_id"] == mock_book.id

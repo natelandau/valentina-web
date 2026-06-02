@@ -16,7 +16,7 @@ from markupsafe import Markup, escape
 from vclient import sync_companies_service
 from vclient.models.audit_logs import AuditLog
 
-from vweb.lib.api import get_books_for_campaign, get_chapters_for_book
+from vweb.lib.campaign_content_cache import get_books_for_campaign, get_chapters_for_book
 
 if TYPE_CHECKING:
     from vclient.models.pagination import PaginatedResponse

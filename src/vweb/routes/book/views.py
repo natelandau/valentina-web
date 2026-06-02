@@ -196,7 +196,9 @@ class BookDetailView(MethodView):
         )
         books_service.delete(book.id)
         clear_global_context_cache(session["company_id"], session["user_id"])
-        clear_campaign_content_cache(session["company_id"], campaign_id=campaign_id)
+        clear_campaign_content_cache(
+            session["company_id"], campaign_id=campaign_id, book_id=book.id
+        )
 
         return hx_redirect(url_for("book_view.books_index", campaign_id=campaign_id))
 
