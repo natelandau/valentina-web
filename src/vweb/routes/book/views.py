@@ -105,9 +105,6 @@ class BookDetailView(MethodView):
         chapters = get_chapters_for_book(campaign_id, book_id)
         note_count = count_notes(books_service, book_id)
         all_books = get_books_for_campaign(campaign_id)
-        # TODO: replace these per-book chapter fetches with a count exposed on
-        # CampaignBook once the API provides it, so the carousel needs no extra calls.
-        chapter_counts = {b.id: len(get_chapters_for_book(campaign_id, b.id)) for b in all_books}
 
         return catalog.render(
             "book.BookDetail",
@@ -117,7 +114,6 @@ class BookDetailView(MethodView):
             all_books=all_books,
             assets=assets,
             note_count=note_count,
-            chapter_counts=chapter_counts,
         )
 
     def post(

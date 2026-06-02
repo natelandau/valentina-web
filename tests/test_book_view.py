@@ -96,6 +96,34 @@ class TestBookDetailGet:
 
 
 @pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")
+class TestBookCarouselChapterCount:
+    """Tests for the carousel chapter count sourced from book.num_chapters."""
+
+    def test_carousel_uses_num_chapters_facet(
+        self, client, mocker, mock_book, mock_campaign
+    ) -> None:
+        """Verify the carousel renders the chapter count from book.num_chapters."""
+        # Given a book carrying a num_chapters facet from the API
+        book_with_count = CampaignBookFactory.build(
+            id="book-1",
+            campaign_id="camp-1",
+            name="The Gathering Storm",
+            number=1,
+            num_chapters=4,
+        )
+        mocker.patch(
+            "vweb.routes.book.views.get_books_for_campaign",
+            return_value=[book_with_count],
+        )
+
+        # When rendering the book detail page
+        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}")
+
+        # Then the carousel shows the facet count, not a per-book fetch
+        assert b"4 chapter" in response.data
+
+
+@pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")
 class TestBookEditPermissions:
     """Tests for book edit permission checks."""
 

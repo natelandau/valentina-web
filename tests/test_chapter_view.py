@@ -141,7 +141,7 @@ class TestChapterCreate:
     def test_create_clears_campaign_content_cache(
         self, client, mocker, mock_campaign, mock_book
     ) -> None:
-        """Verify creating a chapter invalidates the parent book's chapter cache."""
+        """Verify creating a chapter invalidates the book and campaign book-list caches."""
         # Given a privileged user and a patched cache-clear
         mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
         clear_cache = mocker.patch("vweb.routes.chapter.views.clear_campaign_content_cache")
@@ -153,9 +153,11 @@ class TestChapterCreate:
             data={"name": "New Chapter", "number": "4", "csrf_token": csrf},
         )
 
-        # Then the book's chapter cache is invalidated
+        # Then both the book's chapter cache and the campaign's book-list cache
+        # are invalidated so each book's num_chapters facet refreshes
         _, kwargs = clear_cache.call_args
         assert kwargs["book_id"] == mock_book.id
+        assert kwargs["campaign_id"] == mock_campaign.id
 
 
 @pytest.mark.usefixtures("_mock_chapter_lookup")
@@ -191,7 +193,7 @@ class TestChapterDelete:
     def test_delete_clears_campaign_content_cache(
         self, client, mocker, mock_campaign, mock_book
     ) -> None:
-        """Verify deleting a chapter invalidates the parent book's chapter cache."""
+        """Verify deleting a chapter invalidates the book and campaign book-list caches."""
         # Given a privileged user and a patched cache-clear
         mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
         clear_cache = mocker.patch("vweb.routes.chapter.views.clear_campaign_content_cache")
@@ -203,6 +205,8 @@ class TestChapterDelete:
             headers={"X-CSRFToken": csrf},
         )
 
-        # Then the book's chapter cache is invalidated
+        # Then both the book's chapter cache and the campaign's book-list cache
+        # are invalidated so each book's num_chapters facet refreshes
         _, kwargs = clear_cache.call_args
         assert kwargs["book_id"] == mock_book.id
+        assert kwargs["campaign_id"] == mock_campaign.id

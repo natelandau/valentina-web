@@ -1,8 +1,7 @@
 {#def
     campaign,
     books: list = [],
-    current_book = None,
-    chapter_counts: dict = {}
+    current_book = None
 #}
 
 {# Horizontal carousel of campaign books. Card selection navigates to that
@@ -51,7 +50,7 @@ Below the scroller, a prev/next strip shows adjacent books + position. #}
 
         {% set is_active = book.id == current_id %}
 
-        {% set chapter_count = chapter_counts.get(book.id, 0) %}
+        {% set chapter_count = book.num_chapters %}
 
         <a href="{{ url_for('book_view.book_detail', campaign_id=campaign.id, book_id=book.id) }}"
            class="snap-start shrink-0 w-64 sm:w-72 rounded-box border p-4 flex items-center gap-4 transition-all {% if is_active %}border-primary border-2 bg-base-100 shadow-sm{% else %}border-base-300 bg-base-200/50 hover:bg-base-100 hover:border-base-content/30{% endif %}"

@@ -104,7 +104,9 @@ class ChapterDetailView(MethodView):
         chapters_service = _chapters_service(campaign_id, book_id)
         chapters_service.delete(chapter_id)
         clear_global_context_cache(session["company_id"], session["user_id"])
-        clear_campaign_content_cache(session["company_id"], book_id=book_id)
+        clear_campaign_content_cache(
+            session["company_id"], campaign_id=campaign_id, book_id=book_id
+        )
 
         return hx_redirect(
             url_for("book_view.book_detail", campaign_id=campaign_id, book_id=book_id)
@@ -231,7 +233,9 @@ class ChapterCreateView(MethodView):
         chapters_service = _chapters_service(campaign_id, book_id)
         chapters_service.create(name=name, number=number, description=description)
         clear_global_context_cache(session["company_id"], session["user_id"])
-        clear_campaign_content_cache(session["company_id"], book_id=book_id)
+        clear_campaign_content_cache(
+            session["company_id"], campaign_id=campaign_id, book_id=book_id
+        )
 
         chapters = chapters_service.list_all()
         chapters.sort(key=lambda c: c.number)
