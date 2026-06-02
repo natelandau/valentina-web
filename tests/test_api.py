@@ -5,8 +5,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+import pytest
 from flask import g, session
 from vclient.testing import (
+    CampaignBookFactory,
     CampaignChapterFactory,
     CampaignFactory,
     CharacterFactory,
@@ -16,10 +18,13 @@ from vclient.testing import (
     TraitFactory,
     UserFactory,
 )
+from werkzeug.exceptions import NotFound
 
 from tests.conftest import make_dice_roll_result
 from tests.helpers import build_global_context
 from vweb.lib.api import (
+    fetch_book_or_404,
+    fetch_chapter_or_404,
     get_active_campaign,
     get_chapters_for_book,
     get_characters_for_campaign,
@@ -171,6 +176,88 @@ class TestChapterHelpers:
             result = get_chapters_for_book("camp1", "missing")
 
         assert result == []
+
+
+class TestFetchBookOr404:
+    """Tests for the ``fetch_book_or_404`` lookup helper in lib/api.py."""
+
+    def test_returns_book_and_campaign_when_both_exist(self, app, mocker) -> None:
+        """Verify the helper returns the (book, campaign) pair when both exist."""
+        # Given a campaign in the context and a book returned by the lazy cache
+        campaign = CampaignFactory.build(id="camp1")
+        book = CampaignBookFactory.build(id="b1", campaign_id="camp1")
+        ctx = build_global_context(user_role="PLAYER", campaign=campaign)
+        mocker.patch("vweb.lib.api.get_books_for_campaign", return_value=[book])
+
+        with app.test_request_context("/"):
+            g.global_context = ctx
+
+            # When fetching the book
+            result_book, result_campaign = fetch_book_or_404("camp1", "b1")
+
+        # Then both the book and campaign are returned
+        assert result_book.id == "b1"
+        assert result_campaign.id == "camp1"
+
+    def test_aborts_404_when_campaign_missing(self, app, mocker) -> None:
+        """Verify the helper aborts 404 when the campaign is not in the context."""
+        # Given a context whose campaign id does not match the request
+        ctx = build_global_context(user_role="PLAYER", campaign=CampaignFactory.build(id="other"))
+        mocker.patch("vweb.lib.api.get_books_for_campaign", return_value=[])
+
+        with app.test_request_context("/"):
+            g.global_context = ctx
+
+            # When fetching a book for an unknown campaign, then it aborts 404
+            with pytest.raises(NotFound):
+                fetch_book_or_404("camp1", "b1")
+
+    def test_aborts_404_when_book_missing(self, app, mocker) -> None:
+        """Verify the helper aborts 404 when the book is absent from the cache result."""
+        # Given a valid campaign but a book cache that omits the requested book
+        campaign = CampaignFactory.build(id="camp1")
+        ctx = build_global_context(user_role="PLAYER", campaign=campaign)
+        mocker.patch("vweb.lib.api.get_books_for_campaign", return_value=[])
+
+        with app.test_request_context("/"):
+            g.global_context = ctx
+
+            # When fetching a missing book, then it aborts 404
+            with pytest.raises(NotFound):
+                fetch_book_or_404("camp1", "b1")
+
+
+class TestFetchChapterOr404:
+    """Tests for the ``fetch_chapter_or_404`` lookup helper in lib/api.py."""
+
+    def test_returns_chapter_when_present(self, app, mocker) -> None:
+        """Verify the helper returns the chapter when present in the cache result."""
+        # Given a chapter returned by the lazy chapter cache
+        chapter = CampaignChapterFactory.build(id="ch1", book_id="b1")
+        ctx = build_global_context(user_role="PLAYER")
+        mocker.patch("vweb.lib.api.get_chapters_for_book", return_value=[chapter])
+
+        with app.test_request_context("/"):
+            g.global_context = ctx
+
+            # When fetching the chapter
+            result = fetch_chapter_or_404("camp1", "b1", "ch1")
+
+        # Then the matching chapter is returned
+        assert result.id == "ch1"
+
+    def test_aborts_404_when_chapter_missing(self, app, mocker) -> None:
+        """Verify the helper aborts 404 when the chapter is absent from the cache result."""
+        # Given a chapter cache that omits the requested chapter
+        ctx = build_global_context(user_role="PLAYER")
+        mocker.patch("vweb.lib.api.get_chapters_for_book", return_value=[])
+
+        with app.test_request_context("/"):
+            g.global_context = ctx
+
+            # When fetching a missing chapter, then it aborts 404
+            with pytest.raises(NotFound):
+                fetch_chapter_or_404("camp1", "b1", "ch1")
 
 
 class TestGetRecentPlayerDicerolls:

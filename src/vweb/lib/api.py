@@ -131,6 +131,10 @@ def fetch_campaign_or_404(campaign_id: str) -> Campaign:
 def fetch_chapter_or_404(campaign_id: str, book_id: str, chapter_id: str) -> CampaignChapter:
     """Look up a chapter via the lazy chapters cache, abort 404 if not found.
 
+    Assumes the caller has already verified the campaign and book exist (callers
+    invoke ``fetch_book_or_404`` first); a bogus campaign/book yields an empty
+    chapter list and therefore a chapter 404.
+
     Args:
         campaign_id: The campaign the book belongs to.
         book_id: The book's unique identifier.
