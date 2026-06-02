@@ -129,6 +129,30 @@ class TestBookEditPermissions:
 
 
 @pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")
+class TestBookUpdate:
+    """Tests for book update cache invalidation."""
+
+    def test_update_clears_campaign_content_cache(
+        self, client, mocker, mock_book, mock_campaign
+    ) -> None:
+        """Verify updating a book invalidates the campaign's book-list cache."""
+        # Given a privileged user and a patched cache-clear
+        mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
+        clear_cache = mocker.patch("vweb.routes.book.views.clear_campaign_content_cache")
+        csrf = get_csrf(client)
+
+        # When submitting the book edit form
+        client.post(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}",
+            data={"name": "Updated Name", "csrf_token": csrf},
+        )
+
+        # Then the campaign's book cache is invalidated
+        _, kwargs = clear_cache.call_args
+        assert kwargs["campaign_id"] == mock_campaign.id
+
+
+@pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")
 class TestBookDelete:
     """Tests for book delete cache invalidation."""
 

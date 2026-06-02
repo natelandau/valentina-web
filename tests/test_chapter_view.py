@@ -187,3 +187,22 @@ class TestChapterDelete:
             response.headers.get("HX-Redirect")
             == f"/campaign/{mock_campaign.id}/book/{mock_book.id}"
         )
+
+    def test_delete_clears_campaign_content_cache(
+        self, client, mocker, mock_campaign, mock_book
+    ) -> None:
+        """Verify deleting a chapter invalidates the parent book's chapter cache."""
+        # Given a privileged user and a patched cache-clear
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+        clear_cache = mocker.patch("vweb.routes.chapter.views.clear_campaign_content_cache")
+        csrf = get_csrf(client)
+
+        # When deleting the chapter
+        client.delete(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-1",
+            headers={"X-CSRFToken": csrf},
+        )
+
+        # Then the book's chapter cache is invalidated
+        _, kwargs = clear_cache.call_args
+        assert kwargs["book_id"] == mock_book.id
