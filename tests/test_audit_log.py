@@ -500,6 +500,54 @@ class TestGetAuditLogPage:
             date_to=datetime.fromisoformat("2026-01-31"),
         )
 
+    def test_get_audit_log_page_caches_per_company_and_filters(self, app, mocker):
+        """Verify repeated identical audit-log queries hit the companies service once."""
+        # Given a request context with a company and an empty cache
+        with app.test_request_context("/"):
+            session["company_id"] = "comp-1"
+            from vweb.extensions import cache
+
+            cache.clear()
+
+            from vclient.models.audit_logs import AuditLog
+            from vclient.models.pagination import PaginatedResponse
+
+            svc = mocker.patch("vweb.lib.audit_log.sync_companies_service")
+            svc.return_value.get_audit_log_page.return_value = PaginatedResponse[AuditLog](
+                items=[], total=0, limit=10, offset=0
+            )
+
+            # When called twice with identical filters
+            get_audit_log_page(limit=10, offset=0, campaign_id="camp-1")
+            get_audit_log_page(limit=10, offset=0, campaign_id="camp-1")
+
+            # Then the underlying service is hit only once
+            svc.return_value.get_audit_log_page.assert_called_once()
+
+    def test_get_audit_log_page_caches_distinct_filters_separately(self, app, mocker):
+        """Verify differing filter args miss the cache and hit the service each time."""
+        # Given a request context with a company and an empty cache
+        with app.test_request_context("/"):
+            session["company_id"] = "comp-1"
+            from vweb.extensions import cache
+
+            cache.clear()
+
+            from vclient.models.audit_logs import AuditLog
+            from vclient.models.pagination import PaginatedResponse
+
+            svc = mocker.patch("vweb.lib.audit_log.sync_companies_service")
+            svc.return_value.get_audit_log_page.return_value = PaginatedResponse[AuditLog](
+                items=[], total=0, limit=10, offset=0
+            )
+
+            # When called twice with different offsets
+            get_audit_log_page(limit=10, offset=0)
+            get_audit_log_page(limit=10, offset=10)
+
+            # Then the underlying service is hit once per distinct filter set
+            assert svc.return_value.get_audit_log_page.call_count == 2
+
     def test_empty_filters_become_none(self, app: Flask, mocker) -> None:
         """Verify empty-string filters are coerced to None before the API call."""
         # Given a mocked companies service

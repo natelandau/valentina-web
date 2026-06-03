@@ -16,6 +16,7 @@ from markupsafe import Markup, escape
 from vclient import sync_companies_service
 from vclient.models.audit_logs import AuditLog
 
+from vweb.extensions import cache
 from vweb.lib.campaign_content_cache import get_books_for_campaign, get_chapters_for_book
 
 if TYPE_CHECKING:
@@ -28,6 +29,10 @@ ENTITY_TYPES: list[str] = sorted(get_args(AuditLog.model_fields["entity_type"].a
 # Display-name sentinel shown in the audit log UI when an entity ID can't be
 # resolved in the request-scoped GlobalContext (e.g. the entity was deleted).
 _DELETED_SENTINEL = "[deleted]"
+
+# Audit entries are written for nearly every mutation, so we accept eventual
+# consistency and rely on a short TTL rather than explicit invalidation.
+_AUDIT_LOG_CACHE_TTL_SECONDS = 30
 
 
 @dataclass(frozen=True)
@@ -274,7 +279,8 @@ def get_audit_log_page(  # noqa: PLR0913
 
     Single canonical wrapper used by both the admin audit log page and the shared
     audit log card. Empty-string filter values are coerced to None; non-empty
-    date strings are parsed via `datetime.fromisoformat`.
+    date strings are parsed via `datetime.fromisoformat`. Results are cached for
+    30 seconds per company + filter set (the data is company-scoped, not per-user).
 
     Args:
         limit: Maximum number of entries per page.
@@ -294,7 +300,16 @@ def get_audit_log_page(  # noqa: PLR0913
         PaginatedResponse[AuditLog]: Paginated audit log entries for the current company.
     """
     company_id: str = session["company_id"]
-    return sync_companies_service().get_audit_log_page(  # ty:ignore[invalid-return-type]
+    cache_key = (
+        f"auditlog:{company_id}:{acting_user_id}:{user_id}:{campaign_id}:"
+        f"{book_id}:{chapter_id}:{character_id}:{entity_type}:{operation}:"
+        f"{date_from}:{date_to}:{limit}:{offset}"
+    )
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    page = sync_companies_service().get_audit_log_page(  # ty:ignore[invalid-return-type]
         company_id,
         limit=limit,
         offset=offset,
@@ -309,3 +324,5 @@ def get_audit_log_page(  # noqa: PLR0913
         date_from=datetime.fromisoformat(date_from) if date_from else None,
         date_to=datetime.fromisoformat(date_to) if date_to else None,
     )
+    cache.set(cache_key, page, timeout=_AUDIT_LOG_CACHE_TTL_SECONDS)
+    return page
