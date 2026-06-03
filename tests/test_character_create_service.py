@@ -12,6 +12,8 @@ from vclient.testing import (
     WerewolfTribeFactory,
 )
 
+from tests.helpers import make_cache_store_mock
+
 
 class TestGenerateSingle:
     """Tests for generate_single()."""
@@ -167,7 +169,9 @@ class TestFetchFormOptions:
 
     def test_returns_all_dropdown_data(self, app, mocker) -> None:
         """Verify fetch_form_options returns enum lists and blueprint data."""
-        # Given mocked blueprint service, cache, and options
+        # Given mocked blueprint service, base cache store, and options
+        make_cache_store_mock(mocker, "vweb.lib.cache.base.cache")
+
         mock_bp_service = MagicMock()
         concepts = CharacterConceptFactory.batch(2)
         clans = VampireClanFactory.batch(3)
@@ -181,10 +185,6 @@ class TestFetchFormOptions:
             "vweb.routes.character_create.autogen_services.sync_character_blueprint_service",
             return_value=mock_bp_service,
         )
-        mocker.patch(
-            "vweb.routes.character_create.autogen_services.flask_cache.get", return_value=None
-        )
-        mocker.patch("vweb.routes.character_create.autogen_services.flask_cache.set")
 
         from vweb.lib.cache.options import ApiOptions, CharacterOptions
 
