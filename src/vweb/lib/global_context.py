@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -25,6 +26,22 @@ if TYPE_CHECKING:
     )
 
 
+# Per-(company, user) locks so concurrent cold-cache requests rebuild the global
+# context once instead of each doing a full redundant fetch (thundering herd).
+_rebuild_locks: dict[str, threading.Lock] = {}
+_rebuild_locks_guard = threading.Lock()
+
+
+def _rebuild_lock_for(ctx_key: str) -> threading.Lock:
+    """Return the shared rebuild lock for a context key, creating it once."""
+    with _rebuild_locks_guard:
+        lock = _rebuild_locks.get(ctx_key)
+        if lock is None:
+            lock = threading.Lock()
+            _rebuild_locks[ctx_key] = lock
+        return lock
+
+
 @dataclass
 class GlobalContext:
     """All data needed to render company-specific data across the application with Flask-Caching."""
@@ -38,19 +55,24 @@ class GlobalContext:
     pending_user_count: int = 0
 
 
-def _fetch_global_data(company_id: str, user_id: str) -> GlobalContext:
+def _fetch_global_data(
+    company_id: str, user_id: str, company: Company | None = None
+) -> GlobalContext:
     """Fetch all global company data from the API.
 
     Args:
         company_id: The company to fetch data for.
         user_id: The user whose perspective determines visible campaigns/characters.
+        company: An already-fetched company to reuse, avoiding a redundant API call
+            on the cold path where the caller fetched it for the timestamp.
 
     Returns:
         GlobalContext populated with fresh API data.
     """
     logger.debug("Fetching global company data")
 
-    company = sync_companies_service().get(company_id)
+    if company is None:
+        company = sync_companies_service().get(company_id)
     users_svc = sync_users_service(on_behalf_of=user_id, company_id=company_id)
     users = users_svc.list_all()
     campaigns = sync_campaigns_service(on_behalf_of=user_id, company_id=company_id).list_all()
@@ -90,6 +112,12 @@ def _ts_key(company_id: str) -> str:
 def load_global_context(company_id: str, user_id: str) -> GlobalContext:
     """Load global context with company-level timestamp invalidation.
 
+    A lock-free fast path returns the cached context when both the company
+    timestamp and the per-user context are warm and consistent. Otherwise a
+    per-(company, user) single-flight lock ensures only one request rebuilds the
+    context while concurrent requests for the same user wait and reuse the result
+    — preventing a cold-cache thundering herd across the dashboard's lazy cards.
+
     Args:
         company_id: The company to load context for.
         user_id: The user whose perspective determines visible data.
@@ -98,24 +126,35 @@ def load_global_context(company_id: str, user_id: str) -> GlobalContext:
         GlobalContext with current company data.
     """
     ts_key = _ts_key(company_id)
-    api_timestamp = cache.get(ts_key)
-    if api_timestamp is None:
-        company = sync_companies_service().get(company_id)
-        api_timestamp = (
-            company.resources_modified_at.isoformat() if company.resources_modified_at else ""
-        )
-        cache.set(ts_key, api_timestamp, timeout=120)
-
     ctx_key = f"global_ctx:{company_id}:{user_id}"
-    cached = cache.get(ctx_key)
-    if cached is not None:
-        cached_timestamp, cached_global_context = cached
-        if cached_timestamp == api_timestamp:
-            return cached_global_context
 
-    global_context = _fetch_global_data(company_id, user_id)
-    cache.set(ctx_key, (global_context.resources_modified_at, global_context))
-    return global_context
+    # Fast path: warm timestamp + warm matching context, no lock.
+    api_timestamp = cache.get(ts_key)
+    if api_timestamp is not None:
+        cached = cache.get(ctx_key)
+        if cached is not None and cached[0] == api_timestamp:
+            return cached[1]
+
+    # Slow path: single-flight per (company, user).
+    with _rebuild_lock_for(ctx_key):
+        # Resolve the timestamp inside the lock; another waiter may have set it.
+        api_timestamp = cache.get(ts_key)
+        company: Company | None = None
+        if api_timestamp is None:
+            company = sync_companies_service().get(company_id)
+            api_timestamp = (
+                company.resources_modified_at.isoformat() if company.resources_modified_at else ""
+            )
+            cache.set(ts_key, api_timestamp, timeout=120)
+
+        # Double-check: a prior holder of this lock may have just rebuilt it.
+        cached = cache.get(ctx_key)
+        if cached is not None and cached[0] == api_timestamp:
+            return cached[1]
+
+        global_context = _fetch_global_data(company_id, user_id, company=company)
+        cache.set(ctx_key, (global_context.resources_modified_at, global_context))
+        return global_context
 
 
 def clear_global_context_cache(company_id: str, user_id: str) -> None:
