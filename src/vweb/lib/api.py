@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from flask import abort, g, session
 from vclient.exceptions import APIError
 
-from vweb.lib.campaign_content_cache import get_books_for_campaign, get_chapters_for_book
+from vweb.lib import cache
 
 if TYPE_CHECKING:
     from vclient.models import CampaignBook, CampaignChapter, Character
@@ -98,7 +98,7 @@ def fetch_book_or_404(campaign_id: str, book_id: str) -> tuple[CampaignBook, Cam
     campaign = next((c for c in g.global_context.campaigns if c.id == campaign_id), None)
     if campaign is None:
         abort(404)
-    book = next((b for b in get_books_for_campaign(campaign_id) if b.id == book_id), None)
+    book = next((b for b in cache.campaign_content.books(campaign_id) if b.id == book_id), None)
     if book is None:
         abort(404)
     return book, campaign
@@ -138,7 +138,8 @@ def fetch_chapter_or_404(campaign_id: str, book_id: str, chapter_id: str) -> Cam
         The CampaignChapter object.
     """
     chapter = next(
-        (c for c in get_chapters_for_book(campaign_id, book_id) if c.id == chapter_id), None
+        (c for c in cache.campaign_content.chapters(campaign_id, book_id) if c.id == chapter_id),
+        None,
     )
     if chapter is None:
         abort(404)

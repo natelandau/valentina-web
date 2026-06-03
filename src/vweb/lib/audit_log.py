@@ -17,7 +17,7 @@ from vclient import sync_companies_service
 from vclient.models.audit_logs import AuditLog
 
 from vweb.extensions import cache
-from vweb.lib.campaign_content_cache import get_books_for_campaign, get_chapters_for_book
+from vweb.lib.cache import campaign_content as _campaign_content_cache
 
 if TYPE_CHECKING:
     from vclient.models.pagination import PaginatedResponse
@@ -223,7 +223,7 @@ def _resolve_book(
     if not campaign_id:
         return ("Book", _DELETED_SENTINEL, None)
 
-    book = next((b for b in get_books_for_campaign(campaign_id) if b.id == book_id), None)
+    book = next((b for b in _campaign_content_cache.books(campaign_id) if b.id == book_id), None)
     if book:
         return (
             "Book",
@@ -244,7 +244,8 @@ def _resolve_chapter(
         return ("Chapter", _DELETED_SENTINEL, None)
 
     chapter = next(
-        (c for c in get_chapters_for_book(campaign_id, book_id) if c.id == chapter_id), None
+        (c for c in _campaign_content_cache.chapters(campaign_id, book_id) if c.id == chapter_id),
+        None,
     )
     if chapter:
         return (

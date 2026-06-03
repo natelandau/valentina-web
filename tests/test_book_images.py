@@ -64,7 +64,7 @@ def _mock_book_lookup(mocker, mock_book, mock_campaign) -> None:
 def _mock_chapters_service(mocker, mock_chapters) -> None:
     """Mock the chapter lookup."""
     mocker.patch(
-        "vweb.routes.book.views.get_chapters_for_book",
+        "vweb.lib.cache.campaign_content.chapters",
         return_value=mock_chapters,
     )
 

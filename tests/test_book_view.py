@@ -53,7 +53,7 @@ def _mock_book_lookup(mocker, mock_book, mock_campaign) -> None:
 def _mock_chapters_service(mocker, mock_chapters) -> None:
     """Mock the chapter lookup for book detail page."""
     mocker.patch(
-        "vweb.routes.book.views.get_chapters_for_book",
+        "vweb.lib.cache.campaign_content.chapters",
         return_value=mock_chapters,
     )
 
@@ -112,7 +112,7 @@ class TestBookCarouselChapterCount:
             num_chapters=4,
         )
         mocker.patch(
-            "vweb.routes.book.views.get_books_for_campaign",
+            "vweb.lib.cache.campaign_content.books",
             return_value=[book_with_count],
         )
 
@@ -166,7 +166,7 @@ class TestBookUpdate:
         """Verify updating a book invalidates the campaign's book-list cache."""
         # Given a privileged user and a patched cache-clear
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
-        clear_cache = mocker.patch("vweb.routes.book.views.clear_campaign_content_cache")
+        clear_cache = mocker.patch("vweb.lib.cache.campaign_content.clear")
         csrf = get_csrf(client)
 
         # When submitting the book edit form
@@ -190,7 +190,7 @@ class TestBookDelete:
         """Verify deleting a book invalidates the campaign's book-list cache."""
         # Given a privileged user and a patched cache-clear
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
-        clear_cache = mocker.patch("vweb.routes.book.views.clear_campaign_content_cache")
+        clear_cache = mocker.patch("vweb.lib.cache.campaign_content.clear")
         csrf = get_csrf(client)
 
         # When deleting the book
