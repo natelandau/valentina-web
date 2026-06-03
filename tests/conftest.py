@@ -18,7 +18,7 @@ from vclient.testing import (
 )
 
 from vweb.config import APISettings, RedisSettings, Settings
-from vweb.lib.global_context import GlobalContext
+from vweb.lib.cache.global_context import GlobalContext
 
 # Polyfactory randomizes CompanySettings, including permission fields. When it rolls
 # "UNRESTRICTED" for permission_manage_campaign, PLAYER-role tests flake because
@@ -138,8 +138,8 @@ def fake_vclient(app):
 @pytest.fixture(autouse=True)
 def _mock_api(mocker, mock_global_context) -> None:
     """Prevent before_request hooks and route handlers from calling the real API."""
-    mocker.patch("vweb.lib.hooks.load_global_context", return_value=mock_global_context)
-    mocker.patch("vweb.lib.hooks.clear_global_context_cache")
+    mocker.patch("vweb.lib.cache.global_context.load", return_value=mock_global_context)
+    mocker.patch("vweb.lib.cache.global_context.clear")
 
     mock_dict_svc = mocker.patch("vweb.lib.cache.dictionary.sync_dictionary_service")
     mock_dict_svc.return_value.list_all.return_value = []

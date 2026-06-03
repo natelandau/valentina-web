@@ -19,7 +19,7 @@ from tests.helpers import (
     make_cache_store_mock,
     setup_form_options,
 )
-from vweb.lib.global_context import GlobalContext
+from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
     from collections.abc import Callable

@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from vclient.models import User
 
     from vweb.config import Settings
-    from vweb.lib.global_context import GlobalContext
+    from vweb.lib.cache.global_context import GlobalContext
 
 
 def from_markdown(value: str) -> Markup:

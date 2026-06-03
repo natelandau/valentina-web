@@ -29,7 +29,7 @@ from vweb.lib.audit_log import (
 if TYPE_CHECKING:
     from flask import Flask
 
-    from vweb.lib.global_context import GlobalContext
+    from vweb.lib.cache.global_context import GlobalContext
 
 
 class TestFormatChangeValue:

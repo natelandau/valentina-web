@@ -72,7 +72,7 @@ class TestApprove:
             return_value=svc,
         )
         clear_cache = mocker.patch(
-            "vweb.routes.admin.services.clear_global_context_cache",
+            "vweb.lib.cache.global_context.clear",
         )
 
         # When approving
@@ -116,7 +116,7 @@ class TestChangeRole:
             return_value=svc,
         )
         clear_cache = mocker.patch(
-            "vweb.routes.admin.services.clear_global_context_cache",
+            "vweb.lib.cache.global_context.clear",
         )
 
         # When changing role
@@ -155,7 +155,7 @@ class TestDeny:
             return_value=svc,
         )
         clear_cache = mocker.patch(
-            "vweb.routes.admin.services.clear_global_context_cache",
+            "vweb.lib.cache.global_context.clear",
         )
 
         from vweb.routes.admin.services import deny
@@ -190,7 +190,7 @@ class TestMerge:
             return_value=svc,
         )
         clear_cache = mocker.patch(
-            "vweb.routes.admin.services.clear_global_context_cache",
+            "vweb.lib.cache.global_context.clear",
         )
 
         from vweb.routes.admin.services import merge

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 from vclient.testing import CampaignFactory, CompanyFactory, UserFactory
 
-from vweb.lib.global_context import GlobalContext
+from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
     from flask.testing import TestResponse

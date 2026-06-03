@@ -16,7 +16,7 @@ from vclient.testing import (
     UserFactory,
 )
 
-from vweb.lib.global_context import GlobalContext
+from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
@@ -830,7 +830,7 @@ class TestCharacterListCardEndpoint:
             name="Their Hero", type="PLAYER", user_player_id="other-user", campaign_id=campaign.id
         )
         ctx, campaign = _character_context([mine, theirs], campaign=campaign)
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
         # When requesting the all-bucket card
         response = client.get(f"/cards/character-list?campaign_id={campaign.id}&bucket=all")
@@ -854,7 +854,7 @@ class TestCharacterListCardEndpoint:
             name="Their Hero", type="PLAYER", user_player_id="other-user", campaign_id=campaign.id
         )
         ctx, campaign = _character_context([mine, theirs], campaign=campaign)
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
         # When requesting the mine bucket
         response = client.get(f"/cards/character-list?campaign_id={campaign.id}&bucket=mine")
@@ -877,7 +877,7 @@ class TestCharacterListCardEndpoint:
             name="Their Hero", type="PLAYER", user_player_id="other-user", campaign_id=campaign.id
         )
         ctx, campaign = _character_context([mine, theirs], campaign=campaign)
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
         # When requesting the others bucket
         response = client.get(f"/cards/character-list?campaign_id={campaign.id}&bucket=others")
@@ -898,7 +898,7 @@ class TestCharacterListCardEndpoint:
             name="Not Owned", type="PLAYER", user_player_id="u-other"
         )
         ctx, _ = _character_context([owned_a, owned_b, not_owned])
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
         # When requesting the user-scoped card
         response = client.get("/cards/character-list?user_id=u-target")
@@ -920,7 +920,7 @@ class TestCharacterListCardEndpoint:
             name="Ownerless Npc", type="NPC", user_player_id=None, campaign_id=campaign.id
         )
         ctx, _ = _character_context([npc], campaign=campaign)
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
         # When requesting the card with profile links enabled (the "Other Players" box)
         response = client.get(
@@ -949,7 +949,7 @@ class TestCharacterListCardEndpoint:
             name="Owned Storyteller", type="STORYTELLER", user_player_id="u-target"
         )
         ctx, _ = _character_context([player_char, story_char], user_role="PLAYER")
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
         # When the user-scoped card is requested
         body = client.get("/cards/character-list?user_id=u-target").get_data(as_text=True)
@@ -969,7 +969,7 @@ class TestCharacterListCardEndpoint:
             name="Npc One", type="NPC", user_player_id="test-user-id", campaign_id=campaign.id
         )
         ctx, campaign = _character_context([player, npc], campaign=campaign)
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
         # When requesting the body filtered to NPC
         response = client.get(
@@ -994,7 +994,7 @@ class TestCharacterListCardEndpoint:
             name="Npc One", type="NPC", user_player_id="test-user-id", campaign_id=campaign.id
         )
         ctx, campaign = _character_context([player, npc], campaign=campaign)
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
         # When rendering the full card with mixed types
         mixed = client.get(
@@ -1018,7 +1018,7 @@ class TestCharacterListCardEndpoint:
             name="Player Two", type="PLAYER", user_player_id="test-user-id", campaign_id=campaign.id
         )
         ctx, campaign = _character_context([one, two], campaign=campaign)
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
         # When rendering the full card
         body = client.get(
@@ -1041,7 +1041,7 @@ class TestCharacterListCardEndpoint:
             name="Npc One", type="NPC", user_player_id="other-user", campaign_id=campaign.id
         )
         ctx, campaign = _character_context([player, npc], campaign=campaign)
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
         # When rendering with filters disabled
         body = client.get(

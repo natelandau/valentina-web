@@ -11,7 +11,7 @@ from loguru import logger
 from vclient.exceptions import APIError
 
 from vweb import catalog
-from vweb.lib.global_context import clear_global_context_cache
+from vweb.lib import cache
 
 if TYPE_CHECKING:
     from vweb.lib.crud.handler import CrudHandler
@@ -275,7 +275,7 @@ class CrudTableView(MethodView):
                 form_data=form_data,
             )
 
-        clear_global_context_cache(session["company_id"], session["user_id"])
+        cache.global_context.clear(session["company_id"], session["user_id"])
         return self._render_refetch()
 
     def delete(self, item_id: str | None = None, **kwargs: str) -> str:  # noqa: ARG002
@@ -292,5 +292,5 @@ class CrudTableView(MethodView):
         except APIError:
             logger.exception("Delete operation failed")
 
-        clear_global_context_cache(session["company_id"], session["user_id"])
+        cache.global_context.clear(session["company_id"], session["user_id"])
         return self._render_refetch()

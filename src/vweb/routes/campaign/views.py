@@ -8,13 +8,13 @@ from vclient import sync_campaigns_service
 from vclient.models import CampaignCreate, CampaignUpdate
 
 from vweb import catalog
+from vweb.lib import cache
 from vweb.lib.api import (
     fetch_campaign_or_404,
     get_campaign_name,
     get_user_campaign_experience,
     validate_and_submit_experience,
 )
-from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_grant_experience, can_manage_campaign
 from vweb.lib.jinja import hx_redirect
 
@@ -137,7 +137,7 @@ class CampaignCreateView(MethodView):
             on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         new_campaign = service.create(CampaignCreate(name=name, description=description or None))
-        clear_global_context_cache(session["company_id"], session["user_id"])
+        cache.global_context.clear(session["company_id"], session["user_id"])
 
         return hx_redirect(url_for("campaign.campaign", campaign_id=new_campaign.id))
 
@@ -182,7 +182,7 @@ class CampaignUpdateView(MethodView):
             on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         service.update(campaign_id, CampaignUpdate(name=name, description=description or None))
-        clear_global_context_cache(session["company_id"], session["user_id"])
+        cache.global_context.clear(session["company_id"], session["user_id"])
 
         return hx_redirect(url_for("campaign.campaign", campaign_id=campaign_id))
 
@@ -215,7 +215,7 @@ class CampaignDeleteView(MethodView):
             on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         service.delete(campaign_id)
-        clear_global_context_cache(session["company_id"], session["user_id"])
+        cache.global_context.clear(session["company_id"], session["user_id"])
         session.pop("last_campaign_id", None)
 
         return hx_redirect("/")
@@ -268,7 +268,7 @@ class CampaignUpdateDangerDesperationView(MethodView):
             on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         campaign = service.update(campaign_id, update)
-        clear_global_context_cache(session["company_id"], session["user_id"])
+        cache.global_context.clear(session["company_id"], session["user_id"])
         return catalog.render(
             "campaign.partials.DangerDesperation",
             campaign=campaign,

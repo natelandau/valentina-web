@@ -15,7 +15,6 @@ from vweb.lib.api import (
     fetch_book_or_404,
     fetch_chapter_or_404,
 )
-from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_manage_campaign
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
 from vweb.lib.jinja import htmx_response_with_flash, hx_redirect
@@ -102,7 +101,7 @@ class ChapterDetailView(MethodView):
         fetch_book_or_404(campaign_id, book_id)
         chapters_service = _chapters_service(campaign_id, book_id)
         chapters_service.delete(chapter_id)
-        clear_global_context_cache(session["company_id"], session["user_id"])
+        cache.global_context.clear(session["company_id"], session["user_id"])
         cache.campaign_content.clear(
             session["company_id"], campaign_id=campaign_id, book_id=book_id
         )
@@ -168,7 +167,7 @@ class ChapterEditView(MethodView):
         updated = chapters_service.update(chapter_id, name=name, description=description)
         if number != chapter.number:
             updated = chapters_service.renumber(chapter_id, number)
-        clear_global_context_cache(session["company_id"], session["user_id"])
+        cache.global_context.clear(session["company_id"], session["user_id"])
         cache.campaign_content.clear(session["company_id"], book_id=book_id)
 
         assets = chapters_service.list_all_assets(chapter_id)
@@ -231,7 +230,7 @@ class ChapterCreateView(MethodView):
 
         chapters_service = _chapters_service(campaign_id, book_id)
         chapters_service.create(name=name, number=number, description=description)
-        clear_global_context_cache(session["company_id"], session["user_id"])
+        cache.global_context.clear(session["company_id"], session["user_id"])
         cache.campaign_content.clear(
             session["company_id"], campaign_id=campaign_id, book_id=book_id
         )

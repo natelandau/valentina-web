@@ -11,7 +11,7 @@ from vclient import sync_companies_service
 from vclient.models.companies import CompanySettingsUpdate, CompanyUpdate
 
 from vweb import catalog
-from vweb.lib.global_context import clear_global_context_cache
+from vweb.lib import cache
 from vweb.lib.guards import is_admin, is_self
 from vweb.lib.jinja import htmx_response, hx_redirect
 from vweb.routes.admin import services as admin_services
@@ -174,7 +174,7 @@ class SettingsView(MethodView):
             return page, 400
 
         sync_companies_service().update(company_id, request=update)
-        clear_global_context_cache(session["company_id"], session["user_id"])
+        cache.global_context.clear(session["company_id"], session["user_id"])
         flash("Settings updated.", "success")
         return redirect(url_for("admin.settings"))
 

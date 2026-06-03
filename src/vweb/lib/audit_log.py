@@ -22,7 +22,7 @@ from vweb.lib.cache import campaign_content as _campaign_content_cache
 if TYPE_CHECKING:
     from vclient.models.pagination import PaginatedResponse
 
-    from vweb.lib.global_context import GlobalContext
+    from vweb.lib.cache.global_context import GlobalContext
 
 ENTITY_TYPES: list[str] = sorted(get_args(AuditLog.model_fields["entity_type"].annotation))
 

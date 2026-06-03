@@ -29,7 +29,7 @@ from vweb.lib.api import (
     get_characters_for_campaign,
 )
 from vweb.lib.cache.dicerolls import recent
-from vweb.lib.global_context import GlobalContext
+from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
     from vclient.models import Character

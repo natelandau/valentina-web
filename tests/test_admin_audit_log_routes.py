@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from flask import Flask
     from flask.testing import FlaskClient
 
-    from vweb.lib.global_context import GlobalContext
+    from vweb.lib.cache.global_context import GlobalContext
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def admin_context(mock_global_context: GlobalContext) -> GlobalContext:
 @pytest.fixture
 def _mock_audit_api(mocker, admin_context: GlobalContext, fake_vclient) -> None:
     """Set up mocks for audit log page rendering."""
-    mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
+    mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
 
     fake_vclient.set_response(
         Routes.COMPANIES_AUDIT_LOGS_LIST,
@@ -62,7 +62,7 @@ class TestAuditLogAccessControl:
     ) -> None:
         """Verify non-admin users are redirected away from /admin."""
         mock_global_context.users[0].role = "PLAYER"
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=mock_global_context)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=mock_global_context)
 
         response = client.get("/admin")
 

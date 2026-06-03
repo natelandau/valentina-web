@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import fetch_campaign_or_404, get_user_campaign_experience
-from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import is_storyteller
 from vweb.lib.jinja import hx_redirect
 from vweb.routes.character_create import bp
@@ -211,7 +210,7 @@ class SingleAutogenFormView(MethodView):
                 **options,
             )
 
-        clear_global_context_cache(session["company_id"], session["user_id"])
+        cache.global_context.clear(session["company_id"], session["user_id"])
         flash("Character created successfully!", "success")
         return hx_redirect(url_for("character_view.character", character_id=new_char.id))
 

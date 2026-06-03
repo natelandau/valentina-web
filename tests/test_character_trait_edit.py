@@ -25,7 +25,7 @@ class TestCharacterTraitsViewPermissions:
             user_player_id=None,
         )
         ctx.characters = [npc]
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
         traits_svc = MagicMock()
         mocker.patch(

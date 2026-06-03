@@ -56,7 +56,7 @@ class TestCharacterDelete:
         mock_svc = mocker.patch(
             "vweb.routes.character_view.views.sync_characters_service",
         ).return_value
-        mocker.patch("vweb.routes.character_view.views.clear_global_context_cache")
+        mocker.patch("vweb.lib.cache.global_context.clear")
 
         csrf = get_csrf(client)
 
@@ -119,7 +119,7 @@ class TestCharacterDelete:
         # Given a mocked vclient delete
         char, _ = mock_character_lookup
         mocker.patch("vweb.routes.character_view.views.sync_characters_service")
-        mock_clear = mocker.patch("vweb.routes.character_view.views.clear_global_context_cache")
+        mock_clear = mocker.patch("vweb.lib.cache.global_context.clear")
 
         csrf = get_csrf(client)
 

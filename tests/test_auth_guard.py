@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from vclient.testing import UserFactory
 
-from vweb.lib.global_context import GlobalContext
+from vweb.lib.cache.global_context import GlobalContext
 
 
 class TestRequireAuth:
@@ -68,7 +68,7 @@ class TestUnapprovedRedirect:
             campaigns=[],
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=unapproved_context)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=unapproved_context)
 
         client = app.test_client()
         with client.session_transaction() as sess:
@@ -98,7 +98,7 @@ class TestUnapprovedRedirect:
             campaigns=[],
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=unapproved_context)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=unapproved_context)
 
         client = app.test_client()
         with client.session_transaction() as sess:
@@ -125,7 +125,7 @@ class TestUnapprovedRedirect:
             campaigns=[],
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=unapproved_context)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=unapproved_context)
 
         client = app.test_client()
         with client.session_transaction() as sess:

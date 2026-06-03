@@ -197,8 +197,6 @@ def validate_and_submit_experience(
     """
     from vclient import sync_users_service
 
-    from vweb.lib.global_context import clear_global_context_cache
-
     errors: list[str] = []
 
     try:
@@ -227,5 +225,5 @@ def validate_and_submit_experience(
     if cp_amount > 0:
         svc.add_cool_points(user_id, campaign_id, amount=cp_amount)
 
-    clear_global_context_cache(session["company_id"], session["user_id"])
+    cache.global_context.clear(session["company_id"], session["user_id"])
     return []

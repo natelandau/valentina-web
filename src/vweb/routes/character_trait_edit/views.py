@@ -22,7 +22,6 @@ from vclient.models import TraitCreate
 from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import get_character_and_campaign
-from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_edit_character, can_edit_traits_free
 from vweb.lib.jinja import hx_redirect
 
@@ -213,7 +212,7 @@ class CharacterTraitsView(MethodView):
                     get_method_url=get_method_url,
                 )
                 cache.character_sheet.clear(character.id)
-                clear_global_context_cache(session["company_id"], session["user_id"])
+                cache.global_context.clear(session["company_id"], session["user_id"])
                 return result
 
             if trait_id.startswith("ADD_UNASSIGNED"):
@@ -233,7 +232,7 @@ class CharacterTraitsView(MethodView):
 
                 flash(f"Assigned {trait.name}", "success")
                 cache.character_sheet.clear(character.id)
-                clear_global_context_cache(session["company_id"], session["user_id"])
+                cache.global_context.clear(session["company_id"], session["user_id"])
                 return hx_redirect(get_method_url)
 
             if trait_id.startswith("CUSTOM_"):
@@ -254,7 +253,7 @@ class CharacterTraitsView(MethodView):
 
                 flash(f"Created {new_trait_name}", "success")
                 cache.character_sheet.clear(character.id)
-                clear_global_context_cache(session["company_id"], session["user_id"])
+                cache.global_context.clear(session["company_id"], session["user_id"])
                 return hx_redirect(get_method_url)
 
             result = self._update_trait_value(
@@ -264,7 +263,7 @@ class CharacterTraitsView(MethodView):
                 get_method_url=get_method_url,
             )
             cache.character_sheet.clear(character.id)
-            clear_global_context_cache(session["company_id"], session["user_id"])
+            cache.global_context.clear(session["company_id"], session["user_id"])
             return result
 
         flash("Something went wrong", "error")

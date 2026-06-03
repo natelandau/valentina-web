@@ -9,7 +9,7 @@ import pytest
 from flask import g
 from vclient.testing import CharacterFactory, CompanyFactory, UserFactory
 
-from vweb.lib.global_context import GlobalContext
+from vweb.lib.cache.global_context import GlobalContext
 from vweb.lib.guards import (
     can_edit_character,
     can_edit_traits_free,
