@@ -9,8 +9,8 @@ from flask import abort, g, session
 from vclient import sync_dicerolls_service
 from vclient.exceptions import APIError
 
-from vweb.extensions import cache
-from vweb.lib.blueprint_cache import get_all_traits
+from vweb.extensions import cache as flask_cache
+from vweb.lib import cache
 from vweb.lib.campaign_content_cache import get_books_for_campaign, get_chapters_for_book
 
 _DICEROLLS_CACHE_TTL_SECONDS = 30
@@ -236,7 +236,7 @@ def get_recent_player_dicerolls(
         f"dicerolls:{company_id}:{requesting_user_id}:"
         f"{campaign_id}:{character_id}:{user_id}:{limit}"
     )
-    cached = cache.get(cache_key)
+    cached = flask_cache.get(cache_key)
     if cached is not None:
         return cached
 
@@ -253,7 +253,7 @@ def get_recent_player_dicerolls(
 
     ctx = g.global_context
     characters_by_id: dict[str, Character] = {c.id: c for c in ctx.characters}
-    all_traits = get_all_traits()
+    all_traits = cache.blueprint.traits()
 
     displays: list[DiceRollDisplay] = []
     for roll in page.items:
@@ -277,7 +277,7 @@ def get_recent_player_dicerolls(
                 comment=roll.comment,
             )
         )
-    cache.set(cache_key, displays, timeout=_DICEROLLS_CACHE_TTL_SECONDS)
+    flask_cache.set(cache_key, displays, timeout=_DICEROLLS_CACHE_TTL_SECONDS)
     return displays
 
 

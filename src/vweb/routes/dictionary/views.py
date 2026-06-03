@@ -11,7 +11,6 @@ from vclient.exceptions import APIError
 
 from vweb import catalog
 from vweb.lib import cache
-from vweb.lib.blueprint_cache import get_subcategory, get_trait
 from vweb.lib.jinja import htmx_response
 from vweb.routes.dictionary.services import create_term as svc_create_term
 from vweb.routes.dictionary.services import delete_term as svc_delete_term
@@ -78,7 +77,7 @@ class TermDetailView(MethodView):
             and term.source_type == "trait"
         ):
             # get the trait from the trait service
-            trait = get_trait(term.source_id)
+            trait = cache.blueprint.trait(term.source_id)
 
         subcategory = None
         if (
@@ -87,7 +86,7 @@ class TermDetailView(MethodView):
             and term.source_type == "trait_subcategory"
         ):
             # get the trait subcategory from the trait service
-            subcategory = get_subcategory(term.source_id)
+            subcategory = cache.blueprint.subcategory(term.source_id)
 
         is_htmx = request.headers.get("HX-Request")
         if is_htmx:

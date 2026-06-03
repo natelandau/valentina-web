@@ -255,7 +255,7 @@ class TestGetRecentPlayerDicerolls:
 
         fake_vclient.set_response(Routes.DICEROLLS_LIST, items=[newer, older])
         mocker.patch(
-            "vweb.lib.api.get_all_traits",
+            "vweb.lib.cache.blueprint.traits",
             return_value={"t-str": strength, "t-brawl": brawl},
         )
 
@@ -279,7 +279,7 @@ class TestGetRecentPlayerDicerolls:
         campaign = CampaignFactory.build(id="camp-1")
         user = UserFactory.build(id="user-1", role="PLAYER")
 
-        mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+        mocker.patch("vweb.lib.cache.blueprint.traits", return_value={})
 
         page = mocker.MagicMock(items=[])
         fake_service = mocker.MagicMock()
@@ -326,7 +326,7 @@ class TestGetRecentPlayerDicerolls:
             page = mocker.MagicMock()
             page.items = []
             svc.return_value.get_page.return_value = page
-            mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+            mocker.patch("vweb.lib.cache.blueprint.traits", return_value={})
 
             # When called twice with the same scope
             get_recent_player_dicerolls(campaign_id="camp-1", limit=25)
@@ -350,7 +350,7 @@ class TestGetRecentPlayerDicerolls:
             page = mocker.MagicMock()
             page.items = []
             svc.return_value.get_page.return_value = page
-            mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+            mocker.patch("vweb.lib.cache.blueprint.traits", return_value={})
 
             # When called for two different requesting users in the same scope
             get_recent_player_dicerolls(campaign_id="camp-1", limit=25)
@@ -382,7 +382,7 @@ class TestGetRecentPlayerDicerollsScopes:
             result=make_dice_roll_result(),
         )
         fake_vclient.set_response(Routes.DICEROLLS_LIST, items=[roll])
-        mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+        mocker.patch("vweb.lib.cache.blueprint.traits", return_value={})
 
         ctx = build_global_context(
             user_role=user.role, user=user, campaign=campaign, characters=[npc_char]
@@ -413,7 +413,7 @@ class TestGetRecentPlayerDicerollsScopes:
             "vweb.lib.api.sync_dicerolls_service",
             autospec=True,
         ).return_value = fake_service
-        mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+        mocker.patch("vweb.lib.cache.blueprint.traits", return_value={})
 
         # When requesting rolls scoped by user_id
         with app.test_request_context():

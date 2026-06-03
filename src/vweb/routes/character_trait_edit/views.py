@@ -20,8 +20,8 @@ from vclient.exceptions import AuthorizationError, ConflictError, ValidationErro
 from vclient.models import TraitCreate
 
 from vweb import catalog
+from vweb.lib import cache
 from vweb.lib.api import get_character_and_campaign
-from vweb.lib.blueprint_cache import get_trait as get_blueprint_trait
 from vweb.lib.character_sheet import CharacterSheetService
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_edit_character, can_edit_traits_free
@@ -221,7 +221,7 @@ class CharacterTraitsView(MethodView):
             if trait_id.startswith("ADD_UNASSIGNED"):
                 new_trait_id = value
 
-                trait = get_blueprint_trait(new_trait_id)
+                trait = cache.blueprint.trait(new_trait_id)
                 if trait is None:
                     flash("Trait not found", "error")
                     return hx_redirect(get_method_url)
