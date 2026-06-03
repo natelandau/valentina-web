@@ -31,7 +31,6 @@ from vweb.lib.guards import (
     is_self,
     is_storyteller,
 )
-from vweb.routes.dictionary.cache import get_all_terms
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -165,7 +164,7 @@ def link_terms(
     if excludes is None:
         excludes = []
 
-    for term in get_all_terms():
+    for term in cache.dictionary.terms():
         if term.term.lower() in [x.lower() for x in excludes]:
             continue
 

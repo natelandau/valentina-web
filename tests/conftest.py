@@ -141,7 +141,7 @@ def _mock_api(mocker, mock_global_context) -> None:
     mocker.patch("vweb.lib.hooks.load_global_context", return_value=mock_global_context)
     mocker.patch("vweb.lib.hooks.clear_global_context_cache")
 
-    mock_dict_svc = mocker.patch("vweb.routes.dictionary.cache.sync_dictionary_service")
+    mock_dict_svc = mocker.patch("vweb.lib.cache.dictionary.sync_dictionary_service")
     mock_dict_svc.return_value.list_all.return_value = []
 
     # Pages now fetch books/chapters lazily via campaign_content_cache; default to

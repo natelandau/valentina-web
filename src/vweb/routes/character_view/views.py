@@ -17,6 +17,7 @@ from flask.views import MethodView
 from vclient import sync_character_blueprint_service, sync_characters_service
 
 from vweb import catalog
+from vweb.lib import cache
 from vweb.lib.api import get_character_and_campaign
 from vweb.lib.character_sheet import CharacterSheetService
 from vweb.lib.global_context import clear_global_context_cache
@@ -25,7 +26,6 @@ from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
 from vweb.lib.jinja import htmx_response, hx_redirect
 from vweb.routes.character_view.views_inventory import CharacterInventoryTableView
 from vweb.routes.character_view.views_notes import CharacterNotesTableView
-from vweb.routes.dictionary.cache import get_all_terms
 
 if TYPE_CHECKING:
     from vclient.models import Campaign, Character
@@ -67,7 +67,7 @@ class CharacterView(MethodView):
                 svc = CharacterSheetService(character=character, requesting_user=user)
                 full_sheet = svc.get_full_sheet()
                 data["full_sheet"] = full_sheet
-                data["dictionary_terms"] = get_all_terms()
+                data["dictionary_terms"] = cache.dictionary.terms()
             case "profile":
                 data["concept"] = (
                     sync_character_blueprint_service(company_id=session["company_id"]).get_concept(
@@ -76,7 +76,7 @@ class CharacterView(MethodView):
                     if character.concept_id
                     else None
                 )
-                data["dictionary_terms"] = get_all_terms()
+                data["dictionary_terms"] = cache.dictionary.terms()
             case "inventory" | "notes":
                 # Both are CRUD-table tabs; the table fetches its own data lazily.
                 pass

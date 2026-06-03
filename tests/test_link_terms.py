@@ -16,8 +16,8 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def _mock_terms(mocker) -> MagicMock:
-    """Patch get_all_terms to return an empty list by default."""
-    return mocker.patch("vweb.lib.jinja.get_all_terms", return_value=[])
+    """Patch dictionary terms to return an empty list by default."""
+    return mocker.patch("vweb.lib.cache.dictionary.terms", return_value=[])
 
 
 @pytest.fixture
