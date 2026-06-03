@@ -31,7 +31,6 @@ from vweb.lib.guards import (
     is_self,
     is_storyteller,
 )
-from vweb.lib.system_status_cache import get_system_health
 from vweb.routes.dictionary.cache import get_all_terms
 
 if TYPE_CHECKING:
@@ -358,7 +357,7 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
     jinja_globals["get_all_traits"] = get_all_traits
     jinja_globals["character_type_label"] = character_type_label
     jinja_globals["get_options"] = cache.options.get
-    jinja_globals["get_system_health"] = get_system_health
+    jinja_globals["get_system_health"] = cache.system_status.get
     jinja_globals["MAX_IMAGE_SIZE"] = MAX_IMAGE_SIZE
     jinja_globals["is_admin"] = is_admin
     jinja_globals["is_approved_user"] = is_approved_user

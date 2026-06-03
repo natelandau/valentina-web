@@ -153,7 +153,7 @@ def _mock_api(mocker, mock_global_context) -> None:
 
     # The footer renders system health for approved users, so every page render
     # would otherwise hit the live health endpoint.
-    mock_system_svc = mocker.patch("vweb.lib.system_status_cache.sync_system_service")
+    mock_system_svc = mocker.patch("vweb.lib.cache.system_status.sync_system_service")
     mock_system_svc.return_value.health.return_value = SystemHealthFactory.build()
 
     mocker.patch(

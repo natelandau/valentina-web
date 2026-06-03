@@ -10,7 +10,7 @@ from vclient.models import SystemHealth
 from vclient.testing import SystemHealthFactory
 
 from tests.helpers import make_cache_store_mock
-from vweb.lib.system_status_cache import clear_system_status_cache, get_system_health
+from vweb.lib.cache.system_status import clear, get
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -18,8 +18,8 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def mock_cache_store(mocker) -> dict:
-    """Provide a dict-backed cache mock for system_status_cache."""
-    return make_cache_store_mock(mocker, "vweb.lib.system_status_cache.cache")
+    """Provide a dict-backed cache mock for system_status cache."""
+    return make_cache_store_mock(mocker, "vweb.lib.cache.base.cache")
 
 
 @pytest.fixture
@@ -27,24 +27,24 @@ def mock_system_svc(mocker) -> MagicMock:
     """Mock the sync_system_service factory."""
     svc = MagicMock()
     svc.health.return_value = SystemHealthFactory.build(version="1.0.0")
-    mocker.patch("vweb.lib.system_status_cache.sync_system_service", return_value=svc)
+    mocker.patch("vweb.lib.cache.system_status.sync_system_service", return_value=svc)
     return svc
 
 
 class TestGetSystemHealth:
-    """Tests for get_system_health()."""
+    """Tests for get()."""
 
     def test_fetches_from_api_on_cache_miss(
         self, app: Flask, mock_cache_store: dict, mock_system_svc: MagicMock
     ) -> None:
-        """Verify get_system_health calls the API when the cache is empty."""
+        """Verify get calls the API when the cache is empty."""
         # Given an empty cache
         # When fetching system health
         with app.test_request_context("/"):
-            result = get_system_health()
+            result = get()
 
         # Then a SystemHealth is returned and the endpoint is hit once with no
-        # scoping args — proving the single call is shared across all users.
+        # scoping args -- proving the single call is shared across all users.
         assert isinstance(result, SystemHealth)
         assert result.version == "1.0.0"
         mock_system_svc.health.assert_called_once_with()
@@ -56,8 +56,8 @@ class TestGetSystemHealth:
         # Given one populated fetch
         # When fetching twice
         with app.test_request_context("/"):
-            first = get_system_health()
-            second = get_system_health()
+            first = get()
+            second = get()
 
         # Then both share the cached instance and the API was called once
         assert first is second
@@ -69,7 +69,7 @@ class TestGetSystemHealth:
         """Verify the value is stored under the shared 30-second key."""
         # When fetching system health
         with app.test_request_context("/"):
-            get_system_health()
+            get()
 
         # Then it is stored under the single global key
         assert "system_status" in mock_cache_store
@@ -77,7 +77,7 @@ class TestGetSystemHealth:
 
 
 class TestClearSystemStatusCache:
-    """Tests for clear_system_status_cache()."""
+    """Tests for clear()."""
 
     def test_forces_refetch_on_next_call(
         self, app: Flask, mock_cache_store: dict, mock_system_svc: MagicMock
@@ -91,12 +91,12 @@ class TestClearSystemStatusCache:
 
         with app.test_request_context("/"):
             # When fetching, clearing, then fetching again
-            first = get_system_health()
+            first = get()
             assert first.version == "1.0.0"
 
-            clear_system_status_cache()
+            clear()
 
-            second = get_system_health()
+            second = get()
             assert second.version == "2.0.0"
 
         # Then the API was called twice
