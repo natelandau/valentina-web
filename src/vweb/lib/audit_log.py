@@ -309,7 +309,7 @@ def get_audit_log_page(  # noqa: PLR0913
     if cached is not None:
         return cached
 
-    page = sync_companies_service().get_audit_log_page(  # ty:ignore[invalid-return-type]
+    page = sync_companies_service().get_audit_log_page(
         company_id,
         limit=limit,
         offset=offset,
@@ -325,4 +325,4 @@ def get_audit_log_page(  # noqa: PLR0913
         date_to=datetime.fromisoformat(date_to) if date_to else None,
     )
     cache.set(cache_key, page, timeout=_AUDIT_LOG_CACHE_TTL_SECONDS)
-    return page
+    return page  # ty:ignore[invalid-return-type]
