@@ -7,11 +7,12 @@ Consumers filter client-side by game_version, character_class, etc.
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from flask import session
 from vclient import sync_character_blueprint_service
 
+from vweb.constants import CACHE_BLUEPRINT_TTL
 from vweb.extensions import cache
 
 if TYPE_CHECKING:
@@ -19,9 +20,8 @@ if TYPE_CHECKING:
 
     from vclient.models import Trait, TraitSubcategory
 
-_CACHE_BLUEPRINT_ALL_TRAITS_KEY: str = "bp_all_traits"
-_CACHE_BLUEPRINT_TTL: int = 60 * 60  # 1 hour
-_CACHE_BLUEPRINT_ALL_SHEET_SECTIONS_KEY: str = "bp_all_sheet_sections"
+_CACHE_BLUEPRINT_ALL_TRAITS_KEY: Final[str] = "bp_all_traits"
+_CACHE_BLUEPRINT_ALL_SHEET_SECTIONS_KEY: Final[str] = "bp_all_sheet_sections"
 
 # Single-flight locks: on a cold cache, collapse concurrent fetches of the shared
 # blueprint dictionaries into one instead of each request re-fetching all traits.
@@ -54,7 +54,7 @@ def _get_cached_dict[T](
         if cached is not None:
             return cached
         result = fetch()
-        cache.set(cache_key, result, timeout=_CACHE_BLUEPRINT_TTL)
+        cache.set(cache_key, result, timeout=CACHE_BLUEPRINT_TTL)
         return result
 
 
@@ -116,5 +116,9 @@ def get_trait(trait_id: str) -> Trait | None:
 
 
 def clear_blueprint_cache() -> None:
-    """Remove the cached traits dict, forcing a fresh API fetch on next access."""
+    """Remove the cached blueprint dicts, forcing a fresh API fetch on next access.
+
+    Clears both the traits and the subcategory (sheet-section) caches.
+    """
     cache.delete(_CACHE_BLUEPRINT_ALL_TRAITS_KEY)
+    cache.delete(_CACHE_BLUEPRINT_ALL_SHEET_SECTIONS_KEY)

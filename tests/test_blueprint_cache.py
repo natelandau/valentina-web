@@ -147,6 +147,40 @@ class TestClearBlueprintCache:
 
         assert mock_bp_svc.list_all_traits.call_count == 2
 
+    def test_clears_both_traits_and_subcategories(self, app, mock_cache_store, mock_bp_svc) -> None:
+        """Verify clear_blueprint_cache evicts both the traits and subcategory cache keys."""
+        # Given both caches are populated
+        traits_v1 = TraitFactory.batch(2)
+        traits_v2 = TraitFactory.batch(3)
+        mock_bp_svc.list_all_traits.side_effect = [traits_v1, traits_v2]
+
+        subcats_v1 = [MagicMock(id="sc-1")]
+        subcats_v2 = [MagicMock(id="sc-2"), MagicMock(id="sc-3")]
+        mock_bp_svc.list_all_subcategories.side_effect = [subcats_v1, subcats_v2]
+
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+
+            # Populate both caches
+            first_traits = get_all_traits()
+            first_subcats = get_all_subcategories()
+            assert len(first_traits) == 2
+            assert len(first_subcats) == 1
+
+            # When the cache is cleared
+            clear_blueprint_cache()
+
+            # Then both caches are re-fetched on next access
+            second_traits = get_all_traits()
+            second_subcats = get_all_subcategories()
+            assert len(second_traits) == 3
+            assert len(second_subcats) == 2
+
+        assert mock_bp_svc.list_all_traits.call_count == 2
+        assert mock_bp_svc.list_all_subcategories.call_count == 2
+
 
 class TestGetAllSubcategories:
     """Tests for get_all_subcategories()."""
