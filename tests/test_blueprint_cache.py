@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import threading
 from unittest.mock import MagicMock
 
 import pytest
 from vclient.testing import TraitFactory
 
 from tests.helpers import make_cache_store_mock
-from vweb.lib.blueprint_cache import clear_blueprint_cache, get_all_traits, get_trait
+from vweb.lib.blueprint_cache import (
+    clear_blueprint_cache,
+    get_all_subcategories,
+    get_all_traits,
+    get_trait,
+)
 
 
 @pytest.fixture
@@ -140,3 +146,107 @@ class TestClearBlueprintCache:
             assert len(second) == 3
 
         assert mock_bp_svc.list_all_traits.call_count == 2
+
+
+class TestGetAllSubcategories:
+    """Tests for get_all_subcategories()."""
+
+    def test_fetches_from_api_on_cache_miss(self, app, mock_cache_store, mock_bp_svc) -> None:
+        """Verify get_all_subcategories calls the API when the cache is empty."""
+        # Given two subcategories returned by the API
+        subcategories = [MagicMock(id="sc-1"), MagicMock(id="sc-2")]
+        mock_bp_svc.list_all_subcategories.return_value = subcategories
+
+        # When fetching all subcategories
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            result = get_all_subcategories()
+
+        # Then the result is a dict keyed by subcategory ID
+        assert len(result) == 2
+        for subcategory in subcategories:
+            assert result[subcategory.id] is subcategory
+        mock_bp_svc.list_all_subcategories.assert_called_once()
+
+    def test_returns_cached_on_hit(self, app, mock_cache_store, mock_bp_svc) -> None:
+        """Verify get_all_subcategories returns the cached dict without re-fetching."""
+        # Given subcategories cached from a first call
+        mock_bp_svc.list_all_subcategories.return_value = [MagicMock(id="sc-1")]
+
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            first = get_all_subcategories()
+            second = get_all_subcategories()
+
+        # Then the API is called only once and both results are the same dict
+        assert first is second
+        mock_bp_svc.list_all_subcategories.assert_called_once()
+
+
+class TestSingleFlight:
+    """Tests that concurrent cold-cache fetches collapse into one API call."""
+
+    def test_single_flight_collapses_concurrent_trait_fetches(self, app, mocker) -> None:
+        """Verify two concurrent cold fetches of all traits trigger exactly one API call."""
+        from vweb.extensions import cache
+
+        # Given a real (dict-pickling) cache cleared to a cold state
+        with app.app_context():
+            cache.clear()
+
+        traits = TraitFactory.batch(2)
+
+        # Given a fetch that blocks inside the lock so the second thread must queue behind it
+        fetch_count = 0
+        entered = threading.Event()
+        release = threading.Event()
+
+        def blocking_list_all_traits() -> list:
+            nonlocal fetch_count
+            fetch_count += 1
+            entered.set()
+            # Block so the second thread is forced to wait on the single-flight lock,
+            # making the race deterministic rather than timing-dependent.
+            release.wait(timeout=5)
+            return traits
+
+        svc = MagicMock()
+        svc.list_all_traits.side_effect = blocking_list_all_traits
+        mocker.patch("vweb.lib.blueprint_cache.sync_character_blueprint_service", return_value=svc)
+
+        results: dict[str, dict] = {}
+
+        def worker(name: str) -> None:
+            with app.test_request_context("/"):
+                from flask import session
+
+                session["company_id"] = "test-company-id"
+                results[name] = get_all_traits()
+
+        # When thread A enters the rebuild and blocks, then thread B starts and queues
+        thread_a = threading.Thread(target=worker, args=("a",))
+        thread_a.start()
+        assert entered.wait(timeout=5), "thread A never entered list_all_traits"
+
+        thread_b = threading.Thread(target=worker, args=("b",))
+        thread_b.start()
+        # Give B a moment to reach and block on the single-flight lock before releasing A.
+        threading.Event().wait(0.1)
+        release.set()
+
+        thread_a.join(timeout=5)
+        thread_b.join(timeout=5)
+
+        # Then both threads finished without hanging
+        assert not thread_a.is_alive(), "thread A hung"
+        assert not thread_b.is_alive(), "thread B hung"
+
+        # Then exactly one fetch ran; thread B reused the built dict via the double-check.
+        # SimpleCache pickles on set/get, so B's copy is equal but not identical.
+        assert fetch_count == 1
+        assert results["a"] == results["b"]
+        assert len(results["a"]) == 2
