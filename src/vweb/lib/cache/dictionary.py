@@ -1,7 +1,8 @@
-"""Global dictionary term cache.
+"""Per-company dictionary term cache.
 
-All dictionary terms are fetched once and cached as a sorted list. Consumers filter
-client-side for search results.
+All of a company's dictionary terms are fetched once and cached as a sorted list.
+The endpoint is company-scoped, so the cache key includes the company id. Consumers
+filter client-side for search results.
 """
 
 from __future__ import annotations
@@ -20,8 +21,12 @@ if TYPE_CHECKING:
 
 # v2: the cached value now bundles an id index alongside the sorted list, so an
 # old list-shaped value from a rolling deploy must not be read under this key.
-_CACHE_DICTIONARY_KEY: Final[str] = "dictionary_terms_v2"
+_CACHE_DICTIONARY_PREFIX: Final[str] = "dictionary_terms_v2:"
 _STRATEGY = base.PureTTL(ttl=CACHE_DICTIONARY_TTL)
+
+
+def _key() -> str:
+    return f"{_CACHE_DICTIONARY_PREFIX}{session['company_id']}"
 
 
 @dataclass(frozen=True)
@@ -33,7 +38,7 @@ class _DictionaryCache:
 
 
 def _load() -> _DictionaryCache:
-    return base.cached_fetch(_CACHE_DICTIONARY_KEY, _fetch, _STRATEGY)
+    return base.cached_fetch(_key(), _fetch, _STRATEGY)
 
 
 def terms() -> list[DictionaryTerm]:
@@ -60,8 +65,8 @@ def search(query: str, *, include_synonyms: bool = True) -> list[DictionaryTerm]
 
 
 def clear() -> None:
-    """Remove the cached terms, forcing a fresh API fetch on next access."""
-    base.clear_key(_CACHE_DICTIONARY_KEY)
+    """Remove the current company's cached terms, forcing a fresh API fetch."""
+    base.clear_key(_key())
 
 
 def _fetch() -> _DictionaryCache:

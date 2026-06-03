@@ -20,15 +20,23 @@ from vweb.lib.cache import base
 if TYPE_CHECKING:
     from vclient.models import Trait, TraitSubcategory
 
-_CACHE_BLUEPRINT_ALL_TRAITS_KEY: Final[str] = "bp_all_traits"
-_CACHE_BLUEPRINT_ALL_SHEET_SECTIONS_KEY: Final[str] = "bp_all_sheet_sections"
+_CACHE_BLUEPRINT_ALL_TRAITS_PREFIX: Final[str] = "bp_all_traits:"
+_CACHE_BLUEPRINT_ALL_SHEET_SECTIONS_PREFIX: Final[str] = "bp_all_sheet_sections:"
 
 _STRATEGY = base.PureTTL(ttl=CACHE_BLUEPRINT_TTL)
 
 
+def _traits_key() -> str:
+    return f"{_CACHE_BLUEPRINT_ALL_TRAITS_PREFIX}{session['company_id']}"
+
+
+def _sections_key() -> str:
+    return f"{_CACHE_BLUEPRINT_ALL_SHEET_SECTIONS_PREFIX}{session['company_id']}"
+
+
 def traits() -> dict[str, Trait]:
-    """Return all blueprint traits keyed by trait ID (1-hour TTL, shared)."""
-    return base.cached_fetch(_CACHE_BLUEPRINT_ALL_TRAITS_KEY, _fetch_traits, _STRATEGY)
+    """Return the company's blueprint traits keyed by trait ID (1-hour TTL, per company)."""
+    return base.cached_fetch(_traits_key(), _fetch_traits, _STRATEGY)
 
 
 def trait(trait_id: str) -> Trait | None:
@@ -44,10 +52,8 @@ def trait(trait_id: str) -> Trait | None:
 
 
 def subcategories() -> dict[str, TraitSubcategory]:
-    """Return all blueprint sheet sections keyed by section ID (1-hour TTL, shared)."""
-    return base.cached_fetch(
-        _CACHE_BLUEPRINT_ALL_SHEET_SECTIONS_KEY, _fetch_subcategories, _STRATEGY
-    )
+    """Return the company's blueprint sheet sections keyed by ID (1-hour TTL, per company)."""
+    return base.cached_fetch(_sections_key(), _fetch_subcategories, _STRATEGY)
 
 
 def subcategory(subcategory_id: str) -> TraitSubcategory | None:
@@ -63,8 +69,8 @@ def subcategory(subcategory_id: str) -> TraitSubcategory | None:
 
 
 def clear() -> None:
-    """Remove the cached blueprint dicts (traits + subcategories)."""
-    base.clear_key(_CACHE_BLUEPRINT_ALL_TRAITS_KEY, _CACHE_BLUEPRINT_ALL_SHEET_SECTIONS_KEY)
+    """Remove the current company's cached blueprint dicts (traits + subcategories)."""
+    base.clear_key(_traits_key(), _sections_key())
 
 
 def _fetch_traits() -> dict[str, Trait]:

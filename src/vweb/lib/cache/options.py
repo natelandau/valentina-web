@@ -1,7 +1,9 @@
-"""Global API options cache.
+"""Per-company API options cache.
 
 Fetch all enumerations and configuration values from the API's options endpoint
-and cache them as typed dataclasses. Shared across all users with a 1-hour TTL.
+and cache them as typed dataclasses. The endpoint is company-scoped, so the cache
+key includes the company id; values are shared across that company's users for a
+1-hour TTL.
 """
 
 from __future__ import annotations
@@ -15,8 +17,12 @@ from vclient import sync_options_service
 from vweb.constants import CACHE_OPTIONS_TTL
 from vweb.lib.cache import base
 
-_CACHE_OPTIONS_KEY: Final[str] = "api_options"
+_CACHE_OPTIONS_PREFIX: Final[str] = "api_options:"
 _STRATEGY = base.PureTTL(ttl=CACHE_OPTIONS_TTL)
+
+
+def _key() -> str:
+    return f"{_CACHE_OPTIONS_PREFIX}{session['company_id']}"
 
 
 @dataclass(frozen=True)
@@ -145,13 +151,13 @@ def _parse_options(raw: dict) -> ApiOptions:
 
 
 def get() -> ApiOptions:
-    """Return all API options, fetching from the API on cache miss (1-hour TTL, shared)."""
-    return base.cached_fetch(_CACHE_OPTIONS_KEY, _fetch, _STRATEGY)
+    """Return the company's API options, fetching on cache miss (1-hour TTL, per company)."""
+    return base.cached_fetch(_key(), _fetch, _STRATEGY)
 
 
 def clear() -> None:
-    """Remove the cached options, forcing a fresh API fetch on next access."""
-    base.clear_key(_CACHE_OPTIONS_KEY)
+    """Remove the cached options for the current company, forcing a fresh fetch."""
+    base.clear_key(_key())
 
 
 def _fetch() -> ApiOptions:

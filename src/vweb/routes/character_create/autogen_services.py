@@ -156,4 +156,6 @@ def fetch_form_options() -> dict:
             "werewolf_auspices": bp_svc.list_all_werewolf_auspices(),
         }
 
-    return cache.base.cached_fetch("form_options:character_create", _build, _FORM_OPTIONS_STRATEGY)
+    # Company-scoped: concepts/clans/tribes/auspices come from the company's blueprint.
+    key = f"form_options:character_create:{session['company_id']}"
+    return cache.base.cached_fetch(key, _build, _FORM_OPTIONS_STRATEGY)

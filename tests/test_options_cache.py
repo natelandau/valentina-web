@@ -177,8 +177,8 @@ class TestGet:
             session["company_id"] = "test-company-id"
             get()
 
-        assert "api_options" in mock_cache_store
-        assert isinstance(mock_cache_store["api_options"], ApiOptions)
+        assert "api_options:test-company-id" in mock_cache_store
+        assert isinstance(mock_cache_store["api_options:test-company-id"], ApiOptions)
 
 
 class TestClear:
