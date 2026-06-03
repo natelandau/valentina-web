@@ -10,6 +10,7 @@ from __future__ import annotations
 from vweb.lib.cache import (
     base,
     blueprint,
+    character_sheet,
     dicerolls,
     dictionary,
     options,
@@ -17,4 +18,13 @@ from vweb.lib.cache import (
     system_status,
 )
 
-__all__ = ["base", "blueprint", "dicerolls", "dictionary", "options", "statistics", "system_status"]
+__all__ = [
+    "base",
+    "blueprint",
+    "character_sheet",
+    "dicerolls",
+    "dictionary",
+    "options",
+    "statistics",
+    "system_status",
+]

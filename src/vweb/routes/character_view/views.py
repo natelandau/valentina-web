@@ -19,7 +19,6 @@ from vclient import sync_character_blueprint_service, sync_characters_service
 from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import get_character_and_campaign
-from vweb.lib.character_sheet import CharacterSheetService
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_edit_character
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
@@ -64,8 +63,7 @@ class CharacterView(MethodView):
 
         match section:
             case "sheet":
-                svc = CharacterSheetService(character=character, requesting_user=user)
-                full_sheet = svc.get_full_sheet()
+                full_sheet = cache.character_sheet.get(character.id, user.id)
                 data["full_sheet"] = full_sheet
                 data["dictionary_terms"] = cache.dictionary.terms()
             case "profile":

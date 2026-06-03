@@ -15,8 +15,8 @@ if TYPE_CHECKING:
     from werkzeug.wrappers.response import Response
 
 from vweb import catalog
+from vweb.lib import cache
 from vweb.lib.api import fetch_campaign_or_404, get_user_campaign_experience
-from vweb.lib.character_sheet import CharacterSheetService
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import is_storyteller
 from vweb.lib.jinja import hx_redirect
@@ -42,8 +42,7 @@ def build_characters_data(session_response: ChargenSessionResponse, user: User) 
     """
     characters_data = []
     for char in session_response.characters:
-        sheet_svc = CharacterSheetService(char, user)
-        full_sheet = sheet_svc.get_full_sheet()
+        full_sheet = cache.character_sheet.get(char.id, user.id)
         characters_data.append(
             {
                 "character": char,

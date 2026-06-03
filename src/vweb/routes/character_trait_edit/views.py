@@ -22,7 +22,6 @@ from vclient.models import TraitCreate
 from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import get_character_and_campaign
-from vweb.lib.character_sheet import CharacterSheetService
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_edit_character, can_edit_traits_free
 from vweb.lib.jinja import hx_redirect
@@ -171,8 +170,9 @@ class CharacterTraitsView(MethodView):
             self.xp_current = campaign_experience.xp_current if campaign_experience else 0
             self.xp_total = campaign_experience.xp_total if campaign_experience else 0
 
-        sheet_svc = CharacterSheetService(character=character, requesting_user=requesting_user)
-        full_sheet = sheet_svc.get_full_sheet(include_available_traits=True)
+        full_sheet = cache.character_sheet.get(
+            character.id, requesting_user.id, include_available_traits=True
+        )
 
         return catalog.render(
             "character_trait_edit.Main",
@@ -205,8 +205,6 @@ class CharacterTraitsView(MethodView):
             character_id=character.id,
             company_id=session["company_id"],
         )
-        sheet_svc = CharacterSheetService(character=character, requesting_user=requesting_user)
-
         for trait_id, value in request.form.items():
             if value == "DELETE":
                 result = self._delete_trait(
@@ -214,7 +212,7 @@ class CharacterTraitsView(MethodView):
                     trait_id=trait_id,
                     get_method_url=get_method_url,
                 )
-                sheet_svc.clear_cache()
+                cache.character_sheet.clear(character.id)
                 clear_global_context_cache(session["company_id"], session["user_id"])
                 return result
 
@@ -234,7 +232,7 @@ class CharacterTraitsView(MethodView):
                     return hx_redirect(get_method_url)
 
                 flash(f"Assigned {trait.name}", "success")
-                sheet_svc.clear_cache()
+                cache.character_sheet.clear(character.id)
                 clear_global_context_cache(session["company_id"], session["user_id"])
                 return hx_redirect(get_method_url)
 
@@ -255,7 +253,7 @@ class CharacterTraitsView(MethodView):
                     return hx_redirect(get_method_url)
 
                 flash(f"Created {new_trait_name}", "success")
-                sheet_svc.clear_cache()
+                cache.character_sheet.clear(character.id)
                 clear_global_context_cache(session["company_id"], session["user_id"])
                 return hx_redirect(get_method_url)
 
@@ -265,7 +263,7 @@ class CharacterTraitsView(MethodView):
                 value=value,
                 get_method_url=get_method_url,
             )
-            sheet_svc.clear_cache()
+            cache.character_sheet.clear(character.id)
             clear_global_context_cache(session["company_id"], session["user_id"])
             return result
 

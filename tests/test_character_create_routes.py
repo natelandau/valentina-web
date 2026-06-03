@@ -1,12 +1,12 @@
 """Tests for character creation routes."""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock
 
 from vclient.exceptions import APIError
 from vclient.testing import (
     CharacterConceptFactory,
     CharacterFactory,
+    CharacterFullSheetFactory,
     ChargenSessionResponseFactory,
     VampireClanFactory,
     WerewolfAuspiceFactory,
@@ -207,13 +207,10 @@ class TestMultiAutogenView:
             "vweb.routes.character_create.autogen_views.start_session",
             return_value=session_response,
         )
-        mock_sheet_cls = mocker.patch(
-            "vweb.routes.character_create.picker_views.CharacterSheetService"
+        mocker.patch(
+            "vweb.lib.cache.character_sheet.get",
+            return_value=CharacterFullSheetFactory.build(),
         )
-        mock_instance = MagicMock()
-        mock_instance.build_sheet_top.return_value = {"Class": "Vampire"}
-        mock_instance.build_sheet_traits.return_value = []
-        mock_sheet_cls.return_value = mock_instance
 
         csrf = get_csrf(client)
 
@@ -426,13 +423,10 @@ class TestResumeSessionView:
             "vweb.routes.character_create.autogen_views.get_session",
             return_value=session_response,
         )
-        mock_sheet_cls = mocker.patch(
-            "vweb.routes.character_create.picker_views.CharacterSheetService"
+        mocker.patch(
+            "vweb.lib.cache.character_sheet.get",
+            return_value=CharacterFullSheetFactory.build(),
         )
-        mock_instance = MagicMock()
-        mock_instance.build_sheet_top.return_value = {"Class": "Vampire"}
-        mock_instance.get_character_traits.return_value = []
-        mock_sheet_cls.return_value = mock_instance
 
         # When resuming the session
         response = client.get(
@@ -481,13 +475,10 @@ class TestMultiAutogenPassesExpiresAt:
             "vweb.routes.character_create.autogen_views.start_session",
             return_value=session_response,
         )
-        mock_sheet_cls = mocker.patch(
-            "vweb.routes.character_create.picker_views.CharacterSheetService"
+        mocker.patch(
+            "vweb.lib.cache.character_sheet.get",
+            return_value=CharacterFullSheetFactory.build(),
         )
-        mock_instance = MagicMock()
-        mock_instance.build_sheet_top.return_value = {"Class": "Vampire"}
-        mock_instance.get_character_traits.return_value = []
-        mock_sheet_cls.return_value = mock_instance
 
         csrf = get_csrf(client)
 
