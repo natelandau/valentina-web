@@ -47,7 +47,7 @@ def _mock_chapter_lookup(mocker, mock_book, mock_campaign, mock_chapters) -> Non
         return_value=(mock_book, mock_campaign),
     )
 
-    def _fetch_chapter(book_id: str, chapter_id: str) -> CampaignChapter:
+    def _fetch_chapter(campaign_id: str, book_id: str, chapter_id: str) -> CampaignChapter:
         return next((c for c in mock_chapters if c.id == chapter_id), mock_chapters[1])
 
     mocker.patch(
@@ -138,6 +138,27 @@ class TestChapterCreate:
         assert response.status_code == 200
         assert b"book-chapters-card" in response.data
 
+    def test_create_clears_campaign_content_cache(
+        self, client, mocker, mock_campaign, mock_book
+    ) -> None:
+        """Verify creating a chapter invalidates the book and campaign book-list caches."""
+        # Given a privileged user and a patched cache-clear
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+        clear_cache = mocker.patch("vweb.routes.chapter.views.clear_campaign_content_cache")
+        csrf = get_csrf(client)
+
+        # When creating a chapter
+        client.post(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter",
+            data={"name": "New Chapter", "number": "4", "csrf_token": csrf},
+        )
+
+        # Then both the book's chapter cache and the campaign's book-list cache
+        # are invalidated so each book's num_chapters facet refreshes
+        _, kwargs = clear_cache.call_args
+        assert kwargs["book_id"] == mock_book.id
+        assert kwargs["campaign_id"] == mock_campaign.id
+
 
 @pytest.mark.usefixtures("_mock_chapter_lookup")
 class TestChapterDelete:
@@ -168,3 +189,24 @@ class TestChapterDelete:
             response.headers.get("HX-Redirect")
             == f"/campaign/{mock_campaign.id}/book/{mock_book.id}"
         )
+
+    def test_delete_clears_campaign_content_cache(
+        self, client, mocker, mock_campaign, mock_book
+    ) -> None:
+        """Verify deleting a chapter invalidates the book and campaign book-list caches."""
+        # Given a privileged user and a patched cache-clear
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+        clear_cache = mocker.patch("vweb.routes.chapter.views.clear_campaign_content_cache")
+        csrf = get_csrf(client)
+
+        # When deleting the chapter
+        client.delete(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-1",
+            headers={"X-CSRFToken": csrf},
+        )
+
+        # Then both the book's chapter cache and the campaign's book-list cache
+        # are invalidated so each book's num_chapters facet refreshes
+        _, kwargs = clear_cache.call_args
+        assert kwargs["book_id"] == mock_book.id
+        assert kwargs["campaign_id"] == mock_campaign.id

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+import pytest
 from flask import g, session
 from vclient.testing import (
     CampaignBookFactory,
@@ -17,13 +18,14 @@ from vclient.testing import (
     TraitFactory,
     UserFactory,
 )
+from werkzeug.exceptions import NotFound
 
 from tests.conftest import make_dice_roll_result
 from tests.helpers import build_global_context
 from vweb.lib.api import (
+    fetch_book_or_404,
+    fetch_chapter_or_404,
     get_active_campaign,
-    get_chapter_count_for_campaign,
-    get_chapters_for_book,
     get_characters_for_campaign,
     get_recent_player_dicerolls,
 )
@@ -41,7 +43,6 @@ def _build_ctx(campaigns: list) -> GlobalContext:
         company=company,
         users=[user],
         campaigns=campaigns,
-        books_by_campaign={c.id: [] for c in campaigns},
         characters_by_campaign={c.id: [] for c in campaigns},
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )
@@ -129,68 +130,86 @@ def test_get_active_campaign_returns_none_when_context_is_missing(app) -> None:
     assert result is None
 
 
-class TestChapterHelpers:
-    """Tests for chapter-reading helpers in lib/api.py."""
+class TestFetchBookOr404:
+    """Tests for the ``fetch_book_or_404`` lookup helper in lib/api.py."""
 
-    def test_get_chapters_for_book_returns_chapters_sorted_by_number(self, app) -> None:
-        """Verify chapters are returned in ascending number order."""
-        # Given a global context with out-of-order chapters for one book
-        ch3 = CampaignChapterFactory.build(id="ch3", book_id="b1", number=3)
-        ch1 = CampaignChapterFactory.build(id="ch1", book_id="b1", number=1)
-        ch2 = CampaignChapterFactory.build(id="ch2", book_id="b1", number=2)
-
-        ctx = build_global_context(
-            user_role="PLAYER",
-            chapters_by_book={"b1": [ch3, ch1, ch2]},
-        )
-
-        with app.test_request_context("/"):
-            g.global_context = ctx
-
-            # When fetching chapters for the book
-            result = get_chapters_for_book("b1")
-
-        # Then they are sorted by number
-        assert [c.id for c in result] == ["ch1", "ch2", "ch3"]
-
-    def test_get_chapters_for_book_returns_empty_list_for_unknown_book(self, app) -> None:
-        """Verify an empty list is returned when the book id is not in the context."""
-        ctx = build_global_context(user_role="PLAYER")
-
-        with app.test_request_context("/"):
-            g.global_context = ctx
-
-            result = get_chapters_for_book("missing")
-
-        assert result == []
-
-    def test_get_chapter_count_for_campaign_sums_across_books(self, app) -> None:
-        """Verify chapter count sums len of chapters across every book in the campaign."""
+    def test_returns_book_and_campaign_when_both_exist(self, app, mocker) -> None:
+        """Verify the helper returns the (book, campaign) pair when both exist."""
+        # Given a campaign in the context and a book returned by the lazy cache
         campaign = CampaignFactory.build(id="camp1")
-        book_a = CampaignBookFactory.build(id="book-a", campaign_id="camp1")
-        book_b = CampaignBookFactory.build(id="book-b", campaign_id="camp1")
-        chapters_a = [CampaignChapterFactory.build(book_id="book-a") for _ in range(3)]
-        chapters_b = [CampaignChapterFactory.build(book_id="book-b") for _ in range(2)]
-
-        ctx = build_global_context(
-            user_role="PLAYER",
-            campaign=campaign,
-            books_by_campaign={"camp1": [book_a, book_b]},
-            chapters_by_book={"book-a": chapters_a, "book-b": chapters_b},
-        )
+        book = CampaignBookFactory.build(id="b1", campaign_id="camp1")
+        ctx = build_global_context(user_role="PLAYER", campaign=campaign)
+        mocker.patch("vweb.lib.api.get_books_for_campaign", return_value=[book])
 
         with app.test_request_context("/"):
             g.global_context = ctx
-            assert get_chapter_count_for_campaign("camp1") == 5
 
-    def test_get_chapter_count_for_campaign_returns_zero_when_no_books(self, app) -> None:
-        """Verify zero is returned when the campaign has no books."""
+            # When fetching the book
+            result_book, result_campaign = fetch_book_or_404("camp1", "b1")
+
+        # Then both the book and campaign are returned
+        assert result_book.id == "b1"
+        assert result_campaign.id == "camp1"
+
+    def test_aborts_404_when_campaign_missing(self, app, mocker) -> None:
+        """Verify the helper aborts 404 when the campaign is not in the context."""
+        # Given a context whose campaign id does not match the request
+        ctx = build_global_context(user_role="PLAYER", campaign=CampaignFactory.build(id="other"))
+        mocker.patch("vweb.lib.api.get_books_for_campaign", return_value=[])
+
+        with app.test_request_context("/"):
+            g.global_context = ctx
+
+            # When fetching a book for an unknown campaign, then it aborts 404
+            with pytest.raises(NotFound):
+                fetch_book_or_404("camp1", "b1")
+
+    def test_aborts_404_when_book_missing(self, app, mocker) -> None:
+        """Verify the helper aborts 404 when the book is absent from the cache result."""
+        # Given a valid campaign but a book cache that omits the requested book
         campaign = CampaignFactory.build(id="camp1")
         ctx = build_global_context(user_role="PLAYER", campaign=campaign)
+        mocker.patch("vweb.lib.api.get_books_for_campaign", return_value=[])
 
         with app.test_request_context("/"):
             g.global_context = ctx
-            assert get_chapter_count_for_campaign("camp1") == 0
+
+            # When fetching a missing book, then it aborts 404
+            with pytest.raises(NotFound):
+                fetch_book_or_404("camp1", "b1")
+
+
+class TestFetchChapterOr404:
+    """Tests for the ``fetch_chapter_or_404`` lookup helper in lib/api.py."""
+
+    def test_returns_chapter_when_present(self, app, mocker) -> None:
+        """Verify the helper returns the chapter when present in the cache result."""
+        # Given a chapter returned by the lazy chapter cache
+        chapter = CampaignChapterFactory.build(id="ch1", book_id="b1")
+        ctx = build_global_context(user_role="PLAYER")
+        mocker.patch("vweb.lib.api.get_chapters_for_book", return_value=[chapter])
+
+        with app.test_request_context("/"):
+            g.global_context = ctx
+
+            # When fetching the chapter
+            result = fetch_chapter_or_404("camp1", "b1", "ch1")
+
+        # Then the matching chapter is returned
+        assert result.id == "ch1"
+
+    def test_aborts_404_when_chapter_missing(self, app, mocker) -> None:
+        """Verify the helper aborts 404 when the chapter is absent from the cache result."""
+        # Given a chapter cache that omits the requested chapter
+        ctx = build_global_context(user_role="PLAYER")
+        mocker.patch("vweb.lib.api.get_chapters_for_book", return_value=[])
+
+        with app.test_request_context("/"):
+            g.global_context = ctx
+
+            # When fetching a missing chapter, then it aborts 404
+            with pytest.raises(NotFound):
+                fetch_chapter_or_404("camp1", "b1", "ch1")
 
 
 class TestGetRecentPlayerDicerolls:
@@ -291,6 +310,55 @@ class TestGetRecentPlayerDicerolls:
             limit=25,
             offset=0,
         )
+
+    def test_caches_per_scope_and_user(self, app, mocker) -> None:
+        """Verify repeated identical scope+user reads hit the dicerolls service once."""
+        # Given a request context with a requesting user and company
+        with app.test_request_context("/"):
+            session["company_id"] = "comp-1"
+            g.requesting_user = mocker.MagicMock(id="user-1")
+            g.global_context = mocker.MagicMock(characters=[])
+            from vweb.extensions import cache
+
+            cache.clear()
+
+            svc = mocker.patch("vweb.lib.api.sync_dicerolls_service")
+            page = mocker.MagicMock()
+            page.items = []
+            svc.return_value.get_page.return_value = page
+            mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+
+            # When called twice with the same scope
+            get_recent_player_dicerolls(campaign_id="camp-1", limit=25)
+            get_recent_player_dicerolls(campaign_id="camp-1", limit=25)
+
+            # Then the underlying service is hit only once
+            svc.return_value.get_page.assert_called_once()
+
+    def test_cache_isolates_per_requesting_user(self, app, mocker) -> None:
+        """Verify the same scope cached for two different users triggers two service calls."""
+        # Given a request context with a requesting user and company
+        with app.test_request_context("/"):
+            session["company_id"] = "comp-1"
+            g.requesting_user = mocker.MagicMock(id="user-1")
+            g.global_context = mocker.MagicMock(characters=[])
+            from vweb.extensions import cache
+
+            cache.clear()
+
+            svc = mocker.patch("vweb.lib.api.sync_dicerolls_service")
+            page = mocker.MagicMock()
+            page.items = []
+            svc.return_value.get_page.return_value = page
+            mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+
+            # When called for two different requesting users in the same scope
+            get_recent_player_dicerolls(campaign_id="camp-1", limit=25)
+            g.requesting_user.id = "user-2"
+            get_recent_player_dicerolls(campaign_id="camp-1", limit=25)
+
+            # Then each user triggers its own service call
+            assert svc.return_value.get_page.call_count == 2
 
 
 class TestGetRecentPlayerDicerollsScopes:

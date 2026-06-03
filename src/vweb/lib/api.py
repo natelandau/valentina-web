@@ -9,7 +9,11 @@ from flask import abort, g, session
 from vclient import sync_dicerolls_service
 from vclient.exceptions import APIError
 
+from vweb.extensions import cache
 from vweb.lib.blueprint_cache import get_all_traits
+from vweb.lib.campaign_content_cache import get_books_for_campaign, get_chapters_for_book
+
+_DICEROLLS_CACHE_TTL_SECONDS = 30
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -87,28 +91,6 @@ def get_character_and_campaign(
     return character, campaign
 
 
-def _get_book_and_campaign(
-    book_id: str,
-) -> tuple[CampaignBook | None, Campaign | None]:
-    """Look up a book and its campaign from the global context.
-
-    Args:
-        book_id: The book's unique identifier.
-
-    Returns:
-        A (book, campaign) tuple; either may be None if not found.
-    """
-    for books in g.global_context.books_by_campaign.values():
-        for book in books:
-            if book.id == book_id:
-                campaign = next(
-                    (c for c in g.global_context.campaigns if c.id == book.campaign_id),
-                    None,
-                )
-                return book, campaign
-    return None, None
-
-
 def fetch_book_or_404(campaign_id: str, book_id: str) -> tuple[CampaignBook, Campaign]:
     """Look up book and campaign, abort 404 if not found.
 
@@ -120,11 +102,13 @@ def fetch_book_or_404(campaign_id: str, book_id: str) -> tuple[CampaignBook, Cam
         A (book, campaign) tuple.
 
     Raises:
-        werkzeug.exceptions.NotFound: If the book or campaign is not found,
-            or the campaign ID doesn't match.
+        werkzeug.exceptions.NotFound: If the book or campaign is not found.
     """
-    book, campaign = _get_book_and_campaign(book_id)
-    if book is None or campaign is None or campaign.id != campaign_id:
+    campaign = next((c for c in g.global_context.campaigns if c.id == campaign_id), None)
+    if campaign is None:
+        abort(404)
+    book = next((b for b in get_books_for_campaign(campaign_id) if b.id == book_id), None)
+    if book is None:
         abort(404)
     return book, campaign
 
@@ -147,68 +131,27 @@ def fetch_campaign_or_404(campaign_id: str) -> Campaign:
     return campaign
 
 
-def get_books_for_campaign(campaign_id: str) -> list[CampaignBook]:
-    """Return books for a campaign from the global context, sorted by number.
+def fetch_chapter_or_404(campaign_id: str, book_id: str, chapter_id: str) -> CampaignChapter:
+    """Look up a chapter via the lazy chapters cache, abort 404 if not found.
 
-    Use this in page-load reads where `g.global_context` is fresh. For
-    post-mutation reads inside the same request, call the books service
-    directly — the global context is stale until the next request.
-
-    Args:
-        campaign_id: The campaign's unique identifier.
-
-    Returns:
-        A list of CampaignBook ordered by `number` ascending.
-    """
-    books = g.global_context.books_by_campaign.get(campaign_id, [])
-    return sorted(books, key=lambda b: b.number)
-
-
-def get_chapters_for_book(book_id: str) -> list[CampaignChapter]:
-    """Return chapters for a book from the global context, sorted by number.
-
-    Use this in page-load reads where `g.global_context` is fresh. For
-    post-mutation reads inside the same request, call the chapters service
-    directly — the global context is stale until the next request.
+    Assumes the caller has already verified the campaign and book exist (callers
+    invoke ``fetch_book_or_404`` first); a bogus campaign/book yields an empty
+    chapter list and therefore a chapter 404.
 
     Args:
-        book_id: The book's unique identifier.
-
-    Returns:
-        A list of CampaignChapter ordered by `number` ascending.
-    """
-    chapters = g.global_context.chapters_by_book.get(book_id, [])
-    return sorted(chapters, key=lambda c: c.number)
-
-
-def fetch_chapter_or_404(book_id: str, chapter_id: str) -> CampaignChapter:
-    """Look up a chapter from the global context, abort 404 if not found.
-
-    Args:
+        campaign_id: The campaign the book belongs to.
         book_id: The book's unique identifier.
         chapter_id: The chapter's unique identifier.
 
     Returns:
         The CampaignChapter object.
     """
-    chapters = g.global_context.chapters_by_book.get(book_id, [])
-    chapter = next((c for c in chapters if c.id == chapter_id), None)
+    chapter = next(
+        (c for c in get_chapters_for_book(campaign_id, book_id) if c.id == chapter_id), None
+    )
     if chapter is None:
         abort(404)
     return chapter
-
-
-def get_chapter_count_for_campaign(campaign_id: str) -> int:
-    """Count chapters across every book in a campaign using the global context.
-
-    Args:
-        campaign_id: The campaign's unique identifier.
-
-    Returns:
-        The total number of chapters across every book in the campaign.
-    """
-    books = g.global_context.books_by_campaign.get(campaign_id, [])
-    return sum(len(g.global_context.chapters_by_book.get(b.id, [])) for b in books)
 
 
 def get_campaign_name(campaign_id: str) -> str:
@@ -282,10 +225,22 @@ def get_recent_player_dicerolls(
 
     Returns:
         Display-ready rows in the API's newest-first order.
+
+    Note:
+        Results are cached for 30 seconds per scope and requesting user (the
+        API filters by ``on_behalf_of``, so the key must include the user id).
     """
-    service = sync_dicerolls_service(
-        on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
+    company_id = session["company_id"]
+    requesting_user_id = g.requesting_user.id
+    cache_key = (
+        f"dicerolls:{company_id}:{requesting_user_id}:"
+        f"{campaign_id}:{character_id}:{user_id}:{limit}"
     )
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    service = sync_dicerolls_service(on_behalf_of=requesting_user_id, company_id=company_id)
     apply_player_filter = bool(campaign_id) and not (character_id or user_id)
     page = service.get_page(
         campaignid=campaign_id or None,
@@ -322,6 +277,7 @@ def get_recent_player_dicerolls(
                 comment=roll.comment,
             )
         )
+    cache.set(cache_key, displays, timeout=_DICEROLLS_CACHE_TTL_SECONDS)
     return displays
 
 

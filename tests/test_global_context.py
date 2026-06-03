@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
+import threading
 from datetime import UTC, datetime
 
 import pytest
 from vclient.testing import (
-    CampaignBookFactory,
-    CampaignChapterFactory,
     CampaignFactory,
     CharacterFactory,
     CompanyFactory,
@@ -294,19 +293,20 @@ def test_fetch_global_data_returns_all_characters_unfiltered(app, fake_vclient) 
 
 
 @pytest.mark.usefixtures("_fake_vclient_data")
-def test_fetch_global_data_returns_books_by_campaign(app, fake_vclient) -> None:
-    """Verify _fetch_global_data populates books_by_campaign."""
-    # Given books exist for the campaign — use params so this override takes priority
-    books = CampaignBookFactory.batch(2)
-    fake_vclient.set_response(Routes.BOOKS_LIST, items=books, params={"campaign_id": "camp-1"})
+def test_fetch_global_data_does_not_fetch_books_or_chapters(app, mocker) -> None:
+    """Verify _fetch_global_data no longer eagerly fans out to books and chapters."""
+    # Given the book and chapter services would raise if invoked
+    book_svc = mocker.patch("vweb.lib.global_context.sync_books_service", create=True)
+    chapter_svc = mocker.patch("vweb.lib.global_context.sync_chapters_service", create=True)
 
     # When fetching global data
     with app.app_context():
         result = _fetch_global_data("test-company-id", "test-user-id")
 
-    # Then books_by_campaign contains the campaign's books
-    assert len(result.books_by_campaign) == 1
-    assert len(result.books_by_campaign["camp-1"]) == 2
+    # Then characters are still populated but no book/chapter fetch occurred
+    assert len(result.characters) == 1
+    book_svc.assert_not_called()
+    chapter_svc.assert_not_called()
 
 
 def test_hook_retries_on_user_not_found(app, mocker) -> None:
@@ -350,28 +350,6 @@ def test_hook_retries_on_user_not_found(app, mocker) -> None:
     assert mock_load.call_count == 2
 
 
-@pytest.mark.usefixtures("_fake_vclient_data")
-def test_fetch_global_data_populates_chapters_by_book(app, fake_vclient) -> None:
-    """Verify _fetch_global_data populates chapters_by_book keyed by book id."""
-    # Given a book belongs to the campaign and two chapters belong to that book
-    book = CampaignBookFactory.build(id="b1", campaign_id="camp-1")
-    fake_vclient.set_response(Routes.BOOKS_LIST, items=[book], params={"campaign_id": "camp-1"})
-    chapters = CampaignChapterFactory.batch(2, book_id="b1", campaign_id="camp-1")
-    fake_vclient.set_response(
-        Routes.CHAPTERS_LIST,
-        items=chapters,
-        params={"campaign_id": "camp-1", "book_id": "b1"},
-    )
-
-    # When fetching global data
-    with app.app_context():
-        result = _fetch_global_data("test-company-id", "test-user-id")
-
-    # Then chapters_by_book is keyed by book id and contains both chapters
-    assert list(result.chapters_by_book.keys()) == ["b1"]
-    assert len(result.chapters_by_book["b1"]) == 2
-
-
 def test_hook_redirects_when_user_not_found_after_retry(app, mocker) -> None:
     """Verify the hook clears session and redirects when user is not found even after retry."""
     # Given a context that never contains the user
@@ -405,3 +383,137 @@ def test_hook_redirects_when_user_not_found_after_retry(app, mocker) -> None:
     # And the session is cleared
     with client.session_transaction() as sess:
         assert "user_id" not in sess
+
+
+@pytest.mark.usefixtures("mock_cache_store")
+def test_load_global_context_fetches_company_once_on_cold_cache(
+    app, mocker, mock_global_context
+) -> None:
+    """Verify a cold load fetches the company once, not twice (timestamp + fetch)."""
+    # Given a company service and a real _fetch_global_data that reuses the company
+    mock_company = CompanyFactory.build(
+        resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
+    )
+    mock_company_svc = mocker.MagicMock()
+    mock_company_svc.get.return_value = mock_company
+    mocker.patch("vweb.lib.global_context.sync_companies_service", return_value=mock_company_svc)
+
+    # Given _fetch_global_data is patched so we isolate the company-fetch behavior
+    mocker.patch(
+        "vweb.lib.global_context._fetch_global_data",
+        return_value=mock_global_context,
+    )
+
+    # When load_global_context runs against a cold cache
+    with app.app_context():
+        clear_global_context_cache("test-company-id", "test-user-id")
+        load_global_context("test-company-id", "test-user-id")
+
+    # Then the company is fetched exactly once (reused for the timestamp and fetch)
+    mock_company_svc.get.assert_called_once()
+
+
+@pytest.mark.usefixtures("mock_cache_store")
+def test_load_global_context_passes_company_to_fetch(app, mocker, mock_global_context) -> None:
+    """Verify the cold-path company is handed to _fetch_global_data to avoid a refetch."""
+    # Given a known company returned for the timestamp lookup
+    mock_company = CompanyFactory.build(
+        resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
+    )
+    mock_company_svc = mocker.MagicMock()
+    mock_company_svc.get.return_value = mock_company
+    mocker.patch("vweb.lib.global_context.sync_companies_service", return_value=mock_company_svc)
+
+    mock_fetch = mocker.patch(
+        "vweb.lib.global_context._fetch_global_data",
+        return_value=mock_global_context,
+    )
+
+    # When load_global_context runs against a cold cache
+    with app.app_context():
+        clear_global_context_cache("test-company-id", "test-user-id")
+        load_global_context("test-company-id", "test-user-id")
+
+    # Then the pre-fetched company is forwarded so _fetch_global_data skips its own get
+    assert mock_fetch.call_args.kwargs["company"] is mock_company
+
+
+def test_rebuild_lock_for_returns_stable_lock_per_key() -> None:
+    """Verify the lock registry returns the same lock per key and distinct locks per key."""
+    from vweb.lib.global_context import _rebuild_lock_for
+
+    # Given two distinct context keys
+    # Then the same key yields the same lock, and distinct keys yield distinct locks
+    assert _rebuild_lock_for("global_ctx:a:b") is _rebuild_lock_for("global_ctx:a:b")
+    assert _rebuild_lock_for("global_ctx:a:b") is not _rebuild_lock_for("global_ctx:c:d")
+
+
+def test_load_global_context_single_flight_collapses_concurrent_rebuilds(app, mocker) -> None:
+    """Verify concurrent cold rebuilds for one user trigger exactly one full fetch."""
+    from vweb.extensions import cache
+
+    # Given a company service and a real GlobalContext for the fetch result
+    mock_company = CompanyFactory.build(
+        resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
+    )
+    mock_company_svc = mocker.MagicMock()
+    mock_company_svc.get.return_value = mock_company
+    mocker.patch("vweb.lib.global_context.sync_companies_service", return_value=mock_company_svc)
+
+    built_context = GlobalContext(
+        company=CompanyFactory.build(),
+        users=[UserFactory.build(id="test-user-id")],
+        campaigns=[],
+        resources_modified_at="2026-01-01T00:00:00+00:00",
+    )
+
+    # Given a fetch that blocks inside the lock so a second thread must queue behind it
+    fetch_count = 0
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocking_fetch(*_args, **_kwargs) -> GlobalContext:
+        nonlocal fetch_count
+        fetch_count += 1
+        entered.set()
+        # Block so the second thread is forced to wait on the single-flight lock,
+        # making the race deterministic rather than timing-dependent.
+        release.wait(timeout=5)
+        return built_context
+
+    mocker.patch("vweb.lib.global_context._fetch_global_data", side_effect=blocking_fetch)
+
+    results: dict[str, GlobalContext] = {}
+
+    def worker(name: str) -> None:
+        with app.app_context():
+            results[name] = load_global_context("test-company-id", "test-user-id")
+
+    with app.app_context():
+        clear_global_context_cache("test-company-id", "test-user-id")
+        cache.clear()
+
+    # When thread A enters the rebuild and blocks, then thread B starts and queues
+    thread_a = threading.Thread(target=worker, args=("a",))
+    thread_a.start()
+    assert entered.wait(timeout=5), "thread A never entered _fetch_global_data"
+
+    thread_b = threading.Thread(target=worker, args=("b",))
+    thread_b.start()
+    # Give B a moment to reach and block on the single-flight lock before releasing A.
+    threading.Event().wait(0.1)
+    release.set()
+
+    thread_a.join(timeout=5)
+    thread_b.join(timeout=5)
+
+    # Then both threads finished without hanging
+    assert not thread_a.is_alive(), "thread A hung"
+    assert not thread_b.is_alive(), "thread B hung"
+
+    # Then exactly one full rebuild ran (thread B reused the rebuilt context via the
+    # double-check rather than fetching again). Thread B's copy comes back through the
+    # cache (SimpleCache pickles on set), so it is equal but not identical.
+    assert fetch_count == 1
+    assert results["a"] is built_context
+    assert results["b"] == built_context

@@ -42,7 +42,6 @@ def test_index_redirects_to_session_campaign(client, mocker) -> None:
         users=[user],
         campaigns=[older, newer],
         characters_by_campaign={older.id: [], newer.id: []},
-        books_by_campaign={older.id: [], newer.id: []},
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )
     mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
@@ -77,7 +76,6 @@ def test_index_defaults_to_most_recent_campaign(client, mocker) -> None:
         users=[user],
         campaigns=[older, newer],
         characters_by_campaign={older.id: [], newer.id: []},
-        books_by_campaign={older.id: [], newer.id: []},
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )
     mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)

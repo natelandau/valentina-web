@@ -1,7 +1,5 @@
 {# def
     campaign = None,
-    books: list = [],
-    chapter_count: int = 0,
     campaign_experience = None,
     user: User = None,
 #}
@@ -10,7 +8,7 @@
 <div class="flex flex-col gap-6">
 
   <shared.layout.CampaignBand active="overview" campaign_id={{ campaign.id }} show_admin={{ is_admin() }}>
-  <campaign.components.CampaignSummaryCard campaign={{ campaign }} books={{ books }} chapter_count={{ chapter_count }} />
+  <campaign.components.CampaignSummaryCard campaign={{ campaign }} />
   </shared.layout.CampaignBand>
 
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -24,13 +22,6 @@
     {% if is_storyteller() %}
       <shared.cards.AuditLog campaign_id={{ campaign.id }} col_span={{ 2 }} page_size={{ 5 }} title="Recent Activity" />
     {% endif %}
-
-    {# {% set book_urls = {} %}
-    {% for book in books %}
-      {% set _ = book_urls.update({book.id: url_for('book_view.book_detail', campaign_id=book.campaign_id, book_id=book.id)}) %}
-    {% endfor %}
-
-<shared.cards.NumberedListCard title={{ campaign.name ~ " Books" }} items={{ books }} page_size={{ 5 }} item_urls={{ book_urls }} empty_message="No books in this campaign" /> #}
 
     <shared.cards.RecentDiceRolls campaign_id={{ campaign.id }} col_span={{ 1 }} />
     <shared.cards.Statistics campaign_id={{ campaign.id }} col_span={{ 2 }} />

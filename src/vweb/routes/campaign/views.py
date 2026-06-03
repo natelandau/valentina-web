@@ -11,7 +11,6 @@ from vweb import catalog
 from vweb.lib.api import (
     fetch_campaign_or_404,
     get_campaign_name,
-    get_chapter_count_for_campaign,
     get_user_campaign_experience,
     validate_and_submit_experience,
 )
@@ -62,17 +61,12 @@ class CampaignView(MethodView):
 
         session["last_campaign_id"] = campaign_id
 
-        ctx = g.global_context
         user_id = session["user_id"]
-        books = ctx.books_by_campaign.get(campaign_id, [])
         campaign_experience = get_user_campaign_experience(user_id, campaign_id)
-        chapter_count = get_chapter_count_for_campaign(campaign_id)
 
         return catalog.render(
             "campaign.CampaignDetail",
             campaign=campaign,
-            books=books,
-            chapter_count=chapter_count,
             campaign_experience=campaign_experience,
             user=g.requesting_user,
         )

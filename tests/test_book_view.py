@@ -96,6 +96,34 @@ class TestBookDetailGet:
 
 
 @pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")
+class TestBookCarouselChapterCount:
+    """Tests for the carousel chapter count sourced from book.num_chapters."""
+
+    def test_carousel_uses_num_chapters_facet(
+        self, client, mocker, mock_book, mock_campaign
+    ) -> None:
+        """Verify the carousel renders the chapter count from book.num_chapters."""
+        # Given a book carrying a num_chapters facet from the API
+        book_with_count = CampaignBookFactory.build(
+            id="book-1",
+            campaign_id="camp-1",
+            name="The Gathering Storm",
+            number=1,
+            num_chapters=4,
+        )
+        mocker.patch(
+            "vweb.routes.book.views.get_books_for_campaign",
+            return_value=[book_with_count],
+        )
+
+        # When rendering the book detail page
+        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}")
+
+        # Then the carousel shows the facet count, not a per-book fetch
+        assert b"4 chapter" in response.data
+
+
+@pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")
 class TestBookEditPermissions:
     """Tests for book edit permission checks."""
 
@@ -126,3 +154,53 @@ class TestBookEditPermissions:
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
         response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/edit")
         assert response.status_code == 200
+
+
+@pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")
+class TestBookUpdate:
+    """Tests for book update cache invalidation."""
+
+    def test_update_clears_campaign_content_cache(
+        self, client, mocker, mock_book, mock_campaign
+    ) -> None:
+        """Verify updating a book invalidates the campaign's book-list cache."""
+        # Given a privileged user and a patched cache-clear
+        mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
+        clear_cache = mocker.patch("vweb.routes.book.views.clear_campaign_content_cache")
+        csrf = get_csrf(client)
+
+        # When submitting the book edit form
+        client.post(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}",
+            data={"name": "Updated Name", "csrf_token": csrf},
+        )
+
+        # Then the campaign's book cache is invalidated
+        _, kwargs = clear_cache.call_args
+        assert kwargs["campaign_id"] == mock_campaign.id
+
+
+@pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")
+class TestBookDelete:
+    """Tests for book delete cache invalidation."""
+
+    def test_delete_clears_campaign_content_cache(
+        self, client, mocker, mock_book, mock_campaign
+    ) -> None:
+        """Verify deleting a book invalidates the campaign's book-list cache."""
+        # Given a privileged user and a patched cache-clear
+        mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
+        clear_cache = mocker.patch("vweb.routes.book.views.clear_campaign_content_cache")
+        csrf = get_csrf(client)
+
+        # When deleting the book
+        client.delete(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}",
+            headers={"X-CSRFToken": csrf},
+        )
+
+        # Then both the campaign's book cache and the deleted book's chapters cache
+        # are invalidated
+        _, kwargs = clear_cache.call_args
+        assert kwargs["campaign_id"] == mock_campaign.id
+        assert kwargs["book_id"] == mock_book.id

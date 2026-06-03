@@ -15,6 +15,7 @@ from vweb.lib.api import (
     fetch_chapter_or_404,
     get_chapters_for_book,
 )
+from vweb.lib.campaign_content_cache import clear_campaign_content_cache
 from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_manage_campaign
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
@@ -70,8 +71,8 @@ class ChapterDetailView(MethodView):
     ) -> str:
         """Render the chapter detail page."""
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        chapter = fetch_chapter_or_404(book_id, chapter_id)
-        chapters = get_chapters_for_book(book_id)
+        chapter = fetch_chapter_or_404(campaign_id, book_id, chapter_id)
+        chapters = get_chapters_for_book(campaign_id, book_id)
 
         session["last_campaign_id"] = campaign_id
 
@@ -103,6 +104,9 @@ class ChapterDetailView(MethodView):
         chapters_service = _chapters_service(campaign_id, book_id)
         chapters_service.delete(chapter_id)
         clear_global_context_cache(session["company_id"], session["user_id"])
+        clear_campaign_content_cache(
+            session["company_id"], campaign_id=campaign_id, book_id=book_id
+        )
 
         return hx_redirect(
             url_for("book_view.book_detail", campaign_id=campaign_id, book_id=book_id)
@@ -118,7 +122,7 @@ class ChapterEditView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        chapter = fetch_chapter_or_404(book_id, chapter_id)
+        chapter = fetch_chapter_or_404(campaign_id, book_id, chapter_id)
 
         return catalog.render(
             "chapter.partials.ChapterEditForm",
@@ -134,7 +138,7 @@ class ChapterEditView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        chapter = fetch_chapter_or_404(book_id, chapter_id)
+        chapter = fetch_chapter_or_404(campaign_id, book_id, chapter_id)
         chapters_service = _chapters_service(campaign_id, book_id)
 
         name = request.form.get("name", "").strip()
@@ -166,6 +170,7 @@ class ChapterEditView(MethodView):
         if number != chapter.number:
             updated = chapters_service.renumber(chapter_id, number)
         clear_global_context_cache(session["company_id"], session["user_id"])
+        clear_campaign_content_cache(session["company_id"], book_id=book_id)
 
         assets = chapters_service.list_all_assets(chapter_id)
         note_count = count_notes(chapters_service, chapter_id)
@@ -228,6 +233,9 @@ class ChapterCreateView(MethodView):
         chapters_service = _chapters_service(campaign_id, book_id)
         chapters_service.create(name=name, number=number, description=description)
         clear_global_context_cache(session["company_id"], session["user_id"])
+        clear_campaign_content_cache(
+            session["company_id"], campaign_id=campaign_id, book_id=book_id
+        )
 
         chapters = chapters_service.list_all()
         chapters.sort(key=lambda c: c.number)
@@ -249,7 +257,7 @@ class ChapterImageUploadView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        chapter = fetch_chapter_or_404(book_id, chapter_id)
+        chapter = fetch_chapter_or_404(campaign_id, book_id, chapter_id)
         chapters_service = _chapters_service(campaign_id, book_id)
 
         assets = upload_and_append_asset(
@@ -275,7 +283,7 @@ class ChapterImageDeleteView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        chapter = fetch_chapter_or_404(book_id, chapter_id)
+        chapter = fetch_chapter_or_404(campaign_id, book_id, chapter_id)
         chapters_service = _chapters_service(campaign_id, book_id)
 
         handle_image_delete(svc=chapters_service, parent_id=chapter_id, asset_id=asset_id)

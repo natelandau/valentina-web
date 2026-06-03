@@ -1,5 +1,7 @@
 """Tests for campaign blueprint routes."""
 
+import re
+
 import pytest
 from vclient.testing import (
     CampaignFactory,
@@ -80,7 +82,6 @@ class TestCampaignView:
             users=[user],
             campaigns=[campaign],
             characters_by_campaign={campaign.id: [my_char, other_char]},
-            books_by_campaign={campaign.id: []},
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
@@ -118,7 +119,6 @@ class TestCampaignView:
             users=[user],
             campaigns=[campaign],
             characters_by_campaign={campaign.id: []},
-            books_by_campaign={campaign.id: []},
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
@@ -278,7 +278,6 @@ class TestNavbarCampaignDropdown:
             users=[user],
             campaigns=[camp1, camp2],
             characters_by_campaign={camp1.id: [], camp2.id: []},
-            books_by_campaign={camp1.id: [], camp2.id: []},
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
@@ -302,7 +301,6 @@ class TestNavbarCampaignDropdown:
             users=[user],
             campaigns=[campaign],
             characters_by_campaign={campaign.id: []},
-            books_by_campaign={campaign.id: []},
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
@@ -327,7 +325,6 @@ class TestNavbarCampaignDropdown:
             users=[user],
             campaigns=[campaign],
             characters_by_campaign={campaign.id: []},
-            books_by_campaign={campaign.id: []},
             resources_modified_at="2026-01-01T00:00:00+00:00",
         )
         mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
@@ -646,14 +643,35 @@ class TestCampaignSummaryCard:
         assert expected in body
 
     def test_hides_book_pill_when_no_books(self, client, mock_global_context) -> None:
-        """Verify the books/chapters pill is omitted when there are no books."""
+        """Verify the book count pill is omitted when there are no books."""
+        # Given a campaign with no books
         campaign = mock_global_context.campaigns[0]
+        campaign.num_books = 0
+        campaign.num_chapters = 0
 
+        # When loading the campaign dashboard
         response = client.get(f"/campaign/{campaign.id}")
         body = response.get_data(as_text=True)
 
-        # mock_global_context.books_by_campaign is empty for this campaign
-        assert "books ·" not in body
+        # Then neither the book nor the chapter count pill renders
+        assert not re.search(r"\d+ books", body)
+        assert "chapters" not in body
+
+    def test_shows_book_count_pill(self, client, mock_global_context) -> None:
+        """Verify the summary card shows book and chapter counts from campaign facets."""
+        # Given a campaign with two books and five chapters
+        campaign = mock_global_context.campaigns[0]
+        campaign.num_books = 2
+        campaign.num_chapters = 5
+
+        # When loading the campaign dashboard
+        response = client.get(f"/campaign/{campaign.id}")
+        body = response.get_data(as_text=True)
+
+        # Then the pill renders both the book and chapter counts
+        assert response.status_code == 200
+        assert "2 books" in body
+        assert "5 chapters" in body
 
     def test_omits_page_header(self, client, mock_global_context) -> None:
         """Verify the old shared PageHeader 'Campaign' before_text no longer renders."""
