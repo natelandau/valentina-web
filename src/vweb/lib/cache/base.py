@@ -100,11 +100,15 @@ class TimestampValidated:
 
 
 # Per-key single-flight locks shared by cached_fetch and bespoke callers
-# (e.g. global_context). One lock per cache key collapses a cold-cache stampede.
-# One single-flight lock per distinct cache key. Most keys are low-cardinality
-# (per cache domain or per company/user/scope), so in practice this dict stays
-# small; there is no eviction, but each lock is tiny. Raw threading.Lock objects
-# are not weak-referenceable, so a WeakValueDictionary is not an option here.
+# (e.g. global_context). One lock per distinct cache key collapses a cold-cache
+# stampede. Some keys are high-cardinality (dicerolls embeds user x scope x
+# limit; audit logs embed a full filter set), so the dict is bounded: once it
+# exceeds _MAX_LOCKS we drop currently-unheld locks. A held lock is mid-single-
+# flight and is never evicted, so a hot key is always protected; dropping an
+# idle lock only risks a rare redundant rebuild (the in-lock double-check keeps
+# the cached result correct), never a stampede. Raw threading.Lock objects are
+# not weak-referenceable, so a WeakValueDictionary is not an option here.
+_MAX_LOCKS = 1024
 _locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
 
@@ -114,6 +118,10 @@ def _lock_for(key: str) -> threading.Lock:
     with _locks_guard:
         lock = _locks.get(key)
         if lock is None:
+            if len(_locks) >= _MAX_LOCKS:
+                # Reclaim only idle locks; a locked() entry is an in-flight rebuild.
+                for idle_key in [k for k, existing in _locks.items() if not existing.locked()]:
+                    del _locks[idle_key]
             lock = threading.Lock()
             _locks[key] = lock
         return lock
