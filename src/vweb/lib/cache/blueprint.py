@@ -1,10 +1,10 @@
 """Global blueprint trait cache.
 
 Every blueprint trait is fetched once and cached as a dict keyed by trait ID, then
-consumers filter client-side by game_version, character_class, etc. The vclient list
-call paginates at 100 items per page, so a cold-cache fill makes several sequential
-API requests to assemble the full set (~750 traits, ~500 KB) before caching it for the
-full TTL. Single-flight ensures only one request performs that fill.
+consumers filter client-side by game_version, character_class, etc. The reference
+catalog endpoints page at 1000 items per request, so a cold-cache fill pulls the full
+set (~750 traits, ~500 KB) in a single API request before caching it for the full TTL.
+Single-flight ensures only one request performs that fill.
 """
 
 from __future__ import annotations
