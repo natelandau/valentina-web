@@ -2,7 +2,7 @@
 
 Server-rendered Flask app consuming the valentina-python-client API. HTMX for interactivity — no SPA.
 
-**Workflow:** Never commit working documents in `docs/superpowers/` to git. Work on branches, not worktrees.
+**Workflow:** Work on branches, not worktrees. Plans, specs, and design docs are scratch files — write them under the git-ignored top-level `.agent/` directory and never commit them.
 
 ## Quick Reference
 

@@ -13,6 +13,9 @@ wheels/
 .env
 
 .dev/
+
+# Agent scratch files (plans, specs, design docs)
+.agent/
 .cache/
 tmp/
 .claude/settings.local.json
