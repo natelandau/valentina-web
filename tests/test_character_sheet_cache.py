@@ -10,7 +10,6 @@ from vclient.models.full_sheet import CharacterFullSheet
 from vclient.testing import CharacterFullSheetFactory
 
 from tests.helpers import make_cache_store_mock
-from vweb.constants import CACHE_CHARACTER_FULL_SHEET_PREFIX
 from vweb.lib.cache.character_sheet import clear, get
 
 if TYPE_CHECKING:
@@ -93,8 +92,8 @@ class TestGet:
         assert result_false is not result_true
 
         # Then the cache holds separate entries for each flag
-        key_false = f"{CACHE_CHARACTER_FULL_SHEET_PREFIX}char-1:False"
-        key_true = f"{CACHE_CHARACTER_FULL_SHEET_PREFIX}char-1:True"
+        key_false = "char_full_sheet:char-1:False"
+        key_true = "char_full_sheet:char-1:True"
         assert key_false in mock_cache_store
         assert key_true in mock_cache_store
 

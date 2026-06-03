@@ -16,6 +16,7 @@ from markupsafe import Markup, escape
 from vclient import sync_companies_service
 from vclient.models.audit_logs import AuditLog
 
+from vweb.constants import CACHE_AUDIT_LOG_TTL
 from vweb.lib import cache
 
 if TYPE_CHECKING:
@@ -31,8 +32,7 @@ _DELETED_SENTINEL = "[deleted]"
 
 # Audit entries are written for nearly every mutation, so we accept eventual
 # consistency and rely on a short TTL rather than explicit invalidation.
-_AUDIT_LOG_CACHE_TTL_SECONDS = 30
-_AUDIT_LOG_STRATEGY = cache.base.ShortTTL(ttl=_AUDIT_LOG_CACHE_TTL_SECONDS)
+_AUDIT_LOG_STRATEGY = cache.base.ShortTTL(ttl=CACHE_AUDIT_LOG_TTL)
 
 
 @dataclass(frozen=True)

@@ -20,14 +20,14 @@ from typing import TYPE_CHECKING
 from flask import g, session
 from vclient import sync_books_service, sync_chapters_service
 
+from vweb.constants import CACHE_CAMPAIGN_CONTENT_TTL
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
     from vclient.models import CampaignBook, CampaignChapter
 
-_CACHE_TTL_SECONDS = 60 * 60  # safety-net only; correctness from stamp + explicit clear
 _STRATEGY = base.TimestampValidated(
-    ttl=_CACHE_TTL_SECONDS,
+    ttl=CACHE_CAMPAIGN_CONTENT_TTL,
     current_stamp=lambda: g.global_context.resources_modified_at,
 )
 

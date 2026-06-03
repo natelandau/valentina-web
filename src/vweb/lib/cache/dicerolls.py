@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from flask import g, session
 from vclient import sync_dicerolls_service
 
+from vweb.constants import CACHE_DICEROLLS_TTL
 from vweb.lib.cache import base, blueprint
 
 if TYPE_CHECKING:
@@ -21,8 +22,7 @@ if TYPE_CHECKING:
     from vclient.models import Character
     from vclient.models.diceroll import RollResultType
 
-_DICEROLLS_CACHE_TTL_SECONDS = 30
-_STRATEGY = base.ShortTTL(ttl=_DICEROLLS_CACHE_TTL_SECONDS)
+_STRATEGY = base.ShortTTL(ttl=CACHE_DICEROLLS_TTL)
 
 
 @dataclass

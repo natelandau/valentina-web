@@ -14,6 +14,7 @@ from vclient import (
     sync_users_service,
 )
 
+from vweb.constants import CACHE_GLOBAL_CONTEXT_TIMESTAMP_TTL
 from vweb.extensions import cache
 from vweb.lib.cache import base
 
@@ -128,7 +129,7 @@ def load(company_id: str, user_id: str) -> GlobalContext:
             local_timestamp = (
                 company.resources_modified_at.isoformat() if company.resources_modified_at else ""
             )
-            cache.set(ts_key, local_timestamp, timeout=120)
+            cache.set(ts_key, local_timestamp, timeout=CACHE_GLOBAL_CONTEXT_TIMESTAMP_TTL)
 
         # Double-check: a prior holder of this lock may have just rebuilt it.
         cached = cache.get(ctx_key)

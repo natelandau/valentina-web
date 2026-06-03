@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from flask import session
 from vclient import sync_characters_service
 
-from vweb.constants import CACHE_CHARACTER_FULL_SHEET_PREFIX, CACHE_CHARACTER_FULL_SHEET_TTL
+from vweb.constants import CACHE_CHARACTER_FULL_SHEET_TTL
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
     from vclient.models import CharacterFullSheet
 
+_CACHE_CHARACTER_FULL_SHEET_PREFIX: Final[str] = "char_full_sheet:"
 _STRATEGY = base.ShortTTL(ttl=CACHE_CHARACTER_FULL_SHEET_TTL)
 
 
@@ -33,7 +34,7 @@ def get(
         The character's full sheet.
     """
     # requesting_user_id is the on_behalf_of caller only; sheet content is per-character, not per-viewer, so it is intentionally not part of the key
-    key = f"{CACHE_CHARACTER_FULL_SHEET_PREFIX}{character_id}:{include_available_traits}"
+    key = f"{_CACHE_CHARACTER_FULL_SHEET_PREFIX}{character_id}:{include_available_traits}"
     return base.cached_fetch(
         key,
         lambda: sync_characters_service(
@@ -46,5 +47,5 @@ def get(
 
 def clear(character_id: str) -> None:
     """Evict both sheet variants (with and without available traits) for a character."""
-    prefix = f"{CACHE_CHARACTER_FULL_SHEET_PREFIX}{character_id}"
+    prefix = f"{_CACHE_CHARACTER_FULL_SHEET_PREFIX}{character_id}"
     base.clear_key(f"{prefix}:{True}", f"{prefix}:{False}")

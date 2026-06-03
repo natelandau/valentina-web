@@ -9,14 +9,20 @@ PACKAGE_PATH: Final[Path] = Path(__file__).parent.absolute()
 TEMPLATES_PATH: Final[Path] = PACKAGE_PATH / "templates"
 STATIC_PATH: Final[Path] = PACKAGE_PATH / "static"
 
-CACHE_CHARACTER_FULL_SHEET_PREFIX: Final[str] = "char_full_sheet:"
-CACHE_CHARACTER_FULL_SHEET_TTL: Final[int] = 60
+# --- Cache TTLs in seconds: one place to tune every API-response cache ---
+# Long-lived shared reference data that rarely changes within a session.
 CACHE_BLUEPRINT_TTL: Final[int] = 60 * 60  # 1 hour
 CACHE_OPTIONS_TTL: Final[int] = 60 * 60  # 1 hour
-CACHE_DICTIONARY_KEY: Final[str] = "dictionary_terms"
 CACHE_DICTIONARY_TTL: Final[int] = 60 * 60  # 1 hour
-CACHE_SYSTEM_STATUS_KEY: Final[str] = "system_status"
-CACHE_SYSTEM_STATUS_TTL: Final[int] = 30  # 30 seconds — one shared API call across all users
+CACHE_CAMPAIGN_CONTENT_TTL: Final[int] = 60 * 60  # 1 hour
+# shorter lived caches
+CACHE_CHARACTER_FULL_SHEET_TTL: Final[int] = 60
+CACHE_SYSTEM_STATUS_TTL: Final[int] = 120
+CACHE_STATISTICS_TTL: Final[int] = 30
+CACHE_DICEROLLS_TTL: Final[int] = 30
+CACHE_AUDIT_LOG_TTL: Final[int] = 60
+# How long before the company resources_modified_at stamp is re-validated against the API.
+CACHE_GLOBAL_CONTEXT_TIMESTAMP_TTL: Final[int] = 120
 
 MAX_IMAGE_SIZE: Final[int] = 10 * 1024 * 1024  # 10 MB
 ALLOWED_IMAGE_TYPES: Final[frozenset[str]] = frozenset(

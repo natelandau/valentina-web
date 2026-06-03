@@ -6,23 +6,24 @@ client-side for search results.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from flask import session
 from vclient import sync_dictionary_service
 
-from vweb.constants import CACHE_DICTIONARY_KEY, CACHE_DICTIONARY_TTL
+from vweb.constants import CACHE_DICTIONARY_TTL
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
     from vclient.models import DictionaryTerm
 
+_CACHE_DICTIONARY_KEY: Final[str] = "dictionary_terms"
 _STRATEGY = base.PureTTL(ttl=CACHE_DICTIONARY_TTL)
 
 
 def terms() -> list[DictionaryTerm]:
     """Return all dictionary terms sorted alphabetically (1-hour TTL, shared)."""
-    return base.cached_fetch(CACHE_DICTIONARY_KEY, _fetch, _STRATEGY)
+    return base.cached_fetch(_CACHE_DICTIONARY_KEY, _fetch, _STRATEGY)
 
 
 def term(term_id: str) -> DictionaryTerm | None:
@@ -45,7 +46,7 @@ def search(query: str, *, include_synonyms: bool = True) -> list[DictionaryTerm]
 
 def clear() -> None:
     """Remove the cached terms, forcing a fresh API fetch on next access."""
-    base.clear_key(CACHE_DICTIONARY_KEY)
+    base.clear_key(_CACHE_DICTIONARY_KEY)
 
 
 def _fetch() -> list[DictionaryTerm]:
