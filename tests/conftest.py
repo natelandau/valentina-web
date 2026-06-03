@@ -157,7 +157,7 @@ def _mock_api(mocker, mock_global_context) -> None:
     mock_system_svc.return_value.health.return_value = SystemHealthFactory.build()
 
     mocker.patch(
-        "vweb.lib.options_cache.sync_options_service",
+        "vweb.lib.cache.options.sync_options_service",
         return_value=MagicMock(
             get_options=MagicMock(
                 return_value={

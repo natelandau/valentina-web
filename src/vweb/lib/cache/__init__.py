@@ -7,6 +7,6 @@ makes single-flight herd protection the default for all caches.
 
 from __future__ import annotations
 
-from vweb.lib.cache import base
+from vweb.lib.cache import base, options
 
-__all__ = ["base"]
+__all__ = ["base", "options"]

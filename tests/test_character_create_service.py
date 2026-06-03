@@ -181,10 +181,12 @@ class TestFetchFormOptions:
             "vweb.routes.character_create.autogen_services.sync_character_blueprint_service",
             return_value=mock_bp_service,
         )
-        mocker.patch("vweb.routes.character_create.autogen_services.cache.get", return_value=None)
-        mocker.patch("vweb.routes.character_create.autogen_services.cache.set")
+        mocker.patch(
+            "vweb.routes.character_create.autogen_services.flask_cache.get", return_value=None
+        )
+        mocker.patch("vweb.routes.character_create.autogen_services.flask_cache.set")
 
-        from vweb.lib.options_cache import ApiOptions, CharacterOptions
+        from vweb.lib.cache.options import ApiOptions, CharacterOptions
 
         mock_opts = ApiOptions(
             characters=CharacterOptions(
@@ -194,9 +196,7 @@ class TestFetchFormOptions:
                 ability_focus=["JACK_OF_ALL_TRADES", "BALANCED", "SPECIALIST"],
             ),
         )
-        mocker.patch(
-            "vweb.routes.character_create.autogen_services.get_options", return_value=mock_opts
-        )
+        mocker.patch("vweb.lib.cache.options.get", return_value=mock_opts)
 
         from vweb.routes.character_create.autogen_services import fetch_form_options
 

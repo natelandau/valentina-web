@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from tests.helpers import make_cache_store_mock
-from vweb.lib.options_cache import (
+from vweb.lib.cache.options import (
     ApiOptions,
     AssetOptions,
     CharacterOptions,
@@ -16,8 +16,8 @@ from vweb.lib.options_cache import (
     GameplayOptions,
     UserOptions,
     _parse_options,
-    clear_options_cache,
-    get_options,
+    clear,
+    get,
 )
 
 if TYPE_CHECKING:
@@ -58,7 +58,7 @@ SAMPLE_RAW: dict = {
 @pytest.fixture
 def mock_cache_store(mocker) -> dict:
     """Provide a dict-backed cache mock for options_cache."""
-    return make_cache_store_mock(mocker, "vweb.lib.options_cache.cache")
+    return make_cache_store_mock(mocker, "vweb.lib.cache.base.cache")
 
 
 @pytest.fixture
@@ -66,7 +66,7 @@ def mock_options_svc(mocker):
     """Mock the sync_options_service factory."""
     svc = MagicMock()
     svc.get_options.return_value = SAMPLE_RAW
-    mocker.patch("vweb.lib.options_cache.sync_options_service", return_value=svc)
+    mocker.patch("vweb.lib.cache.options.sync_options_service", return_value=svc)
     return svc
 
 
@@ -129,18 +129,18 @@ class TestParseOptions:
         assert result.gameplay.dice_size == []
 
 
-class TestGetOptions:
-    """Tests for get_options()."""
+class TestGet:
+    """Tests for get()."""
 
     def test_fetches_from_api_on_cache_miss(
         self, app: Flask, mock_cache_store: dict, mock_options_svc: MagicMock
     ) -> None:
-        """Verify get_options calls the API when the cache is empty."""
+        """Verify get calls the API when the cache is empty."""
         with app.test_request_context("/"):
             from flask import session
 
             session["company_id"] = "test-company-id"
-            result = get_options()
+            result = get()
 
         assert isinstance(result, ApiOptions)
         assert result.characters.character_class == [
@@ -156,13 +156,13 @@ class TestGetOptions:
     def test_returns_cached_on_hit(
         self, app: Flask, mock_cache_store: dict, mock_options_svc: MagicMock
     ) -> None:
-        """Verify get_options returns cached value without calling the API again."""
+        """Verify get returns cached value without calling the API again."""
         with app.test_request_context("/"):
             from flask import session
 
             session["company_id"] = "test-company-id"
-            first = get_options()
-            second = get_options()
+            first = get()
+            second = get()
 
         assert first is second
         mock_options_svc.get_options.assert_called_once()
@@ -175,19 +175,19 @@ class TestGetOptions:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            get_options()
+            get()
 
         assert "api_options" in mock_cache_store
         assert isinstance(mock_cache_store["api_options"], ApiOptions)
 
 
-class TestClearOptionsCache:
-    """Tests for clear_options_cache()."""
+class TestClear:
+    """Tests for clear()."""
 
     def test_forces_refetch_on_next_call(
         self, app: Flask, mock_cache_store: dict, mock_options_svc: MagicMock
     ) -> None:
-        """Verify clear_options_cache forces a fresh API fetch on next access."""
+        """Verify clear forces a fresh API fetch on next access."""
         raw_v2 = {
             **SAMPLE_RAW,
             "characters": {**SAMPLE_RAW["characters"], "CharacterClass": ["VAMPIRE"]},
@@ -198,12 +198,12 @@ class TestClearOptionsCache:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            first = get_options()
+            first = get()
             assert len(first.characters.character_class) == 6
 
-            clear_options_cache()
+            clear()
 
-            second = get_options()
+            second = get()
             assert len(second.characters.character_class) == 1
 
         assert mock_options_svc.get_options.call_count == 2

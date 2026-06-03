@@ -193,28 +193,28 @@ class TestMakeCacheStoreMock:
     """Tests for make_cache_store_mock."""
 
     def test_returns_dict_backed_store(self, mocker):
-        store = make_cache_store_mock(mocker, "vweb.lib.options_cache.cache")
+        store = make_cache_store_mock(mocker, "vweb.lib.cache.base.cache")
         assert isinstance(store, dict)
 
     def test_set_and_get(self, mocker):
-        store = make_cache_store_mock(mocker, "vweb.lib.options_cache.cache")
-        from vweb.lib.options_cache import cache
+        store = make_cache_store_mock(mocker, "vweb.lib.cache.base.cache")
+        from vweb.lib.cache.base import cache
 
         cache.set("key", "value")
         assert store["key"] == "value"
         assert cache.get("key") == "value"
 
     def test_delete(self, mocker):
-        store = make_cache_store_mock(mocker, "vweb.lib.options_cache.cache")
-        from vweb.lib.options_cache import cache
+        store = make_cache_store_mock(mocker, "vweb.lib.cache.base.cache")
+        from vweb.lib.cache.base import cache
 
         cache.set("key", "value")
         cache.delete("key")
         assert "key" not in store
 
     def test_clear(self, mocker):
-        store = make_cache_store_mock(mocker, "vweb.lib.options_cache.cache")
-        from vweb.lib.options_cache import cache
+        store = make_cache_store_mock(mocker, "vweb.lib.cache.base.cache")
+        from vweb.lib.cache.base import cache
 
         cache.set("k1", "v1")
         cache.set("k2", "v2")

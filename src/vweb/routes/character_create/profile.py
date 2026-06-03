@@ -14,7 +14,7 @@ from vclient.models.characters import (
     WerewolfAttributesUpdate,
 )
 
-from vweb.lib.options_cache import get_options
+from vweb.lib import cache
 
 if TYPE_CHECKING:
     from vclient.models import Character
@@ -46,7 +46,7 @@ def validate_profile(form_data: dict[str, str]) -> dict[str, str]:
         Dict mapping field names to error messages (empty if valid).
     """
     errors: dict[str, str] = {}
-    opts = get_options()
+    opts = cache.options.get()
 
     name_first = form_data.get("name_first", "").strip()
     name_last = form_data.get("name_last", "").strip()
