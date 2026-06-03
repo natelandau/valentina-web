@@ -1,3 +1,29 @@
+## v0.8.0 (2026-06-03)
+
+### Feat
+
+- **characters**: add permission_manage_npc setting (#41)
+- **characters**: allow quick-creating NPCs and limit XP to players
+- **characters**: add filters to character list card (#39)
+- add system status footer for approved users (#37)
+
+### Fix
+
+- **character**: keep trait dots on one line
+- improve mobile display of xp stats
+- allow production mode to run locally during development
+
+### Refactor
+
+- **cache**: centralize API-response caching in lib/cache (#44)
+- **characters**: defer visibility and type rules to the API (#40)
+- **admin**: improve audit log card (#38)
+
+### Perf
+
+- **cache**: fetch reference catalogs in a single request
+- **global-context**: remove eager book/chapter fan-out (#42)
+
 ## v0.7.1 (2026-05-23)
 
 ### Fix
