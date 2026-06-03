@@ -1,7 +1,7 @@
 [project]
     authors = [{ name = "Nate Landau", email = "github@natelandau.com" }]
     dependencies = [
-        "authlib>=1.7.2",
+        "authlib>=1.7.2, <2.0.0",
         "flask-caching>=2.4.0",
         "flask-debugtoolbar>=0.16.0",
         "flask-session>=0.8.0",
@@ -15,10 +15,10 @@
         "loguru>=0.7.3",
         "markdown2>=2.5.5",
         "pydantic-settings>=2.14.1, <3.0.0",
-        "redis>=7.4.0,<8.0.0",
+        "redis>=8.0.0,<9.0.0",
         "requests>=2.34.2,<3.0.0",
-        "valentina-python-client[testing]>=2.4.0",
-]
+        "valentina-python-client[testing]>=2.4.2",
+    ]
     description = "Web client for the Valentina Noir API."
     license = { file = "LICENSE" }
     name = "vweb"
@@ -49,7 +49,7 @@
         "pytest-xdist>=3.8.0",
         "ruff>=0.15.15",
         "shellcheck-py>=0.11.0.1",
-        "ty>=0.0.41",
+        "ty>=0.0.42",
         "typos>=1.47.0",
         "yamllint>=1.38.0",
     ]
