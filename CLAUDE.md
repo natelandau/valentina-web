@@ -31,7 +31,7 @@ Production CSP blocks `onclick`, `onchange`, inline `<script>`. Use Alpine `@cli
 
 Each route is a self-contained package under `routes/<name>/` co-locating views, services, handlers, and templates. Business logic lives next to its route — **there is no top-level `services/`.** Cross-cutting infrastructure lives in `lib/`.
 
-Character routes split into `character_view`, `character_trait_edit` (spend types: `NO_COST`/`STARTING_POINTS`/`XP`), and `character_create`. Shared character services: `lib/character_sheet.py`, `lib/character_profile.py`.
+Character routes split into `character_view`, `character_trait_edit` (spend types: `NO_COST`/`STARTING_POINTS`/`XP`), and `character_create`. Shared character logic: `lib/character_profile.py`; the cached full sheet lives in the cache package as `cache.character_sheet.get(...)`.
 
 ### Conventions
 
@@ -46,9 +46,19 @@ Character routes split into `character_view`, `character_trait_edit` (spend type
 
 ### Caching
 
-`RedisCache` in prod, `SimpleCache` in dev — all cached values must be picklable. Keys/TTLs in `extensions.py` and `lib/*_cache.py`. Blueprint traits (`lib/blueprint_cache.py`) and API enumerations (`lib/options_cache.py`) are 1-hour shared caches; `get_options()` is a Jinja global (`get_options().characters.character_class`).
+`RedisCache` in prod, `SimpleCache` in dev — all cached values must be picklable. All API-response caches live in the `lib/cache/` package. Import the package and call `cache.<domain>.<verb>()`:
 
-**`GlobalContext` gotcha:** `characters_by_campaign` and `characters` contain ALL characters including other players'. **Routes must filter before rendering.** The `inject_global_context` before_request hook populates `g.global_context` and resolves `g.requesting_user` from `session["user_id"]`. Call `clear_global_context_cache()` after local mutations.
+- `cache.options.get()` — API enumerations (1-hour TTL); returns `ApiOptions` with fields like `.characters.character_class`
+- `cache.blueprint.traits()` / `cache.blueprint.trait(trait_id)` — blueprint traits (1-hour TTL)
+- `cache.statistics.get(scope_type, scope_id)` — roll statistics (30s TTL)
+- `cache.campaign_content.books(campaign_id)` / `cache.campaign_content.chapters(campaign_id, book_id)` — book/chapter lists
+- `cache.global_context.load(company_id, user_id)` — per-user global context; `cache.global_context.clear(company_id, user_id)` to invalidate after local mutations
+
+All domains are built on `cache.base.cached_fetch(key, fetch, strategy)`, which provides single-flight (thundering-herd) protection by default. Freshness strategies: `PureTTL` (pure TTL expiry), `ShortTTL` (same as PureTTL, intent-named for low-TTL eventually-consistent caches), `TimestampValidated` (TTL + external timestamp check for the global context).
+
+**Jinja globals still exist for templates:** `get_options()` (`get_options().characters.character_class`), `get_all_traits()`, `get_system_health()`, `get_all_terms()` — their dict keys are unchanged. Python code calls `cache.<domain>...` directly.
+
+**`GlobalContext` gotcha:** `characters_by_campaign` and `characters` contain ALL characters including other players'. **Routes must filter before rendering.** The `inject_global_context` before_request hook populates `g.global_context` and resolves `g.requesting_user` from `session["user_id"]`. After local mutations, call `cache.global_context.clear(company_id, user_id)` to invalidate the cached context.
 
 ### Auth (OAuth)
 
@@ -81,7 +91,7 @@ return htmx_response_with_flash(content)
 
 ### Shared lazy-loaded cards
 
-Reusable HTMX-lazy cards under `templates/shared/cards/` — `<shared.cards.Statistics>` and `<shared.cards.RecentDiceRolls>`. Each wrapper emits an `hx-get` placeholder pointing at `/cards/...`; the endpoints live in `routes/fragments_shared_cards/views.py`. Scope via `campaign_id` / `character_id` / `user_id` props (Statistics: exactly one; Dice rolls: ≥1, combinable). Content partials (endpoint-rendered) live in `templates/shared/cards/partials/`. Wrappers build URLs via the `build_fragment_url(endpoint, **kwargs)` Jinja global, which drops empty/None kwargs. Stats fetches go through the generic `get_statistics(scope_type, scope_id)` cache helper in `lib/statistics_cache.py` (30s TTL).
+Reusable HTMX-lazy cards under `templates/shared/cards/` — `<shared.cards.Statistics>` and `<shared.cards.RecentDiceRolls>`. Each wrapper emits an `hx-get` placeholder pointing at `/cards/...`; the endpoints live in `routes/fragments_shared_cards/views.py`. Scope via `campaign_id` / `character_id` / `user_id` props (Statistics: exactly one; Dice rolls: ≥1, combinable). Content partials (endpoint-rendered) live in `templates/shared/cards/partials/`. Wrappers build URLs via the `build_fragment_url(endpoint, **kwargs)` Jinja global, which drops empty/None kwargs. Stats fetches go through `cache.statistics.get(scope_type, scope_id)` (30s TTL).
 
 ### JinjaX Gotchas
 
