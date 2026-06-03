@@ -18,7 +18,6 @@ from vweb.lib import cache
 from vweb.lib.api import (
     fetch_campaign_or_404,
     get_characters_for_campaign,
-    get_recent_player_dicerolls,
 )
 from vweb.lib.audit_log import (
     ENTITY_TYPES,
@@ -81,7 +80,7 @@ class DiceRollsCardView(MethodView):
         if not any([campaign_id, user_id, character_id]):
             abort(400)
 
-        rolls = get_recent_player_dicerolls(
+        rolls = cache.dicerolls.recent(
             campaign_id=campaign_id,
             character_id=character_id,
             user_id=user_id,

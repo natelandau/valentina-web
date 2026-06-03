@@ -2,25 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from flask import abort, g, session
-from vclient import sync_dicerolls_service
 from vclient.exceptions import APIError
 
-from vweb.extensions import cache as flask_cache
-from vweb.lib import cache
 from vweb.lib.campaign_content_cache import get_books_for_campaign, get_chapters_for_book
 
-_DICEROLLS_CACHE_TTL_SECONDS = 30
-
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from vclient.models import CampaignBook, CampaignChapter, Character
     from vclient.models.campaigns import Campaign
-    from vclient.models.diceroll import RollResultType
     from vclient.models.users import CampaignExperience
 
 
@@ -184,101 +175,6 @@ def get_user_campaign_experience(user_id: str, campaign_id: str) -> CampaignExpe
         (exp for exp in user.campaign_experience if exp.campaign_id == campaign_id),
         None,
     )
-
-
-@dataclass(frozen=True, slots=True)
-class DiceRollDisplay:
-    """Pre-resolved dice roll data shaped for the Recent Dicerolls card."""
-
-    id: str
-    character_id: str
-    character_name: str
-    num_dice: int
-    dice_size: int
-    trait_names: list[str]
-    result_type: RollResultType | None
-    result_humanized: str | None
-    date_created: datetime
-    comment: str | None
-
-
-def get_recent_player_dicerolls(
-    campaign_id: str = "",
-    *,
-    character_id: str = "",
-    user_id: str = "",
-    limit: int = 25,
-) -> list[DiceRollDisplay]:
-    """Return recent dice rolls filtered by one or more scopes.
-
-    Fetch up to ``limit`` most-recent rolls matching the provided scopes
-    (combined AND on the API side). When the only scope passed is
-    ``campaign_id``, additionally filter to PLAYER-character rolls on the API
-    side — keeps the campaign-overview view free of NPC/storyteller noise
-    without burning ``limit`` slots on rolls that would be discarded.
-
-    Args:
-        campaign_id: Campaign scope (optional).
-        character_id: Character scope (optional).
-        user_id: User scope (optional).
-        limit: Maximum number of rolls to fetch from the API.
-
-    Returns:
-        Display-ready rows in the API's newest-first order.
-
-    Note:
-        Results are cached for 30 seconds per scope and requesting user (the
-        API filters by ``on_behalf_of``, so the key must include the user id).
-    """
-    company_id = session["company_id"]
-    requesting_user_id = g.requesting_user.id
-    cache_key = (
-        f"dicerolls:{company_id}:{requesting_user_id}:"
-        f"{campaign_id}:{character_id}:{user_id}:{limit}"
-    )
-    cached = flask_cache.get(cache_key)
-    if cached is not None:
-        return cached
-
-    service = sync_dicerolls_service(on_behalf_of=requesting_user_id, company_id=company_id)
-    apply_player_filter = bool(campaign_id) and not (character_id or user_id)
-    page = service.get_page(
-        campaignid=campaign_id or None,
-        characterid=character_id or None,
-        userid=user_id or None,
-        character_type="PLAYER" if apply_player_filter else None,
-        limit=limit,
-        offset=0,
-    )
-
-    ctx = g.global_context
-    characters_by_id: dict[str, Character] = {c.id: c for c in ctx.characters}
-    all_traits = cache.blueprint.traits()
-
-    displays: list[DiceRollDisplay] = []
-    for roll in page.items:
-        character = characters_by_id.get(roll.character_id) if roll.character_id else None
-        character_name = character.name if character else ""
-        character_id_display = character.id if character else (roll.character_id or "")
-
-        trait_names = [all_traits[tid].name for tid in roll.trait_ids if tid in all_traits]
-
-        displays.append(
-            DiceRollDisplay(
-                id=roll.id,
-                character_id=character_id_display,
-                character_name=character_name,
-                num_dice=roll.num_dice,
-                dice_size=roll.dice_size,
-                trait_names=trait_names,
-                result_type=roll.result.total_result_type if roll.result else None,
-                result_humanized=roll.result.total_result_humanized if roll.result else None,
-                date_created=roll.date_created,
-                comment=roll.comment,
-            )
-        )
-    flask_cache.set(cache_key, displays, timeout=_DICEROLLS_CACHE_TTL_SECONDS)
-    return displays
 
 
 def validate_and_submit_experience(

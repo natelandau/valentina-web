@@ -109,9 +109,9 @@ class TestStatisticsCardEndpoint:
 
 @pytest.fixture
 def mock_rolls(mocker: MockerFixture) -> MagicMock:
-    """Mock get_recent_player_dicerolls to avoid real vclient calls."""
+    """Mock cache.dicerolls.recent to avoid real vclient calls."""
     mock = mocker.patch(
-        "vweb.routes.fragments_shared_cards.views.get_recent_player_dicerolls",
+        "vweb.lib.cache.dicerolls.recent",
         autospec=True,
     )
     mock.return_value = []

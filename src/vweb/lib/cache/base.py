@@ -101,7 +101,10 @@ class TimestampValidated:
 
 # Per-key single-flight locks shared by cached_fetch and bespoke callers
 # (e.g. global_context). One lock per cache key collapses a cold-cache stampede.
-# One lock per cache key; keys are a small stable set (one per cache domain), so this dict does not grow unbounded.
+# One single-flight lock per distinct cache key. Most keys are low-cardinality
+# (per cache domain or per company/user/scope), so in practice this dict stays
+# small; there is no eviction, but each lock is tiny. Raw threading.Lock objects
+# are not weak-referenceable, so a WeakValueDictionary is not an option here.
 _locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
 
