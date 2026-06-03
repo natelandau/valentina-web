@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 def mock_statistics(mocker: MockerFixture) -> MagicMock:
     """Mock the generic statistics helper to avoid real vclient calls."""
     stats = RollStatisticsFactory.build()
-    mock = mocker.patch("vweb.routes.fragments_shared_cards.views.get_statistics", autospec=True)
+    mock = mocker.patch("vweb.lib.cache.statistics.get", autospec=True)
     mock.return_value = stats
     return mock
 
