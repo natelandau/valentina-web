@@ -16,13 +16,13 @@ from markupsafe import Markup, escape
 from vclient import sync_companies_service
 from vclient.models.audit_logs import AuditLog
 
-from vweb.extensions import cache
-from vweb.lib.campaign_content_cache import get_books_for_campaign, get_chapters_for_book
+from vweb.constants import CACHE_AUDIT_LOG_TTL
+from vweb.lib import cache
 
 if TYPE_CHECKING:
     from vclient.models.pagination import PaginatedResponse
 
-    from vweb.lib.global_context import GlobalContext
+    from vweb.lib.cache.global_context import GlobalContext
 
 ENTITY_TYPES: list[str] = sorted(get_args(AuditLog.model_fields["entity_type"].annotation))
 
@@ -32,7 +32,7 @@ _DELETED_SENTINEL = "[deleted]"
 
 # Audit entries are written for nearly every mutation, so we accept eventual
 # consistency and rely on a short TTL rather than explicit invalidation.
-_AUDIT_LOG_CACHE_TTL_SECONDS = 30
+_AUDIT_LOG_STRATEGY = cache.base.ShortTTL(ttl=CACHE_AUDIT_LOG_TTL)
 
 
 @dataclass(frozen=True)
@@ -223,7 +223,7 @@ def _resolve_book(
     if not campaign_id:
         return ("Book", _DELETED_SENTINEL, None)
 
-    book = next((b for b in get_books_for_campaign(campaign_id) if b.id == book_id), None)
+    book = next((b for b in cache.campaign_content.books(campaign_id) if b.id == book_id), None)
     if book:
         return (
             "Book",
@@ -244,7 +244,8 @@ def _resolve_chapter(
         return ("Chapter", _DELETED_SENTINEL, None)
 
     chapter = next(
-        (c for c in get_chapters_for_book(campaign_id, book_id) if c.id == chapter_id), None
+        (c for c in cache.campaign_content.chapters(campaign_id, book_id) if c.id == chapter_id),
+        None,
     )
     if chapter:
         return (
@@ -305,24 +306,22 @@ def get_audit_log_page(  # noqa: PLR0913
         f"{book_id}:{chapter_id}:{character_id}:{entity_type}:{operation}:"
         f"{date_from}:{date_to}:{limit}:{offset}"
     )
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
 
-    page = sync_companies_service().get_audit_log_page(
-        company_id,
-        limit=limit,
-        offset=offset,
-        acting_user_id=acting_user_id or None,
-        user_id=user_id or None,
-        campaign_id=campaign_id or None,
-        book_id=book_id or None,
-        chapter_id=chapter_id or None,
-        character_id=character_id or None,
-        entity_type=entity_type or None,  # ty:ignore[invalid-argument-type]
-        operation=operation or None,  # ty:ignore[invalid-argument-type]
-        date_from=datetime.fromisoformat(date_from) if date_from else None,
-        date_to=datetime.fromisoformat(date_to) if date_to else None,
-    )
-    cache.set(cache_key, page, timeout=_AUDIT_LOG_CACHE_TTL_SECONDS)
-    return page  # ty:ignore[invalid-return-type]
+    def fetch() -> PaginatedResponse[AuditLog]:
+        return sync_companies_service().get_audit_log_page(  # ty:ignore[invalid-return-type]
+            company_id,
+            limit=limit,
+            offset=offset,
+            acting_user_id=acting_user_id or None,
+            user_id=user_id or None,
+            campaign_id=campaign_id or None,
+            book_id=book_id or None,
+            chapter_id=chapter_id or None,
+            character_id=character_id or None,
+            entity_type=entity_type or None,  # ty:ignore[invalid-argument-type]
+            operation=operation or None,  # ty:ignore[invalid-argument-type]
+            date_from=datetime.fromisoformat(date_from) if date_from else None,
+            date_to=datetime.fromisoformat(date_to) if date_to else None,
+        )
+
+    return cache.base.cached_fetch(cache_key, fetch, _AUDIT_LOG_STRATEGY)

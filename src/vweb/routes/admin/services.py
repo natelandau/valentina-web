@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from flask import session
 from vclient import sync_users_service
 
-from vweb.lib.global_context import clear_global_context_cache
+from vweb.lib import cache
 
 if TYPE_CHECKING:
     from vclient.models import User
@@ -46,7 +46,7 @@ def approve(user_id: str, role: str, requesting_user_id: str) -> User:
         user_id,
         role,  # ty:ignore[invalid-argument-type]
     )
-    clear_global_context_cache(session["company_id"], session["user_id"])
+    cache.global_context.clear(session["company_id"], session["user_id"])
     return user
 
 
@@ -63,7 +63,7 @@ def change_role(user_id: str, role: str, requesting_user_id: str) -> User:
     user = sync_users_service(
         on_behalf_of=requesting_user_id, company_id=session["company_id"]
     ).update(user_id, role=role)
-    clear_global_context_cache(session["company_id"], session["user_id"])
+    cache.global_context.clear(session["company_id"], session["user_id"])
     return user
 
 
@@ -72,7 +72,7 @@ def deny(user_id: str, requesting_user_id: str) -> None:
     sync_users_service(on_behalf_of=requesting_user_id, company_id=session["company_id"]).deny_user(
         user_id
     )
-    clear_global_context_cache(session["company_id"], session["user_id"])
+    cache.global_context.clear(session["company_id"], session["user_id"])
 
 
 def merge(
@@ -87,5 +87,5 @@ def merge(
         primary_user_id=primary_user_id,
         secondary_user_id=secondary_user_id,
     )
-    clear_global_context_cache(session["company_id"], session["user_id"])
+    cache.global_context.clear(session["company_id"], session["user_id"])
     return user

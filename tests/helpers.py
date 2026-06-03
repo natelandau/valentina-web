@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 from vclient.testing import CampaignFactory, CompanyFactory, UserFactory
 
-from vweb.lib.global_context import GlobalContext
+from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
     from flask.testing import TestResponse
@@ -151,7 +151,7 @@ def make_cache_store_mock(mocker: MockerFixture, module_path: str) -> dict:
 
     Args:
         mocker: The pytest-mock fixture.
-        module_path: Dotted path to the cache object (e.g., "vweb.lib.options_cache.cache").
+        module_path: Dotted path to the cache object (e.g., "vweb.lib.cache.base.cache").
 
     Returns:
         The dict backing the mock cache, for direct inspection in tests.

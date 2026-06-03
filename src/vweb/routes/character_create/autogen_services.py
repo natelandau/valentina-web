@@ -8,8 +8,9 @@ from flask import session
 from vclient import sync_character_autogen_service, sync_character_blueprint_service
 
 from vweb.constants import CACHE_BLUEPRINT_TTL
-from vweb.extensions import cache
-from vweb.lib.options_cache import get_options
+from vweb.lib import cache
+
+_FORM_OPTIONS_STRATEGY = cache.base.PureTTL(ttl=CACHE_BLUEPRINT_TTL)
 
 if TYPE_CHECKING:
     from vclient.constants import (
@@ -141,21 +142,20 @@ def fetch_form_options() -> dict:
     Returns:
         Dict with enum lists and blueprint data for form selects.
     """
-    cache_key = "form_options:character_create"
-    cached: dict | None = cache.get(cache_key)
-    if cached is not None:
-        return cached
 
-    bp_svc = sync_character_blueprint_service(company_id=session["company_id"])
-    opts = get_options().characters
-    result = {
-        "character_classes": opts.character_class,
-        "experience_levels": opts.autogen_experience_level,
-        "skill_focuses": opts.ability_focus,
-        "concepts": bp_svc.list_all_concepts(),
-        "vampire_clans": bp_svc.list_all_vampire_clans(),
-        "werewolf_tribes": bp_svc.list_all_werewolf_tribes(),
-        "werewolf_auspices": bp_svc.list_all_werewolf_auspices(),
-    }
-    cache.set(cache_key, result, timeout=CACHE_BLUEPRINT_TTL)
-    return result
+    def _build() -> dict:
+        bp_svc = sync_character_blueprint_service(company_id=session["company_id"])
+        opts = cache.options.get().characters
+        return {
+            "character_classes": opts.character_class,
+            "experience_levels": opts.autogen_experience_level,
+            "skill_focuses": opts.ability_focus,
+            "concepts": bp_svc.list_all_concepts(),
+            "vampire_clans": bp_svc.list_all_vampire_clans(),
+            "werewolf_tribes": bp_svc.list_all_werewolf_tribes(),
+            "werewolf_auspices": bp_svc.list_all_werewolf_auspices(),
+        }
+
+    # Company-scoped: concepts/clans/tribes/auspices come from the company's blueprint.
+    key = f"form_options:character_create:{session['company_id']}"
+    return cache.base.cached_fetch(key, _build, _FORM_OPTIONS_STRATEGY)

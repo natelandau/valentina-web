@@ -1,9 +1,8 @@
 """Statistics caching with per-scope dispatch.
 
-Cache roll statistics for one of three scopes (campaign / user / character)
-behind a 30-second Redis/SimpleCache TTL. The underlying API calls live on
-three separate vclient services, so this helper is the single place that
-knows how to dispatch by scope.
+Cache roll statistics for one of three scopes (campaign / user / character) behind a
+30-second TTL. The underlying API calls live on three separate vclient services, so
+this helper is the single place that knows how to dispatch by scope.
 """
 
 from __future__ import annotations
@@ -17,20 +16,19 @@ from vclient import (
     sync_users_service,
 )
 
-from vweb.extensions import cache
+from vweb.constants import CACHE_STATISTICS_TTL
+from vweb.lib.cache import base
 
 if TYPE_CHECKING:
     from vclient.models import RollStatistics
 
 ScopeType = Literal["campaign", "user", "character"]
-_CACHE_TTL_SECONDS = 30
 _NUM_TOP_TRAITS = 1
+_STRATEGY = base.ShortTTL(ttl=CACHE_STATISTICS_TTL)
 
 
-def get_statistics(scope_type: ScopeType, scope_id: str) -> RollStatistics:
+def get(scope_type: ScopeType, scope_id: str) -> RollStatistics:
     """Fetch roll statistics for a single scope with a 30-second cache TTL.
-
-    Dispatch to the right vclient service based on ``scope_type``.
 
     Args:
         scope_type: Which entity the stats are scoped to.
@@ -40,18 +38,17 @@ def get_statistics(scope_type: ScopeType, scope_id: str) -> RollStatistics:
         RollStatistics for the requested scope.
 
     Raises:
-        ValueError: If scope_type is not one of "campaign", "user", or
-            "character".
+        ValueError: If scope_type is not one of "campaign", "user", or "character".
     """
     if scope_type not in ("campaign", "user", "character"):
         msg = f"Unknown scope_type: {scope_type!r}"
         raise ValueError(msg)
 
-    cache_key = f"stats:{scope_type}:{scope_id}"
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
+    key = f"stats:{scope_type}:{scope_id}"
+    return base.cached_fetch(key, lambda: _fetch(scope_type, scope_id), _STRATEGY)
 
+
+def _fetch(scope_type: ScopeType, scope_id: str) -> RollStatistics:
     user_id = g.requesting_user.id
     company_id = session["company_id"]
 
@@ -62,6 +59,4 @@ def get_statistics(scope_type: ScopeType, scope_id: str) -> RollStatistics:
     else:  # scope_type == "character"
         svc = sync_characters_service(on_behalf_of=user_id, company_id=company_id)
 
-    stats = svc.get_statistics(scope_id, num_top_traits=_NUM_TOP_TRAITS)
-    cache.set(cache_key, stats, timeout=_CACHE_TTL_SECONDS)
-    return stats
+    return svc.get_statistics(scope_id, num_top_traits=_NUM_TOP_TRAITS)

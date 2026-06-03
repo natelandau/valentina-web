@@ -9,7 +9,7 @@ from flask import session
 from vclient import sync_users_service
 from vclient.models import QuickrollCreate, QuickrollUpdate
 
-from vweb.lib.blueprint_cache import get_all_traits
+from vweb.lib import cache
 
 if TYPE_CHECKING:
     from vclient.models import Quickroll
@@ -113,7 +113,7 @@ class QuickrollHandler:
     def _to_display(qr: Quickroll) -> QuickrollDisplay:
         """Convert a Quickroll model to a display dataclass with resolved trait names."""
         trait_ids = qr.trait_ids
-        all_traits = get_all_traits()
+        all_traits = cache.blueprint.traits()
         t1 = all_traits.get(trait_ids[0]) if len(trait_ids) > 0 else None
         t2 = all_traits.get(trait_ids[1]) if len(trait_ids) > 1 else None
 

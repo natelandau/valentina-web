@@ -27,9 +27,9 @@ from vweb.lib.api import (
     fetch_chapter_or_404,
     get_active_campaign,
     get_characters_for_campaign,
-    get_recent_player_dicerolls,
 )
-from vweb.lib.global_context import GlobalContext
+from vweb.lib.cache.dicerolls import recent
+from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
     from vclient.models import Character
@@ -139,7 +139,7 @@ class TestFetchBookOr404:
         campaign = CampaignFactory.build(id="camp1")
         book = CampaignBookFactory.build(id="b1", campaign_id="camp1")
         ctx = build_global_context(user_role="PLAYER", campaign=campaign)
-        mocker.patch("vweb.lib.api.get_books_for_campaign", return_value=[book])
+        mocker.patch("vweb.lib.cache.campaign_content.books", return_value=[book])
 
         with app.test_request_context("/"):
             g.global_context = ctx
@@ -155,7 +155,7 @@ class TestFetchBookOr404:
         """Verify the helper aborts 404 when the campaign is not in the context."""
         # Given a context whose campaign id does not match the request
         ctx = build_global_context(user_role="PLAYER", campaign=CampaignFactory.build(id="other"))
-        mocker.patch("vweb.lib.api.get_books_for_campaign", return_value=[])
+        mocker.patch("vweb.lib.cache.campaign_content.books", return_value=[])
 
         with app.test_request_context("/"):
             g.global_context = ctx
@@ -169,7 +169,7 @@ class TestFetchBookOr404:
         # Given a valid campaign but a book cache that omits the requested book
         campaign = CampaignFactory.build(id="camp1")
         ctx = build_global_context(user_role="PLAYER", campaign=campaign)
-        mocker.patch("vweb.lib.api.get_books_for_campaign", return_value=[])
+        mocker.patch("vweb.lib.cache.campaign_content.books", return_value=[])
 
         with app.test_request_context("/"):
             g.global_context = ctx
@@ -187,7 +187,7 @@ class TestFetchChapterOr404:
         # Given a chapter returned by the lazy chapter cache
         chapter = CampaignChapterFactory.build(id="ch1", book_id="b1")
         ctx = build_global_context(user_role="PLAYER")
-        mocker.patch("vweb.lib.api.get_chapters_for_book", return_value=[chapter])
+        mocker.patch("vweb.lib.cache.campaign_content.chapters", return_value=[chapter])
 
         with app.test_request_context("/"):
             g.global_context = ctx
@@ -202,7 +202,7 @@ class TestFetchChapterOr404:
         """Verify the helper aborts 404 when the chapter is absent from the cache result."""
         # Given a chapter cache that omits the requested chapter
         ctx = build_global_context(user_role="PLAYER")
-        mocker.patch("vweb.lib.api.get_chapters_for_book", return_value=[])
+        mocker.patch("vweb.lib.cache.campaign_content.chapters", return_value=[])
 
         with app.test_request_context("/"):
             g.global_context = ctx
@@ -212,8 +212,8 @@ class TestFetchChapterOr404:
                 fetch_chapter_or_404("camp1", "b1", "ch1")
 
 
-class TestGetRecentPlayerDicerolls:
-    """Tests for get_recent_player_dicerolls helper in lib/api.py."""
+class TestRecentDicerolls:
+    """Tests for the ``recent()`` function in lib/cache/dicerolls.py."""
 
     def _make_context(self, *, user, characters, campaign) -> GlobalContext:
         """Build a GlobalContext aligned with the user's role for the helper tests."""
@@ -255,7 +255,7 @@ class TestGetRecentPlayerDicerolls:
 
         fake_vclient.set_response(Routes.DICEROLLS_LIST, items=[newer, older])
         mocker.patch(
-            "vweb.lib.api.get_all_traits",
+            "vweb.lib.cache.blueprint.traits",
             return_value={"t-str": strength, "t-brawl": brawl},
         )
 
@@ -267,7 +267,7 @@ class TestGetRecentPlayerDicerolls:
             g.requesting_user = user
 
             # When fetching recent player dicerolls
-            result = get_recent_player_dicerolls(campaign.id)
+            result = recent(campaign.id)
 
         # Then API order is preserved and trait names resolve (unknown ids silently dropped)
         assert [row.id for row in result] == ["r-newer", "r-older"]
@@ -279,13 +279,13 @@ class TestGetRecentPlayerDicerolls:
         campaign = CampaignFactory.build(id="camp-1")
         user = UserFactory.build(id="user-1", role="PLAYER")
 
-        mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+        mocker.patch("vweb.lib.cache.blueprint.traits", return_value={})
 
         page = mocker.MagicMock(items=[])
         fake_service = mocker.MagicMock()
         fake_service.get_page.return_value = page
         service_factory = mocker.patch(
-            "vweb.lib.api.sync_dicerolls_service", return_value=fake_service
+            "vweb.lib.cache.dicerolls.sync_dicerolls_service", return_value=fake_service
         )
 
         ctx = self._make_context(user=user, characters=[], campaign=campaign)
@@ -295,7 +295,7 @@ class TestGetRecentPlayerDicerolls:
             g.global_context = ctx
             g.requesting_user = user
 
-            get_recent_player_dicerolls(campaign.id, limit=25)
+            recent(campaign.id, limit=25)
 
         # Then the service is scoped to the requesting user and company
         service_factory.assert_called_once_with(on_behalf_of=user.id, company_id="test-company-id")
@@ -322,15 +322,15 @@ class TestGetRecentPlayerDicerolls:
 
             cache.clear()
 
-            svc = mocker.patch("vweb.lib.api.sync_dicerolls_service")
+            svc = mocker.patch("vweb.lib.cache.dicerolls.sync_dicerolls_service")
             page = mocker.MagicMock()
             page.items = []
             svc.return_value.get_page.return_value = page
-            mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+            mocker.patch("vweb.lib.cache.blueprint.traits", return_value={})
 
             # When called twice with the same scope
-            get_recent_player_dicerolls(campaign_id="camp-1", limit=25)
-            get_recent_player_dicerolls(campaign_id="camp-1", limit=25)
+            recent(campaign_id="camp-1", limit=25)
+            recent(campaign_id="camp-1", limit=25)
 
             # Then the underlying service is hit only once
             svc.return_value.get_page.assert_called_once()
@@ -346,23 +346,23 @@ class TestGetRecentPlayerDicerolls:
 
             cache.clear()
 
-            svc = mocker.patch("vweb.lib.api.sync_dicerolls_service")
+            svc = mocker.patch("vweb.lib.cache.dicerolls.sync_dicerolls_service")
             page = mocker.MagicMock()
             page.items = []
             svc.return_value.get_page.return_value = page
-            mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+            mocker.patch("vweb.lib.cache.blueprint.traits", return_value={})
 
             # When called for two different requesting users in the same scope
-            get_recent_player_dicerolls(campaign_id="camp-1", limit=25)
+            recent(campaign_id="camp-1", limit=25)
             g.requesting_user.id = "user-2"
-            get_recent_player_dicerolls(campaign_id="camp-1", limit=25)
+            recent(campaign_id="camp-1", limit=25)
 
             # Then each user triggers its own service call
             assert svc.return_value.get_page.call_count == 2
 
 
-class TestGetRecentPlayerDicerollsScopes:
-    """Tests for scope-based filtering in get_recent_player_dicerolls."""
+class TestRecentDicerollsScopes:
+    """Tests for scope-based filtering in the ``recent()`` function in lib/cache/dicerolls.py."""
 
     def test_character_id_scope_skips_player_filter(self, app, fake_vclient, mocker) -> None:
         """Verify character-scoped calls trust the API scope and do not set character_type."""
@@ -382,7 +382,7 @@ class TestGetRecentPlayerDicerollsScopes:
             result=make_dice_roll_result(),
         )
         fake_vclient.set_response(Routes.DICEROLLS_LIST, items=[roll])
-        mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+        mocker.patch("vweb.lib.cache.blueprint.traits", return_value={})
 
         ctx = build_global_context(
             user_role=user.role, user=user, campaign=campaign, characters=[npc_char]
@@ -394,7 +394,7 @@ class TestGetRecentPlayerDicerollsScopes:
             g.requesting_user = user
 
             # When requesting rolls scoped by character_id
-            result = get_recent_player_dicerolls(campaign_id="", character_id="npc-1")
+            result = recent(campaign_id="", character_id="npc-1")
 
         # Then the NPC roll is returned (no PLAYER post-filter applied)
         assert len(result) == 1
@@ -405,22 +405,20 @@ class TestGetRecentPlayerDicerollsScopes:
         # Given a mocked dicerolls service so we can inspect the API call
         from unittest.mock import MagicMock
 
-        from vweb.lib.api import get_recent_player_dicerolls
-
         fake_service = MagicMock()
         fake_service.get_page.return_value = MagicMock(items=[])
         mocker.patch(
-            "vweb.lib.api.sync_dicerolls_service",
+            "vweb.lib.cache.dicerolls.sync_dicerolls_service",
             autospec=True,
         ).return_value = fake_service
-        mocker.patch("vweb.lib.api.get_all_traits", return_value={})
+        mocker.patch("vweb.lib.cache.blueprint.traits", return_value={})
 
         # When requesting rolls scoped by user_id
         with app.test_request_context():
             g.requesting_user = mock_global_context.users[0]
             g.global_context = mock_global_context
             session["company_id"] = mock_global_context.company.id
-            get_recent_player_dicerolls(campaign_id="", user_id="u-42")
+            recent(campaign_id="", user_id="u-42")
 
         # Then userid="u-42" is forwarded to get_page, and character_type is unset
         # so non-player rolls for that user are still returned.

@@ -10,13 +10,8 @@ from flask.views import MethodView
 from vclient.exceptions import APIError
 
 from vweb import catalog
+from vweb.lib import cache
 from vweb.lib.jinja import htmx_response
-from vweb.routes.dictionary.cache import (
-    clear_dictionary_cache,
-    get_all_terms,
-    get_term,
-    search_terms,
-)
 from vweb.routes.dictionary.services import create_term as svc_create_term
 from vweb.routes.dictionary.services import delete_term as svc_delete_term
 from vweb.routes.dictionary.services import update_term as svc_update_term
@@ -24,7 +19,6 @@ from vweb.routes.dictionary.services import validate_term
 
 if TYPE_CHECKING:
     from vclient.models import DictionaryTerm
-from vweb.lib.blueprint_cache import get_subcategory, get_trait
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +31,8 @@ def _mutation_success_response(term: DictionaryTerm | None) -> str:
     Args:
         term: The created/updated term to display, or None for empty detail (delete).
     """
-    clear_dictionary_cache()
-    terms = get_all_terms()
+    cache.dictionary.clear()
+    terms = cache.dictionary.terms()
     active_id = term.id if term else ""
     detail = catalog.render("dictionary.partials.TermDetail", term=term)
     term_list = catalog.render(
@@ -52,7 +46,7 @@ class DictionaryIndexView(MethodView):
 
     def get(self) -> str:
         """Render the dictionary index page."""
-        terms = get_all_terms()
+        terms = cache.dictionary.terms()
         return catalog.render("dictionary.Index", terms=terms)
 
 
@@ -63,7 +57,7 @@ class DictionarySearchView(MethodView):
         """Return filtered term list HTML fragment."""
         query = request.args.get("search", "").strip()
         include_synonyms = request.args.get("include_synonyms") == "on"
-        terms = search_terms(query, include_synonyms=include_synonyms)
+        terms = cache.dictionary.search(query, include_synonyms=include_synonyms)
         return catalog.render("dictionary.partials.TermList", terms=terms)
 
 
@@ -72,7 +66,7 @@ class TermDetailView(MethodView):
 
     def get(self, term_id: str) -> str:
         """Render term detail as fragment (HTMX) or full page (direct nav)."""
-        term = get_term(term_id)
+        term = cache.dictionary.term(term_id)
         if term is None:
             abort(404)
 
@@ -83,7 +77,7 @@ class TermDetailView(MethodView):
             and term.source_type == "trait"
         ):
             # get the trait from the trait service
-            trait = get_trait(term.source_id)
+            trait = cache.blueprint.trait(term.source_id)
 
         subcategory = None
         if (
@@ -92,7 +86,7 @@ class TermDetailView(MethodView):
             and term.source_type == "trait_subcategory"
         ):
             # get the trait subcategory from the trait service
-            subcategory = get_subcategory(term.source_id)
+            subcategory = cache.blueprint.subcategory(term.source_id)
 
         is_htmx = request.headers.get("HX-Request")
         if is_htmx:
@@ -100,7 +94,7 @@ class TermDetailView(MethodView):
                 "dictionary.partials.TermDetail", term=term, trait=trait, subcategory=subcategory
             )
 
-        terms = get_all_terms()
+        terms = cache.dictionary.terms()
         return catalog.render(
             "dictionary.Index",
             terms=terms,
@@ -129,7 +123,7 @@ class DictionaryFormView(MethodView):
         """
         term = None
         if term_id:
-            term = get_term(term_id)
+            term = cache.dictionary.term(term_id)
             if term is None:
                 abort(404)
 
@@ -175,7 +169,7 @@ class DictionaryUpdateView(MethodView):
         Args:
             term_id: The ID of the term to update.
         """
-        term = get_term(term_id)
+        term = cache.dictionary.term(term_id)
         if term is None:
             abort(404)
         if term.source_type is not None:
@@ -212,7 +206,7 @@ class DictionaryDeleteView(MethodView):
         Args:
             term_id: The ID of the term to delete.
         """
-        term = get_term(term_id)
+        term = cache.dictionary.term(term_id)
         if term is None:
             abort(404)
         if term.source_type is not None:

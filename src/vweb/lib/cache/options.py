@@ -1,20 +1,28 @@
-"""Global API options cache.
+"""Per-company API options cache.
 
 Fetch all enumerations and configuration values from the API's options endpoint
-and cache them as typed dataclasses. Shared across all users with a 1-hour TTL.
+and cache them as typed dataclasses. The endpoint is company-scoped, so the cache
+key includes the company id; values are shared across that company's users for a
+1-hour TTL.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Final
 
 from flask import session
 from vclient import sync_options_service
 
 from vweb.constants import CACHE_OPTIONS_TTL
-from vweb.extensions import cache
+from vweb.lib.cache import base
 
-_CACHE_OPTIONS_KEY: str = "api_options"
+_CACHE_OPTIONS_PREFIX: Final[str] = "api_options:"
+_STRATEGY = base.PureTTL(ttl=CACHE_OPTIONS_TTL)
+
+
+def _key() -> str:
+    return f"{_CACHE_OPTIONS_PREFIX}{session['company_id']}"
 
 
 @dataclass(frozen=True)
@@ -79,7 +87,7 @@ class AssetOptions:
 class ApiOptions:
     """All API enumerations and configuration values.
 
-    Top-level container returned by ``get_options()``. Each field groups
+    Top-level container returned by ``get()``. Each field groups
     related enumerations into a typed sub-dataclass.
     """
 
@@ -142,24 +150,16 @@ def _parse_options(raw: dict) -> ApiOptions:
     )
 
 
-def get_options() -> ApiOptions:
-    """Return all API options, fetching from the API on cache miss.
+def get() -> ApiOptions:
+    """Return the company's API options, fetching on cache miss (1-hour TTL, per company)."""
+    return base.cached_fetch(_key(), _fetch, _STRATEGY)
 
-    Cached with 1-hour TTL. Shared across all users and requests.
 
-    Returns:
-        A typed ApiOptions instance containing all enumerations.
-    """
-    cached: ApiOptions | None = cache.get(_CACHE_OPTIONS_KEY)
-    if cached is not None:
-        return cached
+def clear() -> None:
+    """Remove the cached options for the current company, forcing a fresh fetch."""
+    base.clear_key(_key())
 
+
+def _fetch() -> ApiOptions:
     raw = sync_options_service(company_id=session["company_id"]).get_options()
-    result = _parse_options(raw)
-    cache.set(_CACHE_OPTIONS_KEY, result, timeout=CACHE_OPTIONS_TTL)
-    return result
-
-
-def clear_options_cache() -> None:
-    """Remove the cached options, forcing a fresh API fetch on next access."""
-    cache.delete(_CACHE_OPTIONS_KEY)
+    return _parse_options(raw)

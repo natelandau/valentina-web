@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from flask import Response, abort, g, redirect, request, session, url_for
 from loguru import logger
 
-from vweb.lib.global_context import clear_global_context_cache, load_global_context
+from vweb.lib import cache
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -147,13 +147,13 @@ def _hook_inject_global_context() -> Response | WerkzeugResponse | None:
     if not user_id or not company_id:
         return None
 
-    ctx = load_global_context(company_id, user_id)
+    ctx = cache.global_context.load(company_id, user_id)
     g.global_context = ctx
 
     requesting_user = next((u for u in ctx.users if u.id == user_id), None)
     if requesting_user is None:
-        clear_global_context_cache(company_id, user_id)
-        ctx = load_global_context(company_id, user_id)
+        cache.global_context.clear(company_id, user_id)
+        ctx = cache.global_context.load(company_id, user_id)
         g.global_context = ctx
         requesting_user = next((u for u in ctx.users if u.id == user_id), None)
 

@@ -19,11 +19,9 @@ if TYPE_CHECKING:
 def mock_dict_cache(mocker: MockerFixture) -> dict:
     """Patch dictionary cache functions used by the dictionary routes."""
     mocks: dict = {}
-    mocks["get_all_terms"] = mocker.patch(
-        "vweb.routes.dictionary.views.get_all_terms", autospec=True
-    )
-    mocks["get_term"] = mocker.patch("vweb.routes.dictionary.views.get_term", autospec=True)
-    mocks["search_terms"] = mocker.patch("vweb.routes.dictionary.views.search_terms", autospec=True)
+    mocks["terms"] = mocker.patch("vweb.lib.cache.dictionary.terms", autospec=True)
+    mocks["term"] = mocker.patch("vweb.lib.cache.dictionary.term", autospec=True)
+    mocks["search"] = mocker.patch("vweb.lib.cache.dictionary.search", autospec=True)
     return mocks
 
 
@@ -33,7 +31,7 @@ class TestDictionaryIndex:
     def test_renders_dictionary_page(self, client: FlaskClient, mock_dict_cache: dict) -> None:
         """Verify dictionary index renders with terms."""
         # Given three dictionary terms
-        mock_dict_cache["get_all_terms"].return_value = DictionaryTermFactory.batch(3)
+        mock_dict_cache["terms"].return_value = DictionaryTermFactory.batch(3)
 
         # When requesting the dictionary page
         response = client.get("/dictionary")
@@ -45,7 +43,7 @@ class TestDictionaryIndex:
     def test_renders_empty_state(self, client: FlaskClient, mock_dict_cache: dict) -> None:
         """Verify dictionary index shows empty state when no terms exist."""
         # Given no dictionary terms
-        mock_dict_cache["get_all_terms"].return_value = []
+        mock_dict_cache["terms"].return_value = []
 
         # When requesting the dictionary page
         response = client.get("/dictionary")
@@ -62,7 +60,7 @@ class TestDictionarySearch:
         """Verify search returns filtered results matching the query."""
         # Given a search that matches one term
         term = DictionaryTermFactory.build(term="Auspex")
-        mock_dict_cache["search_terms"].return_value = [term]
+        mock_dict_cache["search"].return_value = [term]
 
         # When searching for "aus"
         response = client.get("/dictionary/search?search=aus")
@@ -75,7 +73,7 @@ class TestDictionarySearch:
         """Verify empty search query returns all terms."""
         # Given three terms returned for empty search
         terms = DictionaryTermFactory.batch(3)
-        mock_dict_cache["search_terms"].return_value = terms
+        mock_dict_cache["search"].return_value = terms
 
         # When searching with an empty string
         response = client.get("/dictionary/search?search=")
@@ -95,7 +93,7 @@ class TestTermDetail:
         """Verify direct navigation returns a full page with back link."""
         # Given a term
         term = DictionaryTermFactory.build(id="t1", term="Auspex")
-        mock_dict_cache["get_term"].return_value = term
+        mock_dict_cache["term"].return_value = term
 
         # When requesting without HTMX header
         response = client.get("/dictionary/term/t1")
@@ -108,7 +106,7 @@ class TestTermDetail:
     def test_unknown_term_returns_404(self, client: FlaskClient, mock_dict_cache: dict) -> None:
         """Verify unknown term ID returns 404."""
         # Given the term is not found
-        mock_dict_cache["get_term"].return_value = None
+        mock_dict_cache["term"].return_value = None
 
         # When requesting an unknown term
         response = client.get("/dictionary/term/bad")
@@ -122,31 +120,31 @@ class TestDictionarySearchEdgeCases:
 
     def test_search_with_whitespace_only(self, client: FlaskClient, mock_dict_cache: dict) -> None:
         """Verify whitespace-only search is stripped and returns all terms."""
-        # Given search_terms returns all terms when called with empty string
+        # Given search returns all terms when called with empty string
         terms = DictionaryTermFactory.batch(3)
-        mock_dict_cache["search_terms"].return_value = terms
+        mock_dict_cache["search"].return_value = terms
 
         # When searching with whitespace-only query
         response = client.get("/dictionary/search?search=%20%20")
 
         # Then all terms are returned
         assert response.status_code == 200
-        mock_dict_cache["search_terms"].assert_called_once_with("", include_synonyms=False)
+        mock_dict_cache["search"].assert_called_once_with("", include_synonyms=False)
         for term in terms:
             assert term.term.encode() in response.data
 
     def test_search_without_param(self, client: FlaskClient, mock_dict_cache: dict) -> None:
         """Verify missing search param defaults to empty string and returns all terms."""
-        # Given search_terms returns all terms
+        # Given search returns all terms
         terms = DictionaryTermFactory.batch(3)
-        mock_dict_cache["search_terms"].return_value = terms
+        mock_dict_cache["search"].return_value = terms
 
         # When searching without a search parameter
         response = client.get("/dictionary/search")
 
         # Then all terms are returned
         assert response.status_code == 200
-        mock_dict_cache["search_terms"].assert_called_once_with("", include_synonyms=False)
+        mock_dict_cache["search"].assert_called_once_with("", include_synonyms=False)
         for term in terms:
             assert term.term.encode() in response.data
 
@@ -158,30 +156,28 @@ class TestDictionarySearchSynonymToggle:
         """Verify search passes include_synonyms=True when checkbox is checked."""
         # Given search returns results
         term = DictionaryTermFactory.build(term="Auspex")
-        mock_dict_cache["search_terms"].return_value = [term]
+        mock_dict_cache["search"].return_value = [term]
 
         # When searching with include_synonyms=on
         response = client.get("/dictionary/search?search=heightened&include_synonyms=on")
 
-        # Then search_terms is called with include_synonyms=True
+        # Then search is called with include_synonyms=True
         assert response.status_code == 200
-        mock_dict_cache["search_terms"].assert_called_once_with("heightened", include_synonyms=True)
+        mock_dict_cache["search"].assert_called_once_with("heightened", include_synonyms=True)
 
     def test_search_without_synonyms_param(
         self, client: FlaskClient, mock_dict_cache: dict
     ) -> None:
         """Verify search passes include_synonyms=False when checkbox param is absent."""
         # Given search returns no results
-        mock_dict_cache["search_terms"].return_value = []
+        mock_dict_cache["search"].return_value = []
 
         # When searching without the include_synonyms param
         response = client.get("/dictionary/search?search=heightened")
 
-        # Then search_terms is called with include_synonyms=False
+        # Then search is called with include_synonyms=False
         assert response.status_code == 200
-        mock_dict_cache["search_terms"].assert_called_once_with(
-            "heightened", include_synonyms=False
-        )
+        mock_dict_cache["search"].assert_called_once_with("heightened", include_synonyms=False)
 
 
 class TestTermDetailLinkOnly:
@@ -193,7 +189,7 @@ class TestTermDetailLinkOnly:
         term = DictionaryTermFactory.build(
             id="link-term", term="Anarch", definition=None, link="https://example.com"
         )
-        mock_dict_cache["get_term"].return_value = term
+        mock_dict_cache["term"].return_value = term
 
         # When requesting via HTMX
         response = client.get("/dictionary/term/link-term", headers={"HX-Request": "true"})
@@ -222,7 +218,7 @@ class TestDictionaryForm:
     def test_add_form_returns_empty_form(self, client: FlaskClient, mock_dict_cache: dict) -> None:
         """Verify add form renders without pre-filled values."""
         # Given no specific term
-        mock_dict_cache["get_all_terms"].return_value = []
+        mock_dict_cache["terms"].return_value = []
 
         # When requesting the add form via HTMX
         response = client.get("/dictionary/term/form", headers={"HX-Request": "true"})
@@ -237,7 +233,7 @@ class TestDictionaryForm:
         term = DictionaryTermFactory.build(
             id="t1", term="Auspex", definition="A discipline.", is_global=False
         )
-        mock_dict_cache["get_term"].return_value = term
+        mock_dict_cache["term"].return_value = term
 
         # When requesting the edit form via HTMX
         response = client.get("/dictionary/term/form/t1", headers={"HX-Request": "true"})
@@ -252,7 +248,7 @@ class TestDictionaryForm:
     ) -> None:
         """Verify edit form for unknown term returns 404."""
         # Given the term is not found
-        mock_dict_cache["get_term"].return_value = None
+        mock_dict_cache["term"].return_value = None
 
         # When requesting the edit form
         response = client.get("/dictionary/term/form/bad", headers={"HX-Request": "true"})
@@ -273,8 +269,8 @@ class TestDictionaryCreate:
         mock_create = mocker.patch(
             "vweb.routes.dictionary.views.svc_create_term", return_value=created
         )
-        mock_clear = mocker.patch("vweb.routes.dictionary.views.clear_dictionary_cache")
-        mock_dict_cache["get_all_terms"].return_value = [created]
+        mock_clear = mocker.patch("vweb.lib.cache.dictionary.clear")
+        mock_dict_cache["terms"].return_value = [created]
 
         # When submitting the create form
         csrf = get_csrf(client)
@@ -301,7 +297,7 @@ class TestDictionaryCreate:
     ) -> None:
         """Verify validation errors re-render the form with error messages."""
         # Given validation will fail (term too short)
-        mock_dict_cache["get_all_terms"].return_value = []
+        mock_dict_cache["terms"].return_value = []
 
         # When submitting with a too-short term
         csrf = get_csrf(client)
@@ -323,7 +319,7 @@ class TestDictionaryCreate:
         mocker.patch(
             "vweb.routes.dictionary.views.svc_create_term", side_effect=APIError("Server error")
         )
-        mock_dict_cache["get_all_terms"].return_value = []
+        mock_dict_cache["terms"].return_value = []
 
         # When submitting valid data that triggers an API error
         csrf = get_csrf(client)
@@ -354,12 +350,12 @@ class TestDictionaryUpdate:
         # Given an existing non-global term
         term = DictionaryTermFactory.build(id="t1", term="Auspex")
         updated = DictionaryTermFactory.build(id="t1", term="Auspex Updated")
-        mock_dict_cache["get_term"].return_value = term
+        mock_dict_cache["term"].return_value = term
         mock_update = mocker.patch(
             "vweb.routes.dictionary.views.svc_update_term", return_value=updated
         )
-        mock_clear = mocker.patch("vweb.routes.dictionary.views.clear_dictionary_cache")
-        mock_dict_cache["get_all_terms"].return_value = [updated]
+        mock_clear = mocker.patch("vweb.lib.cache.dictionary.clear")
+        mock_dict_cache["terms"].return_value = [updated]
 
         # When submitting the update form
         csrf = get_csrf(client)
@@ -386,7 +382,7 @@ class TestDictionaryUpdate:
         """Verify updating a global term returns 403."""
         # Given a global term
         term = DictionaryTermFactory.build(id="t1", source_type="trait")
-        mock_dict_cache["get_term"].return_value = term
+        mock_dict_cache["term"].return_value = term
 
         # When attempting to update
         csrf = get_csrf(client)
@@ -411,7 +407,7 @@ class TestDictionaryUpdate:
         """Verify validation errors re-render the form with the term pre-populated."""
         # Given an existing non-global term
         term = DictionaryTermFactory.build(id="t1", term="Auspex")
-        mock_dict_cache["get_term"].return_value = term
+        mock_dict_cache["term"].return_value = term
 
         # When submitting with a too-short term name
         csrf = get_csrf(client)
@@ -431,7 +427,7 @@ class TestDictionaryUpdate:
         """Verify API errors re-render the form with a generic error message."""
         # Given an existing non-global term and the API raises an error
         term = DictionaryTermFactory.build(id="t1", term="Auspex")
-        mock_dict_cache["get_term"].return_value = term
+        mock_dict_cache["term"].return_value = term
         mocker.patch(
             "vweb.routes.dictionary.views.svc_update_term", side_effect=APIError("Server error")
         )
@@ -464,10 +460,10 @@ class TestDictionaryDelete:
         """Verify successful delete returns updated list and empty detail."""
         # Given an existing non-global term
         term = DictionaryTermFactory.build(id="t1")
-        mock_dict_cache["get_term"].return_value = term
+        mock_dict_cache["term"].return_value = term
         mock_delete = mocker.patch("vweb.routes.dictionary.views.svc_delete_term")
-        mock_clear = mocker.patch("vweb.routes.dictionary.views.clear_dictionary_cache")
-        mock_dict_cache["get_all_terms"].return_value = []
+        mock_clear = mocker.patch("vweb.lib.cache.dictionary.clear")
+        mock_dict_cache["terms"].return_value = []
 
         # When deleting via HTMX
         csrf = get_csrf(client)
@@ -488,7 +484,7 @@ class TestDictionaryDelete:
         """Verify deleting a global term returns 403."""
         # Given a global term
         term = DictionaryTermFactory.build(id="t1", source_type="trait")
-        mock_dict_cache["get_term"].return_value = term
+        mock_dict_cache["term"].return_value = term
 
         # When attempting to delete
         csrf = get_csrf(client)
@@ -510,7 +506,7 @@ class TestGlobalTermRendering:
         """Verify company term detail includes edit and delete buttons."""
         # Given a company-scoped term
         term = DictionaryTermFactory.build(id="t1", term="Auspex")
-        mock_dict_cache["get_term"].return_value = term
+        mock_dict_cache["term"].return_value = term
 
         # When requesting the detail via HTMX
         response = client.get("/dictionary/term/t1", headers={"HX-Request": "true"})

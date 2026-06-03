@@ -55,7 +55,7 @@ def _mock_chapter_lookup(mocker, mock_book, mock_campaign, mock_chapters) -> Non
         side_effect=_fetch_chapter,
     )
     mocker.patch(
-        "vweb.routes.chapter.views.get_chapters_for_book",
+        "vweb.lib.cache.campaign_content.chapters",
         return_value=mock_chapters,
     )
     chapters_service = mocker.patch("vweb.routes.chapter.views.sync_chapters_service").return_value
@@ -144,7 +144,7 @@ class TestChapterCreate:
         """Verify creating a chapter invalidates the book and campaign book-list caches."""
         # Given a privileged user and a patched cache-clear
         mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-        clear_cache = mocker.patch("vweb.routes.chapter.views.clear_campaign_content_cache")
+        clear_cache = mocker.patch("vweb.lib.cache.campaign_content.clear")
         csrf = get_csrf(client)
 
         # When creating a chapter
@@ -196,7 +196,7 @@ class TestChapterDelete:
         """Verify deleting a chapter invalidates the book and campaign book-list caches."""
         # Given a privileged user and a patched cache-clear
         mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-        clear_cache = mocker.patch("vweb.routes.chapter.views.clear_campaign_content_cache")
+        clear_cache = mocker.patch("vweb.lib.cache.campaign_content.clear")
         csrf = get_csrf(client)
 
         # When deleting the chapter

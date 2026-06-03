@@ -21,8 +21,8 @@ from vclient import sync_users_service
 from vclient.models.users import UserUpdate
 
 from vweb import catalog
+from vweb.lib import cache
 from vweb.lib.api import get_campaign_name, validate_and_submit_experience
-from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_grant_experience, is_self
 from vweb.lib.jinja import hx_redirect
 from vweb.routes.profile.views_quickrolls import QuickrollsTableView
@@ -92,7 +92,7 @@ class ProfileView(MethodView):
             email=form_data["email"].strip(),
         )
         svc.update(user_id, request=update_request)
-        clear_global_context_cache(session["company_id"], session["user_id"])
+        cache.global_context.clear(session["company_id"], session["user_id"])
 
         return hx_redirect(url_for("profile.profile", user_id=user_id))
 

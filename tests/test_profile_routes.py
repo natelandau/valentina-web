@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 from vclient.testing import UserFactory
 
-from vweb.lib.global_context import GlobalContext
+from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
     from flask.testing import FlaskClient
@@ -59,8 +59,8 @@ def _mock_profile_api(mocker, profile_context) -> MagicMock:
 
     Override the autouse _mock_api fixture to provide a two-user GlobalContext.
     """
-    mocker.patch("vweb.lib.hooks.load_global_context", return_value=profile_context)
-    mocker.patch("vweb.lib.hooks.clear_global_context_cache")
+    mocker.patch("vweb.lib.cache.global_context.load", return_value=profile_context)
+    mocker.patch("vweb.lib.cache.global_context.clear")
 
     mock_svc = MagicMock()
     mock_svc.list_all_quickrolls.return_value = []

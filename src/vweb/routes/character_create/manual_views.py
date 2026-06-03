@@ -14,9 +14,8 @@ from vclient.exceptions import APIError, ValidationError
 from vclient.models import CharacterCreate, CharacterTraitAdd, CharacterUpdate
 
 from vweb import catalog
+from vweb.lib import cache
 from vweb.lib.api import fetch_campaign_or_404
-from vweb.lib.character_sheet import CharacterSheetService
-from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_edit_character, can_manage_npcs, is_storyteller
 from vweb.lib.jinja import hx_redirect
 from vweb.routes.character_create import bp
@@ -284,7 +283,7 @@ class ManualProfileView(MethodView):
             errors = {"_general": e.detail or e.message or "Failed to update profile"}
             return self._render_edit_form(campaign, character_id, form_data, errors)
 
-        clear_global_context_cache(session["company_id"], session["user_id"])
+        cache.global_context.clear(session["company_id"], session["user_id"])
         flash("Profile updated successfully", "success")
         return hx_redirect(url_for("character_view.character", character_id=character_id))
 
@@ -419,8 +418,9 @@ class ManualProfileView(MethodView):
 
         char_id = temp_char_id or session["temp_character_id"]
         character = svc.get(char_id)
-        sheet_svc = CharacterSheetService(character=character, requesting_user=g.requesting_user)
-        full_sheet = sheet_svc.get_full_sheet(include_available_traits=True)
+        full_sheet = cache.character_sheet.get(
+            character.id, g.requesting_user.id, include_available_traits=True
+        )
 
         back_url = url_for("character_create.manual_profile", campaign_id=campaign_id, resume="1")
         return catalog.render(
@@ -518,10 +518,9 @@ class ManualFinalizeView(MethodView):
             character = sync_characters_service(
                 on_behalf_of=user_id, company_id=session["company_id"]
             ).get(temp_char_id)
-            sheet_svc = CharacterSheetService(
-                character=character, requesting_user=g.requesting_user
+            full_sheet = cache.character_sheet.get(
+                character.id, g.requesting_user.id, include_available_traits=True
             )
-            full_sheet = sheet_svc.get_full_sheet(include_available_traits=True)
             back_url = url_for(
                 "character_create.manual_profile", campaign_id=campaign_id, resume="1"
             )
@@ -535,7 +534,7 @@ class ManualFinalizeView(MethodView):
             )
 
         _clear_temp_session()
-        clear_global_context_cache(session["company_id"], session["user_id"])
+        cache.global_context.clear(session["company_id"], session["user_id"])
         flash("Character created successfully!", "success")
         return hx_redirect(url_for("character_view.character", character_id=temp_char_id))
 

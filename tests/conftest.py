@@ -18,7 +18,7 @@ from vclient.testing import (
 )
 
 from vweb.config import APISettings, RedisSettings, Settings
-from vweb.lib.global_context import GlobalContext
+from vweb.lib.cache.global_context import GlobalContext
 
 # Polyfactory randomizes CompanySettings, including permission fields. When it rolls
 # "UNRESTRICTED" for permission_manage_campaign, PLAYER-role tests flake because
@@ -138,26 +138,26 @@ def fake_vclient(app):
 @pytest.fixture(autouse=True)
 def _mock_api(mocker, mock_global_context) -> None:
     """Prevent before_request hooks and route handlers from calling the real API."""
-    mocker.patch("vweb.lib.hooks.load_global_context", return_value=mock_global_context)
-    mocker.patch("vweb.lib.hooks.clear_global_context_cache")
+    mocker.patch("vweb.lib.cache.global_context.load", return_value=mock_global_context)
+    mocker.patch("vweb.lib.cache.global_context.clear")
 
-    mock_dict_svc = mocker.patch("vweb.routes.dictionary.cache.sync_dictionary_service")
+    mock_dict_svc = mocker.patch("vweb.lib.cache.dictionary.sync_dictionary_service")
     mock_dict_svc.return_value.list_all.return_value = []
 
     # Pages now fetch books/chapters lazily via campaign_content_cache; default to
     # empty lists so full-page renders don't reach for the real API.
-    mock_books_svc = mocker.patch("vweb.lib.campaign_content_cache.sync_books_service")
+    mock_books_svc = mocker.patch("vweb.lib.cache.campaign_content.sync_books_service")
     mock_books_svc.return_value.list_all.return_value = []
-    mock_chapters_svc = mocker.patch("vweb.lib.campaign_content_cache.sync_chapters_service")
+    mock_chapters_svc = mocker.patch("vweb.lib.cache.campaign_content.sync_chapters_service")
     mock_chapters_svc.return_value.list_all.return_value = []
 
     # The footer renders system health for approved users, so every page render
     # would otherwise hit the live health endpoint.
-    mock_system_svc = mocker.patch("vweb.lib.system_status_cache.sync_system_service")
+    mock_system_svc = mocker.patch("vweb.lib.cache.system_status.sync_system_service")
     mock_system_svc.return_value.health.return_value = SystemHealthFactory.build()
 
     mocker.patch(
-        "vweb.lib.options_cache.sync_options_service",
+        "vweb.lib.cache.options.sync_options_service",
         return_value=MagicMock(
             get_options=MagicMock(
                 return_value={

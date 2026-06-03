@@ -20,8 +20,8 @@ def mock_user_svc(mocker):
 
 @pytest.fixture
 def mock_get_all_traits(mocker):
-    """Mock the get_all_traits function from blueprint_cache."""
-    return mocker.patch("vweb.routes.profile.handlers.get_all_traits")
+    """Mock the blueprint traits cache for quickroll handler tests."""
+    return mocker.patch("vweb.lib.cache.blueprint.traits")
 
 
 def _make_quickroll(

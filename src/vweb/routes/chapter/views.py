@@ -9,14 +9,12 @@ from flask.views import MethodView
 from vclient import sync_chapters_service
 
 from vweb import catalog
+from vweb.lib import cache
 from vweb.lib.api import (
     count_notes,
     fetch_book_or_404,
     fetch_chapter_or_404,
-    get_chapters_for_book,
 )
-from vweb.lib.campaign_content_cache import clear_campaign_content_cache
-from vweb.lib.global_context import clear_global_context_cache
 from vweb.lib.guards import can_manage_campaign
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
 from vweb.lib.jinja import htmx_response_with_flash, hx_redirect
@@ -72,7 +70,7 @@ class ChapterDetailView(MethodView):
         """Render the chapter detail page."""
         book, campaign = fetch_book_or_404(campaign_id, book_id)
         chapter = fetch_chapter_or_404(campaign_id, book_id, chapter_id)
-        chapters = get_chapters_for_book(campaign_id, book_id)
+        chapters = cache.campaign_content.chapters(campaign_id, book_id)
 
         session["last_campaign_id"] = campaign_id
 
@@ -103,8 +101,8 @@ class ChapterDetailView(MethodView):
         fetch_book_or_404(campaign_id, book_id)
         chapters_service = _chapters_service(campaign_id, book_id)
         chapters_service.delete(chapter_id)
-        clear_global_context_cache(session["company_id"], session["user_id"])
-        clear_campaign_content_cache(
+        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.campaign_content.clear(
             session["company_id"], campaign_id=campaign_id, book_id=book_id
         )
 
@@ -169,8 +167,8 @@ class ChapterEditView(MethodView):
         updated = chapters_service.update(chapter_id, name=name, description=description)
         if number != chapter.number:
             updated = chapters_service.renumber(chapter_id, number)
-        clear_global_context_cache(session["company_id"], session["user_id"])
-        clear_campaign_content_cache(session["company_id"], book_id=book_id)
+        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.campaign_content.clear(session["company_id"], book_id=book_id)
 
         assets = chapters_service.list_all_assets(chapter_id)
         note_count = count_notes(chapters_service, chapter_id)
@@ -232,8 +230,8 @@ class ChapterCreateView(MethodView):
 
         chapters_service = _chapters_service(campaign_id, book_id)
         chapters_service.create(name=name, number=number, description=description)
-        clear_global_context_cache(session["company_id"], session["user_id"])
-        clear_campaign_content_cache(
+        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.campaign_content.clear(
             session["company_id"], campaign_id=campaign_id, book_id=book_id
         )
 

@@ -13,7 +13,7 @@ from tests.conftest import get_csrf
 if TYPE_CHECKING:
     from flask.testing import FlaskClient
 
-    from vweb.lib.global_context import GlobalContext
+    from vweb.lib.cache.global_context import GlobalContext
 
 
 @pytest.fixture
@@ -48,7 +48,7 @@ class TestUsersPageAccessControl:
         """Verify a non-admin GET to /admin/users is redirected."""
         # Given a player
         mock_global_context.users[0].role = "PLAYER"
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=mock_global_context)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=mock_global_context)
 
         # When loading the page
         response = client.get("/admin/users")
@@ -71,7 +71,7 @@ class TestUsersPageGet:
         """Verify pending and approved users render and the admin's own row is hidden."""
         # Given an admin and a mix of pending + approved users (one is the admin)
         admin_id = admin_context.users[0].id
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
 
         svc = MagicMock()
         svc.list_all_unapproved.return_value = [
@@ -107,7 +107,7 @@ class TestApproveUserEndpoint:
     ) -> None:
         """Verify approve_user calls the service and returns 200."""
         # Given a pending user
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
         approve = mocker.patch(
             "vweb.routes.admin.views.admin_services.approve",
             return_value=UserFactory.build(id="pending-1", role="PLAYER"),
@@ -132,7 +132,7 @@ class TestApproveUserEndpoint:
     ) -> None:
         """Verify the admin cannot approve themselves."""
         # Given the admin's own id
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
         self_id = admin_context.users[0].id
 
         # When approving self
@@ -153,7 +153,7 @@ class TestApproveUserEndpoint:
     ) -> None:
         """Verify approving with UNAPPROVED is rejected."""
         # Given an admin session
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
 
         # When approving with UNAPPROVED role
         csrf = get_csrf(client)
@@ -177,7 +177,7 @@ class TestChangeRoleEndpoint:
     ) -> None:
         """Verify a successful role change returns the updated ApprovedUserRow."""
         # Given a mocked change_role returning a STORYTELLER
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
         mocker.patch(
             "vweb.routes.admin.views.admin_services.change_role",
             return_value=UserFactory.build(
@@ -210,7 +210,7 @@ class TestChangeRoleEndpoint:
     ) -> None:
         """Verify the admin cannot change their own role."""
         # Given the admin's own id
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
         self_id = admin_context.users[0].id
 
         # When changing own role
@@ -231,7 +231,7 @@ class TestChangeRoleEndpoint:
     ) -> None:
         """Verify UNAPPROVED is rejected with 400."""
         # Given an admin session
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
 
         # When changing role to UNAPPROVED
         csrf = get_csrf(client)
@@ -255,7 +255,7 @@ class TestDenyUserEndpoint:
     ) -> None:
         """Verify deny endpoint calls deny_user and returns 200."""
         # Given an admin session and mocked deny service
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
         deny = mocker.patch("vweb.routes.admin.views.admin_services.deny")
 
         # When denying a pending user
@@ -277,7 +277,7 @@ class TestDenyUserEndpoint:
     ) -> None:
         """Verify the admin cannot deny themselves."""
         # Given the admin's own id
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
         self_id = admin_context.users[0].id
 
         # When denying self
@@ -303,7 +303,7 @@ class TestMergeForm:
     ) -> None:
         """Verify the modal shows the pending user and a picker of candidates."""
         # Given a pending user and approved candidates
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
         svc = MagicMock()
         svc.list_all_unapproved.return_value = [
             UserFactory.build(id="pending-1", name_first="Ada", name_last="Lovelace"),
@@ -335,7 +335,7 @@ class TestMergePost:
     ) -> None:
         """Verify the endpoint calls merge() and returns HX-Redirect."""
         # Given an admin and a mocked merge service
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
         merge = mocker.patch("vweb.routes.admin.views.admin_services.merge")
 
         # When posting with a target user
@@ -362,7 +362,7 @@ class TestMergePost:
     ) -> None:
         """Verify an admin cannot merge into their own account."""
         # Given the admin's own id as target
-        mocker.patch("vweb.lib.hooks.load_global_context", return_value=admin_context)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
         self_id = admin_context.users[0].id
 
         # When posting with self as target

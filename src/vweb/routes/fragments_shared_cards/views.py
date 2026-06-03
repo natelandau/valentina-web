@@ -8,16 +8,16 @@ its ``hx-get`` at an endpoint here.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from flask import Blueprint, abort, g, request, session, url_for
 from flask.views import MethodView
 
 from vweb import catalog
+from vweb.lib import cache
 from vweb.lib.api import (
     fetch_campaign_or_404,
     get_characters_for_campaign,
-    get_recent_player_dicerolls,
 )
 from vweb.lib.audit_log import (
     ENTITY_TYPES,
@@ -31,7 +31,9 @@ from vweb.lib.character_list import (
     filter_characters,
     present_type_options,
 )
-from vweb.lib.statistics_cache import ScopeType, get_statistics
+
+if TYPE_CHECKING:
+    from vweb.lib.cache.statistics import ScopeType
 
 bp = Blueprint("shared_cards", __name__, url_prefix="/cards")
 
@@ -53,7 +55,7 @@ class StatisticsCardView(MethodView):
         scope_type, scope_id = set_scopes[0]
         return catalog.render(
             "shared.cards.partials.StatisticsContent",
-            statistics=get_statistics(scope_type, scope_id),
+            statistics=cache.statistics.get(scope_type, scope_id),
             title=request.args.get("title", "Statistics"),
             col_span=request.args.get("col_span", 0, type=int),
         )
@@ -78,7 +80,7 @@ class DiceRollsCardView(MethodView):
         if not any([campaign_id, user_id, character_id]):
             abort(400)
 
-        rolls = get_recent_player_dicerolls(
+        rolls = cache.dicerolls.recent(
             campaign_id=campaign_id,
             character_id=character_id,
             user_id=user_id,

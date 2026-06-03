@@ -29,7 +29,7 @@ from vweb.lib.audit_log import (
 if TYPE_CHECKING:
     from flask import Flask
 
-    from vweb.lib.global_context import GlobalContext
+    from vweb.lib.cache.global_context import GlobalContext
 
 
 class TestFormatChangeValue:
@@ -367,7 +367,7 @@ class TestResolveBook:
         """Verify a falsy campaign_id returns the deleted sentinel without hitting the accessor."""
         # Given a patched accessor that would otherwise return a book
         mock_get_books = mocker.patch(
-            "vweb.lib.audit_log.get_books_for_campaign",
+            "vweb.lib.cache.campaign_content.books",
             autospec=True,
             return_value=[CampaignBookFactory.build()],
         )
@@ -387,7 +387,7 @@ class TestResolveBook:
         # Given a book the accessor will return for the campaign
         book = CampaignBookFactory.build()
         mocker.patch(
-            "vweb.lib.audit_log.get_books_for_campaign",
+            "vweb.lib.cache.campaign_content.books",
             autospec=True,
             return_value=[book],
         )
@@ -412,7 +412,7 @@ class TestResolveChapter:
         """Verify a missing book_id returns the deleted sentinel without hitting the accessor."""
         # Given a patched accessor that would otherwise return a chapter
         mock_get_chapters = mocker.patch(
-            "vweb.lib.audit_log.get_chapters_for_book",
+            "vweb.lib.cache.campaign_content.chapters",
             autospec=True,
             return_value=[CampaignChapterFactory.build()],
         )
@@ -432,7 +432,7 @@ class TestResolveChapter:
         # Given a chapter the accessor will return for the book
         chapter = CampaignChapterFactory.build()
         mocker.patch(
-            "vweb.lib.audit_log.get_chapters_for_book",
+            "vweb.lib.cache.campaign_content.chapters",
             autospec=True,
             return_value=[chapter],
         )

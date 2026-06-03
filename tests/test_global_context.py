@@ -15,11 +15,11 @@ from vclient.testing import (
 )
 
 from tests.helpers import make_cache_store_mock
-from vweb.lib.global_context import (
+from vweb.lib.cache.global_context import (
     GlobalContext,
     _fetch_global_data,
-    clear_global_context_cache,
-    load_global_context,
+    clear,
+    load,
 )
 
 
@@ -47,7 +47,7 @@ def _fake_vclient_data(fake_vclient) -> None:
 @pytest.fixture
 def mock_cache_store(mocker) -> dict:
     """Provide a dict-backed cache mock for global_context."""
-    return make_cache_store_mock(mocker, "vweb.lib.global_context.cache")
+    return make_cache_store_mock(mocker, "vweb.lib.cache.global_context.cache")
 
 
 @pytest.mark.usefixtures("_fake_vclient_data")
@@ -112,25 +112,27 @@ def test_fetch_global_data_non_admin_skips_pending_user_count(app, fake_vclient)
 def test_load_global_context_returns_cached_on_same_timestamp(
     app, mocker, mock_global_context
 ) -> None:
-    """Verify load_global_context returns cached data when company timestamp hasn't changed."""
+    """Verify load returns cached data when company timestamp hasn't changed."""
     # Given a company whose timestamp stays the same
     mock_company = CompanyFactory.build(
         resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
     )
     mock_company_svc = mocker.MagicMock()
     mock_company_svc.get.return_value = mock_company
-    mocker.patch("vweb.lib.global_context.sync_companies_service", return_value=mock_company_svc)
+    mocker.patch(
+        "vweb.lib.cache.global_context.sync_companies_service", return_value=mock_company_svc
+    )
 
     mock_fetch = mocker.patch(
-        "vweb.lib.global_context._fetch_global_data",
+        "vweb.lib.cache.global_context._fetch_global_data",
         return_value=mock_global_context,
     )
 
-    # When load_global_context is called twice
+    # When load is called twice
     with app.app_context():
-        clear_global_context_cache("test-company-id", "test-user-id")
-        first = load_global_context("test-company-id", "test-user-id")
-        second = load_global_context("test-company-id", "test-user-id")
+        clear("test-company-id", "test-user-id")
+        first = load("test-company-id", "test-user-id")
+        second = load("test-company-id", "test-user-id")
 
     # Then _fetch_global_data is called only once
     assert first is second
@@ -140,7 +142,7 @@ def test_load_global_context_returns_cached_on_same_timestamp(
 def test_load_global_context_refetches_on_new_timestamp(
     app, mocker, mock_global_context, mock_cache_store
 ) -> None:
-    """Verify load_global_context re-fetches data when company timestamp changes."""
+    """Verify load re-fetches data when company timestamp changes."""
     # Given a company whose timestamp changes between calls
     mock_company_v1 = CompanyFactory.build(
         resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
@@ -150,7 +152,9 @@ def test_load_global_context_refetches_on_new_timestamp(
     )
     mock_company_svc = mocker.MagicMock()
     mock_company_svc.get.side_effect = [mock_company_v1, mock_company_v2]
-    mocker.patch("vweb.lib.global_context.sync_companies_service", return_value=mock_company_svc)
+    mocker.patch(
+        "vweb.lib.cache.global_context.sync_companies_service", return_value=mock_company_svc
+    )
 
     # Given _fetch_global_data returns different GlobalContexts
     ctx_v2 = GlobalContext(
@@ -160,16 +164,16 @@ def test_load_global_context_refetches_on_new_timestamp(
         resources_modified_at="2026-01-02T00:00:00+00:00",
     )
     mock_fetch = mocker.patch(
-        "vweb.lib.global_context._fetch_global_data",
+        "vweb.lib.cache.global_context._fetch_global_data",
         side_effect=[mock_global_context, ctx_v2],
     )
 
-    # When load_global_context is called, timestamp expires, then called again
+    # When load is called, timestamp expires, then called again
     with app.app_context():
-        clear_global_context_cache("test-company-id", "test-user-id")
-        first = load_global_context("test-company-id", "test-user-id")
+        clear("test-company-id", "test-user-id")
+        first = load("test-company-id", "test-user-id")
         mock_cache_store.pop("global_timestamp:test-company-id", None)
-        second = load_global_context("test-company-id", "test-user-id")
+        second = load("test-company-id", "test-user-id")
 
     # Then _fetch_global_data is called twice (data was refreshed)
     assert first is not second
@@ -180,30 +184,32 @@ def test_load_global_context_refetches_on_new_timestamp(
 def test_clear_global_context_cache_deletes_only_global_keys(
     app, mocker, mock_global_context, mock_cache_store
 ) -> None:
-    """Verify clear_global_context_cache deletes only global context keys."""
+    """Verify clear deletes only global context keys."""
     # Given a company with a stable timestamp
     mock_company = CompanyFactory.build(
         resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
     )
     mock_company_svc = mocker.MagicMock()
     mock_company_svc.get.return_value = mock_company
-    mocker.patch("vweb.lib.global_context.sync_companies_service", return_value=mock_company_svc)
+    mocker.patch(
+        "vweb.lib.cache.global_context.sync_companies_service", return_value=mock_company_svc
+    )
 
     mock_fetch = mocker.patch(
-        "vweb.lib.global_context._fetch_global_data",
+        "vweb.lib.cache.global_context._fetch_global_data",
         return_value=mock_global_context,
     )
 
     with app.app_context():
         # Given global context is loaded and an unrelated key exists
-        load_global_context("test-company-id", "test-user-id")
+        load("test-company-id", "test-user-id")
         mock_cache_store["bp_all_traits"] = {"some": "data"}
 
-        # When clear_global_context_cache is called
-        clear_global_context_cache("test-company-id", "test-user-id")
+        # When clear is called
+        clear("test-company-id", "test-user-id")
 
         # Then global context requires a re-fetch
-        load_global_context("test-company-id", "test-user-id")
+        load("test-company-id", "test-user-id")
         assert mock_fetch.call_count == 2
 
         # And unrelated cache keys are preserved
@@ -212,9 +218,9 @@ def test_clear_global_context_cache_deletes_only_global_keys(
 
 def test_before_request_sets_g_global_context(client, mocker, mock_global_context) -> None:
     """Verify the before_request hook populates g.global_context for normal requests."""
-    # Given a mocked load_global_context that returns a real GlobalContext
+    # Given a mocked load that returns a real GlobalContext
     mocker.patch(
-        "vweb.lib.hooks.load_global_context",
+        "vweb.lib.cache.global_context.load",
         return_value=mock_global_context,
     )
 
@@ -228,9 +234,9 @@ def test_before_request_sets_g_global_context(client, mocker, mock_global_contex
 
 
 def test_before_request_skips_static(app, mocker) -> None:
-    """Verify the before_request hook does not call load_global_context for static paths."""
-    # Given a mocked load_global_context
-    mock_load = mocker.patch("vweb.lib.hooks.load_global_context")
+    """Verify the before_request hook does not call load for static paths."""
+    # Given a mocked load
+    mock_load = mocker.patch("vweb.lib.cache.global_context.load")
 
     # When a static file request is made
     with app.test_request_context("/static/css/style.css"):
@@ -240,14 +246,14 @@ def test_before_request_skips_static(app, mocker) -> None:
         for func in app.before_request_funcs.get(None, []):
             func()
 
-    # Then load_global_context was never called
+    # Then load was never called
     mock_load.assert_not_called()
 
 
 def test_before_request_skips_without_user_id(app, mocker) -> None:
     """Verify the before_request hook skips when no user_id is in session."""
-    # Given a mocked load_global_context
-    mock_load = mocker.patch("vweb.lib.hooks.load_global_context")
+    # Given a mocked load
+    mock_load = mocker.patch("vweb.lib.cache.global_context.load")
 
     # When a request is made without user_id in session
     with app.test_request_context("/"):
@@ -255,7 +261,7 @@ def test_before_request_skips_without_user_id(app, mocker) -> None:
             if func.__name__ == "inject_global_context":
                 func()
 
-    # Then load_global_context was never called
+    # Then load was never called
     mock_load.assert_not_called()
 
 
@@ -296,8 +302,8 @@ def test_fetch_global_data_returns_all_characters_unfiltered(app, fake_vclient) 
 def test_fetch_global_data_does_not_fetch_books_or_chapters(app, mocker) -> None:
     """Verify _fetch_global_data no longer eagerly fans out to books and chapters."""
     # Given the book and chapter services would raise if invoked
-    book_svc = mocker.patch("vweb.lib.global_context.sync_books_service", create=True)
-    chapter_svc = mocker.patch("vweb.lib.global_context.sync_chapters_service", create=True)
+    book_svc = mocker.patch("vweb.lib.cache.global_context.sync_books_service", create=True)
+    chapter_svc = mocker.patch("vweb.lib.cache.global_context.sync_chapters_service", create=True)
 
     # When fetching global data
     with app.app_context():
@@ -326,10 +332,10 @@ def test_hook_retries_on_user_not_found(app, mocker) -> None:
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )
     mock_load = mocker.patch(
-        "vweb.lib.hooks.load_global_context",
+        "vweb.lib.cache.global_context.load",
         side_effect=[ctx_without_user, ctx_with_user],
     )
-    mocker.patch("vweb.lib.hooks.clear_global_context_cache")
+    mocker.patch("vweb.lib.cache.global_context.clear")
 
     # When a request is made with a session user_id
     client = app.test_client()
@@ -359,8 +365,8 @@ def test_hook_redirects_when_user_not_found_after_retry(app, mocker) -> None:
         campaigns=[],
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )
-    mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx_no_user)
-    mocker.patch("vweb.lib.hooks.clear_global_context_cache")
+    mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx_no_user)
+    mocker.patch("vweb.lib.cache.global_context.clear")
 
     # When a request is made to a protected route
     client = app.test_client()
@@ -396,18 +402,20 @@ def test_load_global_context_fetches_company_once_on_cold_cache(
     )
     mock_company_svc = mocker.MagicMock()
     mock_company_svc.get.return_value = mock_company
-    mocker.patch("vweb.lib.global_context.sync_companies_service", return_value=mock_company_svc)
+    mocker.patch(
+        "vweb.lib.cache.global_context.sync_companies_service", return_value=mock_company_svc
+    )
 
     # Given _fetch_global_data is patched so we isolate the company-fetch behavior
     mocker.patch(
-        "vweb.lib.global_context._fetch_global_data",
+        "vweb.lib.cache.global_context._fetch_global_data",
         return_value=mock_global_context,
     )
 
-    # When load_global_context runs against a cold cache
+    # When load runs against a cold cache
     with app.app_context():
-        clear_global_context_cache("test-company-id", "test-user-id")
-        load_global_context("test-company-id", "test-user-id")
+        clear("test-company-id", "test-user-id")
+        load("test-company-id", "test-user-id")
 
     # Then the company is fetched exactly once (reused for the timestamp and fetch)
     mock_company_svc.get.assert_called_once()
@@ -422,30 +430,32 @@ def test_load_global_context_passes_company_to_fetch(app, mocker, mock_global_co
     )
     mock_company_svc = mocker.MagicMock()
     mock_company_svc.get.return_value = mock_company
-    mocker.patch("vweb.lib.global_context.sync_companies_service", return_value=mock_company_svc)
+    mocker.patch(
+        "vweb.lib.cache.global_context.sync_companies_service", return_value=mock_company_svc
+    )
 
     mock_fetch = mocker.patch(
-        "vweb.lib.global_context._fetch_global_data",
+        "vweb.lib.cache.global_context._fetch_global_data",
         return_value=mock_global_context,
     )
 
-    # When load_global_context runs against a cold cache
+    # When load runs against a cold cache
     with app.app_context():
-        clear_global_context_cache("test-company-id", "test-user-id")
-        load_global_context("test-company-id", "test-user-id")
+        clear("test-company-id", "test-user-id")
+        load("test-company-id", "test-user-id")
 
     # Then the pre-fetched company is forwarded so _fetch_global_data skips its own get
     assert mock_fetch.call_args.kwargs["company"] is mock_company
 
 
-def test_rebuild_lock_for_returns_stable_lock_per_key() -> None:
-    """Verify the lock registry returns the same lock per key and distinct locks per key."""
-    from vweb.lib.global_context import _rebuild_lock_for
+def test_single_flight_lock_registry_stable_per_key() -> None:
+    """Verify the single-flight lock registry returns the same lock per key and distinct locks per key."""
+    from vweb.lib.cache.base import _lock_for
 
     # Given two distinct context keys
     # Then the same key yields the same lock, and distinct keys yield distinct locks
-    assert _rebuild_lock_for("global_ctx:a:b") is _rebuild_lock_for("global_ctx:a:b")
-    assert _rebuild_lock_for("global_ctx:a:b") is not _rebuild_lock_for("global_ctx:c:d")
+    assert _lock_for("global_ctx:a:b") is _lock_for("global_ctx:a:b")
+    assert _lock_for("global_ctx:a:b") is not _lock_for("global_ctx:c:d")
 
 
 def test_load_global_context_single_flight_collapses_concurrent_rebuilds(app, mocker) -> None:
@@ -458,7 +468,9 @@ def test_load_global_context_single_flight_collapses_concurrent_rebuilds(app, mo
     )
     mock_company_svc = mocker.MagicMock()
     mock_company_svc.get.return_value = mock_company
-    mocker.patch("vweb.lib.global_context.sync_companies_service", return_value=mock_company_svc)
+    mocker.patch(
+        "vweb.lib.cache.global_context.sync_companies_service", return_value=mock_company_svc
+    )
 
     built_context = GlobalContext(
         company=CompanyFactory.build(),
@@ -481,16 +493,16 @@ def test_load_global_context_single_flight_collapses_concurrent_rebuilds(app, mo
         release.wait(timeout=5)
         return built_context
 
-    mocker.patch("vweb.lib.global_context._fetch_global_data", side_effect=blocking_fetch)
+    mocker.patch("vweb.lib.cache.global_context._fetch_global_data", side_effect=blocking_fetch)
 
     results: dict[str, GlobalContext] = {}
 
     def worker(name: str) -> None:
         with app.app_context():
-            results[name] = load_global_context("test-company-id", "test-user-id")
+            results[name] = load("test-company-id", "test-user-id")
 
     with app.app_context():
-        clear_global_context_cache("test-company-id", "test-user-id")
+        clear("test-company-id", "test-user-id")
         cache.clear()
 
     # When thread A enters the rebuild and blocks, then thread B starts and queues

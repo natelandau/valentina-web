@@ -8,7 +8,7 @@ from vclient.testing import (
     UserFactory,
 )
 
-from vweb.lib.global_context import GlobalContext
+from vweb.lib.cache.global_context import GlobalContext
 
 
 def test_index_redirects_authenticated_user_to_campaign(client, mock_global_context) -> None:
@@ -44,7 +44,7 @@ def test_index_redirects_to_session_campaign(client, mocker) -> None:
         characters_by_campaign={older.id: [], newer.id: []},
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )
-    mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+    mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
     # Given the older campaign is in the session
     with client.session_transaction() as sess:
@@ -78,7 +78,7 @@ def test_index_defaults_to_most_recent_campaign(client, mocker) -> None:
         characters_by_campaign={older.id: [], newer.id: []},
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )
-    mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+    mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
     # When visiting the index (no session campaign)
     response = client.get("/")
@@ -106,7 +106,7 @@ def test_index_no_campaigns_shows_empty_state(client, mocker) -> None:
         campaigns=[],
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )
-    mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+    mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
     # When visiting the index
     response = client.get("/")
@@ -172,7 +172,7 @@ def test_global_header_omits_campaign_switcher_when_no_campaigns(client, mocker)
         campaigns=[],
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )
-    mocker.patch("vweb.lib.hooks.load_global_context", return_value=ctx)
+    mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
     # When loading the landing index (empty state)
     response = client.get("/")

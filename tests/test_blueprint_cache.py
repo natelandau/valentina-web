@@ -9,69 +9,69 @@ import pytest
 from vclient.testing import TraitFactory
 
 from tests.helpers import make_cache_store_mock
-from vweb.lib.blueprint_cache import (
-    clear_blueprint_cache,
-    get_all_subcategories,
-    get_all_traits,
-    get_trait,
+from vweb.lib.cache.blueprint import (
+    clear,
+    subcategories,
+    trait,
+    traits,
 )
 
 
 @pytest.fixture
 def mock_cache_store(mocker) -> dict:
-    """Provide a dict-backed cache mock for blueprint_cache."""
-    return make_cache_store_mock(mocker, "vweb.lib.blueprint_cache.cache")
+    """Provide a dict-backed cache mock for blueprint cache."""
+    return make_cache_store_mock(mocker, "vweb.lib.cache.base.cache")
 
 
 @pytest.fixture
 def mock_bp_svc(mocker):
     """Mock the sync_character_blueprint_service factory."""
     svc = MagicMock()
-    mocker.patch("vweb.lib.blueprint_cache.sync_character_blueprint_service", return_value=svc)
+    mocker.patch("vweb.lib.cache.blueprint.sync_character_blueprint_service", return_value=svc)
     return svc
 
 
-class TestGetAllTraits:
-    """Tests for get_all_traits()."""
+class TestTraits:
+    """Tests for traits()."""
 
     def test_fetches_from_api_on_cache_miss(self, app, mock_cache_store, mock_bp_svc) -> None:
-        """Verify get_all_traits calls the API when the cache is empty."""
+        """Verify traits calls the API when the cache is empty."""
         # Given two traits returned by the API
-        traits = TraitFactory.batch(2)
-        mock_bp_svc.list_all_traits.return_value = traits
+        trait_list = TraitFactory.batch(2)
+        mock_bp_svc.list_all_traits.return_value = trait_list
 
         # When fetching all traits
         with app.test_request_context("/"):
             from flask import session
 
             session["company_id"] = "test-company-id"
-            result = get_all_traits()
+            result = traits()
 
         # Then the result is a dict keyed by trait ID
         assert len(result) == 2
-        for t in traits:
+        for t in trait_list:
             assert result[t.id] is t
         mock_bp_svc.list_all_traits.assert_called_once()
 
     def test_returns_cached_on_hit(self, app, mock_cache_store, mock_bp_svc) -> None:
-        """Verify get_all_traits returns cached dict without calling the API again."""
+        """Verify traits returns cached dict without calling the API again."""
         # Given traits are already cached from a first call
-        traits = TraitFactory.batch(2)
-        mock_bp_svc.list_all_traits.return_value = traits
+        trait_list = TraitFactory.batch(2)
+        mock_bp_svc.list_all_traits.return_value = trait_list
 
         with app.test_request_context("/"):
             from flask import session
 
             session["company_id"] = "test-company-id"
-            first = get_all_traits()
-            second = get_all_traits()
+            first = traits()
+            second = traits()
 
         # Then the API is called only once and both results are the same dict
         assert first is second
         mock_bp_svc.list_all_traits.assert_called_once()
 
     def test_returns_empty_dict_when_no_traits(self, app, mock_cache_store, mock_bp_svc) -> None:
-        """Verify get_all_traits returns an empty dict when the API returns no traits."""
+        """Verify traits returns an empty dict when the API returns no traits."""
         # Given the API returns an empty list
         mock_bp_svc.list_all_traits.return_value = []
 
@@ -80,33 +80,33 @@ class TestGetAllTraits:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            result = get_all_traits()
+            result = traits()
 
         # Then the result is an empty dict
         assert result == {}
 
 
-class TestGetTrait:
-    """Tests for get_trait()."""
+class TestTrait:
+    """Tests for trait()."""
 
     def test_returns_trait_for_known_id(self, app, mock_cache_store, mock_bp_svc) -> None:
-        """Verify get_trait returns the correct Trait for a known ID."""
+        """Verify trait returns the correct Trait for a known ID."""
         # Given a trait exists in the cache
-        trait = TraitFactory.build(id="trait-1", name="Strength")
-        mock_bp_svc.list_all_traits.return_value = [trait]
+        t = TraitFactory.build(id="trait-1", name="Strength")
+        mock_bp_svc.list_all_traits.return_value = [t]
 
         # When looking up by ID
         with app.test_request_context("/"):
             from flask import session
 
             session["company_id"] = "test-company-id"
-            result = get_trait("trait-1")
+            result = trait("trait-1")
 
         # Then the trait is returned
-        assert result is trait
+        assert result is t
 
     def test_returns_none_for_unknown_id(self, app, mock_cache_store, mock_bp_svc) -> None:
-        """Verify get_trait returns None for an unknown trait ID."""
+        """Verify trait returns None for an unknown trait ID."""
         # Given the cache has traits but not the requested one
         mock_bp_svc.list_all_traits.return_value = [TraitFactory.build(id="other")]
 
@@ -115,17 +115,17 @@ class TestGetTrait:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            result = get_trait("nonexistent")
+            result = trait("nonexistent")
 
         # Then None is returned
         assert result is None
 
 
-class TestClearBlueprintCache:
-    """Tests for clear_blueprint_cache()."""
+class TestClear:
+    """Tests for clear()."""
 
     def test_forces_refetch_on_next_call(self, app, mock_cache_store, mock_bp_svc) -> None:
-        """Verify clear_blueprint_cache forces a fresh API fetch on next access."""
+        """Verify clear forces a fresh API fetch on next access."""
         # Given traits are cached
         traits_v1 = TraitFactory.batch(2)
         traits_v2 = TraitFactory.batch(3)
@@ -135,20 +135,20 @@ class TestClearBlueprintCache:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            first = get_all_traits()
+            first = traits()
             assert len(first) == 2
 
             # When the cache is cleared
-            clear_blueprint_cache()
+            clear()
 
             # Then the next call fetches fresh data
-            second = get_all_traits()
+            second = traits()
             assert len(second) == 3
 
         assert mock_bp_svc.list_all_traits.call_count == 2
 
     def test_clears_both_traits_and_subcategories(self, app, mock_cache_store, mock_bp_svc) -> None:
-        """Verify clear_blueprint_cache evicts both the traits and subcategory cache keys."""
+        """Verify clear evicts both the traits and subcategory cache keys."""
         # Given both caches are populated
         traits_v1 = TraitFactory.batch(2)
         traits_v2 = TraitFactory.batch(3)
@@ -164,17 +164,17 @@ class TestClearBlueprintCache:
             session["company_id"] = "test-company-id"
 
             # Populate both caches
-            first_traits = get_all_traits()
-            first_subcats = get_all_subcategories()
+            first_traits = traits()
+            first_subcats = subcategories()
             assert len(first_traits) == 2
             assert len(first_subcats) == 1
 
             # When the cache is cleared
-            clear_blueprint_cache()
+            clear()
 
             # Then both caches are re-fetched on next access
-            second_traits = get_all_traits()
-            second_subcats = get_all_subcategories()
+            second_traits = traits()
+            second_subcats = subcategories()
             assert len(second_traits) == 3
             assert len(second_subcats) == 2
 
@@ -182,30 +182,30 @@ class TestClearBlueprintCache:
         assert mock_bp_svc.list_all_subcategories.call_count == 2
 
 
-class TestGetAllSubcategories:
-    """Tests for get_all_subcategories()."""
+class TestSubcategories:
+    """Tests for subcategories()."""
 
     def test_fetches_from_api_on_cache_miss(self, app, mock_cache_store, mock_bp_svc) -> None:
-        """Verify get_all_subcategories calls the API when the cache is empty."""
+        """Verify subcategories calls the API when the cache is empty."""
         # Given two subcategories returned by the API
-        subcategories = [MagicMock(id="sc-1"), MagicMock(id="sc-2")]
-        mock_bp_svc.list_all_subcategories.return_value = subcategories
+        subcategory_list = [MagicMock(id="sc-1"), MagicMock(id="sc-2")]
+        mock_bp_svc.list_all_subcategories.return_value = subcategory_list
 
         # When fetching all subcategories
         with app.test_request_context("/"):
             from flask import session
 
             session["company_id"] = "test-company-id"
-            result = get_all_subcategories()
+            result = subcategories()
 
         # Then the result is a dict keyed by subcategory ID
         assert len(result) == 2
-        for subcategory in subcategories:
-            assert result[subcategory.id] is subcategory
+        for sc in subcategory_list:
+            assert result[sc.id] is sc
         mock_bp_svc.list_all_subcategories.assert_called_once()
 
     def test_returns_cached_on_hit(self, app, mock_cache_store, mock_bp_svc) -> None:
-        """Verify get_all_subcategories returns the cached dict without re-fetching."""
+        """Verify subcategories returns the cached dict without re-fetching."""
         # Given subcategories cached from a first call
         mock_bp_svc.list_all_subcategories.return_value = [MagicMock(id="sc-1")]
 
@@ -213,8 +213,8 @@ class TestGetAllSubcategories:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            first = get_all_subcategories()
-            second = get_all_subcategories()
+            first = subcategories()
+            second = subcategories()
 
         # Then the API is called only once and both results are the same dict
         assert first is second
@@ -226,15 +226,15 @@ class TestSingleFlight:
 
     def test_single_flight_collapses_concurrent_trait_fetches(self, app, mocker) -> None:
         """Verify two concurrent cold fetches of all traits trigger exactly one API call."""
-        from vweb.extensions import cache
+        from vweb.extensions import cache as flask_cache
 
         # Given a real (dict-pickling) cache cleared to a cold state
         with app.app_context():
-            cache.clear()
+            flask_cache.clear()
 
-        traits = TraitFactory.batch(2)
+        trait_list = TraitFactory.batch(2)
 
-        # Given a fetch that blocks inside the lock so the second thread must queue behind it
+        # Given a fetch that blocks so the second thread must queue behind it
         fetch_count = 0
         entered = threading.Event()
         release = threading.Event()
@@ -246,11 +246,11 @@ class TestSingleFlight:
             # Block so the second thread is forced to wait on the single-flight lock,
             # making the race deterministic rather than timing-dependent.
             release.wait(timeout=5)
-            return traits
+            return trait_list
 
         svc = MagicMock()
         svc.list_all_traits.side_effect = blocking_list_all_traits
-        mocker.patch("vweb.lib.blueprint_cache.sync_character_blueprint_service", return_value=svc)
+        mocker.patch("vweb.lib.cache.blueprint.sync_character_blueprint_service", return_value=svc)
 
         results: dict[str, dict] = {}
 
@@ -259,7 +259,7 @@ class TestSingleFlight:
                 from flask import session
 
                 session["company_id"] = "test-company-id"
-                results[name] = get_all_traits()
+                results[name] = traits()
 
         # When thread A enters the rebuild and blocks, then thread B starts and queues
         thread_a = threading.Thread(target=worker, args=("a",))

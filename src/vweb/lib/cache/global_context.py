@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -15,7 +14,9 @@ from vclient import (
     sync_users_service,
 )
 
+from vweb.constants import CACHE_GLOBAL_CONTEXT_TIMESTAMP_TTL
 from vweb.extensions import cache
+from vweb.lib.cache import base
 
 if TYPE_CHECKING:
     from vclient.models import (
@@ -24,22 +25,6 @@ if TYPE_CHECKING:
         Company,
         User,
     )
-
-
-# Per-(company, user) locks so concurrent cold-cache requests rebuild the global
-# context once instead of each doing a full redundant fetch (thundering herd).
-_rebuild_locks: dict[str, threading.Lock] = {}
-_rebuild_locks_guard = threading.Lock()
-
-
-def _rebuild_lock_for(ctx_key: str) -> threading.Lock:
-    """Return the shared rebuild lock for a context key, creating it once."""
-    with _rebuild_locks_guard:
-        lock = _rebuild_locks.get(ctx_key)
-        if lock is None:
-            lock = threading.Lock()
-            _rebuild_locks[ctx_key] = lock
-        return lock
 
 
 @dataclass
@@ -109,14 +94,14 @@ def _ts_key(company_id: str) -> str:
     return f"global_timestamp:{company_id}"
 
 
-def load_global_context(company_id: str, user_id: str) -> GlobalContext:
+def load(company_id: str, user_id: str) -> GlobalContext:
     """Load global context with company-level timestamp invalidation.
 
-    A lock-free fast path returns the cached context when both the company
-    timestamp and the per-user context are warm and consistent. Otherwise a
-    per-(company, user) single-flight lock ensures only one request rebuilds the
-    context while concurrent requests for the same user wait and reuse the result
-    — preventing a cold-cache thundering herd across the dashboard's lazy cards.
+    A lock-free fast path returns the cached context when both the company timestamp
+    and the per-user context are warm and consistent. Otherwise a per-(company, user)
+    single-flight rebuild ensures only one request rebuilds while others wait and reuse
+    the result — preventing a cold-cache thundering herd across the dashboard's lazy
+    cards.
 
     Args:
         company_id: The company to load context for.
@@ -135,33 +120,34 @@ def load_global_context(company_id: str, user_id: str) -> GlobalContext:
         if cached is not None and cached[0] == api_timestamp:
             return cached[1]
 
-    # Slow path: single-flight per (company, user).
-    with _rebuild_lock_for(ctx_key):
+    def rebuild() -> GlobalContext:
         # Resolve the timestamp inside the lock; another waiter may have set it.
-        api_timestamp = cache.get(ts_key)
+        local_timestamp = cache.get(ts_key)
         company: Company | None = None
-        if api_timestamp is None:
+        if local_timestamp is None:
             company = sync_companies_service().get(company_id)
-            api_timestamp = (
+            local_timestamp = (
                 company.resources_modified_at.isoformat() if company.resources_modified_at else ""
             )
-            cache.set(ts_key, api_timestamp, timeout=120)
+            cache.set(ts_key, local_timestamp, timeout=CACHE_GLOBAL_CONTEXT_TIMESTAMP_TTL)
 
         # Double-check: a prior holder of this lock may have just rebuilt it.
         cached = cache.get(ctx_key)
-        if cached is not None and cached[0] == api_timestamp:
+        if cached is not None and cached[0] == local_timestamp:
             return cached[1]
 
         global_context = _fetch_global_data(company_id, user_id, company=company)
         cache.set(ctx_key, (global_context.resources_modified_at, global_context))
         return global_context
 
+    return base.single_flight(ctx_key, rebuild)
 
-def clear_global_context_cache(company_id: str, user_id: str) -> None:
+
+def clear(company_id: str, user_id: str) -> None:
     """Clear global context caches. Call after mutations or for testing.
 
-    Only deletes global context keys — does not affect blueprint, character trait,
-    or campaign stats caches.
+    Only deletes the timestamp and per-user context keys — does not affect blueprint,
+    character-sheet, or stats caches.
 
     Args:
         company_id: The company whose context to clear.
