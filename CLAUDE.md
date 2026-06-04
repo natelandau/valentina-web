@@ -133,3 +133,5 @@ Tailwind v4's JIT scanner only sees **literal** class strings in templates at bu
 ## Code Style
 
 Ruff `select = ["ALL"]`, Google docstrings, line length 100, double quotes — see `pyproject.toml`. **ty ignores use `# ty:ignore[rule-name]`, NOT `# type: ignore[...]`.** Always import types from vclient when available (e.g. `CharacterInventoryType`) — never redefine Literal types locally.
+
+**`ty` (via `duty lint`) is the only authoritative type checker.** Editor `<new-diagnostics>` come from a Pyright LSP plugin this project does NOT use; Pyright ignores `# ty:ignore`, so it flags `ty`-clean lines. A Pyright-only warning is not a failure — confirm with `ty` before acting on it; never "fix" `ty`-clean code to satisfy Pyright.

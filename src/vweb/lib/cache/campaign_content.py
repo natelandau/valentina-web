@@ -32,12 +32,14 @@ _STRATEGY = base.TimestampValidated(
 )
 
 
+# company_id stays readable for tenant-level grouping; the campaign/book scope is
+# hashed so the key shape matches the other company-scoped caches.
 def _books_key(company_id: str, campaign_id: str) -> str:
-    return f"books:{company_id}:{campaign_id}"
+    return f"books:{company_id}:{base.hash_key(campaign_id)}"
 
 
 def _chapters_key(company_id: str, book_id: str) -> str:
-    return f"chapters:{company_id}:{book_id}"
+    return f"chapters:{company_id}:{base.hash_key(book_id)}"
 
 
 def books(campaign_id: str) -> list[CampaignBook]:

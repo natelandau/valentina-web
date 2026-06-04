@@ -94,6 +94,12 @@ def _ts_key(company_id: str) -> str:
     return f"global_timestamp:{company_id}"
 
 
+def _ctx_key(company_id: str, user_id: str) -> str:
+    # company_id stays readable for tenant-level grouping; the per-user component is
+    # hashed so the key shape matches the other company-scoped caches.
+    return f"global_ctx:{company_id}:{base.hash_key(user_id)}"
+
+
 def load(company_id: str, user_id: str) -> GlobalContext:
     """Load global context with company-level timestamp invalidation.
 
@@ -111,7 +117,7 @@ def load(company_id: str, user_id: str) -> GlobalContext:
         GlobalContext with current company data.
     """
     ts_key = _ts_key(company_id)
-    ctx_key = f"global_ctx:{company_id}:{user_id}"
+    ctx_key = _ctx_key(company_id, user_id)
 
     # Fast path: warm timestamp + warm matching context, no lock.
     api_timestamp = cache.get(ts_key)
@@ -154,4 +160,4 @@ def clear(company_id: str, user_id: str) -> None:
         user_id: The user whose cached context to clear.
     """
     cache.delete(_ts_key(company_id))
-    cache.delete(f"global_ctx:{company_id}:{user_id}")
+    cache.delete(_ctx_key(company_id, user_id))

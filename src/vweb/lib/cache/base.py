@@ -13,6 +13,7 @@ Two axes are modeled independently:
 
 from __future__ import annotations
 
+import hashlib
 import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
@@ -21,6 +22,29 @@ from vweb.extensions import cache
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+# ASCII unit separator: cannot appear in IDs or filter values, so joining parts with
+# it keeps field boundaries unambiguous — ("ab", "c") and ("a", "bc") never collide.
+_HASH_FIELD_SEP = "\x1f"
+# blake2b 16-byte digest -> 32 hex chars; collision-free at our cardinalities.
+_HASH_DIGEST_SIZE = 16
+
+
+def hash_key(*parts: object) -> str:
+    """Fold an ordered set of cache-key parts into one stable, fixed-length digest.
+
+    Use this for the variable/optional tail of a key (filters, scopes, paging) so the
+    key stays a fixed length and never grows runs of empty ``::`` segments when some
+    parts are blank. Compose it after the readable prefix, e.g.
+    ``f"dicerolls:{company_id}:{hash_key(user_id, campaign_id, limit)}"``.
+
+    Order-significant: pass parts in a fixed order at each call site so the same inputs
+    always map to the same key. ``None`` hashes identically to ``""`` (an absent filter
+    and an empty one are the same scope). Uses blake2b rather than the builtin ``hash``,
+    which is per-process salted and would yield different keys across workers/restarts.
+    """
+    raw = _HASH_FIELD_SEP.join("" if part is None else str(part) for part in parts)
+    return hashlib.blake2b(raw.encode(), digest_size=_HASH_DIGEST_SIZE).hexdigest()
 
 
 class Strategy(Protocol):

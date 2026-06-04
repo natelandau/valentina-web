@@ -25,6 +25,24 @@ if TYPE_CHECKING:
 _STRATEGY = base.ShortTTL(ttl=CACHE_DICEROLLS_TTL)
 
 
+def _cache_key(
+    *,
+    company_id: str,
+    requesting_user_id: str,
+    campaign_id: str,
+    character_id: str,
+    user_id: str,
+    limit: int,
+) -> str:
+    # company_id stays readable for tenant-level grouping; the per-user scope filters
+    # (most of them optional) are folded into one digest so absent filters cannot
+    # produce empty `::` segments and the key length stays bounded.
+    return (
+        f"dicerolls:{company_id}:"
+        f"{base.hash_key(requesting_user_id, campaign_id, character_id, user_id, limit)}"
+    )
+
+
 @dataclass
 class DiceRollDisplay:
     """Display-ready representation of a single dice roll."""
@@ -66,9 +84,13 @@ def recent(
     """
     company_id = session["company_id"]
     requesting_user_id = g.requesting_user.id
-    key = (
-        f"dicerolls:{company_id}:{requesting_user_id}:"
-        f"{campaign_id}:{character_id}:{user_id}:{limit}"
+    key = _cache_key(
+        company_id=company_id,
+        requesting_user_id=requesting_user_id,
+        campaign_id=campaign_id,
+        character_id=character_id,
+        user_id=user_id,
+        limit=limit,
     )
     return base.cached_fetch(
         key,

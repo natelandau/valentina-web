@@ -301,11 +301,24 @@ def get_audit_log_page(  # noqa: PLR0913
         PaginatedResponse[AuditLog]: Paginated audit log entries for the current company.
     """
     company_id: str = session["company_id"]
-    cache_key = (
-        f"auditlog:{company_id}:{acting_user_id}:{user_id}:{campaign_id}:"
-        f"{book_id}:{chapter_id}:{character_id}:{entity_type}:{operation}:"
-        f"{date_from}:{date_to}:{limit}:{offset}"
+    # company_id stays readable for tenant-level grouping; the (mostly optional) filter
+    # set plus paging is folded into one digest so unset filters cannot produce empty
+    # `::` segments and the key length stays bounded regardless of how many are set.
+    filters_digest = cache.base.hash_key(
+        acting_user_id,
+        user_id,
+        campaign_id,
+        book_id,
+        chapter_id,
+        character_id,
+        entity_type,
+        operation,
+        date_from,
+        date_to,
+        limit,
+        offset,
     )
+    cache_key = f"auditlog:{company_id}:{filters_digest}"
 
     def fetch() -> PaginatedResponse[AuditLog]:
         return sync_companies_service().get_audit_log_page(  # ty:ignore[invalid-return-type]
