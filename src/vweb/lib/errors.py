@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING
 
 from flask_wtf.csrf import CSRFError
 from loguru import logger
+from werkzeug.exceptions import HTTPException
 
 if TYPE_CHECKING:
     from flask import Flask
-    from werkzeug.exceptions import HTTPException
 
 
 def register_error_handlers(app: Flask) -> None:
@@ -68,6 +68,16 @@ def register_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(Exception)
     def unhandled_exception(error: Exception) -> tuple[str, int]:
+        # HTTP errors without a dedicated handler (405, 410, ...) land here too. Keep their
+        # status code and skip exception logging so bot probes don't surface as 500s in logs.
+        if isinstance(error, HTTPException):
+            return catalog.render(
+                "errors.ErrorPage",
+                code=error.code,
+                title=error.name,
+                message=error.description,
+            ), error.code or 500
+
         logger.exception("Unhandled exception: {error}", error=error)
         return catalog.render(
             "errors.ErrorPage",
