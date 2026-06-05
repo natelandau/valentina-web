@@ -155,6 +155,17 @@ class TestBookEditPermissions:
         response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/edit")
         assert response.status_code == 200
 
+    def test_edit_form_keeps_card_outline(self, client, mocker, mock_book, mock_campaign) -> None:
+        """Verify the edit form wrapper carries the surface-card styling."""
+        # Given a privileged user
+        mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
+
+        # When fetching the edit form fragment
+        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/edit")
+
+        # Then the swap wrapper keeps the card outline
+        assert b'id="book-content" class="surface-card"' in response.data
+
 
 @pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")
 class TestBookUpdate:
