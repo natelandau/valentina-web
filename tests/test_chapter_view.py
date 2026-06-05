@@ -269,9 +269,7 @@ class TestChapterDelete:
 class TestChapterCarouselAddCard:
     """Tests for the create-chapter add-card in the chapter carousel."""
 
-    def test_add_card_visible_for_manager(
-        self, client, mocker, mock_campaign, mock_book
-    ) -> None:
+    def test_add_card_visible_for_manager(self, client, mocker, mock_campaign, mock_book) -> None:
         """Verify managers see the New Chapter add-card in the carousel."""
         # Given a storyteller user
         ctx = build_global_context(user_role="STORYTELLER")

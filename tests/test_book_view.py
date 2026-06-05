@@ -268,10 +268,7 @@ class TestBookCreatePost:
 
         # Then the book is created and the client is redirected to it
         assert response.status_code == 200
-        assert (
-            response.headers.get("HX-Redirect")
-            == f"/campaign/{mock_campaign.id}/book/book-new"
-        )
+        assert response.headers.get("HX-Redirect") == f"/campaign/{mock_campaign.id}/book/book-new"
         svc.create.assert_called_once_with(name="New Book", description="A fresh start")
 
     def test_create_clears_caches(self, client, mocker, mock_campaign) -> None:
