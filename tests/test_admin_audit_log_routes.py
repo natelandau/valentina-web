@@ -85,3 +85,15 @@ class TestAuditLogPage:
         assert "/cards/audit-log" in body
         assert "show_filters=true" in body
         assert "page_size=25" in body
+
+    def test_renders_cally_script_unescaped(self, client: FlaskClient) -> None:
+        """Verify the cally calendar script tag renders as real HTML, not escaped text."""
+        # When loading the admin audit log page
+        response = client.get("/admin")
+
+        # Then the script tag survives autoescaping
+        body = response.get_data(as_text=True)
+        assert (
+            '<script type="module" src="https://cdn.jsdelivr.net/npm/cally/dist/cally.js"></script>'
+            in body
+        )

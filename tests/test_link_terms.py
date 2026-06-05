@@ -5,9 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
+from markupsafe import Markup
 from vclient.testing import DictionaryTermFactory
 
-from vweb.lib.jinja import link_terms
+from vweb.lib.jinja import from_markdown, link_terms
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -195,6 +196,67 @@ class TestLinkTermsNoMatch:
         # Then no link is added
         assert "<a href=" not in result
         assert result == "The Gangrel howled."
+
+
+class TestLinkTermsAutoescapeSafety:
+    """Tests ensuring link_terms html output is safe under autoescaping."""
+
+    def test_html_mode_returns_markup(self, app, set_terms) -> None:
+        """Verify html mode returns Markup so generated links survive autoescaping."""
+        # Given a term with a definition
+        term = DictionaryTermFactory.build(term="Celerity", definition="A discipline.")
+        set_terms([term])
+
+        # When the filter processes matching text
+        with app.test_request_context():
+            result = link_terms("Use Celerity now.", "html")
+
+        # Then the result is Markup, not a plain string
+        assert isinstance(result, Markup)
+
+    def test_html_mode_escapes_plain_input(self, app, set_terms) -> None:
+        """Verify raw HTML in plain-string input is escaped before links are added."""
+        # Given a term and input containing an XSS payload
+        term = DictionaryTermFactory.build(term="Celerity", definition="A discipline.")
+        set_terms([term])
+
+        # When the filter processes the payload
+        with app.test_request_context():
+            result = link_terms("<img src=x onerror=alert(1)> Celerity", "html")
+
+        # Then the payload is escaped while the term is still linked
+        assert "<img" not in result
+        assert "&lt;img" in result
+        assert "<a href=" in result
+
+    def test_html_mode_preserves_markup_input(self, app, set_terms) -> None:
+        """Verify already-safe Markup input (e.g. from from_markdown) is not re-escaped."""
+        # Given no terms and Markup input produced by from_markdown
+        set_terms([])
+
+        # When the filter processes the Markup
+        with app.test_request_context():
+            result = link_terms(from_markdown("**bold**"), "html")
+
+        # Then the existing safe HTML is preserved
+        assert "<strong>bold</strong>" in result
+
+    def test_html_mode_escapes_external_link_url(self, app, set_terms) -> None:
+        """Verify quotes in an external term link cannot break out of the href attribute."""
+        # Given a term whose external link contains a quote-escape payload
+        term = DictionaryTermFactory.build(
+            term="Camarilla",
+            definition=None,
+            link="https://example.com/x' onmouseover='alert(1)",
+        )
+        set_terms([term])
+
+        # When the filter processes matching text
+        with app.test_request_context():
+            result = link_terms("The Camarilla rules.", "html")
+
+        # Then the quote cannot terminate the href attribute
+        assert "x' onmouseover=" not in result
 
 
 class TestLinkTermsMarkdown:

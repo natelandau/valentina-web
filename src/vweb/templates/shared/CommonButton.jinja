@@ -45,19 +45,19 @@
       <a href="{{ href }}"
          class="{{ all_classes }} btn-disabled"
          aria-disabled="true"
-         {{ extra_attrs }}
+         {{ extra_attrs | safe }}
          {{ attrs.render() }}>{{ content }}</a>
     {% else %}
       <a href="{{ href }}"
          class="{{ all_classes }}"
-         {{ extra_attrs }}
+         {{ extra_attrs | safe }}
          {{ attrs.render() }}>{{ content }}</a>
     {% endif %}
   {% else %}
     <button type="{{ resolved_type }}"
             class="{{ all_classes }}"
             {% if disabled %}disabled{% endif %}
-            {{ extra_attrs }}
+            {{ extra_attrs | safe }}
             {{ attrs.render() }}>{{ content }}
     </button>
   {% endif %}

@@ -265,12 +265,12 @@ class DiceRollQuickrollView(MethodView):
         except ValidationError as e:
             return catalog.render(
                 "diceroll.partials.DiceRollResults",
-                error=f"Roll failed - please try again<br>{e.detail}",
+                error=f"Roll failed - please try again. {e.detail}",
             )
         except APIError as e:
             return catalog.render(
                 "diceroll.partials.DiceRollResults",
-                error=f"Roll failed - please try again<br>{e.detail}",
+                error=f"Roll failed - please try again. {e.detail}",
             )
 
         return catalog.render(

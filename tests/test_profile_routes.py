@@ -85,6 +85,17 @@ class TestProfileGet:
         assert response.status_code == 200
 
     @pytest.mark.usefixtures("_mock_profile_api")
+    def test_profile_renders_avatar_markup(self, client: FlaskClient) -> None:
+        """Verify the page header avatar renders as real HTML, not escaped text."""
+        # When loading a profile page
+        response = client.get("/profile/test-user-id")
+
+        # Then the avatar markup survives autoescaping
+        body = response.get_data(as_text=True)
+        assert '<div class="avatar' in body
+        assert "&lt;div class=" not in body
+
+    @pytest.mark.usefixtures("_mock_profile_api")
     def test_own_profile_shows_edit_button(self, client: FlaskClient) -> None:
         """Verify own profile shows the Edit Profile button with the correct HTMX URL."""
         response = client.get("/profile/test-user-id")

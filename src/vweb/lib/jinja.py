@@ -34,7 +34,7 @@ from vweb.lib.user_display import user_display_name
 
 if TYPE_CHECKING:
     from flask import Flask
-    from vclient.models import User
+    from vclient.models import DictionaryTerm, User
 
     from vweb.config import Settings
     from vweb.lib.cache.global_context import GlobalContext
@@ -144,11 +144,62 @@ def normalize_string(value: str) -> str:
     return value.replace("'", "").replace('"', "").strip()
 
 
+def _link_term_in_text(
+    value: str,
+    term: DictionaryTerm,
+    link_type: Literal["markdown", "html"],
+) -> str:
+    """Wrap whole-word occurrences of a term and its synonyms in links.
+
+    Args:
+        value: The text to process.
+        term: The dictionary term whose name and synonyms are matched.
+        link_type: Whether to insert HTML anchors or markdown links.
+
+    Returns:
+        str: The text with this term's occurrences converted to links.
+    """
+    patterns = [
+        re.compile(rf"\b(?<![\w/]){re.escape(name)}\b(?![\w/]|://)", re.IGNORECASE)
+        for name in [term.term, *term.synonyms]
+    ]
+
+    # Escape the externally sourced URL once so quotes cannot break out of href.
+    escaped_link = escape(term.link) if term.link else ""
+
+    for pattern in patterns:
+        if term.definition:
+            if link_type == "html":
+                value = pattern.sub(
+                    lambda m: (
+                        f"<a href='{url_for('dictionary.term_detail', term_id=term.id)}' class='link link-primary link-hover'>{m.group(0)}</a>"
+                    ),
+                    value,
+                )
+            else:
+                value = pattern.sub(
+                    lambda m: f"[{m.group(0)}]({url_for('dictionary.term', term=term.term)})",
+                    value,
+                )
+        elif term.link:
+            if link_type == "html":
+                value = pattern.sub(
+                    lambda m: (
+                        f"<a href='{escaped_link}' class='link link-primary'>{m.group(0)}</a>"
+                    ),
+                    value,
+                )
+            else:
+                value = pattern.sub(lambda m: f"[{m.group(0)}]({term.link})", value)
+
+    return value
+
+
 def link_terms(
     value: str,
     link_type: Literal["markdown", "html"],
     excludes: list[str] | None = None,
-) -> str:
+) -> str | Markup:
     """Convert dictionary terms in text to markdown or HTML links.
 
     Search through text for terms and synonyms that exist in the DictionaryTerm collection and convert them to links pointing to their dictionary entries in the web UI. The search is case-insensitive and only matches whole words.
@@ -159,44 +210,26 @@ def link_terms(
         excludes: Terms to exclude from the search.
 
     Returns:
-        str: The text with dictionary terms converted to links.
+        str | Markup: The text with dictionary terms converted to links. HTML mode
+            returns Markup so the generated anchors survive autoescaping.
     """
     if excludes is None:
         excludes = []
 
+    if link_type == "html":
+        # Escape unsafe input up front (a no-op for Markup from from_markdown) so
+        # the result can be marked safe after the anchor tags are inserted.
+        value = escape(value)
+
+    excluded_terms = {x.lower() for x in excludes}
     for term in cache.dictionary.terms():
-        if term.term.lower() in [x.lower() for x in excludes]:
+        if term.term.lower() in excluded_terms:
             continue
 
-        patterns = [
-            re.compile(rf"\b(?<![\w/]){re.escape(name)}\b(?![\w/]|://)", re.IGNORECASE)
-            for name in [term.term, *term.synonyms]
-        ]
+        value = _link_term_in_text(value, term, link_type)
 
-        for pattern in patterns:
-            if term.definition:
-                if link_type == "html":
-                    value = pattern.sub(
-                        lambda m: (
-                            f"<a href='{url_for('dictionary.term_detail', term_id=term.id)}' class='link link-primary link-hover'>{m.group(0)}</a>"  # noqa: B023
-                        ),
-                        value,
-                    )
-                else:
-                    value = pattern.sub(
-                        lambda m: f"[{m.group(0)}]({url_for('dictionary.term', term=term.term)})",  # noqa: B023
-                        value,
-                    )
-            elif term.link:
-                if link_type == "html":
-                    value = pattern.sub(
-                        lambda m: (
-                            f"<a href='{term.link}' class='link link-primary'>{m.group(0)}</a>"  # noqa: B023
-                        ),
-                        value,
-                    )
-                else:
-                    value = pattern.sub(lambda m: f"[{m.group(0)}]({term.link})", value)  # noqa: B023
+    if link_type == "html":
+        return Markup(value)  # noqa: S704
 
     return value
 
@@ -318,6 +351,9 @@ def register_jinjax_catalog() -> jinjax.Catalog:
     catalog.jinja_env.filters["to_roman"] = to_roman
     catalog.jinja_env.globals["user_campaign_experience"] = get_user_campaign_experience  # ty:ignore[invalid-assignment]
     catalog.jinja_env.add_extension("jinja2.ext.do")
+    # JinjaX builds its environment without autoescape (Jinja2 defaults it off),
+    # which would let user-controlled API data reflect raw HTML into every page.
+    catalog.jinja_env.autoescape = True
     catalog.jinja_env.trim_blocks = True
     catalog.jinja_env.lstrip_blocks = True
 

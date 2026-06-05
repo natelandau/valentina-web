@@ -1,5 +1,6 @@
 {#def pending_count=0 #}
-{% set cally_script = '<script type="module" src="https://cdn.jsdelivr.net/npm/cally/dist/cally.js"></script>' %}
+{# Block-form set so the capture is Markup and survives autoescaping #}
+{% set cally_script %}<script type="module" src="https://cdn.jsdelivr.net/npm/cally/dist/cally.js"></script>{% endset %}
 {% set current_campaign = active_campaign() %}
 <shared.PageLayout title="Audit Log" scripts_extra={{ cally_script }}>
   <div class="max-w-6xl mx-auto p-4 flex flex-col gap-4">
