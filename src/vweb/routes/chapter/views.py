@@ -28,6 +28,9 @@ bp = Blueprint("chapter_view", __name__)
 
 CHAPTER_CARD_ID = "chapter-content"
 
+# The chapter create form swaps into one of two known containers; reject anything else.
+_VALID_CREATE_TARGETS = frozenset({"book-chapters-card", "chapter-content"})
+
 
 def _chapters_service(campaign_id: str, book_id: str) -> SyncChaptersService:
     """Build a chapters service scoped to the current user and company."""
@@ -53,6 +56,15 @@ def _chapter_create_cancel_url(campaign_id: str, book_id: str, from_chapter: str
             chapter_id=from_chapter,
         )
     return url_for("book_view.book_detail", campaign_id=campaign_id, book_id=book_id)
+
+
+def _safe_create_target(raw_target: str) -> str:
+    """Clamp the create-form swap target to a known container id.
+
+    The target is reflected unquoted into the form's hx-target/hx-select, so an
+    unrecognized value falls back to the book page's chapters card.
+    """
+    return raw_target if raw_target in _VALID_CREATE_TARGETS else "book-chapters-card"
 
 
 def _render_chapter_card(
@@ -206,7 +218,7 @@ class ChapterCreateView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        target_id = request.args.get("target", "book-chapters-card")
+        target_id = _safe_create_target(request.args.get("target", "book-chapters-card"))
         from_chapter = request.args.get("from_chapter", "")
         return catalog.render(
             "book.partials.ChapterCreateForm",
@@ -224,7 +236,7 @@ class ChapterCreateView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        target_id = request.form.get("target_id", "book-chapters-card")
+        target_id = _safe_create_target(request.form.get("target_id", "book-chapters-card"))
         from_chapter = request.form.get("from_chapter", "")
 
         name = request.form.get("name", "").strip()

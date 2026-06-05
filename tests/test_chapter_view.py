@@ -174,6 +174,22 @@ class TestChapterCreate:
         assert b'id="chapter-content"' in response.data
         assert b"/chapter/ch-2" in response.data
 
+    def test_get_form_rejects_unknown_target(
+        self, client, mocker, mock_campaign, mock_book
+    ) -> None:
+        """Verify an unrecognized target falls back to the book chapters card."""
+        # Given a privileged user
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+
+        # When requesting the form with a bogus target
+        response = client.get(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter?target=evil%20x"
+        )
+
+        # Then the form falls back to the safe default target
+        assert b'id="book-chapters-card"' in response.data
+        assert b"evil" not in response.data
+
     def test_create_clears_campaign_content_cache(
         self, client, mocker, mock_campaign, mock_book
     ) -> None:
