@@ -235,6 +235,87 @@ class TestBookCreateGet:
         assert f"/campaign/{mock_campaign.id}/book/book-9".encode() in response.data
 
 
+@pytest.mark.usefixtures("_mock_campaign_lookup")
+class TestBookCreatePost:
+    """Tests for the book create POST route."""
+
+    def test_non_privileged_returns_403(self, client, mocker, mock_campaign) -> None:
+        """Verify non-privileged users cannot create books."""
+        mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=False)
+        csrf = get_csrf(client)
+        response = client.post(
+            f"/campaign/{mock_campaign.id}/books/create",
+            data={"name": "New Book", "csrf_token": csrf},
+        )
+        assert response.status_code == 403
+
+    def test_create_redirects_to_new_book(self, client, mocker, mock_campaign) -> None:
+        """Verify a successful create responds with HX-Redirect to the new book."""
+        # Given a privileged user and a books service returning the new book
+        mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
+        svc = mocker.patch("vweb.routes.book.views.sync_books_service").return_value
+        svc.create.return_value = CampaignBookFactory.build(
+            id="book-new", campaign_id=mock_campaign.id, name="New Book"
+        )
+        csrf = get_csrf(client)
+
+        # When submitting the create form
+        response = client.post(
+            f"/campaign/{mock_campaign.id}/books/create",
+            data={"name": "New Book", "description": "A fresh start", "csrf_token": csrf},
+        )
+
+        # Then the book is created and the client is redirected to it
+        assert response.status_code == 200
+        assert (
+            response.headers.get("HX-Redirect")
+            == f"/campaign/{mock_campaign.id}/book/book-new"
+        )
+        svc.create.assert_called_once_with(name="New Book", description="A fresh start")
+
+    def test_create_clears_caches(self, client, mocker, mock_campaign) -> None:
+        """Verify creating a book invalidates the global-context and book-list caches."""
+        # Given a privileged user and patched cache-clears
+        mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
+        svc = mocker.patch("vweb.routes.book.views.sync_books_service").return_value
+        svc.create.return_value = CampaignBookFactory.build(
+            id="book-new", campaign_id=mock_campaign.id
+        )
+        clear_content = mocker.patch("vweb.lib.cache.campaign_content.clear")
+        clear_context = mocker.patch("vweb.lib.cache.global_context.clear")
+        csrf = get_csrf(client)
+
+        # When creating a book
+        client.post(
+            f"/campaign/{mock_campaign.id}/books/create",
+            data={"name": "New Book", "csrf_token": csrf},
+        )
+
+        # Then the campaign's book-list cache and the global context are invalidated
+        _, kwargs = clear_content.call_args
+        assert kwargs["campaign_id"] == mock_campaign.id
+        clear_context.assert_called_once()
+
+    def test_empty_name_rerenders_form_with_error(self, client, mocker, mock_campaign) -> None:
+        """Verify an empty name re-renders the form with an error and no create call."""
+        # Given a privileged user
+        mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
+        svc = mocker.patch("vweb.routes.book.views.sync_books_service").return_value
+        csrf = get_csrf(client)
+
+        # When submitting an empty name
+        response = client.post(
+            f"/campaign/{mock_campaign.id}/books/create",
+            data={"name": "   ", "csrf_token": csrf},
+        )
+
+        # Then the form re-renders with the error and nothing is created
+        assert response.status_code == 200
+        assert b"Name is required" in response.data
+        assert b"Create Book" in response.data
+        svc.create.assert_not_called()
+
+
 @pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")
 class TestBookDelete:
     """Tests for book delete cache invalidation."""

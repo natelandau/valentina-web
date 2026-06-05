@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
-from flask import Blueprint, abort, redirect, request, session, url_for
+from flask import Blueprint, abort, flash, redirect, request, session, url_for
 from flask.views import MethodView
 from vclient import sync_books_service
 
@@ -95,6 +96,46 @@ class BookCreateView(MethodView):
             cancel_url=_book_create_cancel_url(campaign_id, from_book),
             from_book=from_book,
             errors=[],
+        )
+
+    def post(self, campaign_id: str) -> object:
+        """Create the book and redirect the client to its detail page."""
+        if not can_manage_campaign():
+            abort(403)
+        campaign = fetch_campaign_or_404(campaign_id)
+        user_id = session.get("user_id", "")
+        from_book = request.form.get("from_book", "").strip()
+
+        name = request.form.get("name", "").strip()
+        description = request.form.get("description", "").strip()
+
+        errors: list[str] = []
+        if not name:
+            errors.append("Name is required")
+
+        if errors:
+            return catalog.render(
+                "book.partials.BookCreateForm",
+                campaign=campaign,
+                cancel_url=_book_create_cancel_url(campaign_id, from_book),
+                from_book=from_book,
+                errors=errors,
+                form_data=SimpleNamespace(
+                    name=request.form.get("name", ""),
+                    description=request.form.get("description", ""),
+                ),
+            )
+
+        books_service = sync_books_service(
+            campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
+        )
+        new_book = books_service.create(name=name, description=description)
+        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.campaign_content.clear(session["company_id"], campaign_id=campaign_id)
+
+        flash(f"Created book: {name}", "success")
+        return hx_redirect(
+            url_for("book_view.book_detail", campaign_id=campaign_id, book_id=new_book.id)
         )
 
 
