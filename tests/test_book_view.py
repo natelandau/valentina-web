@@ -343,6 +343,38 @@ class TestBookDelete:
         assert kwargs["book_id"] == mock_book.id
 
 
+@pytest.mark.usefixtures("_mock_campaign_lookup")
+class TestBooksEmptyState:
+    """Tests for the no-books empty state."""
+
+    def test_create_button_live_for_manager(self, client, mocker, mock_campaign) -> None:
+        """Verify the empty-state CTA fetches the create form for managers."""
+        # Given a storyteller and a campaign with no books
+        ctx = build_global_context(user_role="STORYTELLER")
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        mocker.patch("vweb.lib.cache.campaign_content.books", return_value=[])
+
+        # When rendering the books index
+        response = client.get(f"/campaign/{mock_campaign.id}/books")
+
+        # Then the CTA is live and the placeholder caption is gone
+        assert response.status_code == 200
+        assert b"/books/create" in response.data
+        assert b'id="book-content"' in response.data
+        assert b"coming soon" not in response.data
+
+    def test_create_button_hidden_for_player(self, client, mocker, mock_campaign) -> None:
+        """Verify players see no create affordance on the empty state."""
+        # Given the default PLAYER user and no books
+        mocker.patch("vweb.lib.cache.campaign_content.books", return_value=[])
+
+        # When rendering the books index
+        response = client.get(f"/campaign/{mock_campaign.id}/books")
+
+        # Then no create affordance renders
+        assert b"/books/create" not in response.data
+
+
 @pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")
 class TestBookCarouselAddCard:
     """Tests for the create-book add-card in the book carousel."""
