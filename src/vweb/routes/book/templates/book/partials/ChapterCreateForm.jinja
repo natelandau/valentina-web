@@ -1,10 +1,13 @@
 {#def
     book: object,
     campaign: object,
+    target_id: str = "book-chapters-card",
+    cancel_url: str = "",
+    from_chapter: str = "",
     errors: list = [],
     form_data: object = None,
 #}
-<div id="book-chapters-card" class="card surface-card">
+<div id="{{ target_id }}" class="card surface-card">
   <div class="card-body">
     <h2 class="card-title">Add Chapter</h2>
 
@@ -17,9 +20,11 @@
     {% endif %}
 
     <form hx-post="{{ url_for('chapter_view.chapter_create', campaign_id=campaign.id, book_id=book.id) }}"
-          hx-target="#book-chapters-card"
+          hx-target={{ "#" ~ target_id }}
           hx-swap="outerHTML">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="target_id" value="{{ target_id }}">
+      <input type="hidden" name="from_chapter" value="{{ from_chapter | e }}">
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <fieldset class="fieldset">
@@ -56,7 +61,7 @@
       </fieldset>
 
       <div class="flex gap-2 justify-end">
-        <shared.CommonButton variant="cancel" hx-get={{ url_for('book_view.book_detail', campaign_id=campaign.id, book_id=book.id) }} hx-target="#book-chapters-card" hx-swap="outerHTML" hx-select="#book-chapters-card">
+        <shared.CommonButton variant="cancel" hx-get={{ cancel_url }} hx-target={{ "#" ~ target_id }} hx-swap="outerHTML" hx-select={{ "#" ~ target_id }}>
         Cancel
         </shared.CommonButton>
         <shared.CommonButton variant="submit">Create</shared.CommonButton>

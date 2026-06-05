@@ -62,6 +62,9 @@ def _mock_chapter_lookup(mocker, mock_book, mock_campaign, mock_chapters) -> Non
     chapters_service.list_all.return_value = mock_chapters
     chapters_service.list_all_assets.return_value = []
     chapters_service.list_all_notes.return_value = []
+    chapters_service.create.return_value = CampaignChapterFactory.build(
+        id="ch-new", book_id="book-1", number=4, name="New Chapter"
+    )
     return chapters_service
 
 
@@ -125,18 +128,51 @@ class TestChapterCreate:
         )
         assert response.status_code == 403
 
-    def test_create_returns_updated_card(
-        self, client, mocker, mock_campaign, mock_book, mock_chapters
+    def test_create_redirects_to_new_chapter(
+        self, client, mocker, mock_campaign, mock_book
     ) -> None:
-        """Privileged users can create chapters."""
+        """Verify a successful create responds with HX-Redirect to the new chapter."""
+        # Given a privileged user
         mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
         csrf = get_csrf(client)
+
+        # When submitting the create form
         response = client.post(
             f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter",
             data={"name": "New Chapter", "number": "4", "csrf_token": csrf},
         )
+
+        # Then the client is redirected to the new chapter's detail page
         assert response.status_code == 200
-        assert b"book-chapters-card" in response.data
+        assert (
+            response.headers.get("HX-Redirect")
+            == f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-new"
+        )
+
+    def test_get_form_defaults_to_book_page_target(
+        self, client, mocker, mock_campaign, mock_book
+    ) -> None:
+        """Verify the create form defaults to the book page's chapters card target."""
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter")
+        assert b'id="book-chapters-card"' in response.data
+
+    def test_get_form_threads_target_and_cancel(
+        self, client, mocker, mock_campaign, mock_book
+    ) -> None:
+        """Verify target and from_chapter params retarget the form and Cancel."""
+        # Given a privileged user
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+
+        # When fetching the form with chapter-page params
+        response = client.get(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter"
+            "?target=chapter-content&from_chapter=ch-2"
+        )
+
+        # Then the form wraps in the chapter-page target and Cancel restores ch-2
+        assert b'id="chapter-content"' in response.data
+        assert b"/chapter/ch-2" in response.data
 
     def test_create_clears_campaign_content_cache(
         self, client, mocker, mock_campaign, mock_book
