@@ -12,6 +12,7 @@ from vclient.testing import (
 )
 
 from tests.conftest import get_csrf
+from tests.helpers import build_global_context
 
 if TYPE_CHECKING:
     from vclient.models import CampaignChapter
@@ -262,3 +263,32 @@ class TestChapterDelete:
         _, kwargs = clear_cache.call_args
         assert kwargs["book_id"] == mock_book.id
         assert kwargs["campaign_id"] == mock_campaign.id
+
+
+@pytest.mark.usefixtures("_mock_chapter_lookup")
+class TestChapterCarouselAddCard:
+    """Tests for the create-chapter add-card in the chapter carousel."""
+
+    def test_add_card_visible_for_manager(
+        self, client, mocker, mock_campaign, mock_book
+    ) -> None:
+        """Verify managers see the New Chapter add-card in the carousel."""
+        # Given a storyteller user
+        ctx = build_global_context(user_role="STORYTELLER")
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+
+        # When rendering a chapter detail page
+        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2")
+
+        # Then the add-card renders with the parameterized create-form URL
+        assert b"New Chapter" in response.data
+        assert b"target=chapter-content" in response.data
+        assert b"from_chapter=ch-2" in response.data
+
+    def test_add_card_hidden_for_player(self, client, mock_campaign, mock_book) -> None:
+        """Verify players do not see the New Chapter add-card."""
+        # Given the default PLAYER user, when rendering a chapter detail page
+        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2")
+
+        # Then no create affordance renders
+        assert b"target=chapter-content" not in response.data

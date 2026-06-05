@@ -65,6 +65,21 @@ arrow buttons that smooth-scroll. Prev/Next strip beneath. #}
           </div>
         </a>
       {% endfor %}
+
+      {% if can_manage_campaign() %}
+        <button type="button"
+                class="snap-start shrink-0 w-64 sm:w-72 rounded-box border-2 border-dashed border-base-300 bg-base-200/30 p-4 flex items-center gap-4 text-base-content/60 transition-all hover:border-primary/50 hover:bg-base-100 hover:text-base-content cursor-pointer"
+                hx-get="{{ url_for('chapter_view.chapter_create', campaign_id=campaign.id, book_id=book.id, target='chapter-content', from_chapter=current_id) }}"
+                hx-target="#chapter-content"
+                hx-swap="outerHTML"
+                aria-label="Create a new chapter">
+          <div class="text-4xl font-thin leading-none shrink-0" aria-hidden="true">+</div>
+          <div class="flex flex-col gap-1 min-w-0 flex-1 text-left">
+            <div class="text-base font-semibold leading-snug">New Chapter</div>
+            <div class="text-[0.65rem] uppercase tracking-wider opacity-60">What happens next</div>
+          </div>
+        </button>
+      {% endif %}
     </div>
 
     <button type="button"
