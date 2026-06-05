@@ -11,6 +11,7 @@ from vclient.testing import (
 from werkzeug.exceptions import NotFound
 
 from tests.conftest import get_csrf
+from tests.helpers import build_global_context
 
 
 @pytest.fixture
@@ -340,3 +341,30 @@ class TestBookDelete:
         _, kwargs = clear_cache.call_args
         assert kwargs["campaign_id"] == mock_campaign.id
         assert kwargs["book_id"] == mock_book.id
+
+
+@pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")
+class TestBookCarouselAddCard:
+    """Tests for the create-book add-card in the book carousel."""
+
+    def test_add_card_visible_for_manager(self, client, mocker, mock_book, mock_campaign) -> None:
+        """Verify managers see the New Book add-card in the carousel."""
+        # Given a storyteller user
+        ctx = build_global_context(user_role="STORYTELLER")
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+
+        # When rendering the book detail page
+        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}")
+
+        # Then the add-card renders with the create-form URL and current-book cancel hint
+        assert b"New Book" in response.data
+        assert b"/books/create" in response.data
+        assert f"from_book={mock_book.id}".encode() in response.data
+
+    def test_add_card_hidden_for_player(self, client, mock_book, mock_campaign) -> None:
+        """Verify players do not see the New Book add-card."""
+        # Given the default PLAYER user, when rendering the book detail page
+        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}")
+
+        # Then no create affordance renders
+        assert b"/books/create" not in response.data
