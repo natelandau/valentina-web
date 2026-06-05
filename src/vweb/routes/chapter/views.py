@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from flask import Blueprint, abort, request, session, url_for
+from flask import Blueprint, abort, flash, request, session, url_for
 from flask.views import MethodView
 from vclient import sync_chapters_service
 
@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 bp = Blueprint("chapter_view", __name__)
 
 CHAPTER_CARD_ID = "chapter-content"
+BOOK_CHAPTERS_CARD_ID = "book-chapters-card"
 
 
 def _chapters_service(campaign_id: str, book_id: str) -> SyncChaptersService:
@@ -37,6 +38,34 @@ def _chapters_service(campaign_id: str, book_id: str) -> SyncChaptersService:
         on_behalf_of=session.get("user_id", ""),
         company_id=session["company_id"],
     )
+
+
+def _chapter_create_cancel_url(campaign_id: str, book_id: str, from_chapter: str) -> str:
+    """Build the URL the chapter create form's Cancel button restores.
+
+    From a chapter's detail page Cancel restores that chapter's content card;
+    from the book page it restores the book's chapters card.
+    """
+    if from_chapter:
+        return url_for(
+            "chapter_view.chapter_detail",
+            campaign_id=campaign_id,
+            book_id=book_id,
+            chapter_id=from_chapter,
+        )
+    return url_for("book_view.book_detail", campaign_id=campaign_id, book_id=book_id)
+
+
+def _chapter_create_target(from_chapter: str) -> str:
+    """Return the container id the create form swaps into.
+
+    The target is derived server-side from whether a launching chapter is in
+    scope: from a chapter's detail page the form replaces that page's content
+    card; from the book page it replaces the chapters card. Deriving it (rather
+    than accepting a client-supplied id) keeps a user-controlled value out of the
+    form's hx-target/hx-select attributes.
+    """
+    return CHAPTER_CARD_ID if from_chapter else BOOK_CHAPTERS_CARD_ID
 
 
 def _render_chapter_card(
@@ -190,59 +219,60 @@ class ChapterCreateView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
+        from_chapter = request.args.get("from_chapter", "")
         return catalog.render(
             "book.partials.ChapterCreateForm",
             book=book,
             campaign=campaign,
+            target_id=_chapter_create_target(from_chapter),
+            from_chapter=from_chapter,
+            cancel_url=_chapter_create_cancel_url(campaign_id, book_id, from_chapter),
             errors=[],
         )
 
-    def post(self, campaign_id: str, book_id: str) -> str:
-        """Create a new chapter and return updated chapters card."""
+    def post(self, campaign_id: str, book_id: str) -> object:
+        """Create a new chapter and redirect the client to its detail page."""
         if not can_manage_campaign():
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
+        from_chapter = request.form.get("from_chapter", "")
+        target_id = _chapter_create_target(from_chapter)
 
         name = request.form.get("name", "").strip()
-        number_str = request.form.get("number", "").strip()
         description = request.form.get("description", "").strip()
 
         errors: list[str] = []
         if not name:
             errors.append("Name is required")
 
-        number = 0
-        if number_str:
-            try:
-                number = int(number_str)
-            except ValueError:
-                errors.append("Number must be a valid integer")
-
         if errors:
             return catalog.render(
                 "book.partials.ChapterCreateForm",
                 book=book,
                 campaign=campaign,
+                target_id=target_id,
+                from_chapter=from_chapter,
+                cancel_url=_chapter_create_cancel_url(campaign_id, book_id, from_chapter),
                 errors=errors,
                 form_data=request.form,
             )
 
         chapters_service = _chapters_service(campaign_id, book_id)
-        chapters_service.create(name=name, number=number, description=description)
+        new_chapter = chapters_service.create(name=name, description=description)
         cache.global_context.clear(session["company_id"], session["user_id"])
         cache.campaign_content.clear(
             session["company_id"], campaign_id=campaign_id, book_id=book_id
         )
 
-        chapters = chapters_service.list_all()
-        chapters.sort(key=lambda c: c.number)
-
-        return catalog.render(
-            "book.partials.ChaptersCard",
-            book=book,
-            campaign=campaign,
-            chapters=chapters,
+        flash(f"Created chapter: {name}", "success")
+        return hx_redirect(
+            url_for(
+                "chapter_view.chapter_detail",
+                campaign_id=campaign_id,
+                book_id=book_id,
+                chapter_id=new_chapter.id,
+            )
         )
 
 
@@ -347,4 +377,5 @@ bp.add_url_rule(
 bp.add_url_rule(
     "/campaign/<campaign_id>/book/<book_id>/chapter",
     view_func=ChapterCreateView.as_view("chapter_create"),
+    methods=["GET", "POST"],
 )

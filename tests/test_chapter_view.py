@@ -12,6 +12,7 @@ from vclient.testing import (
 )
 
 from tests.conftest import get_csrf
+from tests.helpers import build_global_context
 
 if TYPE_CHECKING:
     from vclient.models import CampaignChapter
@@ -62,6 +63,9 @@ def _mock_chapter_lookup(mocker, mock_book, mock_campaign, mock_chapters) -> Non
     chapters_service.list_all.return_value = mock_chapters
     chapters_service.list_all_assets.return_value = []
     chapters_service.list_all_notes.return_value = []
+    chapters_service.create.return_value = CampaignChapterFactory.build(
+        id="ch-new", book_id="book-1", number=4, name="New Chapter"
+    )
     return chapters_service
 
 
@@ -121,22 +125,70 @@ class TestChapterCreate:
         csrf = get_csrf(client)
         response = client.post(
             f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter",
-            data={"name": "New Chapter", "number": "1", "csrf_token": csrf},
+            data={"name": "New Chapter", "csrf_token": csrf},
         )
         assert response.status_code == 403
 
-    def test_create_returns_updated_card(
-        self, client, mocker, mock_campaign, mock_book, mock_chapters
+    def test_create_redirects_to_new_chapter(
+        self, client, mocker, mock_campaign, mock_book
     ) -> None:
-        """Privileged users can create chapters."""
+        """Verify a successful create responds with HX-Redirect to the new chapter."""
+        # Given a privileged user
         mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
         csrf = get_csrf(client)
+
+        # When submitting the create form
         response = client.post(
             f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter",
-            data={"name": "New Chapter", "number": "4", "csrf_token": csrf},
+            data={"name": "New Chapter", "csrf_token": csrf},
         )
+
+        # Then the client is redirected to the new chapter's detail page
         assert response.status_code == 200
-        assert b"book-chapters-card" in response.data
+        assert (
+            response.headers.get("HX-Redirect")
+            == f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-new"
+        )
+
+    def test_get_form_defaults_to_book_page_target(
+        self, client, mocker, mock_campaign, mock_book
+    ) -> None:
+        """Verify the create form defaults to the book page's chapters card target."""
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter")
+        assert b'id="book-chapters-card"' in response.data
+
+    def test_get_form_derives_chapter_target_from_from_chapter(
+        self, client, mocker, mock_campaign, mock_book
+    ) -> None:
+        """Verify from_chapter alone retargets the form to the chapter card and Cancel."""
+        # Given a privileged user
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+
+        # When fetching the form launched from a chapter page (from_chapter only)
+        response = client.get(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter?from_chapter=ch-2"
+        )
+
+        # Then the swap target is derived as the chapter content card and Cancel restores ch-2
+        assert b'id="chapter-content"' in response.data
+        assert b"/chapter/ch-2" in response.data
+
+    def test_get_form_ignores_client_supplied_target(
+        self, client, mocker, mock_campaign, mock_book
+    ) -> None:
+        """Verify a client-supplied target query param cannot reach the swap attributes."""
+        # Given a privileged user
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+
+        # When requesting the form with a bogus target and no from_chapter
+        response = client.get(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter?target=evil%20x"
+        )
+
+        # Then the target is derived server-side (book chapters card) and the input is not reflected
+        assert b'id="book-chapters-card"' in response.data
+        assert b"evil" not in response.data
 
     def test_create_clears_campaign_content_cache(
         self, client, mocker, mock_campaign, mock_book
@@ -150,7 +202,7 @@ class TestChapterCreate:
         # When creating a chapter
         client.post(
             f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter",
-            data={"name": "New Chapter", "number": "4", "csrf_token": csrf},
+            data={"name": "New Chapter", "csrf_token": csrf},
         )
 
         # Then both the book's chapter cache and the campaign's book-list cache
@@ -210,3 +262,30 @@ class TestChapterDelete:
         _, kwargs = clear_cache.call_args
         assert kwargs["book_id"] == mock_book.id
         assert kwargs["campaign_id"] == mock_campaign.id
+
+
+@pytest.mark.usefixtures("_mock_chapter_lookup")
+class TestChapterCarouselAddCard:
+    """Tests for the create-chapter add-card in the chapter carousel."""
+
+    def test_add_card_visible_for_manager(self, client, mocker, mock_campaign, mock_book) -> None:
+        """Verify managers see the New Chapter add-card in the carousel."""
+        # Given a storyteller user
+        ctx = build_global_context(user_role="STORYTELLER")
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+
+        # When rendering a chapter detail page
+        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2")
+
+        # Then the add-card renders the create-form URL scoped to the current chapter
+        assert b"New Chapter" in response.data
+        assert b"/book/book-1/chapter?from_chapter=ch-2" in response.data
+
+    def test_add_card_hidden_for_player(self, client, mock_campaign, mock_book) -> None:
+        """Verify players do not see the New Chapter add-card."""
+        # Given the default PLAYER user, when rendering a chapter detail page
+        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2")
+
+        # Then no create affordance renders
+        assert b"New Chapter" not in response.data
+        assert b"from_chapter=ch-2" not in response.data

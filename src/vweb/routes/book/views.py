@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from flask import Blueprint, abort, redirect, request, session, url_for
+from flask import Blueprint, abort, flash, redirect, request, session, url_for
 from flask.views import MethodView
 from vclient import sync_books_service
 
@@ -46,6 +46,17 @@ def _render_book_card(
     )
 
 
+def _book_create_cancel_url(campaign_id: str, from_book: str) -> str:
+    """Build the URL the create form's Cancel button restores.
+
+    From a book's detail page Cancel restores that book's content card; from
+    the no-books empty state it re-renders the empty state via the index.
+    """
+    if from_book:
+        return url_for("book_view.book_detail", campaign_id=campaign_id, book_id=from_book)
+    return url_for("book_view.books_index", campaign_id=campaign_id)
+
+
 bp = Blueprint("book_view", __name__)
 
 
@@ -66,6 +77,67 @@ class BooksIndexView(MethodView):
             return catalog.render("book.BooksEmpty", campaign=campaign)
         return redirect(
             url_for("book_view.book_detail", campaign_id=campaign_id, book_id=books[0].id)
+        )
+
+
+class BookCreateView(MethodView):
+    """Create a new book via an inline form swapped into the content card."""
+
+    def get(self, campaign_id: str) -> str:
+        """Render the book create form."""
+        if not can_manage_campaign():
+            abort(403)
+        campaign = fetch_campaign_or_404(campaign_id)
+        from_book = request.args.get("from_book", "")
+        return catalog.render(
+            "book.partials.BookCreateForm",
+            campaign=campaign,
+            cancel_url=_book_create_cancel_url(campaign_id, from_book),
+            from_book=from_book,
+            errors=[],
+        )
+
+    def post(self, campaign_id: str) -> object:
+        """Create the book and redirect the client to its detail page."""
+        if not can_manage_campaign():
+            abort(403)
+        campaign = fetch_campaign_or_404(campaign_id)
+        user_id = session.get("user_id", "")
+        from_book = request.form.get("from_book", "").strip()
+
+        name = request.form.get("name", "").strip()
+        description = request.form.get("description", "").strip()
+
+        # Mirror the vclient BookCreate constraints (name 3-50, optional description >=3)
+        # so invalid input re-renders the form instead of raising a 500 from the API client.
+        errors: list[str] = []
+        if not name:
+            errors.append("Name is required")
+        elif not 3 <= len(name) <= 50:  # noqa: PLR2004
+            errors.append("Name must be between 3 and 50 characters")
+        if description and len(description) < 3:  # noqa: PLR2004
+            errors.append("Description must be at least 3 characters")
+
+        if errors:
+            return catalog.render(
+                "book.partials.BookCreateForm",
+                campaign=campaign,
+                cancel_url=_book_create_cancel_url(campaign_id, from_book),
+                from_book=from_book,
+                errors=errors,
+                form_data=request.form,
+            )
+
+        books_service = sync_books_service(
+            campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
+        )
+        new_book = books_service.create(name=name, description=description or None)
+        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.campaign_content.clear(session["company_id"], campaign_id=campaign_id)
+
+        flash(f"Created book: {name}", "success")
+        return hx_redirect(
+            url_for("book_view.book_detail", campaign_id=campaign_id, book_id=new_book.id)
         )
 
 
@@ -258,6 +330,11 @@ bp.add_url_rule(
     "/campaign/<campaign_id>/books",
     view_func=BooksIndexView.as_view("books_index"),
     methods=["GET"],
+)
+bp.add_url_rule(
+    "/campaign/<campaign_id>/books/create",
+    view_func=BookCreateView.as_view("book_create"),
+    methods=["GET", "POST"],
 )
 
 _book_detail_view = BookDetailView.as_view("book_detail")
