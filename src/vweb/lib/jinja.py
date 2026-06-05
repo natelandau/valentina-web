@@ -30,6 +30,7 @@ from vweb.lib.guards import (
     is_self,
     is_storyteller,
 )
+from vweb.lib.user_display import user_display_name
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -354,6 +355,7 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
     jinja_globals["requesting_user"] = _get_requesting_user
     jinja_globals["get_all_traits"] = cache.blueprint.traits
     jinja_globals["character_type_label"] = character_type_label
+    jinja_globals["user_display_name"] = user_display_name
     jinja_globals["get_options"] = cache.options.get
     jinja_globals["get_system_health"] = cache.system_status.get
     jinja_globals["MAX_IMAGE_SIZE"] = MAX_IMAGE_SIZE

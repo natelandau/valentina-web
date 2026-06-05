@@ -4,8 +4,11 @@
   <div class="flex items-center gap-3 grow min-w-0">
     <shared.UserAvatar user={{ user }} size="w-10" />
     <div class="min-w-0">
-      {% set display_name = (user.name_first ~ " " ~ user.name_last) if user.name_first and user.name_last else user.username %}
-      <div class="font-medium truncate">{{ display_name }}</div>
+      {# Badges sit beside the truncated name span, not inside it: truncate applies overflow-hidden, which clips the absolutely-positioned tooltip bubbles #}
+      <div class="font-medium flex items-center gap-1 min-w-0">
+        <span class="truncate">{{ user_display_name(user) }}</span>
+        <shared.UserProviderBadges user={{ user }} />
+      </div>
       <div class="text-sm text-base-content/70 truncate">{{ user.email }}</div>
     </div>
   </div>
