@@ -25,31 +25,19 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="from_chapter" value="{{ from_chapter | e }}">
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        <fieldset class="fieldset">
-          <legend class="fieldset-legend">Name</legend>
-          <label class="input w-full">
-            <input type="text"
-                   name="name"
-                   value="{{ (form_data.get('name', '') if form_data else '') | e }}"
-                   class="grow"
-                   required
-                   minlength="1"
-                   maxlength="100"
-                   placeholder="Chapter name">
-          </label>
-        </fieldset>
-        <fieldset class="fieldset">
-          <legend class="fieldset-legend">Number</legend>
-          <label class="input w-full">
-            <input type="number"
-                   name="number"
-                   value="{{ (form_data.get('number', '') if form_data else '') | e }}"
-                   class="grow"
-                   min="1">
-          </label>
-        </fieldset>
-      </div>
+      <fieldset class="fieldset mb-4">
+        <legend class="fieldset-legend">Name</legend>
+        <label class="input w-full">
+          <input type="text"
+                 name="name"
+                 value="{{ (form_data.get('name', '') if form_data else '') | e }}"
+                 class="grow"
+                 required
+                 minlength="1"
+                 maxlength="100"
+                 placeholder="Chapter name">
+        </label>
+      </fieldset>
 
       <fieldset class="fieldset mb-4">
         <legend class="fieldset-legend">Description</legend>

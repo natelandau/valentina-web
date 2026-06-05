@@ -125,7 +125,7 @@ class TestChapterCreate:
         csrf = get_csrf(client)
         response = client.post(
             f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter",
-            data={"name": "New Chapter", "number": "1", "csrf_token": csrf},
+            data={"name": "New Chapter", "csrf_token": csrf},
         )
         assert response.status_code == 403
 
@@ -140,7 +140,7 @@ class TestChapterCreate:
         # When submitting the create form
         response = client.post(
             f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter",
-            data={"name": "New Chapter", "number": "4", "csrf_token": csrf},
+            data={"name": "New Chapter", "csrf_token": csrf},
         )
 
         # Then the client is redirected to the new chapter's detail page
@@ -202,7 +202,7 @@ class TestChapterCreate:
         # When creating a chapter
         client.post(
             f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter",
-            data={"name": "New Chapter", "number": "4", "csrf_token": csrf},
+            data={"name": "New Chapter", "csrf_token": csrf},
         )
 
         # Then both the book's chapter cache and the campaign's book-list cache

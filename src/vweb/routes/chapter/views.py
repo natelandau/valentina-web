@@ -240,19 +240,11 @@ class ChapterCreateView(MethodView):
         target_id = _chapter_create_target(from_chapter)
 
         name = request.form.get("name", "").strip()
-        number_str = request.form.get("number", "").strip()
         description = request.form.get("description", "").strip()
 
         errors: list[str] = []
         if not name:
             errors.append("Name is required")
-
-        number = 0
-        if number_str:
-            try:
-                number = int(number_str)
-            except ValueError:
-                errors.append("Number must be a valid integer")
 
         if errors:
             return catalog.render(
@@ -267,7 +259,7 @@ class ChapterCreateView(MethodView):
             )
 
         chapters_service = _chapters_service(campaign_id, book_id)
-        new_chapter = chapters_service.create(name=name, number=number, description=description)
+        new_chapter = chapters_service.create(name=name, description=description)
         cache.global_context.clear(session["company_id"], session["user_id"])
         cache.campaign_content.clear(
             session["company_id"], campaign_id=campaign_id, book_id=book_id
