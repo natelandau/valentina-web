@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from flask import Blueprint, abort, flash, redirect, request, session, url_for
@@ -120,10 +119,7 @@ class BookCreateView(MethodView):
                 cancel_url=_book_create_cancel_url(campaign_id, from_book),
                 from_book=from_book,
                 errors=errors,
-                form_data=SimpleNamespace(
-                    name=request.form.get("name", ""),
-                    description=request.form.get("description", ""),
-                ),
+                form_data=request.form,
             )
 
         books_service = sync_books_service(

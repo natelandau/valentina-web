@@ -28,7 +28,7 @@
         <label class="input w-full">
           <input type="text"
                  name="name"
-                 value="{{ (form_data.name if form_data else '') | e }}"
+                 value="{{ (form_data.get('name', '') if form_data else '') | e }}"
                  class="grow"
                  required
                  minlength="1"
@@ -42,7 +42,7 @@
         <textarea name="description"
                   class="textarea w-full"
                   rows="4"
-                  placeholder="Book description (optional)...">{{ (form_data.description if form_data else '') | e }}</textarea>
+                  placeholder="Book description (optional)...">{{ (form_data.get('description', '') if form_data else '') | e }}</textarea>
       </fieldset>
 
       <div class="flex gap-2 justify-end">
