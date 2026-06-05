@@ -206,8 +206,13 @@ class TestBookCreateGet:
 
     def test_non_privileged_returns_403(self, client, mocker, mock_campaign) -> None:
         """Verify non-privileged users cannot fetch the create form."""
+        # Given a non-privileged user
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=False)
+
+        # When fetching the create form
         response = client.get(f"/campaign/{mock_campaign.id}/books/create")
+
+        # Then access is forbidden
         assert response.status_code == 403
 
     def test_privileged_gets_form(self, client, mocker, mock_campaign) -> None:

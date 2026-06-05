@@ -21,14 +21,14 @@
           hx-target="#book-content"
           hx-swap="outerHTML">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="from_book" value="{{ from_book }}">
+      <input type="hidden" name="from_book" value="{{ from_book | e }}">
 
       <fieldset class="fieldset mb-4">
         <legend class="fieldset-legend">Name</legend>
         <label class="input w-full">
           <input type="text"
                  name="name"
-                 value="{{ form_data.name if form_data else '' }}"
+                 value="{{ (form_data.name if form_data else '') | e }}"
                  class="grow"
                  required
                  minlength="1"
@@ -42,7 +42,7 @@
         <textarea name="description"
                   class="textarea w-full"
                   rows="4"
-                  placeholder="Book description (optional)...">{{ form_data.description if form_data else '' }}</textarea>
+                  placeholder="Book description (optional)...">{{ (form_data.description if form_data else '') | e }}</textarea>
       </fieldset>
 
       <div class="flex gap-2 justify-end">
