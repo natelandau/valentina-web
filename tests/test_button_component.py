@@ -124,6 +124,22 @@ class TestButtonAttrsPassThrough:
         assert 'title="Edit item"' in html
 
 
+class TestButtonExtraAttrs:
+    """Test the extra_attrs prop renders raw HTMX attributes intact."""
+
+    def test_extra_attrs_quotes_not_escaped(self, app: Flask) -> None:
+        """Verify extra_attrs renders with intact quotes (not entity-escaped) under autoescape."""
+        # Given a raw HTMX attribute string with quoted values
+        attrs = 'hx-get="/profile/u1/edit" hx-target="#form" hx-swap="innerHTML"'
+
+        # When rendering a button with that extra_attrs prop
+        html = _render(app, variant="edit", _content="Edit", extra_attrs=attrs)
+
+        # Then the attribute quotes survive autoescaping
+        assert 'hx-get="/profile/u1/edit"' in html
+        assert "&#34;" not in html
+
+
 class TestButtonEdgeCases:
     """Test edge cases and fallback behavior."""
 

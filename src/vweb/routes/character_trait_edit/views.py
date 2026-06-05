@@ -96,7 +96,7 @@ class CharacterTraitsView(MethodView):
 
         msg = f"Updated {value_options.name.strip().title()} to {value}."
         if self.spend_type != "NO_COST":
-            msg += f"<br>You {'recouped' if direction == 'decrease' else 'spent'} {point_change} {self.spend_type_humanized}"
+            msg += f" You {'recouped' if direction == 'decrease' else 'spent'} {point_change} {self.spend_type_humanized}"
         flash(msg, "success")
         return hx_redirect(get_method_url)
 
@@ -128,7 +128,7 @@ class CharacterTraitsView(MethodView):
 
         msg = "Trait deleted."
         if self.spend_type != "NO_COST":
-            msg += f"<br>You recouped {point_change} {self.spend_type_humanized}"
+            msg += f" You recouped {point_change} {self.spend_type_humanized}"
         flash(msg, "success")
         return hx_redirect(get_method_url)
 

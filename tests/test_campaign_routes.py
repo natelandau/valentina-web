@@ -93,7 +93,8 @@ class TestCampaignView:
         # Then both characters appear
         assert response.status_code == 200
         assert "Your Characters" in body
-        assert "Other Players' Characters" in body
+        # Autoescaping renders the apostrophe in the card title as &#39;
+        assert "Other Players&#39; Characters" in body
 
     def test_empty_characters_shows_message(self, client, mock_global_context) -> None:
         """Verify empty state messages when no characters exist."""
