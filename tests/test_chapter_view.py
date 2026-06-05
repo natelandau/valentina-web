@@ -158,36 +158,35 @@ class TestChapterCreate:
         response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter")
         assert b'id="book-chapters-card"' in response.data
 
-    def test_get_form_threads_target_and_cancel(
+    def test_get_form_derives_chapter_target_from_from_chapter(
         self, client, mocker, mock_campaign, mock_book
     ) -> None:
-        """Verify target and from_chapter params retarget the form and Cancel."""
+        """Verify from_chapter alone retargets the form to the chapter card and Cancel."""
         # Given a privileged user
         mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
 
-        # When fetching the form with chapter-page params
+        # When fetching the form launched from a chapter page (from_chapter only)
         response = client.get(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter"
-            "?target=chapter-content&from_chapter=ch-2"
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter?from_chapter=ch-2"
         )
 
-        # Then the form wraps in the chapter-page target and Cancel restores ch-2
+        # Then the swap target is derived as the chapter content card and Cancel restores ch-2
         assert b'id="chapter-content"' in response.data
         assert b"/chapter/ch-2" in response.data
 
-    def test_get_form_rejects_unknown_target(
+    def test_get_form_ignores_client_supplied_target(
         self, client, mocker, mock_campaign, mock_book
     ) -> None:
-        """Verify an unrecognized target falls back to the book chapters card."""
+        """Verify a client-supplied target query param cannot reach the swap attributes."""
         # Given a privileged user
         mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
 
-        # When requesting the form with a bogus target
+        # When requesting the form with a bogus target and no from_chapter
         response = client.get(
             f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter?target=evil%20x"
         )
 
-        # Then the form falls back to the safe default target
+        # Then the target is derived server-side (book chapters card) and the input is not reflected
         assert b'id="book-chapters-card"' in response.data
         assert b"evil" not in response.data
 
@@ -278,10 +277,9 @@ class TestChapterCarouselAddCard:
         # When rendering a chapter detail page
         response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2")
 
-        # Then the add-card renders with the parameterized create-form URL
+        # Then the add-card renders the create-form URL scoped to the current chapter
         assert b"New Chapter" in response.data
-        assert b"target=chapter-content" in response.data
-        assert b"from_chapter=ch-2" in response.data
+        assert b"/book/book-1/chapter?from_chapter=ch-2" in response.data
 
     def test_add_card_hidden_for_player(self, client, mock_campaign, mock_book) -> None:
         """Verify players do not see the New Chapter add-card."""
@@ -289,4 +287,5 @@ class TestChapterCarouselAddCard:
         response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2")
 
         # Then no create affordance renders
-        assert b"target=chapter-content" not in response.data
+        assert b"New Chapter" not in response.data
+        assert b"from_chapter=ch-2" not in response.data

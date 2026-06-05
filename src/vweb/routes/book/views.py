@@ -108,9 +108,15 @@ class BookCreateView(MethodView):
         name = request.form.get("name", "").strip()
         description = request.form.get("description", "").strip()
 
+        # Mirror the vclient BookCreate constraints (name 3-50, optional description >=3)
+        # so invalid input re-renders the form instead of raising a 500 from the API client.
         errors: list[str] = []
         if not name:
             errors.append("Name is required")
+        elif not 3 <= len(name) <= 50:  # noqa: PLR2004
+            errors.append("Name must be between 3 and 50 characters")
+        if description and len(description) < 3:  # noqa: PLR2004
+            errors.append("Description must be at least 3 characters")
 
         if errors:
             return catalog.render(
@@ -125,7 +131,7 @@ class BookCreateView(MethodView):
         books_service = sync_books_service(
             campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
         )
-        new_book = books_service.create(name=name, description=description)
+        new_book = books_service.create(name=name, description=description or None)
         cache.global_context.clear(session["company_id"], session["user_id"])
         cache.campaign_content.clear(session["company_id"], campaign_id=campaign_id)
 

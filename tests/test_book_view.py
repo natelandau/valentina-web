@@ -313,6 +313,44 @@ class TestBookCreatePost:
         assert b"Create Book" in response.data
         svc.create.assert_not_called()
 
+    def test_blank_description_creates_with_none(self, client, mocker, mock_campaign) -> None:
+        """Verify a blank description is sent as None (vclient rejects empty strings)."""
+        # Given a privileged user and a books service returning the new book
+        mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
+        svc = mocker.patch("vweb.routes.book.views.sync_books_service").return_value
+        svc.create.return_value = CampaignBookFactory.build(
+            id="book-new", campaign_id=mock_campaign.id
+        )
+        csrf = get_csrf(client)
+
+        # When submitting with the description left blank
+        response = client.post(
+            f"/campaign/{mock_campaign.id}/books/create",
+            data={"name": "New Book", "description": "", "csrf_token": csrf},
+        )
+
+        # Then the book is created with description=None (not an empty string)
+        assert response.status_code == 200
+        svc.create.assert_called_once_with(name="New Book", description=None)
+
+    def test_short_name_rerenders_with_error(self, client, mocker, mock_campaign) -> None:
+        """Verify a name shorter than the API minimum re-renders with an error, no create."""
+        # Given a privileged user
+        mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
+        svc = mocker.patch("vweb.routes.book.views.sync_books_service").return_value
+        csrf = get_csrf(client)
+
+        # When submitting a 2-character name
+        response = client.post(
+            f"/campaign/{mock_campaign.id}/books/create",
+            data={"name": "Ab", "csrf_token": csrf},
+        )
+
+        # Then the form re-renders with a length error and nothing is created
+        assert response.status_code == 200
+        assert b"between 3 and 50" in response.data
+        svc.create.assert_not_called()
+
 
 @pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")
 class TestBookDelete:

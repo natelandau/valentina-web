@@ -27,9 +27,7 @@ if TYPE_CHECKING:
 bp = Blueprint("chapter_view", __name__)
 
 CHAPTER_CARD_ID = "chapter-content"
-
-# The chapter create form swaps into one of two known containers; reject anything else.
-_VALID_CREATE_TARGETS = frozenset({"book-chapters-card", "chapter-content"})
+BOOK_CHAPTERS_CARD_ID = "book-chapters-card"
 
 
 def _chapters_service(campaign_id: str, book_id: str) -> SyncChaptersService:
@@ -58,13 +56,16 @@ def _chapter_create_cancel_url(campaign_id: str, book_id: str, from_chapter: str
     return url_for("book_view.book_detail", campaign_id=campaign_id, book_id=book_id)
 
 
-def _safe_create_target(raw_target: str) -> str:
-    """Clamp the create-form swap target to a known container id.
+def _chapter_create_target(from_chapter: str) -> str:
+    """Return the container id the create form swaps into.
 
-    The target is reflected unquoted into the form's hx-target/hx-select, so an
-    unrecognized value falls back to the book page's chapters card.
+    The target is derived server-side from whether a launching chapter is in
+    scope: from a chapter's detail page the form replaces that page's content
+    card; from the book page it replaces the chapters card. Deriving it (rather
+    than accepting a client-supplied id) keeps a user-controlled value out of the
+    form's hx-target/hx-select attributes.
     """
-    return raw_target if raw_target in _VALID_CREATE_TARGETS else "book-chapters-card"
+    return CHAPTER_CARD_ID if from_chapter else BOOK_CHAPTERS_CARD_ID
 
 
 def _render_chapter_card(
@@ -218,13 +219,12 @@ class ChapterCreateView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        target_id = _safe_create_target(request.args.get("target", "book-chapters-card"))
         from_chapter = request.args.get("from_chapter", "")
         return catalog.render(
             "book.partials.ChapterCreateForm",
             book=book,
             campaign=campaign,
-            target_id=target_id,
+            target_id=_chapter_create_target(from_chapter),
             from_chapter=from_chapter,
             cancel_url=_chapter_create_cancel_url(campaign_id, book_id, from_chapter),
             errors=[],
@@ -236,8 +236,8 @@ class ChapterCreateView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        target_id = _safe_create_target(request.form.get("target_id", "book-chapters-card"))
         from_chapter = request.form.get("from_chapter", "")
+        target_id = _chapter_create_target(from_chapter)
 
         name = request.form.get("name", "").strip()
         number_str = request.form.get("number", "").strip()

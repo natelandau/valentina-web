@@ -31,8 +31,8 @@
                  value="{{ (form_data.get('name', '') if form_data else '') | e }}"
                  class="grow"
                  required
-                 minlength="1"
-                 maxlength="100"
+                 minlength="3"
+                 maxlength="50"
                  placeholder="Book name">
         </label>
       </fieldset>
@@ -42,6 +42,7 @@
         <textarea name="description"
                   class="textarea w-full"
                   rows="4"
+                  minlength="3"
                   placeholder="Book description (optional)...">{{ (form_data.get('description', '') if form_data else '') | e }}</textarea>
       </fieldset>
 
