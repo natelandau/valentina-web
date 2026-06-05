@@ -46,6 +46,17 @@ def _render_book_card(
     )
 
 
+def _book_create_cancel_url(campaign_id: str, from_book: str) -> str:
+    """Build the URL the create form's Cancel button restores.
+
+    From a book's detail page Cancel restores that book's content card; from
+    the no-books empty state it re-renders the empty state via the index.
+    """
+    if from_book:
+        return url_for("book_view.book_detail", campaign_id=campaign_id, book_id=from_book)
+    return url_for("book_view.books_index", campaign_id=campaign_id)
+
+
 bp = Blueprint("book_view", __name__)
 
 
@@ -66,6 +77,24 @@ class BooksIndexView(MethodView):
             return catalog.render("book.BooksEmpty", campaign=campaign)
         return redirect(
             url_for("book_view.book_detail", campaign_id=campaign_id, book_id=books[0].id)
+        )
+
+
+class BookCreateView(MethodView):
+    """Create a new book via an inline form swapped into the content card."""
+
+    def get(self, campaign_id: str) -> str:
+        """Render the book create form."""
+        if not can_manage_campaign():
+            abort(403)
+        campaign = fetch_campaign_or_404(campaign_id)
+        from_book = request.args.get("from_book", "")
+        return catalog.render(
+            "book.partials.BookCreateForm",
+            campaign=campaign,
+            cancel_url=_book_create_cancel_url(campaign_id, from_book),
+            from_book=from_book,
+            errors=[],
         )
 
 
@@ -258,6 +287,11 @@ bp.add_url_rule(
     "/campaign/<campaign_id>/books",
     view_func=BooksIndexView.as_view("books_index"),
     methods=["GET"],
+)
+bp.add_url_rule(
+    "/campaign/<campaign_id>/books/create",
+    view_func=BookCreateView.as_view("book_create"),
+    methods=["GET", "POST"],
 )
 
 _book_detail_view = BookDetailView.as_view("book_detail")

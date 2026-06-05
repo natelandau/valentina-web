@@ -1,0 +1,56 @@
+{#def
+    campaign: object,
+    cancel_url: str,
+    from_book: str = "",
+    errors: list = [],
+    form_data: object = None,
+#}
+<div id="book-content" class="surface-card">
+  <div class="card-body">
+    <h2 class="card-title">Create Book</h2>
+
+    {% if errors %}
+      <div class="mb-2">
+        {% for error in errors %}
+          <div class="alert alert-error alert-sm mb-1">{{ error }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <form hx-post="{{ url_for('book_view.book_create', campaign_id=campaign.id) }}"
+          hx-target="#book-content"
+          hx-swap="outerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="from_book" value="{{ from_book }}">
+
+      <fieldset class="fieldset mb-4">
+        <legend class="fieldset-legend">Name</legend>
+        <label class="input w-full">
+          <input type="text"
+                 name="name"
+                 value="{{ form_data.name if form_data else '' }}"
+                 class="grow"
+                 required
+                 minlength="1"
+                 maxlength="100"
+                 placeholder="Book name">
+        </label>
+      </fieldset>
+
+      <fieldset class="fieldset mb-4">
+        <legend class="fieldset-legend">Description</legend>
+        <textarea name="description"
+                  class="textarea w-full"
+                  rows="4"
+                  placeholder="Book description (optional)...">{{ form_data.description if form_data else '' }}</textarea>
+      </fieldset>
+
+      <div class="flex gap-2 justify-end">
+        <shared.CommonButton variant="cancel" hx-get={{ cancel_url }} hx-target="#book-content" hx-swap="outerHTML" hx-select="#book-content">
+        Cancel
+        </shared.CommonButton>
+        <shared.CommonButton variant="submit">Create</shared.CommonButton>
+      </div>
+    </form>
+  </div>
+</div>

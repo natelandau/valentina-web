@@ -191,6 +191,45 @@ class TestBookUpdate:
         assert kwargs["campaign_id"] == mock_campaign.id
 
 
+@pytest.fixture
+def _mock_campaign_lookup(mocker, mock_campaign) -> None:
+    """Mock the campaign lookup used by the books index and create views."""
+    mocker.patch(
+        "vweb.routes.book.views.fetch_campaign_or_404",
+        return_value=mock_campaign,
+    )
+
+
+@pytest.mark.usefixtures("_mock_campaign_lookup")
+class TestBookCreateGet:
+    """Tests for the book create form GET route."""
+
+    def test_non_privileged_returns_403(self, client, mocker, mock_campaign) -> None:
+        """Verify non-privileged users cannot fetch the create form."""
+        mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=False)
+        response = client.get(f"/campaign/{mock_campaign.id}/books/create")
+        assert response.status_code == 403
+
+    def test_privileged_gets_form(self, client, mocker, mock_campaign) -> None:
+        """Verify managers receive the create form with an index cancel target."""
+        # Given a privileged user
+        mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
+
+        # When fetching the create form without a from_book param
+        response = client.get(f"/campaign/{mock_campaign.id}/books/create")
+
+        # Then the form renders and Cancel restores the books index
+        assert response.status_code == 200
+        assert b"Create Book" in response.data
+        assert f'hx-get="/campaign/{mock_campaign.id}/books"'.encode() in response.data
+
+    def test_from_book_changes_cancel_target(self, client, mocker, mock_campaign) -> None:
+        """Verify from_book points Cancel back at that book's detail page."""
+        mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
+        response = client.get(f"/campaign/{mock_campaign.id}/books/create?from_book=book-9")
+        assert f"/campaign/{mock_campaign.id}/book/book-9".encode() in response.data
+
+
 @pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")
 class TestBookDelete:
     """Tests for book delete cache invalidation."""
