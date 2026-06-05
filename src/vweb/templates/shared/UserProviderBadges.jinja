@@ -1,0 +1,18 @@
+{#def user #}
+{# Icons for each linked OAuth identity. Helps admins match accounts when emails
+   differ across providers (e.g. Apple's private-relay addresses). #}
+{% set providers = [
+  (user.discord_profile, "Discord", "fa-discord"),
+  (user.github_profile, "GitHub", "fa-github"),
+  (user.google_profile, "Google", "fa-google"),
+  (user.apple_profile, "Apple", "fa-apple"),
+] %}
+<span class="inline-flex items-center gap-1 text-base-content/60 align-middle">
+  {% for profile, label, icon in providers %}
+    {% if profile %}
+      <span class="tooltip" data-tip="{{ label }}">
+        <i class="fa-brands {{ icon }} text-sm" aria-label="{{ label }}"></i>
+      </span>
+    {% endif %}
+  {% endfor %}
+</span>

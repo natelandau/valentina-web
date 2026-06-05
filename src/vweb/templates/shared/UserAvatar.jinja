@@ -23,14 +23,16 @@
 
 {% if avatar_url %}
   <div class="avatar {{ size }}">
-    <img alt="{{ user.name_first }} {{ user.name_last }}"
+    <img alt="{{ user_display_name(user) }}"
          src="{{ avatar_url }}"
          class="rounded-full" />
   </div>
 {% else %}
+  {# Derive initials from the resolved display name so they match the name shown beside the avatar #}
+  {% set name_words = user_display_name(user).split() %}
   <div class="avatar avatar-placeholder">
     <div class="bg-neutral text-neutral-content {{ size }} rounded-full">
-      <span>{{ (user.name_first or user.username)[0] | upper }}{{ user.name_last[0] | upper if user.name_last else "" }}</span>
+      <span>{{ name_words[0][0] | upper }}{{ name_words[1][0] | upper if name_words | length > 1 else "" }}</span>
     </div>
   </div>
 {% endif %}

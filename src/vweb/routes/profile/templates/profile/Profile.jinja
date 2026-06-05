@@ -8,8 +8,6 @@
 
 {% set is_own_profile = is_self(user.id) %}
 
-{% set display_name = (user.name_first ~ " " ~ user.name_last) if user.name_first and user.name_last else user.username %}
-
 {% set edit_btn %}
 
   {% if is_own_profile %}
@@ -38,8 +36,8 @@
 
 {% endif %}
 
-<shared.PageLayout title={{ user.username }}>
-<shared.PageHeader title={{ user.username }} actions={{ edit_btn }} back_url={{ url_for("index.index") }} icon={{ avatar_html }}>
+<shared.PageLayout title={{ user_display_name(user) }}>
+<shared.PageHeader title={{ user_display_name(user) }} actions={{ edit_btn }} back_url={{ url_for("index.index") }} icon={{ avatar_html }}>
 <div class="flex flex-wrap items-center gap-2 mt-1 text-sm opacity-70">
   {% if user.name_first and user.name_last %}
     <span>{{ user.name_first }} {{ user.name_last }}</span>

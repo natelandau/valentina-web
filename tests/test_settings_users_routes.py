@@ -6,14 +6,27 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
+from vclient.models.users import AppleProfile, DiscordProfile
 from vclient.testing import UserFactory
 
 from tests.conftest import get_csrf
 
 if TYPE_CHECKING:
     from flask.testing import FlaskClient
+    from vclient.models.users import User
 
     from vweb.lib.cache.global_context import GlobalContext
+
+
+def _pending_apple_user() -> User:
+    """Build a nameless pending user whose only identity is an Apple profile."""
+    return UserFactory.build(
+        id="pending-apple",
+        name_first=None,
+        name_last=None,
+        username="relay-user",
+        apple_profile=AppleProfile(id="apple-1", fullname="Ada Lovelace"),
+    )
 
 
 @pytest.fixture
@@ -94,6 +107,42 @@ class TestUsersPageGet:
         assert "Self Admin" not in body
         assert 'id="pending-user-pending-1"' in body
         assert 'id="user-approved-1"' in body
+
+    def test_users_page_uses_apple_fullname_and_provider_badges(
+        self,
+        client: FlaskClient,
+        admin_context: GlobalContext,
+        mocker,
+        patch_users_service,
+    ) -> None:
+        """Verify a nameless apple user shows their apple fullname and provider badge."""
+        # Given a pending apple user with no top-level names and a discord user
+        admin_id = admin_context.users[0].id
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
+
+        svc = MagicMock()
+        svc.list_all_unapproved.return_value = [_pending_apple_user()]
+        svc.list_all.return_value = [
+            UserFactory.build(id=admin_id),
+            UserFactory.build(
+                id="approved-1",
+                name_first="Grace",
+                name_last="Hopper",
+                discord_profile=DiscordProfile(id="discord-1", username="grace"),
+            ),
+        ]
+        patch_users_service(svc)
+
+        # When loading the users page
+        response = client.get("/admin/users")
+        body = response.get_data(as_text=True)
+
+        # Then the apple fullname renders instead of 'None' and badges show providers
+        assert response.status_code == 200
+        assert "Ada Lovelace" in body
+        assert "Deny Ada Lovelace? This cannot be undone." in body
+        assert 'data-tip="Apple"' in body
+        assert 'data-tip="Discord"' in body
 
 
 class TestApproveUserEndpoint:
@@ -322,6 +371,38 @@ class TestMergeForm:
         assert "Ada" in body
         assert 'name="target_user_id"' in body
         assert "approved-1" in body
+
+    def test_merge_form_handles_missing_names_and_shows_providers(
+        self,
+        client: FlaskClient,
+        admin_context: GlobalContext,
+        mocker,
+        patch_users_service,
+    ) -> None:
+        """Verify the modal never renders 'None' for nameless users and shows provider badges."""
+        # Given a nameless pending apple user and a nameless approved candidate
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
+        svc = MagicMock()
+        svc.list_all_unapproved.return_value = [_pending_apple_user()]
+        svc.list_all.return_value = [
+            UserFactory.build(
+                id="approved-1",
+                name_first=None,
+                name_last=None,
+                username="grace",
+            ),
+        ]
+        patch_users_service(svc)
+
+        # When requesting the merge form
+        response = client.get("/admin/users/pending-apple/merge")
+        body = response.get_data(as_text=True)
+
+        # Then names fall back gracefully and the pending user's provider is visible
+        assert response.status_code == 200
+        assert "Merge Ada Lovelace into existing user" in body
+        assert "grace —" in body
+        assert 'data-tip="Apple"' in body
 
 
 class TestMergePost:
