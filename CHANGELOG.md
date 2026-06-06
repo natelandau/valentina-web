@@ -1,3 +1,19 @@
+## v0.9.0 (2026-06-06)
+
+### Feat
+
+- **books**: create books and chapters from the carousels (#46)
+- **admin**: support apple profile in user approval (#45)
+
+### Fix
+
+- **errors**: return correct status for unhandled http errors
+- **security**: enable template autoescaping to prevent stored XSS (#47)
+
+### Refactor
+
+- **cache**: hash variable key segments
+
 ## v0.8.0 (2026-06-03)
 
 ### Feat
