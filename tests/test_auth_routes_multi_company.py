@@ -68,7 +68,7 @@ class TestSingleApprovedUser:
         # Given a single approved lookup result
         result = _make_lookup_result(company_id="c1", user_id="u1", role="PLAYER")
         mocker.patch("vweb.routes.auth.views.lookup_user_companies", return_value=[result])
-        mocker.patch("vweb.routes.auth.views.update_discord_profile")
+        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
 
         # When the callback is hit
         response = client.get("/auth/discord/callback")
@@ -93,6 +93,7 @@ class TestSingleUnapprovedUser:
         # Given a single unapproved lookup result
         result = _make_lookup_result(company_id="c1", user_id="u1", role="UNAPPROVED")
         mocker.patch("vweb.routes.auth.views.lookup_user_companies", return_value=[result])
+        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
 
         # When the callback is hit
         response = client.get("/auth/discord/callback")
@@ -123,6 +124,7 @@ class TestMultipleCompaniesWithApproved:
             ),
         ]
         mocker.patch("vweb.routes.auth.views.lookup_user_companies", return_value=results)
+        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
 
         # When the callback is hit
         response = client.get("/auth/discord/callback")
@@ -148,6 +150,7 @@ class TestMultipleCompaniesAllUnapproved:
             _make_lookup_result(company_id="c2", user_id="u2", role="UNAPPROVED"),
         ]
         mocker.patch("vweb.routes.auth.views.lookup_user_companies", return_value=results)
+        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
 
         # When the callback is hit
         response = client.get("/auth/discord/callback")

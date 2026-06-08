@@ -10,7 +10,7 @@ from authlib.integrations.base_client.errors import OAuthError
 from flask import Blueprint, flash, redirect, request, session, url_for
 from flask.views import MethodView
 from vclient import sync_companies_service, sync_user_self_registration_service
-from vclient.exceptions import APIError
+from vclient.exceptions import APIError, ServerError, UnprocessableEntityError
 from vclient.models.users import UserRegisterDTO
 from werkzeug.wrappers.response import Response
 
@@ -18,15 +18,11 @@ from vweb import catalog
 from vweb.extensions import oauth
 from vweb.routes.auth.services import (
     build_companies_mapping,
+    identify_in_companies,
     lookup_user_companies,
-    update_discord_profile,
-    update_github_profile,
-    update_google_profile,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from vclient.models import UserLookupResult
 
 bp = Blueprint("auth", __name__)
@@ -60,23 +56,60 @@ def _safe_lookup(
         return redirect(url_for("index.index"))
 
 
+def _flash_identify_error(exc: APIError, provider: str) -> None:
+    """Translate an identity verification failure into a user-facing flash message."""
+    if isinstance(exc, UnprocessableEntityError) and exc.code == "EMAIL_REQUIRED":
+        flash(
+            f"Your {provider.title()} account did not provide an email address, "
+            "which is required to create an account.",
+            "error",
+        )
+    elif isinstance(exc, ServerError) and exc.code == "PROVIDER_UNAVAILABLE":
+        flash(
+            f"{provider.title()} is currently unreachable. Please try again in a few minutes.",
+            "error",
+        )
+    else:
+        flash(
+            f"Your {provider.title()} login could not be verified. Please try again.",
+            "error",
+        )
+
+
 def _handle_login_result(
     results: list[UserLookupResult],
-    provider_data: dict,
+    *,
     provider: str,
-    profile_updater: Callable[[str, str, dict], None],
+    credential: str,
+    username: str | None,
+    email: str | None,
 ) -> Response:
     """Branch on lookup results to set session state and redirect appropriately."""
-    session.pop("pending_profile_update", None)
     session.pop("pending_oauth", None)
 
     if not results:
-        # New user with no existing accounts — store OAuth data and pick companies
+        # New user with no existing accounts — keep the verified credential so
+        # registration can run identify() after they pick companies
         session["pending_oauth"] = {
             "provider": provider,
-            "data": provider_data,
+            "token": credential,
+            "username": username,
+            "email": email,
         }
         return redirect(url_for("auth.select_companies"))
+
+    # Server-verify the credential and refresh/auto-link the identity in every
+    # company the user belongs to. Token-level failures abort the login;
+    # per-company failures are logged inside the helper and login proceeds.
+    try:
+        identify_in_companies(
+            [r.company_id for r in results],
+            provider=provider,
+            token=credential,
+        )
+    except (UnprocessableEntityError, ServerError) as exc:
+        _flash_identify_error(exc, provider)
+        return redirect(url_for("index.index"))
 
     companies = build_companies_mapping(results)
     approved = {cid: data for cid, data in companies.items() if data["role"] != "UNAPPROVED"}
@@ -90,13 +123,6 @@ def _handle_login_result(
 
         if r.role == "UNAPPROVED":
             return redirect(url_for("auth.pending_approval"))
-
-        # Update provider profile for the single approved company
-        try:
-            profile_updater(r.company_id, r.user_id, provider_data)
-        except (httpx.HTTPError, APIError):
-            logger.exception("Failed to update %s profile after login", provider)
-
         return redirect(url_for("index.index"))
 
     # Multiple companies
@@ -111,10 +137,6 @@ def _handle_login_result(
         return redirect(url_for("auth.pending_approval"))
 
     # Multiple companies with at least one approved — let user pick
-    session["pending_profile_update"] = {
-        "provider": provider,
-        "data": provider_data,
-    }
     return redirect(url_for("auth.select_company"))
 
 
@@ -150,7 +172,13 @@ class DiscordCallbackView(MethodView):
         if isinstance(result, Response):
             return result
 
-        return _handle_login_result(result, discord_data, "discord", update_discord_profile)
+        return _handle_login_result(
+            result,
+            provider="discord",
+            credential=token["access_token"],
+            username=discord_data.get("username"),
+            email=discord_data.get("email"),
+        )
 
 
 class LogoutView(MethodView):
@@ -213,7 +241,13 @@ class GitHubCallbackView(MethodView):
         if isinstance(result, Response):
             return result
 
-        return _handle_login_result(result, github_data, "github", update_github_profile)
+        return _handle_login_result(
+            result,
+            provider="github",
+            credential=token["access_token"],
+            username=github_data.get("login"),
+            email=github_data.get("email"),
+        )
 
 
 class GoogleLoginView(MethodView):
@@ -247,7 +281,14 @@ class GoogleCallbackView(MethodView):
         if isinstance(result, Response):
             return result
 
-        return _handle_login_result(result, google_data, "google", update_google_profile)
+        return _handle_login_result(
+            result,
+            provider="google",
+            # Use the OIDC ID token so the API can verify the credential with Google
+            credential=token["id_token"],
+            username=google_data.get("name"),
+            email=google_data.get("email"),
+        )
 
 
 class SelectCompaniesView(MethodView):
@@ -389,24 +430,6 @@ class SelectCompanyView(MethodView):
 
         session["company_id"] = company_id
         session["user_id"] = data["user_id"]
-
-        # Apply pending profile update if present
-        pending = session.pop("pending_profile_update", None)
-        if pending:
-            provider = pending["provider"]
-            provider_data = pending["data"]
-            updaters = {
-                "discord": update_discord_profile,
-                "github": update_github_profile,
-                "google": update_google_profile,
-            }
-            updater = updaters.get(provider)
-            if updater:
-                try:
-                    updater(company_id, data["user_id"], provider_data)
-                except (httpx.HTTPError, APIError):
-                    logger.exception("Failed to update %s profile after company switch", provider)
-
         return redirect(url_for("index.index"))
 
 
