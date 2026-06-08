@@ -162,3 +162,29 @@ class TestAppleProviderRegistration:
         # Then Apple carries form_post (so login and link both use it) and the scopes
         assert fresh.apple.authorize_params == {"response_mode": "form_post"}
         assert fresh.apple.client_kwargs["scope"] == "openid name email"
+
+    def test_apple_registered_with_client_secret_post_auth(self, mocker) -> None:
+        """Verify Apple authenticates the token exchange via client_secret_post.
+
+        Apple rejects the default client_secret_basic with invalid_client; the
+        signed-JWT secret must be sent in the POST body, not an HTTP Basic header.
+        """
+        # Given a fresh OAuth registry and settings with only Apple configured
+        fresh = OAuth()
+        mocker.patch.object(oauth_setup, "oauth", fresh)
+        settings = Settings(
+            _env_file=None,
+            env="development",
+            secret_key="test-secret-key",
+            redis=RedisSettings(url=""),
+            api=APISettings(base_url="http://localhost", api_key="k"),
+            oauth=OAuthSettings(apple=_apple_settings()),
+        )
+        app = Flask(__name__)
+        app.config["SECRET_KEY"] = "test-secret-key"
+
+        # When the providers are registered
+        oauth_setup.register_oauth_providers(app, settings)
+
+        # Then the token endpoint auth method puts the secret in the request body
+        assert fresh.apple.client_kwargs["token_endpoint_auth_method"] == "client_secret_post"

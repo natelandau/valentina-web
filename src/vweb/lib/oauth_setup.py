@@ -64,7 +64,13 @@ def register_oauth_providers(app: Flask, s: Settings) -> None:
             server_metadata_url="https://appleid.apple.com/.well-known/openid-configuration",
             # "openid" makes Authlib add a nonce and parse the id_token into
             # token["userinfo"]; "name email" requests the user's profile fields.
-            client_kwargs={"scope": "openid name email"},
+            # Apple only accepts the client_secret in the POST body; Authlib's
+            # default (client_secret_basic) sends it as a Basic auth header, which
+            # Apple rejects at the token exchange with invalid_client.
+            client_kwargs={
+                "scope": "openid name email",
+                "token_endpoint_auth_method": "client_secret_post",
+            },
             # Apple returns the result as a form POST whenever name/email is
             # requested. Set it here so every authorize redirect (login and link)
             # gets it, rather than special-casing each call site.
