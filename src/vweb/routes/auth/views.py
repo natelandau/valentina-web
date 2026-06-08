@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import TYPE_CHECKING, cast
 
 import httpx
 from authlib.integrations.base_client.errors import OAuthError
-from flask import Blueprint, abort, flash, redirect, request, session, url_for
+from flask import Blueprint, abort, current_app, flash, redirect, request, session, url_for
 from flask.views import MethodView
 from vclient import sync_companies_service, sync_users_service
 from vclient.exceptions import (
@@ -21,8 +22,9 @@ from vclient.exceptions import (
 from werkzeug.wrappers.response import Response
 
 from vweb import catalog
-from vweb.extensions import oauth
+from vweb.extensions import csrf, oauth
 from vweb.lib import cache
+from vweb.lib.apple_oauth import build_apple_client_secret
 from vweb.lib.jinja import htmx_response_with_flash, hx_redirect
 from vweb.routes.auth.services import (
     build_companies_mapping,
@@ -85,7 +87,7 @@ def _flash_identify_error(exc: APIError, provider: str) -> None:
         )
 
 
-_LINKABLE_PROVIDERS = ("discord", "github", "google")
+_LINKABLE_PROVIDERS = ("discord", "github", "google", "apple")
 
 
 def _link_redirect_target() -> str:
@@ -155,6 +157,8 @@ class LinkIdentityView(MethodView):
 
         session["oauth_link_mode"] = True
         redirect_uri = url_for(f"auth.{provider}_callback", _external=True)
+        # Provider-specific authorize params (e.g. Apple's response_mode=form_post)
+        # are configured at registration in oauth_setup, keeping this view generic.
         return getattr(oauth, provider).authorize_redirect(redirect_uri)
 
 
@@ -462,6 +466,86 @@ class GoogleCallbackView(MethodView):
         )
 
 
+def _apple_display_name(raw_user: str | None) -> str | None:
+    """Extract a display name from Apple's first-login ``user`` form field.
+
+    Apple includes the user's name only on the first authorization, as a JSON
+    string in the form POST (never in the id_token), so treat it as best-effort.
+    """
+    if not raw_user:
+        return None
+    try:
+        parsed = json.loads(raw_user)
+    except (ValueError, TypeError):
+        return None
+    # The field is attacker-controllable (the callback is CSRF-exempt), so accept
+    # only the shape Apple actually sends and ignore anything else.
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("name"), dict):
+        return None
+    name = parsed["name"]
+    parts = (name.get("firstName"), name.get("lastName"))
+    full_name = " ".join(part for part in parts if isinstance(part, str) and part)
+    return full_name or None
+
+
+class AppleLoginView(MethodView):
+    """Initiate Sign in with Apple authorization flow."""
+
+    def get(self) -> Response:
+        """Redirect to Apple's OAuth authorization page."""
+        # Drop any link-mode flag left over from an abandoned "connect account" flow
+        # so the shared callback resolves this as a login, not an identity link.
+        session.pop("oauth_link_mode", None)
+        redirect_uri = url_for("auth.apple_callback", _external=True)
+        # response_mode=form_post is configured on the provider in oauth_setup.
+        return oauth.apple.authorize_redirect(redirect_uri)
+
+
+class AppleCallbackView(MethodView):
+    """Handle the Sign in with Apple callback, which Apple sends as a form POST."""
+
+    def post(self) -> Response:
+        """Exchange authorization code for token and resolve user identity."""
+        link_mode = session.pop("oauth_link_mode", False)
+        # Apple's client_secret is a short-lived signed JWT, not a static string.
+        # Mint a fresh one here; Authlib reads client_secret when it builds the
+        # token request, so assigning it immediately before the exchange is honored.
+        # This writes a process-shared object, but under threaded workers a race is
+        # benign: every secret is signed by the same key for the same client and is
+        # interchangeable. Adding a per-request claim (jti/nonce) would change that.
+        settings = current_app.config["SETTINGS"]
+        oauth.apple.client_secret = build_apple_client_secret(settings.oauth.apple)
+        try:
+            token = oauth.apple.authorize_access_token()
+        except OAuthError as exc:
+            logger.warning("Apple OAuth error: %s", exc)
+            flash("Apple login was cancelled or denied.", "error")
+            return redirect(_link_redirect_target() if link_mode else url_for("index.index"))
+
+        if link_mode:
+            return _handle_link("apple", token["id_token"])
+
+        apple_data = token["userinfo"]
+
+        result = _safe_lookup(
+            provider="apple",
+            provider_id=apple_data.get("sub", ""),
+            email=apple_data.get("email", ""),
+        )
+        if isinstance(result, Response):
+            return result
+
+        return _handle_login_result(
+            result,
+            provider="apple",
+            # Use the OIDC ID token so the API can verify the credential with Apple
+            credential=token["id_token"],
+            # Apple sends the name only on first login, as JSON in the form POST
+            username=_apple_display_name(request.form.get("user")),
+            email=apple_data.get("email"),
+        )
+
+
 class SelectCompaniesView(MethodView):
     """Show available companies for new users to join."""
 
@@ -571,6 +655,12 @@ bp.add_url_rule("/auth/github", view_func=GitHubLoginView.as_view("github_login"
 bp.add_url_rule("/auth/github/callback", view_func=GitHubCallbackView.as_view("github_callback"))
 bp.add_url_rule("/auth/google", view_func=GoogleLoginView.as_view("google_login"))
 bp.add_url_rule("/auth/google/callback", view_func=GoogleCallbackView.as_view("google_callback"))
+bp.add_url_rule("/auth/apple", view_func=AppleLoginView.as_view("apple_login"))
+# Apple POSTs the callback cross-site with no CSRF token, so exempt this one view.
+# The OAuth state parameter (validated by Authlib) is what protects the exchange.
+_apple_callback_view = AppleCallbackView.as_view("apple_callback")
+csrf.exempt(_apple_callback_view)
+bp.add_url_rule("/auth/apple/callback", view_func=_apple_callback_view, methods=["POST"])
 bp.add_url_rule("/auth/logout", view_func=LogoutView.as_view("logout"), methods=["POST"])
 bp.add_url_rule("/pending-approval", view_func=PendingApprovalView.as_view("pending_approval"))
 bp.add_url_rule(

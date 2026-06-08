@@ -1,16 +1,14 @@
 {#def user #}
 {# Shown only on your own profile: connect or disconnect login providers.
-   Apple is excluded because its link-mode OAuth flow is not implemented
-   (auth.link_identity 404s for it). A provider can only be disconnected when
-   more than one is linked; the API refuses to remove the last sign-in method. #}
+   A provider can only be disconnected when more than one is linked; the API
+   refuses to remove the last sign-in method. #}
 {% set providers = [
   ("discord", "Discord", "fa-discord", user.discord_profile),
   ("github", "GitHub", "fa-github", user.github_profile),
   ("google", "Google", "fa-google", user.google_profile),
+  ("apple", "Apple", "fa-apple", user.apple_profile),
 ] %}
-{# Count every identity, including Apple (no row here since it can't be linked
-   from the web), so the gate matches the API's "can't remove the last" rule. #}
-{% set linked_count = (providers | selectattr(3) | list | length) + (1 if user.apple_profile else 0) %}
+{% set linked_count = providers | selectattr(3) | list | length %}
 <div id="connections-card" class="card surface-card">
   <div class="card-body">
     <h2 class="card-title">Connections</h2>

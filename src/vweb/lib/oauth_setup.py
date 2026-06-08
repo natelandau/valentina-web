@@ -51,3 +51,22 @@ def register_oauth_providers(app: Flask, s: Settings) -> None:
             server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
             client_kwargs={"scope": "openid email profile"},
         )
+
+    if s.oauth.apple.is_configured:
+        oauth.register(
+            name="apple",
+            client_id=s.oauth.apple.services_id,
+            # Apple has no static secret. The callback mints a fresh short-lived
+            # JWT before each token exchange, so leave it empty here — minting at
+            # registration would only couple app startup to key validity (a bad
+            # key would crash every worker on boot, not just disable Apple).
+            client_secret="",
+            server_metadata_url="https://appleid.apple.com/.well-known/openid-configuration",
+            # "openid" makes Authlib add a nonce and parse the id_token into
+            # token["userinfo"]; "name email" requests the user's profile fields.
+            client_kwargs={"scope": "openid name email"},
+            # Apple returns the result as a form POST whenever name/email is
+            # requested. Set it here so every authorize redirect (login and link)
+            # gets it, rather than special-casing each call site.
+            authorize_params={"response_mode": "form_post"},
+        )

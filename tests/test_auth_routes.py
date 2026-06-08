@@ -431,6 +431,97 @@ class TestGoogleCallbackView:
             assert sess.permanent is True
 
 
+class TestAppleLoginView:
+    """Tests for the Sign in with Apple login route."""
+
+    def test_apple_login_redirects(self, client, mocker):
+        """Verify GET /auth/apple starts the Apple OAuth redirect."""
+        # Given a mock OAuth apple client
+        mock_apple = MagicMock()
+        mock_apple.authorize_redirect.return_value = MagicMock(status_code=302)
+        mocker.patch("vweb.routes.auth.views.oauth", apple=mock_apple)
+
+        # When the login route is hit
+        client.get("/auth/apple")
+
+        # Then the OAuth redirect was issued (form_post is set at registration,
+        # asserted in test_apple_oauth.py)
+        mock_apple.authorize_redirect.assert_called_once()
+
+
+class TestAppleCallbackView:
+    """Tests for the Sign in with Apple callback route (a cross-site form POST)."""
+
+    def test_callback_sets_session_for_approved_user(self, client, mocker):
+        """Verify the Apple callback POST sets the session and redirects an approved user."""
+        # Given a mock OAuth flow returning a token with embedded userinfo
+        mock_apple = MagicMock()
+        mock_apple.authorize_access_token.return_value = {
+            "id_token": "fake-id-token",
+            "userinfo": {"sub": "apple-123", "email": "test@example.com"},
+        }
+        mocker.patch("vweb.routes.auth.views.oauth", apple=mock_apple)
+        mocker.patch("vweb.routes.auth.views.build_apple_client_secret", return_value="secret")
+
+        # Given a single approved lookup result
+        mocker.patch(
+            "vweb.routes.auth.views.lookup_user_companies",
+            return_value=[_make_lookup_result()],
+        )
+        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
+
+        # When Apple POSTs the callback (no CSRF token — the view is exempt)
+        response = client.post("/auth/apple/callback", data={"code": "abc", "state": "xyz"})
+
+        # Then the session is set and the user lands on the home page
+        with client.session_transaction() as sess:
+            assert sess["user_id"] == "resolved-user-id"
+        assert response.status_code == 302
+        assert response.location == "/"
+
+    def test_callback_new_user_uses_name_from_form_and_id_token_credential(self, client, mocker):
+        """Verify a new Apple user's name comes from the form POST and the credential is the id_token."""
+        # Given a mock OAuth flow for a user with no existing accounts
+        mock_apple = MagicMock()
+        mock_apple.authorize_access_token.return_value = {
+            "id_token": "fake-id-token",
+            "userinfo": {"sub": "apple-new", "email": "new@example.com"},
+        }
+        mocker.patch("vweb.routes.auth.views.oauth", apple=mock_apple)
+        mocker.patch("vweb.routes.auth.views.build_apple_client_secret", return_value="secret")
+        mocker.patch("vweb.routes.auth.views.lookup_user_companies", return_value=[])
+
+        # When Apple POSTs the callback with the first-login name payload
+        response = client.post(
+            "/auth/apple/callback",
+            data={
+                "code": "abc",
+                "state": "xyz",
+                "user": '{"name": {"firstName": "Ada", "lastName": "Lovelace"}}',
+            },
+        )
+
+        # Then the new user is sent to company selection with the verified id_token cached
+        assert response.status_code == 302
+        assert response.location == "/select-companies"
+        with client.session_transaction() as sess:
+            assert sess["pending_oauth"]["provider"] == "apple"
+            assert sess["pending_oauth"]["token"] == "fake-id-token"
+            assert sess["pending_oauth"]["username"] == "Ada Lovelace"
+            assert sess["pending_oauth"]["email"] == "new@example.com"
+
+    def test_callback_is_registered_csrf_exempt(self, app):
+        """Verify the Apple callback view is exempt from CSRF, since Apple sends no token."""
+        # Given the registered Apple callback view function
+        view = app.view_functions["auth.apple_callback"]
+
+        # Then its location is recorded in the CSRF exemption set
+        from vweb.extensions import csrf
+
+        location = f"{view.__module__}.{view.__name__}"
+        assert location in csrf._exempt_views
+
+
 class TestLogoutView:
     """Tests for the logout route."""
 

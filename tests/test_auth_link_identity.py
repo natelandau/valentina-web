@@ -55,6 +55,22 @@ class TestLinkIdentityView:
         # Then it 404s instead of raising AttributeError on oauth.discord
         assert response.status_code == 404
 
+    def test_link_route_apple_sets_flag_and_redirects(self, client, mocker):
+        """Verify linking Apple sets link mode and starts the OAuth flow."""
+        # Given a mock OAuth apple client
+        mock_apple = MagicMock()
+        mock_apple.authorize_redirect.return_value = MagicMock(status_code=302)
+        mocker.patch("vweb.routes.auth.views.oauth", apple=mock_apple)
+
+        # When the Apple link route is hit
+        client.get("/auth/apple/link")
+
+        # Then link mode is flagged and the OAuth redirect was issued (form_post is
+        # set at registration, asserted in test_apple_oauth.py)
+        with client.session_transaction() as sess:
+            assert sess["oauth_link_mode"] is True
+        mock_apple.authorize_redirect.assert_called_once()
+
 
 class TestLinkModeCallback:
     """Tests for OAuth callbacks in link mode."""
@@ -171,6 +187,33 @@ class TestLinkModeCallback:
 
         # Then the login lookup never ran
         mock_lookup.assert_not_called()
+
+    def test_link_callback_apple_uses_id_token(self, client, mocker):
+        """Verify the Apple link callback (a form POST) links with the OIDC id_token."""
+        # Given a link-mode session and an Apple OAuth flow returning an id_token
+        self._arm_link_mode(client)
+        mock_apple = MagicMock()
+        mock_apple.authorize_access_token.return_value = {
+            "id_token": "apple-id-tok",
+            "userinfo": {"sub": "a1", "email": "e@e.com"},
+        }
+        mocker.patch("vweb.routes.auth.views.oauth", apple=mock_apple)
+        mocker.patch("vweb.routes.auth.views.build_apple_client_secret", return_value="secret")
+        mock_users_svc = MagicMock()
+        mocker.patch("vweb.routes.auth.views.sync_users_service", return_value=mock_users_svc)
+        mocker.patch("vweb.routes.auth.views.cache.global_context.clear")
+
+        # When the callback is POSTed
+        response = client.post("/auth/apple/callback", data={"code": "abc", "state": "xyz"})
+
+        # Then the identity was linked with the id_token and routed back to the profile
+        mock_users_svc.link_identity.assert_called_once_with(
+            "test-user-id", provider="apple", token="apple-id-tok"
+        )
+        assert response.status_code == 302
+        assert response.location == "/profile/test-user-id"
+        with client.session_transaction() as sess:
+            assert "oauth_link_mode" not in sess
 
     def test_link_callback_google_uses_id_token(self, client, mocker):
         """Verify the Google link callback links with the OIDC id_token, not the access token."""

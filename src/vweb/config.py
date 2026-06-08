@@ -30,12 +30,32 @@ class OAuthProviderSettings(BaseModel):
     client_secret: str = ""
 
 
+class AppleOAuthSettings(BaseModel):
+    """Sign in with Apple credentials.
+
+    Apple has no static client secret; the secret is a short-lived ES256 JWT the
+    server signs from these values on each token exchange, so it needs the team
+    and key identifiers plus the private key rather than a client_id/secret pair.
+    """
+
+    services_id: str = ""  # the Services ID, used as the OAuth client_id
+    team_id: str = ""
+    key_id: str = ""
+    private_key: str = ""  # PEM contents of the downloaded .p8 key
+
+    @property
+    def is_configured(self) -> bool:
+        """Whether enough is set to register the provider and mint a client secret."""
+        return bool(self.services_id and self.team_id and self.key_id and self.private_key)
+
+
 class OAuthSettings(BaseModel):
     """OAuth configuration for all supported providers."""
 
     discord: OAuthProviderSettings = Field(default_factory=OAuthProviderSettings)
     github: OAuthProviderSettings = Field(default_factory=OAuthProviderSettings)
     google: OAuthProviderSettings = Field(default_factory=OAuthProviderSettings)
+    apple: AppleOAuthSettings = Field(default_factory=AppleOAuthSettings)
 
 
 class APISettings(BaseModel):

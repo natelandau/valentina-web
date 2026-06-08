@@ -115,6 +115,22 @@ class TestUnlinkIdentityView:
         # Then it 404s
         assert response.status_code == 404
 
+    def test_unlink_apple_disconnects_identity_and_returns_card(self, client, mocker):
+        """Verify Apple can be disconnected like the other providers."""
+        # Given a users service that unlinks successfully
+        mock_users_svc = MagicMock()
+        mock_users_svc.unlink_identity.return_value = UserFactory.build(id="test-user-id")
+        mocker.patch("vweb.routes.auth.views.sync_users_service", return_value=mock_users_svc)
+        mocker.patch("vweb.routes.auth.views.cache.global_context.clear")
+
+        # When the Apple unlink route is hit
+        response = self._post_unlink(client, provider="apple")
+
+        # Then the Apple identity was unlinked and the card returned
+        mock_users_svc.unlink_identity.assert_called_once_with("test-user-id", provider="apple")
+        assert response.status_code == 200
+        assert b'id="connections-card"' in response.data
+
 
 class TestConnectionsCardRendering:
     """Tests for the Disconnect button visibility in the connections card."""
@@ -159,9 +175,9 @@ class TestConnectionsCardRendering:
         assert "Disconnect" not in html
         assert "/unlink" not in html
 
-    def test_disconnect_button_shown_when_apple_is_the_second_identity(self, app):
-        """Verify an Apple identity counts toward the gate even though it has no row."""
-        # Given a user with a web-linkable provider plus an Apple identity (linked elsewhere)
+    def test_apple_is_a_first_class_connection_row(self, app):
+        """Verify Apple renders as its own connection with a disconnect action."""
+        # Given a user linked to GitHub plus Apple
         user = UserFactory.build(
             id="test-user-id",
             github_profile=GitHubProfileFactory.build(),
@@ -173,5 +189,23 @@ class TestConnectionsCardRendering:
         # When the card is rendered
         html = self._render_card(app, user)
 
-        # Then GitHub can be disconnected because Apple remains as a sign-in method
+        # Then both providers, including Apple, expose an unlink action
         assert "/auth/github/unlink" in html
+        assert "/auth/apple/unlink" in html
+
+    def test_apple_row_shows_connect_when_not_linked(self, app):
+        """Verify Apple offers a Connect action when no Apple identity is linked."""
+        # Given a user with other providers linked but no Apple identity
+        user = UserFactory.build(
+            id="test-user-id",
+            github_profile=GitHubProfileFactory.build(),
+            google_profile=GoogleProfileFactory.build(),
+            discord_profile=None,
+            apple_profile=None,
+        )
+
+        # When the card is rendered
+        html = self._render_card(app, user)
+
+        # Then Apple can be connected from the web
+        assert "/auth/apple/link" in html
