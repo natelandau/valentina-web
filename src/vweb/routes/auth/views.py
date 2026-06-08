@@ -7,14 +7,15 @@ from typing import TYPE_CHECKING
 
 import httpx
 from authlib.integrations.base_client.errors import OAuthError
-from flask import Blueprint, flash, redirect, request, session, url_for
+from flask import Blueprint, abort, flash, redirect, request, session, url_for
 from flask.views import MethodView
-from vclient import sync_companies_service
-from vclient.exceptions import APIError, ServerError, UnprocessableEntityError
+from vclient import sync_companies_service, sync_users_service
+from vclient.exceptions import APIError, ConflictError, ServerError, UnprocessableEntityError
 from werkzeug.wrappers.response import Response
 
 from vweb import catalog
 from vweb.extensions import oauth
+from vweb.lib import cache
 from vweb.routes.auth.services import (
     build_companies_mapping,
     identify_in_companies,
@@ -74,6 +75,76 @@ def _flash_identify_error(exc: APIError, provider: str) -> None:
             f"Your {provider.title()} login could not be verified. Please try again.",
             "error",
         )
+
+
+_LINKABLE_PROVIDERS = ("discord", "github", "google")
+
+
+def _link_redirect_target() -> str:
+    """Resolve where a link-mode flow should land: the user's profile when known."""
+    user_id = session.get("user_id")
+    return url_for("profile.profile", user_id=user_id) if user_id else url_for("index.index")
+
+
+def _handle_link(provider: IdentityProvider, credential: str) -> Response:
+    """Attach a verified provider identity to the logged-in user's account."""
+    user_id = session.get("user_id")
+    company_id = session.get("company_id")
+    if not user_id or not company_id:
+        flash("Please log in before connecting accounts.", "error")
+        return redirect(url_for("index.index"))
+
+    profile_url = url_for("profile.profile", user_id=user_id)
+    try:
+        sync_users_service(on_behalf_of=user_id, company_id=company_id).link_identity(
+            user_id,
+            provider=provider,
+            token=credential,
+        )
+    except ConflictError:
+        flash(
+            f"That {provider.title()} account is already linked to a different user.",
+            "error",
+        )
+        return redirect(profile_url)
+    except (UnprocessableEntityError, ServerError) as exc:
+        if isinstance(exc, ServerError) and exc.code == "PROVIDER_UNAVAILABLE":
+            flash(
+                f"{provider.title()} is currently unreachable. Please try again in a few minutes.",
+                "error",
+            )
+        else:
+            flash(f"Could not verify your {provider.title()} login. Please try again.", "error")
+        return redirect(profile_url)
+    except (httpx.HTTPError, APIError):
+        logger.exception("Failed to link %s identity", provider)
+        flash(
+            f"Connecting your {provider.title()} account failed. Please try again later.",
+            "error",
+        )
+        return redirect(profile_url)
+
+    # Refresh g.requesting_user so the new connection shows up immediately
+    cache.global_context.clear(company_id, user_id)
+    flash(f"Your {provider.title()} account is now connected.", "success")
+    return redirect(profile_url)
+
+
+class LinkIdentityView(MethodView):
+    """Start an OAuth flow that connects an additional provider to the current user."""
+
+    def get(self, provider: str) -> Response:
+        """Flag the session as a link flow and redirect to the provider."""
+        if provider not in _LINKABLE_PROVIDERS:
+            abort(404)
+        if not session.get("user_id"):
+            # /auth/ paths bypass the require_auth hook, so guard here
+            flash("Please log in before connecting accounts.", "error")
+            return redirect(url_for("index.index"))
+
+        session["oauth_link_mode"] = True
+        redirect_uri = url_for(f"auth.{provider}_callback", _external=True)
+        return getattr(oauth, provider).authorize_redirect(redirect_uri)
 
 
 def _handle_login_result(
@@ -154,12 +225,16 @@ class DiscordCallbackView(MethodView):
 
     def get(self) -> Response:
         """Exchange authorization code for token and resolve user identity."""
+        link_mode = session.pop("oauth_link_mode", False)
         try:
             token = oauth.discord.authorize_access_token()
         except OAuthError as exc:
             logger.warning("Discord OAuth error: %s", exc)
             flash("Discord login was cancelled or denied.", "error")
-            return redirect(url_for("index.index"))
+            return redirect(_link_redirect_target() if link_mode else url_for("index.index"))
+
+        if link_mode:
+            return _handle_link("discord", token["access_token"])
 
         resp = oauth.discord.get("users/@me", token=token)
         discord_data = resp.json()
@@ -215,12 +290,16 @@ class GitHubCallbackView(MethodView):
 
     def get(self) -> Response:
         """Exchange authorization code for token and resolve user identity."""
+        link_mode = session.pop("oauth_link_mode", False)
         try:
             token = oauth.github.authorize_access_token()
         except OAuthError as exc:
             logger.warning("GitHub OAuth error: %s", exc)
             flash("GitHub login was cancelled or denied.", "error")
-            return redirect(url_for("index.index"))
+            return redirect(_link_redirect_target() if link_mode else url_for("index.index"))
+
+        if link_mode:
+            return _handle_link("github", token["access_token"])
 
         resp = oauth.github.get("user", token=token)
         github_data = resp.json()
@@ -264,12 +343,16 @@ class GoogleCallbackView(MethodView):
 
     def get(self) -> Response:
         """Exchange authorization code for token and resolve user identity."""
+        link_mode = session.pop("oauth_link_mode", False)
         try:
             token = oauth.google.authorize_access_token()
         except OAuthError as exc:
             logger.warning("Google OAuth error: %s", exc)
             flash("Google login was cancelled or denied.", "error")
-            return redirect(url_for("index.index"))
+            return redirect(_link_redirect_target() if link_mode else url_for("index.index"))
+
+        if link_mode:
+            return _handle_link("google", token["id_token"])
 
         google_data = token["userinfo"]
 
@@ -381,6 +464,10 @@ class SelectCompanyView(MethodView):
         return redirect(url_for("index.index"))
 
 
+bp.add_url_rule(
+    "/auth/<string:provider>/link",
+    view_func=LinkIdentityView.as_view("link_identity"),
+)
 bp.add_url_rule("/auth/discord", view_func=DiscordLoginView.as_view("discord_login"))
 bp.add_url_rule("/auth/discord/callback", view_func=DiscordCallbackView.as_view("discord_callback"))
 bp.add_url_rule("/auth/github", view_func=GitHubLoginView.as_view("github_login"))
