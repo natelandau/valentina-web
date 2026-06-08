@@ -9,9 +9,8 @@ import httpx
 from authlib.integrations.base_client.errors import OAuthError
 from flask import Blueprint, flash, redirect, request, session, url_for
 from flask.views import MethodView
-from vclient import sync_companies_service, sync_user_self_registration_service
+from vclient import sync_companies_service
 from vclient.exceptions import APIError, ServerError, UnprocessableEntityError
-from vclient.models.users import UserRegisterDTO
 from werkzeug.wrappers.response import Response
 
 from vweb import catalog
@@ -23,6 +22,7 @@ from vweb.routes.auth.services import (
 )
 
 if TYPE_CHECKING:
+    from vclient.constants import IdentityProvider
     from vclient.models import UserLookupResult
 
 bp = Blueprint("auth", __name__)
@@ -79,7 +79,7 @@ def _flash_identify_error(exc: APIError, provider: str) -> None:
 def _handle_login_result(
     results: list[UserLookupResult],
     *,
-    provider: str,
+    provider: IdentityProvider,
     credential: str,
     username: str | None,
     email: str | None,
@@ -300,7 +300,7 @@ class SelectCompaniesView(MethodView):
         return catalog.render("auth.SelectCompanies", companies=companies)
 
     def post(self) -> Response:
-        """Register the user in selected companies."""
+        """Register the user in selected companies via verified identity resolution."""
         pending = session.get("pending_oauth")
         if not pending:
             flash("Session expired. Please log in again.", "error")
@@ -312,94 +312,42 @@ class SelectCompaniesView(MethodView):
             return redirect(url_for("auth.select_companies"))
 
         provider = pending["provider"]
-        data = pending["data"]
-
-        if provider == "discord":
-            from vclient.models.users import DiscordProfileUpdate
-
-            register_dto = UserRegisterDTO(
-                username=data.get("username", ""),
-                email=data.get("email", ""),
-                discord_profile=DiscordProfileUpdate(
-                    id=data.get("id"),
-                    username=data.get("username"),
-                    global_name=data.get("global_name"),
-                    avatar_id=data.get("avatar"),
-                    discriminator=data.get("discriminator"),
-                    email=data.get("email"),
-                    verified=data.get("verified"),
-                ),
+        try:
+            resolutions = identify_in_companies(
+                company_ids,
+                provider=provider,
+                token=pending["token"],
+                username=pending.get("username"),
+                email=pending.get("email"),
             )
-        elif provider == "github":
-            from vclient.models.users import GitHubProfile
-
-            register_dto = UserRegisterDTO(
-                username=data.get("login", ""),
-                email=data.get("email", ""),
-                github_profile=GitHubProfile(
-                    id=str(data.get("id", "")),
-                    login=data.get("login"),
-                    username=data.get("name"),
-                    avatar_url=data.get("avatar_url"),
-                    email=data.get("email"),
-                    profile_url=data.get("html_url"),
-                ),
-            )
-        elif provider == "google":
-            from vclient.models.users import GoogleProfile
-
-            register_dto = UserRegisterDTO(
-                username=data.get("name", ""),
-                email=data.get("email", ""),
-                google_profile=GoogleProfile(
-                    id=data.get("sub", ""),
-                    email=data.get("email"),
-                    verified_email=data.get("email_verified"),
-                    username=data.get("name"),
-                    name_first=data.get("given_name"),
-                    name_last=data.get("family_name"),
-                    avatar_url=data.get("picture"),
-                    locale=data.get("locale"),
-                ),
-                name_first=data.get("given_name") or None,
-                name_last=data.get("family_name") or None,
-            )
-        else:
-            flash("Unsupported authentication provider.", "error")
+        except (UnprocessableEntityError, ServerError) as exc:
+            session.pop("pending_oauth", None)
+            _flash_identify_error(exc, provider)
             return redirect(url_for("index.index"))
 
-        all_companies = sync_companies_service().list_all()
-        company_names = {c.id: c.name for c in all_companies}
-
-        companies_mapping: dict[str, dict[str, str]] = {}
-        first_company_id = None
-        first_user_id = None
-
-        for company_id in company_ids:
-            try:
-                user = sync_user_self_registration_service(company_id=company_id).register(
-                    request=register_dto,
-                )
-                companies_mapping[company_id] = {
-                    "user_id": user.id,
-                    "company_name": company_names.get(company_id, company_id),
-                    "role": user.role,
-                }
-                if first_company_id is None:
-                    first_company_id = company_id
-                    first_user_id = user.id
-            except (httpx.HTTPError, APIError):
-                logger.exception("Failed to register user in company %s", company_id)
-
-        if not companies_mapping:
+        if not resolutions:
             session.pop("pending_oauth", None)
             flash("Registration failed. Please try again.", "error")
             return redirect(url_for("index.index"))
 
+        company_names = {c.id: c.name for c in sync_companies_service().list_all()}
+        companies_mapping = {
+            company_id: {
+                "user_id": resolution.user.id,
+                "company_name": company_names.get(company_id, company_id),
+                "role": resolution.user.role,
+            }
+            for company_id, resolution in resolutions.items()
+        }
+
+        # All freshly registered users land on /pending-approval regardless of
+        # which company is active, so the first successfully resolved company
+        # (submission order is preserved through identify_in_companies) is fine.
+        first_company_id = next(iter(companies_mapping))
         session.pop("pending_oauth", None)
         session["companies"] = companies_mapping
         session["company_id"] = first_company_id
-        session["user_id"] = first_user_id
+        session["user_id"] = companies_mapping[first_company_id]["user_id"]
         session.permanent = True
 
         return redirect(url_for("auth.pending_approval"))

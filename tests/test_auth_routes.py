@@ -485,9 +485,7 @@ class TestIdentifyIntegration:
         client.get("/auth/discord/callback")
 
         # Then identify ran for both companies with the OAuth credential
-        mock_identify.assert_called_once_with(
-            ["c1", "c2"], provider="discord", token="cred-123"
-        )
+        mock_identify.assert_called_once_with(["c1", "c2"], provider="discord", token="cred-123")
 
     def test_google_callback_identifies_with_id_token(self, client, mocker):
         """Verify Google login passes the OIDC ID token to identify, not the access token."""
@@ -532,9 +530,7 @@ class TestIdentifyIntegration:
         # Given identify rejects the token
         mocker.patch(
             "vweb.routes.auth.views.identify_in_companies",
-            side_effect=UnprocessableEntityError(
-                "bad", 422, {"code": "TOKEN_VERIFICATION_FAILED"}
-            ),
+            side_effect=UnprocessableEntityError("bad", 422, {"code": "TOKEN_VERIFICATION_FAILED"}),
         )
 
         # When the callback is hit
@@ -545,6 +541,11 @@ class TestIdentifyIntegration:
         assert response.location == "/"
         with client.session_transaction() as sess:
             assert sess.get("user_id") != "other-user"
+
+        # Then a user-facing error was flashed
+        with client.session_transaction() as sess:
+            flashes = sess.get("_flashes", [])
+        assert any("could not be verified" in message for _category, message in flashes)
 
     def test_callback_new_user_pending_oauth_stores_credential(self, client, mocker):
         """Verify the new-user path stores the credential for later registration."""

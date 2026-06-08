@@ -180,24 +180,23 @@ class TestSelectCompaniesView:
         assert "Join a Company" in body
 
     def test_post_registers_user_redirects_to_pending(self, client, mocker):
-        """Verify POST /select-companies registers user and redirects to pending."""
-        # Given pending OAuth data in session
+        """Verify POST /select-companies resolves identities and redirects to pending."""
+        from vclient.models import IdentityResolution
+
+        # Given pending OAuth data in session (new shape: verified credential)
         with client.session_transaction() as sess:
             sess["pending_oauth"] = {
                 "provider": "discord",
-                "data": {
-                    "id": "disc-1",
-                    "username": "testuser",
-                    "email": "test@example.com",
-                },
+                "token": "cred-1",
+                "username": "testuser",
+                "email": "test@example.com",
             }
 
-        # Given a mock user service that returns a new user
+        # Given identify resolves to a newly created UNAPPROVED user
         new_user = UserFactory.build(id="new-u", role="UNAPPROVED")
-        mock_svc = MagicMock()
-        mock_svc.register.return_value = new_user
-        mocker.patch(
-            "vweb.routes.auth.views.sync_user_self_registration_service", return_value=mock_svc
+        mock_identify = mocker.patch(
+            "vweb.routes.auth.views.identify_in_companies",
+            return_value={"comp-1": IdentityResolution(resolution="created", user=new_user)},
         )
 
         # Given a mock companies service for name lookup
@@ -217,12 +216,22 @@ class TestSelectCompaniesView:
             data={"company_ids": ["comp-1"], "csrf_token": csrf_token},
         )
 
+        # Then identify ran with the stored credential and hints
+        mock_identify.assert_called_once_with(
+            ["comp-1"],
+            provider="discord",
+            token="cred-1",
+            username="testuser",
+            email="test@example.com",
+        )
+
         # Then redirected to pending approval with session set
         assert response.status_code == 302
         assert response.location == "/pending-approval"
         with client.session_transaction() as sess:
             assert sess["user_id"] == "new-u"
             assert sess["company_id"] == "comp-1"
+            assert sess["companies"]["comp-1"]["company_name"] == "Test Company"
             assert "pending_oauth" not in sess
 
     def test_post_without_pending_oauth_redirects_to_index(self, client, mocker):
@@ -243,13 +252,48 @@ class TestSelectCompaniesView:
         assert response.status_code == 302
         assert response.location == "/"
 
+    def test_post_identify_failure_flashes_and_redirects_to_index(self, client, mocker):
+        """Verify a token verification failure during registration aborts to index."""
+        from vclient.exceptions import UnprocessableEntityError
+
+        # Given pending OAuth data in session
+        with client.session_transaction() as sess:
+            sess["pending_oauth"] = {
+                "provider": "discord",
+                "token": "bad-cred",
+                "username": "u",
+                "email": "e@e.com",
+            }
+
+        # Given identify rejects the token
+        mocker.patch(
+            "vweb.routes.auth.views.identify_in_companies",
+            side_effect=UnprocessableEntityError("bad", 422, {"code": "TOKEN_VERIFICATION_FAILED"}),
+        )
+
+        csrf_token = get_csrf(client)
+
+        # When submitting company selections
+        response = client.post(
+            "/select-companies",
+            data={"company_ids": ["comp-1"], "csrf_token": csrf_token},
+        )
+
+        # Then redirected to index with the pending payload cleared
+        assert response.status_code == 302
+        assert response.location == "/"
+        with client.session_transaction() as sess:
+            assert "pending_oauth" not in sess
+
     def test_post_without_selections_redirects_back(self, client, mocker):
         """Verify POST /select-companies without selections redirects back."""
         # Given pending OAuth data in session
         with client.session_transaction() as sess:
             sess["pending_oauth"] = {
                 "provider": "discord",
-                "data": {"id": "disc-1", "username": "u", "email": "e@e.com"},
+                "token": "cred-1",
+                "username": "u",
+                "email": "e@e.com",
             }
 
         csrf_token = get_csrf(client)
