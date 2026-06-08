@@ -7,7 +7,6 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from flask import Flask
-from flask_wtf.csrf import CSRFProtect
 from vclient import SyncVClient
 
 if TYPE_CHECKING:
@@ -18,7 +17,7 @@ if TYPE_CHECKING:
 
 from vweb.config import Settings, get_settings
 from vweb.constants import STATIC_PATH, TEMPLATES_PATH
-from vweb.extensions import cache
+from vweb.extensions import cache, csrf
 from vweb.lib.errors import register_error_handlers
 from vweb.lib.hooks import register_before_request_hooks
 from vweb.lib.jinja import configure_jinja, register_jinjax_catalog
@@ -141,7 +140,7 @@ def create_app(settings_override: Settings | None = None) -> Flask:  # noqa: PLR
     app.secret_key = settings.secret_key
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
     app.config["SETTINGS"] = settings
-    CSRFProtect(app)
+    csrf.init_app(app)
     _configure_cache_and_session(app, settings)
 
     register_oauth_providers(app, settings)

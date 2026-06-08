@@ -6,7 +6,14 @@ title = "Custom Gitleaks configuration"
 [extend]
     useDefault = true
 
-[allowlist]
+[[allowlists]]
     description = "ignore # nosec lines"
     regexTarget = "line"
     regexes     = ['''# nosec''']
+
+[[allowlists]]
+    description = "Apple Sign in docs and code contain PEM armor markers, not real keys"
+    paths = [
+        '''docs/oauth-apple\.md''',
+        '''src/vweb/lib/apple_oauth\.py''',
+    ]

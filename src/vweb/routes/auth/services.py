@@ -22,6 +22,7 @@ _PROVIDER_LOOKUP_METHODS = {
     "discord": "by_discord_id",
     "github": "by_github_id",
     "google": "by_google_id",
+    "apple": "by_apple_id",
 }
 
 

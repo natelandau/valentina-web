@@ -378,6 +378,7 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
     jinja_globals["oauth_discord_enabled"] = bool(s.oauth.discord.client_id)
     jinja_globals["oauth_github_enabled"] = bool(s.oauth.github.client_id)
     jinja_globals["oauth_google_enabled"] = bool(s.oauth.google.client_id)
+    jinja_globals["oauth_apple_enabled"] = s.oauth.apple.is_configured
 
     def _get_global_context() -> GlobalContext | None:
         return g.get("global_context")

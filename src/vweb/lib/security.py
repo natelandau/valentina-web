@@ -66,5 +66,12 @@ def configure_security(app: Flask, s: Settings) -> None:
         force_https=s.force_https,
         session_cookie_secure=s.force_https,
         session_cookie_http_only=True,
+        # Sign in with Apple returns via a cross-site form_post. A "Lax" cookie is
+        # not sent on a cross-site POST, which would drop the OAuth state and break
+        # the callback, so the session cookie must be "None". That requires Secure,
+        # which force_https guarantees; CSRF stays protected by flask-wtf tokens.
+        # Locally (no HTTPS) browsers reject SameSite=None, and Apple cannot reach
+        # localhost anyway, so keep "Lax" there.
+        session_cookie_samesite="None" if s.force_https else "Lax",
         content_security_policy=csp,
     )

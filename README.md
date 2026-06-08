@@ -82,16 +82,21 @@ The most important variables:
 | `VWEB_OAUTH__GITHUB__CLIENT_SECRET`  | GitHub OAuth client secret.                                                                 |
 | `VWEB_OAUTH__GOOGLE__CLIENT_ID`      | Google OAuth client ID.                                                                     |
 | `VWEB_OAUTH__GOOGLE__CLIENT_SECRET`  | Google OAuth client secret.                                                                 |
+| `VWEB_OAUTH__APPLE__SERVICES_ID`     | Sign in with Apple Services ID (the web client ID).                                         |
+| `VWEB_OAUTH__APPLE__TEAM_ID`         | Apple Developer Team ID.                                                                    |
+| `VWEB_OAUTH__APPLE__KEY_ID`          | Sign in with Apple key ID.                                                                  |
+| `VWEB_OAUTH__APPLE__PRIVATE_KEY`     | Sign in with Apple `.p8` key contents (PEM, newlines escaped as `\n`).                      |
 
 `.env.example` documents every available setting (timeouts, retries, logging, Docker runtime, etc.). See `src/vweb/config.py` for the full schema.
 
 ## Authentication
 
-Valentina Web supports Discord, GitHub, and Google OAuth. Provider-specific setup guides live in `docs/`:
+Valentina Web supports Discord, GitHub, Google, and Apple OAuth. Provider-specific setup guides live in `docs/`:
 
 - [Discord OAuth setup](docs/oauth-discord.md)
 - [GitHub OAuth setup](docs/oauth-github.md)
 - [Google OAuth setup](docs/oauth-google.md)
+- [Sign in with Apple setup](docs/oauth-apple.md)
 
 New accounts register as `UNAPPROVED` and can't access the app until an admin approves them.
 
