@@ -25,7 +25,8 @@ class TestLinkIdentityView:
 
     def test_link_route_rejects_anonymous_user(self, app, mocker):
         """Verify the link route redirects anonymous visitors to the landing page."""
-        # Given a client with no session
+        # Given a configured provider and a client with no session
+        mocker.patch("vweb.routes.auth.views.oauth", github=MagicMock())
         anonymous_client = app.test_client()
 
         # When the link route is hit
@@ -38,11 +39,20 @@ class TestLinkIdentityView:
             assert "oauth_link_mode" not in sess
 
     def test_link_route_unknown_provider_404s(self, client):
-        """Verify an unconfigured provider returns 404."""
+        """Verify an unknown provider returns 404."""
         # When linking an unknown provider
         response = client.get("/auth/myspace/link")
 
         # Then it 404s
+        assert response.status_code == 404
+
+    def test_link_route_unconfigured_provider_404s(self, client):
+        """Verify a known provider this deployment did not configure returns 404."""
+        # Given the test app registers no real OAuth clients (oauth.discord is absent)
+        # When the link route is hit for that provider
+        response = client.get("/auth/discord/link")
+
+        # Then it 404s instead of raising AttributeError on oauth.discord
         assert response.status_code == 404
 
 

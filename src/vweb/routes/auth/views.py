@@ -135,10 +135,13 @@ class LinkIdentityView(MethodView):
 
     def get(self, provider: str) -> Response:
         """Flag the session as a link flow and redirect to the provider."""
-        if provider not in _LINKABLE_PROVIDERS:
+        # 404 unknown providers and ones this deployment did not configure — without
+        # the registration check, `oauth.<provider>` below raises AttributeError (500).
+        if provider not in _LINKABLE_PROVIDERS or getattr(oauth, provider, None) is None:
             abort(404)
-        if not session.get("user_id"):
-            # /auth/ paths bypass the require_auth hook, so guard here
+        if not session.get("user_id") or not session.get("company_id"):
+            # /auth/ paths bypass the require_auth hook, so guard here. Require an
+            # active company too, since linking targets it — fail before the round-trip.
             flash("Please log in before connecting accounts.", "error")
             return redirect(url_for("index.index"))
 
@@ -216,6 +219,9 @@ class DiscordLoginView(MethodView):
 
     def get(self) -> Response:
         """Redirect to Discord's OAuth authorization page."""
+        # Drop any link-mode flag left over from an abandoned "connect account" flow
+        # so the same shared callback resolves this as a login, not an identity link.
+        session.pop("oauth_link_mode", None)
         redirect_uri = url_for("auth.discord_callback", _external=True)
         return oauth.discord.authorize_redirect(redirect_uri)
 
@@ -281,6 +287,9 @@ class GitHubLoginView(MethodView):
 
     def get(self) -> Response:
         """Redirect to GitHub's OAuth authorization page."""
+        # Drop any link-mode flag left over from an abandoned "connect account" flow
+        # so the same shared callback resolves this as a login, not an identity link.
+        session.pop("oauth_link_mode", None)
         redirect_uri = url_for("auth.github_callback", _external=True)
         return oauth.github.authorize_redirect(redirect_uri)
 
@@ -334,6 +343,9 @@ class GoogleLoginView(MethodView):
 
     def get(self) -> Response:
         """Redirect to Google's OAuth authorization page."""
+        # Drop any link-mode flag left over from an abandoned "connect account" flow
+        # so the same shared callback resolves this as a login, not an identity link.
+        session.pop("oauth_link_mode", None)
         redirect_uri = url_for("auth.google_callback", _external=True)
         return oauth.google.authorize_redirect(redirect_uri)
 
@@ -385,7 +397,11 @@ class SelectCompaniesView(MethodView):
     def post(self) -> Response:
         """Register the user in selected companies via verified identity resolution."""
         pending = session.get("pending_oauth")
-        if not pending:
+        # Require the verified credential. A pre-upgrade session may carry the old
+        # {provider, data} shape with no token; treat that as an expired session
+        # rather than letting pending["token"] raise a KeyError.
+        if not pending or "token" not in pending:
+            session.pop("pending_oauth", None)
             flash("Session expired. Please log in again.", "error")
             return redirect(url_for("index.index"))
 

@@ -36,6 +36,22 @@ class TestDiscordLoginView:
         # Then it delegates to authlib's authorize_redirect
         mock_discord.authorize_redirect.assert_called_once()
 
+    def test_login_clears_stale_link_mode(self, client, mocker):
+        """Verify starting a login clears a leftover link-mode flag from an abandoned link flow."""
+        # Given a stale oauth_link_mode flag from an abandoned "connect account" flow
+        with client.session_transaction() as sess:
+            sess["oauth_link_mode"] = True
+        mock_discord = MagicMock()
+        mock_discord.authorize_redirect.return_value = MagicMock(status_code=302)
+        mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
+
+        # When a fresh login is initiated
+        client.get("/auth/discord")
+
+        # Then the stale flag is gone, so the callback resolves as a login, not a link
+        with client.session_transaction() as sess:
+            assert "oauth_link_mode" not in sess
+
 
 class TestDiscordCallbackView:
     """Tests for the Discord OAuth callback route."""
