@@ -79,6 +79,12 @@
   </div>
 </div>
 
+{% if is_own_profile %}
+  <div class="mt-6">
+    <profile.components.ConnectionsCard user={{ user }} />
+  </div>
+{% endif %}
+
 <!-- Characters list -->
 <div class="mt-6">
   <shared.cards.CharacterListCard title="Characters" user_id={{ user.id }} show_campaign={{ true }} show_type={{ true }} empty_message="No characters yet" card_id="profile-characters" />
