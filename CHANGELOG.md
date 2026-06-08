@@ -1,3 +1,10 @@
+## v0.10.2 (2026-06-08)
+
+### Fix
+
+- **profile**: restyle account connections card
+- **auth**: stop persisting sessions for anonymous visitors
+
 ## v0.10.1 (2026-06-08)
 
 ### Fix
