@@ -3,19 +3,27 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import httpx
 from authlib.integrations.base_client.errors import OAuthError
 from flask import Blueprint, abort, flash, redirect, request, session, url_for
 from flask.views import MethodView
 from vclient import sync_companies_service, sync_users_service
-from vclient.exceptions import APIError, ConflictError, ServerError, UnprocessableEntityError
+from vclient.exceptions import (
+    APIError,
+    AuthorizationError,
+    ConflictError,
+    NotFoundError,
+    ServerError,
+    UnprocessableEntityError,
+)
 from werkzeug.wrappers.response import Response
 
 from vweb import catalog
 from vweb.extensions import oauth
 from vweb.lib import cache
+from vweb.lib.jinja import htmx_response_with_flash, hx_redirect
 from vweb.routes.auth.services import (
     build_companies_mapping,
     identify_in_companies,
@@ -24,7 +32,7 @@ from vweb.routes.auth.services import (
 
 if TYPE_CHECKING:
     from vclient.constants import IdentityProvider
-    from vclient.models import UserLookupResult
+    from vclient.models import User, UserLookupResult
 
 bp = Blueprint("auth", __name__)
 
@@ -148,6 +156,74 @@ class LinkIdentityView(MethodView):
         session["oauth_link_mode"] = True
         redirect_uri = url_for(f"auth.{provider}_callback", _external=True)
         return getattr(oauth, provider).authorize_redirect(redirect_uri)
+
+
+def _connections_card(user: User) -> str:
+    """Render the connections card fragment with the flash container OOB-swapped.
+
+    Unlinking swaps the card in place over HTMX, so both the refreshed card and
+    any flash toast must travel in the same response.
+    """
+    return htmx_response_with_flash(catalog.render("profile.components.ConnectionsCard", user=user))
+
+
+def _current_connections_card(user_id: str, company_id: str) -> str:
+    """Re-render the card from cached context when an unlink leaves state unchanged.
+
+    The /auth/ paths skip the global-context hook, so error branches load the
+    user themselves rather than reading g.requesting_user.
+    """
+    ctx = cache.global_context.load(company_id, user_id)
+    user = next((u for u in ctx.users if u.id == user_id), None)
+    if user is None:
+        abort(404)
+    return _connections_card(user)
+
+
+class UnlinkIdentityView(MethodView):
+    """Disconnect an OAuth provider from the current user's account."""
+
+    def post(self, provider: str) -> str | Response:
+        """Unlink a provider identity and return the refreshed connections card."""
+        if provider not in _LINKABLE_PROVIDERS:
+            abort(404)
+        user_id = session.get("user_id")
+        company_id = session.get("company_id")
+        if not user_id or not company_id:
+            # /auth/ paths bypass the require_auth hook, so guard here like linking does.
+            flash("Please log in before managing connections.", "error")
+            return hx_redirect(url_for("index.index"))
+
+        try:
+            user = sync_users_service(on_behalf_of=user_id, company_id=company_id).unlink_identity(
+                user_id, provider=cast("IdentityProvider", provider)
+            )
+        except ConflictError:
+            # LAST_IDENTITY — the API refuses to remove the only sign-in method.
+            flash(
+                f"You can't disconnect {provider.title()} because it's your only "
+                "sign-in method. Connect another provider first.",
+                "error",
+            )
+            return _current_connections_card(user_id, company_id)
+        except NotFoundError:
+            flash(f"{provider.title()} is not connected to your account.", "warning")
+            return _current_connections_card(user_id, company_id)
+        except AuthorizationError:
+            flash("You are not allowed to change these connections.", "error")
+            return _current_connections_card(user_id, company_id)
+        except (httpx.HTTPError, APIError):
+            logger.exception("Failed to unlink %s identity", provider)
+            flash(
+                f"Disconnecting your {provider.title()} account failed. Please try again later.",
+                "error",
+            )
+            return _current_connections_card(user_id, company_id)
+
+        # Invalidate the cached context so the removed connection is gone on next load
+        cache.global_context.clear(company_id, user_id)
+        flash(f"Your {provider.title()} account has been disconnected.", "success")
+        return _connections_card(user)
 
 
 def _handle_login_result(
@@ -483,6 +559,11 @@ class SelectCompanyView(MethodView):
 bp.add_url_rule(
     "/auth/<string:provider>/link",
     view_func=LinkIdentityView.as_view("link_identity"),
+)
+bp.add_url_rule(
+    "/auth/<string:provider>/unlink",
+    view_func=UnlinkIdentityView.as_view("unlink_identity"),
+    methods=["POST"],
 )
 bp.add_url_rule("/auth/discord", view_func=DiscordLoginView.as_view("discord_login"))
 bp.add_url_rule("/auth/discord/callback", view_func=DiscordCallbackView.as_view("discord_callback"))
