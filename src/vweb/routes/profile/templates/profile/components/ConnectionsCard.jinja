@@ -1,13 +1,17 @@
 {#def user #}
-{# Shown only on your own profile: connect additional login providers.
-   Link-only: the API has no unlink endpoint. Apple is excluded because its
-   link-mode OAuth flow is not implemented (auth.link_identity 404s for it). #}
+{# Shown only on your own profile: connect or disconnect login providers.
+   Apple is excluded because its link-mode OAuth flow is not implemented
+   (auth.link_identity 404s for it). A provider can only be disconnected when
+   more than one is linked; the API refuses to remove the last sign-in method. #}
 {% set providers = [
   ("discord", "Discord", "fa-discord", user.discord_profile),
   ("github", "GitHub", "fa-github", user.github_profile),
   ("google", "Google", "fa-google", user.google_profile),
 ] %}
-<div class="card surface-card">
+{# Count every identity, including Apple (no row here since it can't be linked
+   from the web), so the gate matches the API's "can't remove the last" rule. #}
+{% set linked_count = (providers | selectattr(3) | list | length) + (1 if user.apple_profile else 0) %}
+<div id="connections-card" class="card surface-card">
   <div class="card-body">
     <h2 class="card-title">Connections</h2>
     <p class="text-sm opacity-70">Link other sign-in providers to this account.</p>
@@ -19,7 +23,17 @@
             {{ label }}
           </span>
           {% if profile %}
-            <span class="badge badge-success badge-outline">Connected</span>
+            <span class="inline-flex items-center gap-2">
+              <span class="badge badge-success badge-outline">Connected</span>
+              {% if linked_count > 1 %}
+                {# djlint:off #}
+                <button type="button" class="btn btn-sm btn-ghost text-error"
+                        hx-post="{{ url_for('auth.unlink_identity', provider=key) }}"
+                        hx-target="#connections-card" hx-swap="outerHTML"
+                        hx-confirm="Disconnect {{ label }}? This removes it as a way to sign in to your account.">Disconnect</button>
+                {# djlint:on #}
+              {% endif %}
+            </span>
           {% else %}
             {# djlint:off #}
             <a href="{{ url_for('auth.link_identity', provider=key) }}" class="btn btn-sm btn-outline">Connect</a>
