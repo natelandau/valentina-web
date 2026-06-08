@@ -1,3 +1,9 @@
+## v0.10.1 (2026-06-08)
+
+### Fix
+
+- **auth**: send Apple client secret in the request body
+
 ## v0.10.0 (2026-06-08)
 
 ### Feat

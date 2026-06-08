@@ -1,6 +1,6 @@
 """Valentina web client."""
 
-__version__ = "0.10.0"
+__version__ = "0.10.1"
 
 from vweb.app import catalog, create_app, main
 
