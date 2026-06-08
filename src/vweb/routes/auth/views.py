@@ -7,26 +7,23 @@ from typing import TYPE_CHECKING
 
 import httpx
 from authlib.integrations.base_client.errors import OAuthError
-from flask import Blueprint, flash, redirect, request, session, url_for
+from flask import Blueprint, abort, flash, redirect, request, session, url_for
 from flask.views import MethodView
-from vclient import sync_companies_service, sync_user_self_registration_service
-from vclient.exceptions import APIError
-from vclient.models.users import UserRegisterDTO
+from vclient import sync_companies_service, sync_users_service
+from vclient.exceptions import APIError, ConflictError, ServerError, UnprocessableEntityError
 from werkzeug.wrappers.response import Response
 
 from vweb import catalog
 from vweb.extensions import oauth
+from vweb.lib import cache
 from vweb.routes.auth.services import (
     build_companies_mapping,
+    identify_in_companies,
     lookup_user_companies,
-    update_discord_profile,
-    update_github_profile,
-    update_google_profile,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
+    from vclient.constants import IdentityProvider
     from vclient.models import UserLookupResult
 
 bp = Blueprint("auth", __name__)
@@ -60,23 +57,133 @@ def _safe_lookup(
         return redirect(url_for("index.index"))
 
 
+def _flash_identify_error(exc: APIError, provider: str) -> None:
+    """Translate an identity verification failure into a user-facing flash message."""
+    if isinstance(exc, UnprocessableEntityError) and exc.code == "EMAIL_REQUIRED":
+        flash(
+            f"Your {provider.title()} account did not provide an email address, "
+            "which is required to create an account.",
+            "error",
+        )
+    elif isinstance(exc, ServerError) and exc.code == "PROVIDER_UNAVAILABLE":
+        flash(
+            f"{provider.title()} is currently unreachable. Please try again in a few minutes.",
+            "error",
+        )
+    else:
+        flash(
+            f"Your {provider.title()} login could not be verified. Please try again.",
+            "error",
+        )
+
+
+_LINKABLE_PROVIDERS = ("discord", "github", "google")
+
+
+def _link_redirect_target() -> str:
+    """Resolve where a link-mode flow should land: the user's profile when known."""
+    user_id = session.get("user_id")
+    return url_for("profile.profile", user_id=user_id) if user_id else url_for("index.index")
+
+
+def _handle_link(provider: IdentityProvider, credential: str) -> Response:
+    """Attach a verified provider identity to the logged-in user's account."""
+    user_id = session.get("user_id")
+    company_id = session.get("company_id")
+    if not user_id or not company_id:
+        flash("Please log in before connecting accounts.", "error")
+        return redirect(url_for("index.index"))
+
+    profile_url = url_for("profile.profile", user_id=user_id)
+    try:
+        sync_users_service(on_behalf_of=user_id, company_id=company_id).link_identity(
+            user_id,
+            provider=provider,
+            token=credential,
+        )
+    except ConflictError:
+        flash(
+            f"That {provider.title()} account is already linked to a different user.",
+            "error",
+        )
+        return redirect(profile_url)
+    except (UnprocessableEntityError, ServerError) as exc:
+        if isinstance(exc, ServerError) and exc.code == "PROVIDER_UNAVAILABLE":
+            flash(
+                f"{provider.title()} is currently unreachable. Please try again in a few minutes.",
+                "error",
+            )
+        else:
+            flash(f"Could not verify your {provider.title()} login. Please try again.", "error")
+        return redirect(profile_url)
+    except (httpx.HTTPError, APIError):
+        logger.exception("Failed to link %s identity", provider)
+        flash(
+            f"Connecting your {provider.title()} account failed. Please try again later.",
+            "error",
+        )
+        return redirect(profile_url)
+
+    # Refresh g.requesting_user so the new connection shows up immediately
+    cache.global_context.clear(company_id, user_id)
+    flash(f"Your {provider.title()} account is now connected.", "success")
+    return redirect(profile_url)
+
+
+class LinkIdentityView(MethodView):
+    """Start an OAuth flow that connects an additional provider to the current user."""
+
+    def get(self, provider: str) -> Response:
+        """Flag the session as a link flow and redirect to the provider."""
+        # 404 unknown providers and ones this deployment did not configure — without
+        # the registration check, `oauth.<provider>` below raises AttributeError (500).
+        if provider not in _LINKABLE_PROVIDERS or getattr(oauth, provider, None) is None:
+            abort(404)
+        if not session.get("user_id") or not session.get("company_id"):
+            # /auth/ paths bypass the require_auth hook, so guard here. Require an
+            # active company too, since linking targets it — fail before the round-trip.
+            flash("Please log in before connecting accounts.", "error")
+            return redirect(url_for("index.index"))
+
+        session["oauth_link_mode"] = True
+        redirect_uri = url_for(f"auth.{provider}_callback", _external=True)
+        return getattr(oauth, provider).authorize_redirect(redirect_uri)
+
+
 def _handle_login_result(
     results: list[UserLookupResult],
-    provider_data: dict,
-    provider: str,
-    profile_updater: Callable[[str, str, dict], None],
+    *,
+    provider: IdentityProvider,
+    credential: str,
+    username: str | None,
+    email: str | None,
 ) -> Response:
     """Branch on lookup results to set session state and redirect appropriately."""
-    session.pop("pending_profile_update", None)
     session.pop("pending_oauth", None)
 
     if not results:
-        # New user with no existing accounts — store OAuth data and pick companies
+        # New user with no existing accounts — keep the verified credential so
+        # registration can run identify() after they pick companies
         session["pending_oauth"] = {
             "provider": provider,
-            "data": provider_data,
+            "token": credential,
+            "username": username,
+            "email": email,
         }
         return redirect(url_for("auth.select_companies"))
+
+    # Server-verify the credential and refresh/auto-link the identity in every
+    # company the user belongs to. Token-level failures abort the login;
+    # per-company failures are logged inside the helper and login proceeds.
+    try:
+        identify_in_companies(
+            [r.company_id for r in results],
+            provider=provider,
+            token=credential,
+        )
+    except (UnprocessableEntityError, ServerError) as exc:
+        _flash_identify_error(exc, provider)
+        return redirect(url_for("index.index"))
 
     companies = build_companies_mapping(results)
     approved = {cid: data for cid, data in companies.items() if data["role"] != "UNAPPROVED"}
@@ -90,13 +197,6 @@ def _handle_login_result(
 
         if r.role == "UNAPPROVED":
             return redirect(url_for("auth.pending_approval"))
-
-        # Update provider profile for the single approved company
-        try:
-            profile_updater(r.company_id, r.user_id, provider_data)
-        except (httpx.HTTPError, APIError):
-            logger.exception("Failed to update %s profile after login", provider)
-
         return redirect(url_for("index.index"))
 
     # Multiple companies
@@ -111,10 +211,6 @@ def _handle_login_result(
         return redirect(url_for("auth.pending_approval"))
 
     # Multiple companies with at least one approved — let user pick
-    session["pending_profile_update"] = {
-        "provider": provider,
-        "data": provider_data,
-    }
     return redirect(url_for("auth.select_company"))
 
 
@@ -123,6 +219,9 @@ class DiscordLoginView(MethodView):
 
     def get(self) -> Response:
         """Redirect to Discord's OAuth authorization page."""
+        # Drop any link-mode flag left over from an abandoned "connect account" flow
+        # so the same shared callback resolves this as a login, not an identity link.
+        session.pop("oauth_link_mode", None)
         redirect_uri = url_for("auth.discord_callback", _external=True)
         return oauth.discord.authorize_redirect(redirect_uri)
 
@@ -132,12 +231,16 @@ class DiscordCallbackView(MethodView):
 
     def get(self) -> Response:
         """Exchange authorization code for token and resolve user identity."""
+        link_mode = session.pop("oauth_link_mode", False)
         try:
             token = oauth.discord.authorize_access_token()
         except OAuthError as exc:
             logger.warning("Discord OAuth error: %s", exc)
             flash("Discord login was cancelled or denied.", "error")
-            return redirect(url_for("index.index"))
+            return redirect(_link_redirect_target() if link_mode else url_for("index.index"))
+
+        if link_mode:
+            return _handle_link("discord", token["access_token"])
 
         resp = oauth.discord.get("users/@me", token=token)
         discord_data = resp.json()
@@ -150,7 +253,13 @@ class DiscordCallbackView(MethodView):
         if isinstance(result, Response):
             return result
 
-        return _handle_login_result(result, discord_data, "discord", update_discord_profile)
+        return _handle_login_result(
+            result,
+            provider="discord",
+            credential=token["access_token"],
+            username=discord_data.get("username"),
+            email=discord_data.get("email"),
+        )
 
 
 class LogoutView(MethodView):
@@ -178,6 +287,9 @@ class GitHubLoginView(MethodView):
 
     def get(self) -> Response:
         """Redirect to GitHub's OAuth authorization page."""
+        # Drop any link-mode flag left over from an abandoned "connect account" flow
+        # so the same shared callback resolves this as a login, not an identity link.
+        session.pop("oauth_link_mode", None)
         redirect_uri = url_for("auth.github_callback", _external=True)
         return oauth.github.authorize_redirect(redirect_uri)
 
@@ -187,12 +299,16 @@ class GitHubCallbackView(MethodView):
 
     def get(self) -> Response:
         """Exchange authorization code for token and resolve user identity."""
+        link_mode = session.pop("oauth_link_mode", False)
         try:
             token = oauth.github.authorize_access_token()
         except OAuthError as exc:
             logger.warning("GitHub OAuth error: %s", exc)
             flash("GitHub login was cancelled or denied.", "error")
-            return redirect(url_for("index.index"))
+            return redirect(_link_redirect_target() if link_mode else url_for("index.index"))
+
+        if link_mode:
+            return _handle_link("github", token["access_token"])
 
         resp = oauth.github.get("user", token=token)
         github_data = resp.json()
@@ -213,7 +329,13 @@ class GitHubCallbackView(MethodView):
         if isinstance(result, Response):
             return result
 
-        return _handle_login_result(result, github_data, "github", update_github_profile)
+        return _handle_login_result(
+            result,
+            provider="github",
+            credential=token["access_token"],
+            username=github_data.get("login"),
+            email=github_data.get("email"),
+        )
 
 
 class GoogleLoginView(MethodView):
@@ -221,6 +343,9 @@ class GoogleLoginView(MethodView):
 
     def get(self) -> Response:
         """Redirect to Google's OAuth authorization page."""
+        # Drop any link-mode flag left over from an abandoned "connect account" flow
+        # so the same shared callback resolves this as a login, not an identity link.
+        session.pop("oauth_link_mode", None)
         redirect_uri = url_for("auth.google_callback", _external=True)
         return oauth.google.authorize_redirect(redirect_uri)
 
@@ -230,12 +355,16 @@ class GoogleCallbackView(MethodView):
 
     def get(self) -> Response:
         """Exchange authorization code for token and resolve user identity."""
+        link_mode = session.pop("oauth_link_mode", False)
         try:
             token = oauth.google.authorize_access_token()
         except OAuthError as exc:
             logger.warning("Google OAuth error: %s", exc)
             flash("Google login was cancelled or denied.", "error")
-            return redirect(url_for("index.index"))
+            return redirect(_link_redirect_target() if link_mode else url_for("index.index"))
+
+        if link_mode:
+            return _handle_link("google", token["id_token"])
 
         google_data = token["userinfo"]
 
@@ -247,7 +376,14 @@ class GoogleCallbackView(MethodView):
         if isinstance(result, Response):
             return result
 
-        return _handle_login_result(result, google_data, "google", update_google_profile)
+        return _handle_login_result(
+            result,
+            provider="google",
+            # Use the OIDC ID token so the API can verify the credential with Google
+            credential=token["id_token"],
+            username=google_data.get("name"),
+            email=google_data.get("email"),
+        )
 
 
 class SelectCompaniesView(MethodView):
@@ -259,9 +395,13 @@ class SelectCompaniesView(MethodView):
         return catalog.render("auth.SelectCompanies", companies=companies)
 
     def post(self) -> Response:
-        """Register the user in selected companies."""
+        """Register the user in selected companies via verified identity resolution."""
         pending = session.get("pending_oauth")
-        if not pending:
+        # Require the verified credential. A pre-upgrade session may carry the old
+        # {provider, data} shape with no token; treat that as an expired session
+        # rather than letting pending["token"] raise a KeyError.
+        if not pending or "token" not in pending:
+            session.pop("pending_oauth", None)
             flash("Session expired. Please log in again.", "error")
             return redirect(url_for("index.index"))
 
@@ -271,94 +411,42 @@ class SelectCompaniesView(MethodView):
             return redirect(url_for("auth.select_companies"))
 
         provider = pending["provider"]
-        data = pending["data"]
-
-        if provider == "discord":
-            from vclient.models.users import DiscordProfileUpdate
-
-            register_dto = UserRegisterDTO(
-                username=data.get("username", ""),
-                email=data.get("email", ""),
-                discord_profile=DiscordProfileUpdate(
-                    id=data.get("id"),
-                    username=data.get("username"),
-                    global_name=data.get("global_name"),
-                    avatar_id=data.get("avatar"),
-                    discriminator=data.get("discriminator"),
-                    email=data.get("email"),
-                    verified=data.get("verified"),
-                ),
+        try:
+            resolutions = identify_in_companies(
+                company_ids,
+                provider=provider,
+                token=pending["token"],
+                username=pending.get("username"),
+                email=pending.get("email"),
             )
-        elif provider == "github":
-            from vclient.models.users import GitHubProfile
-
-            register_dto = UserRegisterDTO(
-                username=data.get("login", ""),
-                email=data.get("email", ""),
-                github_profile=GitHubProfile(
-                    id=str(data.get("id", "")),
-                    login=data.get("login"),
-                    username=data.get("name"),
-                    avatar_url=data.get("avatar_url"),
-                    email=data.get("email"),
-                    profile_url=data.get("html_url"),
-                ),
-            )
-        elif provider == "google":
-            from vclient.models.users import GoogleProfile
-
-            register_dto = UserRegisterDTO(
-                username=data.get("name", ""),
-                email=data.get("email", ""),
-                google_profile=GoogleProfile(
-                    id=data.get("sub", ""),
-                    email=data.get("email"),
-                    verified_email=data.get("email_verified"),
-                    username=data.get("name"),
-                    name_first=data.get("given_name"),
-                    name_last=data.get("family_name"),
-                    avatar_url=data.get("picture"),
-                    locale=data.get("locale"),
-                ),
-                name_first=data.get("given_name") or None,
-                name_last=data.get("family_name") or None,
-            )
-        else:
-            flash("Unsupported authentication provider.", "error")
+        except (UnprocessableEntityError, ServerError) as exc:
+            session.pop("pending_oauth", None)
+            _flash_identify_error(exc, provider)
             return redirect(url_for("index.index"))
 
-        all_companies = sync_companies_service().list_all()
-        company_names = {c.id: c.name for c in all_companies}
-
-        companies_mapping: dict[str, dict[str, str]] = {}
-        first_company_id = None
-        first_user_id = None
-
-        for company_id in company_ids:
-            try:
-                user = sync_user_self_registration_service(company_id=company_id).register(
-                    request=register_dto,
-                )
-                companies_mapping[company_id] = {
-                    "user_id": user.id,
-                    "company_name": company_names.get(company_id, company_id),
-                    "role": user.role,
-                }
-                if first_company_id is None:
-                    first_company_id = company_id
-                    first_user_id = user.id
-            except (httpx.HTTPError, APIError):
-                logger.exception("Failed to register user in company %s", company_id)
-
-        if not companies_mapping:
+        if not resolutions:
             session.pop("pending_oauth", None)
             flash("Registration failed. Please try again.", "error")
             return redirect(url_for("index.index"))
 
+        company_names = {c.id: c.name for c in sync_companies_service().list_all()}
+        companies_mapping = {
+            company_id: {
+                "user_id": resolution.user.id,
+                "company_name": company_names.get(company_id, company_id),
+                "role": resolution.user.role,
+            }
+            for company_id, resolution in resolutions.items()
+        }
+
+        # All freshly registered users land on /pending-approval regardless of
+        # which company is active, so the first successfully resolved company
+        # (submission order is preserved through identify_in_companies) is fine.
+        first_company_id = next(iter(companies_mapping))
         session.pop("pending_oauth", None)
         session["companies"] = companies_mapping
         session["company_id"] = first_company_id
-        session["user_id"] = first_user_id
+        session["user_id"] = companies_mapping[first_company_id]["user_id"]
         session.permanent = True
 
         return redirect(url_for("auth.pending_approval"))
@@ -389,27 +477,13 @@ class SelectCompanyView(MethodView):
 
         session["company_id"] = company_id
         session["user_id"] = data["user_id"]
-
-        # Apply pending profile update if present
-        pending = session.pop("pending_profile_update", None)
-        if pending:
-            provider = pending["provider"]
-            provider_data = pending["data"]
-            updaters = {
-                "discord": update_discord_profile,
-                "github": update_github_profile,
-                "google": update_google_profile,
-            }
-            updater = updaters.get(provider)
-            if updater:
-                try:
-                    updater(company_id, data["user_id"], provider_data)
-                except (httpx.HTTPError, APIError):
-                    logger.exception("Failed to update %s profile after company switch", provider)
-
         return redirect(url_for("index.index"))
 
 
+bp.add_url_rule(
+    "/auth/<string:provider>/link",
+    view_func=LinkIdentityView.as_view("link_identity"),
+)
 bp.add_url_rule("/auth/discord", view_func=DiscordLoginView.as_view("discord_login"))
 bp.add_url_rule("/auth/discord/callback", view_func=DiscordCallbackView.as_view("discord_callback"))
 bp.add_url_rule("/auth/github", view_func=GitHubLoginView.as_view("github_login"))

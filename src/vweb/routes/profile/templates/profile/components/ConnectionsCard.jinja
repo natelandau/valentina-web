@@ -1,0 +1,32 @@
+{#def user #}
+{# Shown only on your own profile: connect additional login providers.
+   Link-only: the API has no unlink endpoint. Apple is excluded because its
+   link-mode OAuth flow is not implemented (auth.link_identity 404s for it). #}
+{% set providers = [
+  ("discord", "Discord", "fa-discord", user.discord_profile),
+  ("github", "GitHub", "fa-github", user.github_profile),
+  ("google", "Google", "fa-google", user.google_profile),
+] %}
+<div class="card surface-card">
+  <div class="card-body">
+    <h2 class="card-title">Connections</h2>
+    <p class="text-sm opacity-70">Link other sign-in providers to this account.</p>
+    <ul class="space-y-2 mt-2">
+      {% for key, label, icon, profile in providers %}
+        <li class="flex items-center justify-between gap-2">
+          <span class="inline-flex items-center gap-2">
+            <i class="fa-brands {{ icon }}" aria-hidden="true"></i>
+            {{ label }}
+          </span>
+          {% if profile %}
+            <span class="badge badge-success badge-outline">Connected</span>
+          {% else %}
+            {# djlint:off #}
+            <a href="{{ url_for('auth.link_identity', provider=key) }}" class="btn btn-sm btn-outline">Connect</a>
+            {# djlint:on #}
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>

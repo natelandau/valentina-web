@@ -36,6 +36,22 @@ class TestDiscordLoginView:
         # Then it delegates to authlib's authorize_redirect
         mock_discord.authorize_redirect.assert_called_once()
 
+    def test_login_clears_stale_link_mode(self, client, mocker):
+        """Verify starting a login clears a leftover link-mode flag from an abandoned link flow."""
+        # Given a stale oauth_link_mode flag from an abandoned "connect account" flow
+        with client.session_transaction() as sess:
+            sess["oauth_link_mode"] = True
+        mock_discord = MagicMock()
+        mock_discord.authorize_redirect.return_value = MagicMock(status_code=302)
+        mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
+
+        # When a fresh login is initiated
+        client.get("/auth/discord")
+
+        # Then the stale flag is gone, so the callback resolves as a login, not a link
+        with client.session_transaction() as sess:
+            assert "oauth_link_mode" not in sess
+
 
 class TestDiscordCallbackView:
     """Tests for the Discord OAuth callback route."""
@@ -61,7 +77,7 @@ class TestDiscordCallbackView:
             "vweb.routes.auth.views.lookup_user_companies",
             return_value=[result],
         )
-        mocker.patch("vweb.routes.auth.views.update_discord_profile")
+        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
 
         # When the callback is hit
         response = client.get("/auth/discord/callback")
@@ -94,6 +110,7 @@ class TestDiscordCallbackView:
             "vweb.routes.auth.views.lookup_user_companies",
             return_value=[result],
         )
+        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
 
         # When the callback is hit
         response = client.get("/auth/discord/callback")
@@ -119,7 +136,7 @@ class TestDiscordCallbackView:
             "vweb.routes.auth.views.lookup_user_companies",
             return_value=[result],
         )
-        mocker.patch("vweb.routes.auth.views.update_discord_profile")
+        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
 
         # When the callback is hit
         client.get("/auth/discord/callback")
@@ -198,7 +215,7 @@ class TestGitHubCallbackView:
             "vweb.routes.auth.views.lookup_user_companies",
             return_value=[result],
         )
-        mocker.patch("vweb.routes.auth.views.update_github_profile")
+        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
 
         # When the callback is hit
         response = client.get("/auth/github/callback")
@@ -230,6 +247,7 @@ class TestGitHubCallbackView:
             "vweb.routes.auth.views.lookup_user_companies",
             return_value=[result],
         )
+        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
 
         # When the callback is hit
         response = client.get("/auth/github/callback")
@@ -255,7 +273,7 @@ class TestGitHubCallbackView:
             "vweb.routes.auth.views.lookup_user_companies",
             return_value=[result],
         )
-        mocker.patch("vweb.routes.auth.views.update_github_profile")
+        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
 
         # When the callback is hit
         client.get("/auth/github/callback")
@@ -287,7 +305,7 @@ class TestGitHubCallbackView:
             "vweb.routes.auth.views.lookup_user_companies",
             return_value=[result],
         )
-        mocker.patch("vweb.routes.auth.views.update_github_profile")
+        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
 
         # When the callback is hit
         client.get("/auth/github/callback")
@@ -326,6 +344,7 @@ class TestGoogleCallbackView:
         # Given a mock OAuth flow returning a token with embedded userinfo
         mock_token = {
             "access_token": "fake-token",
+            "id_token": "fake-id-token",
             "userinfo": {
                 "sub": "123",
                 "name": "Test User",
@@ -342,7 +361,7 @@ class TestGoogleCallbackView:
             "vweb.routes.auth.views.lookup_user_companies",
             return_value=[result],
         )
-        mocker.patch("vweb.routes.auth.views.update_google_profile")
+        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
 
         # When the callback is hit
         response = client.get("/auth/google/callback")
@@ -358,6 +377,7 @@ class TestGoogleCallbackView:
         # Given a mock OAuth flow returning a token with embedded userinfo
         mock_token = {
             "access_token": "fake-token",
+            "id_token": "fake-id-token",
             "userinfo": {
                 "sub": "456",
                 "name": "New User",
@@ -374,6 +394,7 @@ class TestGoogleCallbackView:
             "vweb.routes.auth.views.lookup_user_companies",
             return_value=[result],
         )
+        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
 
         # When the callback is hit
         response = client.get("/auth/google/callback")
@@ -390,6 +411,7 @@ class TestGoogleCallbackView:
         mock_google = MagicMock()
         mock_google.authorize_access_token.return_value = {
             "access_token": "fake",
+            "id_token": "fake",
             "userinfo": {"sub": "789", "name": "u", "email": "e@e.com"},
         }
         mocker.patch("vweb.routes.auth.views.oauth", google=mock_google)
@@ -399,7 +421,7 @@ class TestGoogleCallbackView:
             "vweb.routes.auth.views.lookup_user_companies",
             return_value=[result],
         )
-        mocker.patch("vweb.routes.auth.views.update_google_profile")
+        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
 
         # When the callback is hit
         client.get("/auth/google/callback")
@@ -450,3 +472,116 @@ class TestPendingApprovalView:
 
         # Then it renders successfully
         assert response.status_code == 200
+
+
+class TestIdentifyIntegration:
+    """Tests for server-verified identity resolution during login."""
+
+    def test_callback_identifies_in_all_companies(self, client, mocker):
+        """Verify login runs identify in every company from the lookup results."""
+        # Given a mock OAuth flow
+        mock_discord = MagicMock()
+        mock_discord.authorize_access_token.return_value = {"access_token": "cred-123"}
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"id": "1", "username": "u", "email": "e@e.com"}
+        mock_discord.get.return_value = mock_resp
+        mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
+
+        # Given lookup results across two companies
+        results = [
+            _make_lookup_result(company_id="c1", user_id="u1"),
+            _make_lookup_result(company_id="c2", user_id="u2", role="ADMIN"),
+        ]
+        mocker.patch("vweb.routes.auth.views.lookup_user_companies", return_value=results)
+        mock_identify = mocker.patch(
+            "vweb.routes.auth.views.identify_in_companies", return_value={}
+        )
+
+        # When the callback is hit
+        client.get("/auth/discord/callback")
+
+        # Then identify ran for both companies with the OAuth credential
+        mock_identify.assert_called_once_with(["c1", "c2"], provider="discord", token="cred-123")
+
+    def test_google_callback_identifies_with_id_token(self, client, mocker):
+        """Verify Google login passes the OIDC ID token to identify, not the access token."""
+        # Given a Google OAuth flow returning both token types
+        mock_google = MagicMock()
+        mock_google.authorize_access_token.return_value = {
+            "access_token": "access-tok",
+            "id_token": "oidc-id-tok",
+            "userinfo": {"sub": "1", "name": "u", "email": "e@e.com"},
+        }
+        mocker.patch("vweb.routes.auth.views.oauth", google=mock_google)
+        mocker.patch(
+            "vweb.routes.auth.views.lookup_user_companies",
+            return_value=[_make_lookup_result()],
+        )
+        mock_identify = mocker.patch(
+            "vweb.routes.auth.views.identify_in_companies", return_value={}
+        )
+
+        # When the callback is hit
+        client.get("/auth/google/callback")
+
+        # Then identify received the ID token
+        assert mock_identify.call_args[1]["token"] == "oidc-id-tok"
+
+    def test_callback_token_verification_failure_aborts_login(self, client, mocker):
+        """Verify a 422 from identify aborts login without setting a session."""
+        from vclient.exceptions import UnprocessableEntityError
+
+        # Given a mock OAuth flow with valid lookup results
+        mock_discord = MagicMock()
+        mock_discord.authorize_access_token.return_value = {"access_token": "bad"}
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"id": "1", "username": "u", "email": "e@e.com"}
+        mock_discord.get.return_value = mock_resp
+        mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
+        mocker.patch(
+            "vweb.routes.auth.views.lookup_user_companies",
+            return_value=[_make_lookup_result(user_id="other-user")],
+        )
+
+        # Given identify rejects the token
+        mocker.patch(
+            "vweb.routes.auth.views.identify_in_companies",
+            side_effect=UnprocessableEntityError("bad", 422, {"code": "TOKEN_VERIFICATION_FAILED"}),
+        )
+
+        # When the callback is hit
+        response = client.get("/auth/discord/callback")
+
+        # Then login aborts to index and no session was established for the user
+        assert response.status_code == 302
+        assert response.location == "/"
+        with client.session_transaction() as sess:
+            assert sess.get("user_id") != "other-user"
+
+        # Then a user-facing error was flashed
+        with client.session_transaction() as sess:
+            flashes = sess.get("_flashes", [])
+        assert any("could not be verified" in message for _category, message in flashes)
+
+    def test_callback_new_user_pending_oauth_stores_credential(self, client, mocker):
+        """Verify the new-user path stores the credential for later registration."""
+        # Given a mock OAuth flow and no lookup results
+        mock_discord = MagicMock()
+        mock_discord.authorize_access_token.return_value = {"access_token": "cred-456"}
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"id": "n", "username": "newbie", "email": "n@e.com"}
+        mock_discord.get.return_value = mock_resp
+        mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
+        mocker.patch("vweb.routes.auth.views.lookup_user_companies", return_value=[])
+
+        # When the callback is hit
+        client.get("/auth/discord/callback")
+
+        # Then the pending payload carries provider, token, and creation hints
+        with client.session_transaction() as sess:
+            assert sess["pending_oauth"] == {
+                "provider": "discord",
+                "token": "cred-456",
+                "username": "newbie",
+                "email": "n@e.com",
+            }

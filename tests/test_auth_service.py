@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import MagicMock, patch
 
+import pytest
+from vclient.exceptions import NotFoundError, ServerError, UnprocessableEntityError
 from vclient.models import UserLookupResult
 
-from vweb.routes.auth.services import build_companies_mapping, lookup_user_companies
+from vweb.routes.auth.services import (
+    build_companies_mapping,
+    identify_in_companies,
+    lookup_user_companies,
+)
 
 
 def _make_lookup_result(**kwargs) -> UserLookupResult:
@@ -139,3 +146,76 @@ class TestBuildCompaniesMapping:
     def test_empty_results_produce_empty_dict(self) -> None:
         """Verify empty results produce empty mapping."""
         assert build_companies_mapping([]) == {}
+
+
+_TEST_TOKEN = "test-oauth-access-token"
+
+
+class TestIdentifyInCompanies:
+    """Tests for identify_in_companies."""
+
+    def test_identify_in_companies_resolves_each_company(self, mocker) -> None:
+        """Verify identify is called once per company and resolutions are keyed by company ID."""
+        # Given an identity service that resolves successfully
+        resolution = MagicMock()
+        mock_svc = MagicMock()
+        mock_svc.identify.return_value = resolution
+        mock_factory = mocker.patch(
+            "vweb.routes.auth.services.sync_identity_service",
+            autospec=True,
+            return_value=mock_svc,
+        )
+
+        # When identifying in two companies
+        result = identify_in_companies(["c1", "c2"], provider="discord", token=_TEST_TOKEN)
+
+        # Then the service was scoped to each company and both resolutions returned
+        assert mock_factory.call_args_list == [
+            mocker.call(company_id="c1"),
+            mocker.call(company_id="c2"),
+        ]
+        assert result == {"c1": resolution, "c2": resolution}
+
+    def test_identify_in_companies_skips_company_level_failure(self, mocker, caplog) -> None:
+        """Verify a company-level API failure is logged and skipped, not raised."""
+        # Given the first company fails with a non-token error and the second succeeds
+        resolution = MagicMock()
+        mock_svc = MagicMock()
+        mock_svc.identify.side_effect = [NotFoundError("nope", 404), resolution]
+        mocker.patch(
+            "vweb.routes.auth.services.sync_identity_service",
+            autospec=True,
+            return_value=mock_svc,
+        )
+
+        # When identifying in two companies
+        with caplog.at_level(logging.ERROR, logger="vweb.routes.auth.services"):
+            result = identify_in_companies(["c1", "c2"], provider="discord", token=_TEST_TOKEN)
+
+        # Then only the successful company is in the result and the failure is logged
+        assert result == {"c2": resolution}
+        assert "identify failed for company c1" in caplog.text
+
+    @pytest.mark.parametrize(
+        ("exception_class", "exception_args"),
+        [
+            (UnprocessableEntityError, ("bad token", 422, {"code": "TOKEN_VERIFICATION_FAILED"})),
+            (ServerError, ("provider unreachable", 503, {"code": "PROVIDER_UNAVAILABLE"})),
+        ],
+    )
+    def test_identify_in_companies_raises_token_level_failure(
+        self, mocker, exception_class, exception_args
+    ) -> None:
+        """Verify token- and provider-level failures propagate so callers can branch on the code."""
+        # Given the identity service rejects the credential outright
+        mock_svc = MagicMock()
+        mock_svc.identify.side_effect = exception_class(*exception_args)
+        mocker.patch(
+            "vweb.routes.auth.services.sync_identity_service",
+            autospec=True,
+            return_value=mock_svc,
+        )
+
+        # When identifying, then the error is raised to the caller
+        with pytest.raises(exception_class):
+            identify_in_companies(["c1", "c2"], provider="discord", token=_TEST_TOKEN)

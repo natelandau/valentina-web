@@ -33,7 +33,7 @@ class TestSettingsValidation:
             Settings(
                 _env_file=None,
                 env="production",
-                secret_key="production-secret-key",  # noqa: S106
+                secret_key="production-secret-key",
                 redis=RedisSettings(url=""),
                 api=APISettings(
                     base_url="http://localhost:8080",
@@ -46,7 +46,7 @@ class TestSettingsValidation:
         settings = Settings(
             _env_file=None,
             env="production",
-            secret_key="production-secret-key",  # noqa: S106
+            secret_key="production-secret-key",
             redis=RedisSettings(url="redis://localhost:6379/0"),
             api=APISettings(
                 base_url="http://localhost:8080",
@@ -59,7 +59,7 @@ class TestSettingsValidation:
         """Verify the default environment is production."""
         settings = Settings(
             _env_file=None,
-            secret_key="production-secret-key",  # noqa: S106
+            secret_key="production-secret-key",
             redis=RedisSettings(),
             api=APISettings(
                 base_url="http://localhost:8080",
@@ -73,7 +73,7 @@ class TestSettingsValidation:
         settings = Settings(
             _env_file=None,
             env="production",
-            secret_key="production-secret-key",  # noqa: S106
+            secret_key="production-secret-key",
             redis=RedisSettings(url="redis://localhost:6379/0"),
             api=APISettings(
                 base_url="http://localhost:8080",
@@ -101,7 +101,7 @@ class TestSettingsValidation:
             _env_file=None,
             env="production",
             force_https=False,
-            secret_key="production-secret-key",  # noqa: S106
+            secret_key="production-secret-key",
             redis=RedisSettings(url="redis://localhost:6379/0"),
             api=APISettings(
                 base_url="http://localhost:8080",
@@ -117,7 +117,7 @@ class TestSettingsValidation:
                 _env_file=None,
                 env="production",
                 redis=RedisSettings(url="redis://localhost:6379/0"),
-                secret_key="change-me-in-production",  # noqa: S106
+                secret_key="change-me-in-production",
                 api=APISettings(
                     base_url="http://localhost:8080",
                     api_key="test-api-key",
@@ -136,7 +136,7 @@ class TestSettingsValidation:
         """Verify Settings includes OAuthSettings with correct defaults."""
         settings = Settings(
             _env_file=None,
-            secret_key="production-secret-key",  # noqa: S106
+            secret_key="production-secret-key",
             redis=RedisSettings(),
             api=APISettings(
                 base_url="http://localhost:8080",
@@ -154,7 +154,7 @@ class TestSettingsValidation:
             _env_file=None,
             app_name="Test",
             env="development",
-            secret_key="test",  # noqa: S106
+            secret_key="test",
             api=APISettings(
                 base_url="http://localhost",
                 api_key="test-key",
@@ -169,8 +169,8 @@ class TestSettingsValidation:
         oauth = OAuthSettings(
             discord=OAuthProviderSettings(
                 client_id="my-client-id",
-                client_secret="my-client-secret",  # noqa: S106
+                client_secret="my-client-secret",
             ),
         )
         assert oauth.discord.client_id == "my-client-id"
-        assert oauth.discord.client_secret == "my-client-secret"  # noqa: S105
+        assert oauth.discord.client_secret == "my-client-secret"

@@ -60,7 +60,7 @@ def test_settings() -> Settings:
         _env_file=None,
         app_name="Test App",
         env="development",
-        secret_key="test-secret-key",  # noqa: S106
+        secret_key="test-secret-key",
         host="127.0.0.1",
         port=8089,
         redis=RedisSettings(url=""),

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
+from vclient.models.users import GitHubProfile
 from vclient.testing import UserFactory
 
 from vweb.lib.cache.global_context import GlobalContext
@@ -244,3 +245,45 @@ class TestProfilePost:
         )
         assert response.status_code == 200
         assert b"Email is required" in response.data
+
+
+class TestConnectionsCard:
+    """Tests for connections rendering on the profile page."""
+
+    @pytest.mark.usefixtures("_mock_profile_api")
+    def test_own_profile_shows_connect_for_unlinked_provider(
+        self, client: FlaskClient, profile_user, other_user, mocker
+    ) -> None:
+        """Verify your own profile offers a Connect link for providers you lack."""
+        # Given the requesting user has only a GitHub identity
+        profile_user.github_profile = GitHubProfile(id="gh-1")
+        profile_user.discord_profile = None
+        profile_user.google_profile = None
+        profile_user.apple_profile = None
+
+        # When viewing your own profile
+        response = client.get("/profile/test-user-id")
+
+        # Then the card offers links for the unlinked providers only
+        body = response.get_data(as_text=True)
+        assert "Connections" in body
+        assert "/auth/discord/link" in body
+        assert "/auth/google/link" in body
+        assert "/auth/github/link" not in body
+
+    @pytest.mark.usefixtures("_mock_profile_api")
+    def test_other_profile_hides_connections_card(self, client: FlaskClient, other_user) -> None:
+        """Verify someone else's profile does not render the Connections card."""
+        # Given another user with no linked providers
+        other_user.discord_profile = None
+        other_user.github_profile = None
+        other_user.google_profile = None
+        other_user.apple_profile = None
+
+        # When viewing the other user's profile
+        response = client.get("/profile/other-user-id")
+
+        # Then no Connections card is rendered
+        body = response.get_data(as_text=True)
+        assert "/auth/discord/link" not in body
+        assert "Connections" not in body
