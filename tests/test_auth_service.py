@@ -148,7 +148,7 @@ class TestBuildCompaniesMapping:
         assert build_companies_mapping([]) == {}
 
 
-_TEST_TOKEN = "test-oauth-access-token"  # noqa: S105 - not a password; placeholder OAuth token for tests
+_TEST_TOKEN = "test-oauth-access-token"
 
 
 class TestIdentifyInCompanies:
