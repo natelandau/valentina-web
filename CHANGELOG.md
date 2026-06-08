@@ -1,3 +1,11 @@
+## v0.10.0 (2026-06-08)
+
+### Feat
+
+- **auth**: add Sign in with Apple (#50)
+- **auth**: let users disconnect linked sign-in providers (#49)
+- **auth**: server-verified logins and account linking (#48)
+
 ## v0.9.0 (2026-06-06)
 
 ### Feat
