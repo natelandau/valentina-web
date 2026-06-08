@@ -115,6 +115,12 @@ def _hook_refresh_session() -> None:
     if request.path.startswith(_PUBLIC_PATH_PREFIXES):
         return
 
+    # Only refresh sessions that actually belong to a logged-in user. Forcing
+    # modified on anonymous requests would persist an otherwise-empty session
+    # (one Redis key per bot/crawler hit, each living for the 30-day lifetime).
+    if not session.get("user_id"):
+        return
+
     session.modified = True
 
 

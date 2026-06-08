@@ -95,6 +95,39 @@ def test_index_unauthenticated_returns_200(app) -> None:
     assert response.status_code == 200
 
 
+def test_index_unauthenticated_sets_no_session_cookie(app) -> None:
+    """Verify anonymous landing-page visits do not persist a session.
+
+    Each persisted session is a Redis key in production. Bots and crawlers
+    hitting the public landing page must not mint one, so the response must
+    not set (or delete) a session cookie.
+    """
+    # Given an anonymous client with no session
+    client = app.test_client()
+
+    # When visiting the public landing page
+    response = client.get("/")
+
+    # Then nothing server-side is persisted, so no session cookie is touched
+    set_cookies = response.headers.getlist("Set-Cookie")
+    assert response.status_code == 200
+    assert not any(cookie.startswith("session=") for cookie in set_cookies), set_cookies
+
+
+def test_authenticated_page_includes_csrf_header(client, mock_global_context) -> None:
+    """Verify logged-in pages still emit the HTMX X-CSRFToken header for mutations."""
+    # Given an authenticated user with a campaign
+    campaign = mock_global_context.campaigns[0]
+
+    # When loading an authenticated page
+    response = client.get(f"/campaign/{campaign.id}")
+    body = response.get_data(as_text=True)
+
+    # Then the CSRF header is present so HTMX POST/DELETE actions are protected
+    assert response.status_code == 200
+    assert "X-CSRFToken" in body
+
+
 def test_index_no_campaigns_shows_empty_state(client, mocker) -> None:
     """Verify the empty state message when no campaigns exist."""
     # Given a global context with no campaigns

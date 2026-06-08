@@ -412,6 +412,17 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
 
     jinja_globals["approved_company_count"] = _approved_company_count
 
+    def _is_authenticated() -> bool:
+        """Report whether a logged-in user backs this request.
+
+        Distinct from ``requesting_user()`` (which only resolves on pages that
+        load the global context): this is true for in-flight accounts too, such
+        as pending-approval and company-selection, so their forms still get CSRF.
+        """
+        return bool(session.get("user_id"))
+
+    jinja_globals["is_authenticated"] = _is_authenticated
+
     # Sync Flask's Jinja2 environment into the catalog's environment so
     # JinjaX components have access to url_for, config, and other app globals
     catalog.jinja_env.globals.update(app.jinja_env.globals)

@@ -33,9 +33,14 @@
       {% if title %}: {{ title }}{% endif %}
     </title>
   </head>
-  <body hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'
+  {# Only mint a CSRF token for logged-in users. Calling csrf_token() writes to
+     the session, which persists a Redis key; anonymous visitors have no HTMX
+     mutations to protect, so skipping it keeps their session empty. #}
+  {# djlint:off #}
+  <body {% if is_authenticated() %}hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'{% endif %}
         {{ body_attrs }}
         class="bg-base-200">
+  {# djlint:on #}
     <div class="flex flex-col min-h-screen">
       <shared.layout.GlobalHeader />
 
