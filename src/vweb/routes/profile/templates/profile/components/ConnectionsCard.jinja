@@ -11,7 +11,7 @@
 {% set linked_count = providers | selectattr(3) | list | length %}
 <div id="connections-card" class="card surface-card">
   <div class="card-body">
-    <h2 class="card-title">Connections</h2>
+    <h2 class="card-title">Account Connections</h2>
     <p class="text-sm opacity-70">Link other sign-in providers to this account.</p>
     <ul class="space-y-2 mt-2">
       {% for key, label, icon, profile in providers %}
@@ -22,20 +22,14 @@
           </span>
           {% if profile %}
             <span class="inline-flex items-center gap-2">
-              <span class="badge badge-success badge-outline">Connected</span>
+              <span class="inline-flex items-center gap-1 text-sm text-success"><i class="fa-solid fa-check" aria-hidden="true"></i>Connected</span>
               {% if linked_count > 1 %}
-                {# djlint:off #}
-                <button type="button" class="btn btn-sm btn-ghost text-error"
-                        hx-post="{{ url_for('auth.unlink_identity', provider=key) }}"
-                        hx-target="#connections-card" hx-swap="outerHTML"
-                        hx-confirm="Disconnect {{ label }}? This removes it as a way to sign in to your account.">Disconnect</button>
-                {# djlint:on #}
+                {% set disconnect_attrs = 'hx-post="' ~ url_for('auth.unlink_identity', provider=key) ~ '" hx-target="#connections-card" hx-swap="outerHTML" hx-confirm="Disconnect ' ~ label ~ '? This removes it as a way to sign in to your account."' %}
+                <shared.CommonButton variant="delete" btn_type="button" extra_class="btn-sm" extra_attrs={{ disconnect_attrs }}>Disconnect</shared.CommonButton>
               {% endif %}
             </span>
           {% else %}
-            {# djlint:off #}
-            <a href="{{ url_for('auth.link_identity', provider=key) }}" class="btn btn-sm btn-outline">Connect</a>
-            {# djlint:on #}
+            <shared.CommonButton variant="add" extra_class="btn-sm" href={{ url_for('auth.link_identity', provider=key) }}><i class="fa-solid fa-plus"></i>Connect</shared.CommonButton>
           {% endif %}
         </li>
       {% endfor %}
