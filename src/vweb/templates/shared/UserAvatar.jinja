@@ -3,7 +3,11 @@
     size="w-10"
 #}
 
-{% if user.discord_profile and user.discord_profile.avatar_url %}
+{% if user.avatar_url %}
+
+  {% set avatar_url = user.avatar_url %}
+
+{% elif user.discord_profile and user.discord_profile.avatar_url %}
 
   {% set avatar_url = user.discord_profile.avatar_url %}
 

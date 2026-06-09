@@ -21,7 +21,7 @@
   {% endif %}
 {% endset %}
 
-{% set avatar_url = (user.discord_profile.avatar_url if user.discord_profile and user.discord_profile.avatar_url else (user.github_profile.avatar_url if user.github_profile and user.github_profile.avatar_url else (user.google_profile.avatar_url if user.google_profile and user.google_profile.avatar_url else ""))) %}
+{% set avatar_url = user.avatar_url or (user.discord_profile.avatar_url if user.discord_profile and user.discord_profile.avatar_url else (user.github_profile.avatar_url if user.github_profile and user.github_profile.avatar_url else (user.google_profile.avatar_url if user.google_profile and user.google_profile.avatar_url else ""))) %}
 
 {# Block-form set so the captures are Markup (surviving autoescaping) while their interpolations are escaped #}
 {% if avatar_url %}

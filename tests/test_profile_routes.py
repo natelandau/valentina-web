@@ -125,6 +125,21 @@ class TestProfileGet:
         assert response.status_code == 404
 
     @pytest.mark.usefixtures("_mock_profile_api")
+    def test_profile_header_shows_resolved_avatar_url(
+        self, client: FlaskClient, profile_user: User
+    ) -> None:
+        """Verify the profile header renders the resolved avatar_url."""
+        # Given the session user has a resolved (custom) avatar URL
+        profile_user.avatar_url = "https://cdn.example.com/custom.webp"
+
+        # When viewing their profile
+        response = client.get("/profile/test-user-id")
+
+        # Then the header renders that URL
+        assert response.status_code == 200
+        assert "https://cdn.example.com/custom.webp" in response.get_data(as_text=True)
+
+    @pytest.mark.usefixtures("_mock_profile_api")
     def test_profile_renders_lazy_statistics_url(self, client: FlaskClient) -> None:
         """Verify Profile renders the /cards/statistics lazy-load URL with user_id."""
         # Given a profile for an existing user
