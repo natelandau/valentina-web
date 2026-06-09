@@ -15,7 +15,7 @@ from markupsafe import Markup, escape
 
 import vweb
 from vweb.config import get_settings
-from vweb.constants import MAX_IMAGE_SIZE, STATIC_PATH, TEMPLATES_PATH
+from vweb.constants import MAX_AVATAR_SIZE, MAX_IMAGE_SIZE, STATIC_PATH, TEMPLATES_PATH
 from vweb.lib import cache
 from vweb.lib.api import get_active_campaign, get_user_campaign_experience
 from vweb.lib.character_list import character_type_label
@@ -396,6 +396,7 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
     jinja_globals["get_options"] = cache.options.get
     jinja_globals["get_system_health"] = cache.system_status.get
     jinja_globals["MAX_IMAGE_SIZE"] = MAX_IMAGE_SIZE
+    jinja_globals["MAX_AVATAR_SIZE"] = MAX_AVATAR_SIZE
     jinja_globals["is_admin"] = is_admin
     jinja_globals["is_approved_user"] = is_approved_user
     jinja_globals["is_storyteller"] = is_storyteller
