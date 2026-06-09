@@ -24,14 +24,16 @@
 
       {# djlint:off #}
       {% set resolved_avatar = user_avatar_url(user) %}
-      <fieldset class="fieldset" x-data="{ preview: '{{ resolved_avatar or '' }}' }">
+      <fieldset class="fieldset"
+                data-avatar="{{ resolved_avatar or '' }}"
+                x-data="{ preview: $el.dataset.avatar }">
         <legend class="fieldset-legend">Avatar</legend>
         <div class="flex items-center gap-5">
           <button type="button"
                   class="group relative block shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-base-100 focus-visible:outline-none"
                   @click="$refs.avatarInput.click()"
                   aria-label="Choose a new avatar">
-            <div class="avatar {{ '' if resolved_avatar else 'avatar-placeholder' }}">
+            <div class="avatar" :class="{ 'avatar-placeholder': !preview }">
               <div class="bg-neutral text-neutral-content w-20 rounded-full ring ring-base-300 ring-offset-base-100 ring-offset-2 transition-colors duration-200 group-hover:ring-primary">
                 <template x-if="preview">
                   <img :src="preview" alt="{{ user.username }}" class="rounded-full" />

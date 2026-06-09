@@ -87,12 +87,14 @@ class ProfileView(MethodView):
 
         svc = sync_users_service(on_behalf_of=session["user_id"], company_id=session["company_id"])
 
-        # A newly chosen file replaces the avatar; otherwise an explicit remove
-        # reverts to the identity-provider avatar.
+        # A newly chosen file replaces the avatar; only when no file was supplied
+        # does an explicit remove revert to the identity-provider avatar. Keying
+        # off file presence (not the upload result) means a rejected file never
+        # also triggers a delete.
         avatar_file = request.files.get("avatar")
-        if not handle_avatar_upload(svc=svc, user_id=user_id, file=avatar_file) and form_data.get(
-            "remove_avatar"
-        ):
+        if avatar_file is not None and avatar_file.filename:
+            handle_avatar_upload(svc=svc, user_id=user_id, file=avatar_file)
+        elif form_data.get("remove_avatar"):
             handle_avatar_delete(svc=svc, user_id=user_id)
 
         update_request = UserUpdate(

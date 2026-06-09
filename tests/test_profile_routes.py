@@ -395,6 +395,29 @@ class TestProfileAvatar:
         mock_profile_svc.upload_avatar.assert_called_once()
         mock_profile_svc.delete_avatar.assert_not_called()
 
+    def test_rejected_file_with_remove_checked_does_not_delete(
+        self, client: FlaskClient, mock_profile_svc: MagicMock
+    ) -> None:
+        """Verify a rejected upload never falls through to deleting the avatar."""
+        from tests.conftest import get_csrf
+
+        # Given an invalid file is supplied while the remove checkbox is also set
+        csrf = get_csrf(client)
+        data = {
+            "csrf_token": csrf,
+            "username": "testuser",
+            "email": "test@example.com",
+            "remove_avatar": "on",
+            "avatar": (io.BytesIO(b"not-an-image"), "doc.pdf", "application/pdf"),
+        }
+
+        # When posting the edit form
+        client.post("/profile/test-user-id", data=data, content_type="multipart/form-data")
+
+        # Then neither upload nor delete touches the existing avatar
+        mock_profile_svc.upload_avatar.assert_not_called()
+        mock_profile_svc.delete_avatar.assert_not_called()
+
     def test_invalid_avatar_type_is_rejected(
         self, client: FlaskClient, mock_profile_svc: MagicMock
     ) -> None:
