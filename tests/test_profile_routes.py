@@ -152,6 +152,20 @@ class TestProfileEdit:
         response = client.get("/profile/other-user-id/edit")
         assert response.status_code == 403
 
+    @pytest.mark.usefixtures("_mock_profile_api")
+    def test_edit_form_has_avatar_upload_field(self, client: FlaskClient) -> None:
+        """Verify the edit form renders a multipart avatar file input."""
+        # Given the session user views their own edit form
+        # When requesting the edit form fragment
+        response = client.get("/profile/test-user-id/edit", headers={"HX-Request": "true"})
+
+        # Then it exposes a multipart file input named avatar
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert "multipart/form-data" in body
+        assert 'name="avatar"' in body
+        assert "file-input" in body
+
 
 class TestProfilePost:
     """Tests for POST /profile/<user_id>."""
