@@ -24,6 +24,7 @@ from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import get_campaign_name, validate_and_submit_experience
 from vweb.lib.guards import can_grant_experience, is_self
+from vweb.lib.image_uploads import handle_avatar_delete, handle_avatar_upload
 from vweb.lib.jinja import hx_redirect
 from vweb.routes.profile.views_quickrolls import QuickrollsTableView
 
@@ -85,6 +86,17 @@ class ProfileView(MethodView):
             )
 
         svc = sync_users_service(on_behalf_of=session["user_id"], company_id=session["company_id"])
+
+        # A newly chosen file replaces the avatar; only when no file was supplied
+        # does an explicit remove revert to the identity-provider avatar. Keying
+        # off file presence (not the upload result) means a rejected file never
+        # also triggers a delete.
+        avatar_file = request.files.get("avatar")
+        if avatar_file is not None and avatar_file.filename:
+            handle_avatar_upload(svc=svc, user_id=user_id, file=avatar_file)
+        elif form_data.get("remove_avatar"):
+            handle_avatar_delete(svc=svc, user_id=user_id)
+
         update_request = UserUpdate(
             name_first=form_data.get("name_first", "").strip() or None,
             name_last=form_data.get("name_last", "").strip() or None,

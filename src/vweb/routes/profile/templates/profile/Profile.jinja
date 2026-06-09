@@ -21,17 +21,28 @@
   {% endif %}
 {% endset %}
 
-{% set avatar_url = (user.discord_profile.avatar_url if user.discord_profile and user.discord_profile.avatar_url else (user.github_profile.avatar_url if user.github_profile and user.github_profile.avatar_url else (user.google_profile.avatar_url if user.google_profile and user.google_profile.avatar_url else ""))) %}
+{% set avatar_url = user_avatar_url(user) %}
 
 {# Block-form set so the captures are Markup (surviving autoescaping) while their interpolations are escaped #}
 {% if avatar_url %}
 
-  {% set avatar_html %}<div class="avatar w-16"><img alt="{{ user.username }}" src="{{ avatar_url }}" class="rounded-full" /></div>{% endset %}
+  {% set avatar_html %}
+
+    <div class="avatar w-16">
+      <img alt="{{ user.username }}" src="{{ avatar_url }}" class="rounded-full" />
+    </div>
+  {% endset %}
 
 {% else %}
 
   {% set initials = (user.name_first or user.username)[0] | upper ~ (user.name_last[0] | upper if user.name_last else "") %}
-  {% set avatar_html %}<div class="avatar avatar-placeholder"><div class="bg-neutral text-neutral-content w-16 rounded-full"><span>{{ initials }}</span></div></div>{% endset %}
+
+  {% set avatar_html %}
+
+    <div class="avatar avatar-placeholder">
+      <div class="bg-neutral text-neutral-content w-16 rounded-full"><span>{{ initials }}</span></div>
+    </div>
+  {% endset %}
 
 {% endif %}
 

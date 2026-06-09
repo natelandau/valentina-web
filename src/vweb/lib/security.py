@@ -55,6 +55,8 @@ def configure_security(app: Flask, s: Settings) -> None:
             "lh3.googleusercontent.com",
             "img.daisyui.com",
             "cdn.midjourney.com",
+            "picsum.photos",
+            "fastly.picsum.photos",
         ],
         "connect-src": [
             "'self'",

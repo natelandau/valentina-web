@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -124,6 +125,21 @@ class TestProfileGet:
         assert response.status_code == 404
 
     @pytest.mark.usefixtures("_mock_profile_api")
+    def test_profile_header_shows_resolved_avatar_url(
+        self, client: FlaskClient, profile_user: User
+    ) -> None:
+        """Verify the profile header renders the resolved avatar_url."""
+        # Given the session user has a resolved (custom) avatar URL
+        profile_user.avatar_url = "https://cdn.example.com/custom.webp"
+
+        # When viewing their profile
+        response = client.get("/profile/test-user-id")
+
+        # Then the header renders that URL
+        assert response.status_code == 200
+        assert "https://cdn.example.com/custom.webp" in response.get_data(as_text=True)
+
+    @pytest.mark.usefixtures("_mock_profile_api")
     def test_profile_renders_lazy_statistics_url(self, client: FlaskClient) -> None:
         """Verify Profile renders the /cards/statistics lazy-load URL with user_id."""
         # Given a profile for an existing user
@@ -150,6 +166,20 @@ class TestProfileEdit:
         """Verify 403 when trying to edit another user's profile."""
         response = client.get("/profile/other-user-id/edit")
         assert response.status_code == 403
+
+    @pytest.mark.usefixtures("_mock_profile_api")
+    def test_edit_form_has_avatar_upload_field(self, client: FlaskClient) -> None:
+        """Verify the edit form renders a multipart avatar file input."""
+        # Given the session user views their own edit form
+        # When requesting the edit form fragment
+        response = client.get("/profile/test-user-id/edit", headers={"HX-Request": "true"})
+
+        # Then it exposes a multipart file input named avatar
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert "multipart/form-data" in body
+        assert 'name="avatar"' in body
+        assert "file-input" in body
 
 
 class TestProfilePost:
@@ -287,3 +317,174 @@ class TestConnectionsCard:
         body = response.get_data(as_text=True)
         assert "/auth/discord/link" not in body
         assert "Connections" not in body
+
+
+class TestProfileAvatar:
+    """Tests for avatar upload/remove via POST /profile/<user_id>."""
+
+    def test_owner_can_upload_avatar(
+        self, client: FlaskClient, mock_profile_svc: MagicMock
+    ) -> None:
+        """Verify a user can upload an avatar and the service is called."""
+        from tests.conftest import get_csrf
+
+        # Given the session user and a valid image
+        csrf = get_csrf(client)
+        data = {
+            "csrf_token": csrf,
+            "username": "testuser",
+            "email": "test@example.com",
+            "avatar": (io.BytesIO(b"fake-image-bytes"), "me.png", "image/png"),
+        }
+
+        # When posting the edit form with an avatar file
+        response = client.post(
+            "/profile/test-user-id", data=data, content_type="multipart/form-data"
+        )
+
+        # Then the avatar is uploaded and the page redirects
+        assert response.status_code == 200
+        assert "HX-Redirect" in response.headers
+        mock_profile_svc.upload_avatar.assert_called_once()
+        assert mock_profile_svc.upload_avatar.call_args[0][0] == "test-user-id"
+
+    def test_remove_avatar_calls_delete(
+        self, client: FlaskClient, mock_profile_svc: MagicMock
+    ) -> None:
+        """Verify the remove checkbox triggers delete_avatar."""
+        from tests.conftest import get_csrf
+
+        # Given the remove checkbox is checked and no new file is supplied
+        csrf = get_csrf(client)
+        data = {
+            "csrf_token": csrf,
+            "username": "testuser",
+            "email": "test@example.com",
+            "remove_avatar": "on",
+        }
+
+        # When posting the edit form
+        response = client.post(
+            "/profile/test-user-id", data=data, content_type="multipart/form-data"
+        )
+
+        # Then the custom avatar is deleted
+        assert response.status_code == 200
+        mock_profile_svc.delete_avatar.assert_called_once_with("test-user-id")
+
+    def test_uploaded_file_takes_priority_over_remove(
+        self, client: FlaskClient, mock_profile_svc: MagicMock
+    ) -> None:
+        """Verify a new file is uploaded even if remove is also set."""
+        from tests.conftest import get_csrf
+
+        # Given both a new file and the remove checkbox
+        csrf = get_csrf(client)
+        data = {
+            "csrf_token": csrf,
+            "username": "testuser",
+            "email": "test@example.com",
+            "remove_avatar": "on",
+            "avatar": (io.BytesIO(b"fake-image-bytes"), "me.png", "image/png"),
+        }
+
+        # When posting the edit form
+        client.post("/profile/test-user-id", data=data, content_type="multipart/form-data")
+
+        # Then upload wins and delete is not called
+        mock_profile_svc.upload_avatar.assert_called_once()
+        mock_profile_svc.delete_avatar.assert_not_called()
+
+    def test_rejected_file_with_remove_checked_does_not_delete(
+        self, client: FlaskClient, mock_profile_svc: MagicMock
+    ) -> None:
+        """Verify a rejected upload never falls through to deleting the avatar."""
+        from tests.conftest import get_csrf
+
+        # Given an invalid file is supplied while the remove checkbox is also set
+        csrf = get_csrf(client)
+        data = {
+            "csrf_token": csrf,
+            "username": "testuser",
+            "email": "test@example.com",
+            "remove_avatar": "on",
+            "avatar": (io.BytesIO(b"not-an-image"), "doc.pdf", "application/pdf"),
+        }
+
+        # When posting the edit form
+        client.post("/profile/test-user-id", data=data, content_type="multipart/form-data")
+
+        # Then neither upload nor delete touches the existing avatar
+        mock_profile_svc.upload_avatar.assert_not_called()
+        mock_profile_svc.delete_avatar.assert_not_called()
+
+    def test_invalid_avatar_type_is_rejected(
+        self, client: FlaskClient, mock_profile_svc: MagicMock
+    ) -> None:
+        """Verify a non-image file is not uploaded."""
+        from tests.conftest import get_csrf
+
+        # Given a PDF masquerading as an avatar
+        csrf = get_csrf(client)
+        data = {
+            "csrf_token": csrf,
+            "username": "testuser",
+            "email": "test@example.com",
+            "avatar": (io.BytesIO(b"not-an-image"), "doc.pdf", "application/pdf"),
+        }
+
+        # When posting the edit form
+        response = client.post(
+            "/profile/test-user-id", data=data, content_type="multipart/form-data"
+        )
+
+        # Then the upload is rejected
+        assert response.status_code == 200
+        mock_profile_svc.upload_avatar.assert_not_called()
+
+    def test_oversized_avatar_is_rejected(
+        self, client: FlaskClient, mock_profile_svc: MagicMock
+    ) -> None:
+        """Verify a file over 5 MB is not uploaded."""
+        from tests.conftest import get_csrf
+
+        # Given a 5 MB + 1 byte image
+        csrf = get_csrf(client)
+        big = b"x" * (5 * 1024 * 1024 + 1)
+        data = {
+            "csrf_token": csrf,
+            "username": "testuser",
+            "email": "test@example.com",
+            "avatar": (io.BytesIO(big), "huge.png", "image/png"),
+        }
+
+        # When posting the edit form
+        response = client.post(
+            "/profile/test-user-id", data=data, content_type="multipart/form-data"
+        )
+
+        # Then the upload is rejected
+        assert response.status_code == 200
+        mock_profile_svc.upload_avatar.assert_not_called()
+
+    @pytest.mark.usefixtures("_mock_profile_api")
+    def test_non_self_avatar_upload_returns_403(self, client: FlaskClient) -> None:
+        """Verify a user cannot upload an avatar to another profile."""
+        from tests.conftest import get_csrf
+
+        # Given a post to another user's profile
+        csrf = get_csrf(client)
+        data = {
+            "csrf_token": csrf,
+            "username": "otherperson",
+            "email": "other@example.com",
+            "avatar": (io.BytesIO(b"fake"), "me.png", "image/png"),
+        }
+
+        # When posting the edit form
+        response = client.post(
+            "/profile/other-user-id", data=data, content_type="multipart/form-data"
+        )
+
+        # Then it is forbidden
+        assert response.status_code == 403
