@@ -23,29 +23,39 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
 
       {# djlint:off #}
-      <fieldset class="fieldset" x-data="{ preview: '{{ user.avatar_url or '' }}' }">
+      {% set resolved_avatar = user_avatar_url(user) %}
+      <fieldset class="fieldset" x-data="{ preview: '{{ resolved_avatar or '' }}' }">
         <legend class="fieldset-legend">Avatar</legend>
-        <div class="flex items-center gap-4">
-          <div class="avatar {{ '' if user.avatar_url else 'avatar-placeholder' }}">
-            <div class="bg-neutral text-neutral-content w-16 rounded-full">
-              <template x-if="preview">
-                <img :src="preview" alt="{{ user.username }}" class="rounded-full" />
-              </template>
-              <template x-if="!preview">
-                <span>{{ (user.name_first or user.username)[0] | upper }}</span>
-              </template>
+        <div class="flex items-center gap-5">
+          <button type="button"
+                  class="group relative block shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-base-100 focus-visible:outline-none"
+                  @click="$refs.avatarInput.click()"
+                  aria-label="Choose a new avatar">
+            <div class="avatar {{ '' if resolved_avatar else 'avatar-placeholder' }}">
+              <div class="bg-neutral text-neutral-content w-20 rounded-full ring ring-base-300 ring-offset-base-100 ring-offset-2 transition-colors duration-200 group-hover:ring-primary">
+                <template x-if="preview">
+                  <img :src="preview" alt="{{ user.username }}" class="rounded-full" />
+                </template>
+                <template x-if="!preview">
+                  <span class="text-xl">{{ (user.name_first or user.username)[0] | upper }}</span>
+                </template>
+              </div>
             </div>
-          </div>
-          <div class="flex flex-col gap-2">
+            <span class="pointer-events-none absolute inset-0 flex items-center justify-center rounded-full bg-base-content/55 text-base-100 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+              <i class="fa-solid fa-camera text-lg"></i>
+            </span>
+          </button>
+          <div class="flex flex-col gap-1.5">
             <input type="file"
                    name="avatar"
+                   x-ref="avatarInput"
                    accept="image/png,image/jpeg,image/webp,image/gif"
-                   class="file-input file-input-sm w-full max-w-xs"
+                   class="file-input file-input-sm file-input-ghost w-full max-w-xs"
                    @change="preview = $event.target.files.length ? URL.createObjectURL($event.target.files[0]) : preview" />
             <span class="text-xs opacity-60">PNG, JPEG, WebP or GIF &middot; max {{ MAX_AVATAR_SIZE // (1024 * 1024) }} MB</span>
             {% if has_custom_avatar(user) %}
-              <label class="label cursor-pointer gap-2 text-sm">
-                <input type="checkbox" name="remove_avatar" class="checkbox checkbox-sm" />
+              <label class="label w-fit cursor-pointer gap-2 text-xs opacity-80 transition-opacity hover:opacity-100">
+                <input type="checkbox" name="remove_avatar" class="checkbox checkbox-xs checkbox-error" />
                 <span>Remove custom avatar</span>
               </label>
             {% endif %}

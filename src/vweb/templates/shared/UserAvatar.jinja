@@ -3,27 +3,7 @@
     size="w-10"
 #}
 
-{% if user.avatar_url %}
-
-  {% set avatar_url = user.avatar_url %}
-
-{% elif user.discord_profile and user.discord_profile.avatar_url %}
-
-  {% set avatar_url = user.discord_profile.avatar_url %}
-
-{% elif user.github_profile and user.github_profile.avatar_url %}
-
-  {% set avatar_url = user.github_profile.avatar_url %}
-
-{% elif user.google_profile and user.google_profile.avatar_url %}
-
-  {% set avatar_url = user.google_profile.avatar_url %}
-
-{% else %}
-
-  {% set avatar_url = none %}
-
-{% endif %}
+{% set avatar_url = user_avatar_url(user) %}
 
 {% if avatar_url %}
   <div class="avatar {{ size }}">
@@ -33,7 +13,9 @@
   </div>
 {% else %}
   {# Derive initials from the resolved display name so they match the name shown beside the avatar #}
+
   {% set name_words = user_display_name(user).split() %}
+
   <div class="avatar avatar-placeholder">
     <div class="bg-neutral text-neutral-content {{ size }} rounded-full">
       <span>{{ name_words[0][0] | upper }}{{ name_words[1][0] | upper if name_words | length > 1 else "" }}</span>

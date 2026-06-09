@@ -31,7 +31,7 @@ from vweb.lib.guards import (
     is_storyteller,
 )
 from vweb.lib.user_display import user_display_name
-from vweb.lib.user_profile import has_custom_avatar
+from vweb.lib.user_profile import has_custom_avatar, user_avatar_url
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -403,6 +403,7 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
     jinja_globals["is_storyteller"] = is_storyteller
     jinja_globals["is_self"] = is_self
     jinja_globals["has_custom_avatar"] = has_custom_avatar
+    jinja_globals["user_avatar_url"] = user_avatar_url
     jinja_globals["can_manage_campaign"] = can_manage_campaign
     jinja_globals["can_manage_npcs"] = can_manage_npcs
     jinja_globals["can_grant_experience"] = can_grant_experience
