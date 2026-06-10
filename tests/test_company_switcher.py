@@ -32,9 +32,7 @@ def test_company_monogram_has_accessible_label(client, mock_global_context) -> N
     assert 'aria-label="Test Company"' in body
 
 
-def test_company_dropdown_no_switch_forms_with_single_company(
-    client, mock_global_context
-) -> None:
+def test_company_dropdown_no_switch_forms_with_single_company(client, mock_global_context) -> None:
     """Verify the switch-company forms are absent when only one company is approved."""
     # Given the default single-company session
     campaign = mock_global_context.campaigns[0]

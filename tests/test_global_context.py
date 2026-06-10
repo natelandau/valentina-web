@@ -351,8 +351,10 @@ def test_hook_retries_on_user_not_found(app, mocker) -> None:
         }
     response = client.get("/")
 
-    # Then the hook retried and the request succeeded
-    assert response.status_code == 200
+    # Then the hook retried and the request proceeded to the entry redirect
+    # (zero campaigns now route to the company hub instead of rendering inline)
+    assert response.status_code == 302
+    assert "/home" in response.headers["Location"]
     assert mock_load.call_count == 2
 
 
