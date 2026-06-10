@@ -52,22 +52,23 @@ class QuickrollHandler:
         """Fetch a single quickroll by ID."""
         return self._svc.get_quickroll(self._parent_id, item_id)
 
-    def validate(self, form_data: dict[str, str]) -> list[str]:
+    def validate(self, form_data: dict[str, str]) -> dict[str, str]:
         """Validate quickroll form data.
 
         Args:
             form_data: Form field values keyed by field name.
 
         Returns:
-            List of validation error messages (empty if valid).
+            Errors keyed by field name (empty if valid).
         """
-        errors: list[str] = []
+        errors: dict[str, str] = {}
         if not form_data.get("name", "").strip():
-            errors.append("Name is required")
+            errors["name"] = "Name is required"
 
         trait_ids = QuickrollHandler._extract_trait_ids(form_data)
         if not trait_ids:
-            errors.append("At least one trait is required")
+            # Spans both trait fields, so it is a non-field error
+            errors["_general"] = "At least one trait is required"
 
         return errors
 

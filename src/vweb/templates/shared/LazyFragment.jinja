@@ -1,0 +1,20 @@
+{#def
+    url: str,
+    target_id: str,
+    spinner_class: str = "loading loading-spinner loading-md",
+    wrapper_class: str = "text-center py-8",
+#}
+{# HTMX lazy-load placeholder: fetch `url` on load and swap the response into this div.
+   Pass full literal class strings for the spinner/wrapper so the Tailwind scanner sees them. #}
+<div id="{{ target_id }}"
+     hx-get="{{ url }}"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+  {% if wrapper_class %}
+    <div class="{{ wrapper_class }}">
+      <span class="{{ spinner_class }}"></span>
+    </div>
+  {% else %}
+    <span class="{{ spinner_class }}"></span>
+  {% endif %}
+</div>

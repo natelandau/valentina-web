@@ -47,20 +47,20 @@ class CharacterInventoryHandler:
         """Fetch a single inventory item by ID."""
         return self._svc.get_inventory_item(self._parent_id, item_id)
 
-    def validate(self, form_data: dict[str, str]) -> list[str]:
+    def validate(self, form_data: dict[str, str]) -> dict[str, str]:
         """Validate inventory form data.
 
         Args:
             form_data: Form field values keyed by field name.
 
         Returns:
-            List of validation error messages (empty if valid).
+            Errors keyed by field name (empty if valid).
         """
-        errors: list[str] = []
+        errors: dict[str, str] = {}
         if not form_data.get("name", "").strip():
-            errors.append("Name is required")
+            errors["name"] = "Name is required"
         if not form_data.get("type", "").strip():
-            errors.append("Type is required")
+            errors["type"] = "Type is required"
         return errors
 
     def create_item(self, form_data: dict[str, str]) -> None:

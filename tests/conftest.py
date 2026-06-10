@@ -3,20 +3,27 @@
 from __future__ import annotations
 
 import re
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 from vclient.models.companies import CompanySettings
 from vclient.models.diceroll import DiceRollResultSchema
 from vclient.testing import (
+    CampaignBookFactory,
+    CampaignChapterFactory,
     CampaignFactory,
+    CharacterFactory,
     CompanyFactory,
     SyncFakeVClient,
-    SystemHealthFactory,
     UserFactory,
 )
 
+from tests.helpers import (
+    build_mock_options_service,
+    build_mock_system_service,
+    make_cache_store_mock,
+)
 from vweb.config import APISettings, RedisSettings, Settings
 from vweb.lib.cache.global_context import GlobalContext
 
@@ -51,6 +58,8 @@ CompanyFactory.build = staticmethod(_build_company_with_settings)  # type: ignor
 if TYPE_CHECKING:
     from flask import Flask
     from flask.testing import FlaskClient
+    from pytest_mock import MockerFixture
+    from vclient.models import Campaign, CampaignBook, CampaignChapter, Character
 
 
 @pytest.fixture
@@ -125,6 +134,72 @@ def mock_global_context() -> GlobalContext:
 
 
 @pytest.fixture
+def mock_campaign() -> Campaign:
+    """Build a factory campaign."""
+    return CampaignFactory.build(id="camp-1", name="Test Campaign")
+
+
+@pytest.fixture
+def mock_book() -> CampaignBook:
+    """Build a factory book."""
+    return CampaignBookFactory.build(
+        id="book-1",
+        campaign_id="camp-1",
+        name="The Gathering Storm",
+        number=1,
+        description="A tale of beginnings.",
+    )
+
+
+@pytest.fixture
+def mock_chapters() -> list[CampaignChapter]:
+    """Build factory chapters."""
+    return [
+        CampaignChapterFactory.build(id="ch-1", book_id="book-1", number=1, name="Chapter One"),
+        CampaignChapterFactory.build(id="ch-2", book_id="book-1", number=2, name="Chapter Two"),
+        CampaignChapterFactory.build(id="ch-3", book_id="book-1", number=3, name="Chapter Three"),
+    ]
+
+
+@pytest.fixture
+def mock_character() -> Character:
+    """Build a factory character with profile fields owned by the test session user."""
+    return CharacterFactory.build(
+        id="char-123",
+        name="Test Character",
+        name_full="Test Character",
+        name_first="Test",
+        name_last="Character",
+        name_nick="Testy",
+        biography="A test biography",
+        nature="Brave",
+        demeanor="Calm",
+        character_class="VAMPIRE",
+        campaign_id="camp-1",
+        user_player_id="test-user-id",
+        concept_id=None,
+        specialties=[],
+        starting_points=0,
+    )
+
+
+@pytest.fixture
+def mock_asset() -> SimpleNamespace:
+    """Build a stand-in asset object."""
+    return SimpleNamespace(
+        id="asset-1",
+        public_url="https://cdn.example.com/img.jpg",
+        original_filename="img.jpg",
+    )
+
+
+@pytest.fixture
+def mock_cache_store(mocker: MockerFixture) -> dict:
+    """Provide a dict-backed mock of the shared cache used by the cache domains."""
+    return make_cache_store_mock(mocker, "vweb.lib.cache.base.cache")
+
+
+@pytest.fixture
 def fake_vclient(app):
     """Provide a SyncFakeVClient that intercepts all vclient HTTP calls.
 
@@ -153,55 +228,14 @@ def _mock_api(mocker, mock_global_context) -> None:
 
     # The footer renders system health for approved users, so every page render
     # would otherwise hit the live health endpoint.
-    mock_system_svc = mocker.patch("vweb.lib.cache.system_status.sync_system_service")
-    mock_system_svc.return_value.health.return_value = SystemHealthFactory.build()
+    mocker.patch(
+        "vweb.lib.cache.system_status.sync_system_service",
+        return_value=build_mock_system_service(),
+    )
 
     mocker.patch(
         "vweb.lib.cache.options.sync_options_service",
-        return_value=MagicMock(
-            get_options=MagicMock(
-                return_value={
-                    "companies": {},
-                    "characters": {
-                        "CharacterClass": [
-                            "VAMPIRE",
-                            "WEREWOLF",
-                            "MAGE",
-                            "HUNTER",
-                            "GHOUL",
-                            "MORTAL",
-                        ],
-                        "CharacterType": ["PLAYER", "NPC", "STORYTELLER"],
-                        "AutoGenExperienceLevel": ["NEW", "INTERMEDIATE", "ADVANCED", "ELITE"],
-                        "AbilityFocus": ["JACK_OF_ALL_TRADES", "BALANCED", "SPECIALIST"],
-                        "InventoryItemType": [
-                            "BOOK",
-                            "CONSUMABLE",
-                            "ENCHANTED",
-                            "EQUIPMENT",
-                            "OTHER",
-                            "WEAPON",
-                        ],
-                        "GameVersion": ["V4", "V5"],
-                        "HunterCreed": [
-                            "JUDGE",
-                            "DEFENDER",
-                            "INNOCENT",
-                            "MARTYR",
-                            "REDEEMER",
-                            "VISIONARY",
-                        ],
-                        "TraitModifyCurrency": ["NO_COST", "XP", "STARTING_POINTS"],
-                    },
-                    "users": {"UserRole": ["ADMIN", "STORYTELLER", "PLAYER", "UNAPPROVED"]},
-                    "gameplay": {
-                        "DiceSize": [4, 6, 8, 10, 20, 100],
-                        "RollResultType": ["SUCCESS", "FAILURE", "BOTCH", "CRITICAL", "OTHER"],
-                    },
-                    "assets": {},
-                }
-            )
-        ),
+        return_value=build_mock_options_service(),
     )
 
 

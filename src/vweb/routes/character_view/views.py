@@ -16,12 +16,13 @@ from flask import (
 from flask.views import MethodView
 from vclient import sync_character_blueprint_service, sync_characters_service
 
-from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import get_character_and_campaign
+from vweb.lib.catalog import catalog
+from vweb.lib.crud.routing import register_crud_table_routes
 from vweb.lib.guards import can_edit_character
+from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
-from vweb.lib.jinja import htmx_response, hx_redirect
 from vweb.routes.character_view.views_inventory import CharacterInventoryTableView
 from vweb.routes.character_view.views_notes import CharacterNotesTableView
 
@@ -201,7 +202,7 @@ class CharacterDeleteView(MethodView):
         user = g.requesting_user
         char_svc = sync_characters_service(on_behalf_of=user.id, company_id=session["company_id"])
         char_svc.delete(character_id)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
 
         return hx_redirect("/")
 
@@ -243,8 +244,7 @@ class ImageUploadView(MethodView):
             character=character,
             assets=assets,
         )
-        flash_html = catalog.render("shared.layout.FlashMessage", oob=True)
-        return htmx_response(content, flash_html)
+        return htmx_response_with_flash(content)
 
 
 bp.add_url_rule(
@@ -285,8 +285,7 @@ class ImageDeleteView(MethodView):
             character=character,
             assets=assets,
         )
-        flash_html = catalog.render("shared.layout.FlashMessage", oob=True)
-        return htmx_response(content, flash_html)
+        return htmx_response_with_flash(content)
 
 
 bp.add_url_rule(
@@ -296,57 +295,16 @@ bp.add_url_rule(
 )
 
 
-# ---------------------------------------------------------------------------
-# Character notes CRUD table
-# ---------------------------------------------------------------------------
-_notes_view = CharacterNotesTableView.as_view("character_notes")
-bp.add_url_rule(
-    "/character/<string:parent_id>/notes/items",
-    defaults={"item_id": None},
-    view_func=_notes_view,
-    methods=["GET", "POST"],
-)
-bp.add_url_rule(
-    "/character/<string:parent_id>/notes/items/<string:item_id>",
-    view_func=_notes_view,
-    methods=["POST", "DELETE"],
-)
-bp.add_url_rule(
-    "/character/<string:parent_id>/notes/items/form",
-    defaults={"item_id": None},
-    view_func=CharacterNotesTableView.as_view("character_notes_form"),
-    methods=["GET"],
-)
-bp.add_url_rule(
-    "/character/<string:parent_id>/notes/items/form/<string:item_id>",
-    view_func=CharacterNotesTableView.as_view("character_notes_form_edit"),
-    methods=["GET"],
+register_crud_table_routes(
+    bp,
+    CharacterNotesTableView,
+    base_path="/character/<string:parent_id>/notes/items",
+    name_prefix="character_notes",
 )
 
-
-# ---------------------------------------------------------------------------
-# Character inventory CRUD table
-# ---------------------------------------------------------------------------
-_inventory_view = CharacterInventoryTableView.as_view("character_inventory")
-bp.add_url_rule(
-    "/character/<string:parent_id>/inventory/items",
-    defaults={"item_id": None},
-    view_func=_inventory_view,
-    methods=["GET", "POST"],
-)
-bp.add_url_rule(
-    "/character/<string:parent_id>/inventory/items/<string:item_id>",
-    view_func=_inventory_view,
-    methods=["POST", "DELETE"],
-)
-bp.add_url_rule(
-    "/character/<string:parent_id>/inventory/items/form",
-    defaults={"item_id": None},
-    view_func=CharacterInventoryTableView.as_view("character_inventory_form"),
-    methods=["GET"],
-)
-bp.add_url_rule(
-    "/character/<string:parent_id>/inventory/items/form/<string:item_id>",
-    view_func=CharacterInventoryTableView.as_view("character_inventory_form_edit"),
-    methods=["GET"],
+register_crud_table_routes(
+    bp,
+    CharacterInventoryTableView,
+    base_path="/character/<string:parent_id>/inventory/items",
+    name_prefix="character_inventory",
 )

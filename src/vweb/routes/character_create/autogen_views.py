@@ -13,17 +13,17 @@ if TYPE_CHECKING:
 
 from vclient.exceptions import APIError
 
-from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import fetch_campaign_or_404
-from vweb.lib.jinja import hx_redirect
+from vweb.lib.catalog import catalog
+from vweb.lib.htmx import hx_redirect
 from vweb.routes.character_create import bp
 from vweb.routes.character_create.autogen_services import (
     finalize_session,
     get_session,
     start_session,
 )
-from vweb.routes.character_create.picker_views import (
+from vweb.routes.character_create.picker_services import (
     build_characters_data,
     selection_card_context,
 )
@@ -109,7 +109,7 @@ class MultiAutogenFinalizeView(MethodView):
             flash("Failed to finalize character. Please try again.", "error")
             return hx_redirect(url_for("character_create.selection_page", campaign_id=campaign_id))
 
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         flash("Character created successfully!", "success")
         return hx_redirect(url_for("character_view.character", character_id=new_char.id))
 

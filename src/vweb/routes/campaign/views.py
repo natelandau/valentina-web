@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, Response, abort, g, render_template, request, session, url_for
+from flask import Blueprint, Response, abort, g, request, session, url_for
 from flask.views import MethodView
 from vclient import sync_campaigns_service
 from vclient.models import CampaignCreate, CampaignUpdate
 
-from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import (
     fetch_campaign_or_404,
@@ -15,8 +14,9 @@ from vweb.lib.api import (
     get_user_campaign_experience,
     validate_and_submit_experience,
 )
+from vweb.lib.catalog import catalog
 from vweb.lib.guards import can_grant_experience, can_manage_campaign
-from vweb.lib.jinja import hx_redirect
+from vweb.lib.htmx import hx_redirect
 
 bp = Blueprint("campaign", __name__)
 
@@ -137,7 +137,7 @@ class CampaignCreateView(MethodView):
             on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         new_campaign = service.create(CampaignCreate(name=name, description=description or None))
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
 
         return hx_redirect(url_for("campaign.campaign", campaign_id=new_campaign.id))
 
@@ -182,7 +182,7 @@ class CampaignUpdateView(MethodView):
             on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         service.update(campaign_id, CampaignUpdate(name=name, description=description or None))
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
 
         return hx_redirect(url_for("campaign.campaign", campaign_id=campaign_id))
 
@@ -215,7 +215,7 @@ class CampaignDeleteView(MethodView):
             on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         service.delete(campaign_id)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         session.pop("last_campaign_id", None)
 
         return hx_redirect("/")
@@ -268,7 +268,7 @@ class CampaignUpdateDangerDesperationView(MethodView):
             on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         campaign = service.update(campaign_id, update)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         return catalog.render(
             "campaign.partials.DangerDesperation",
             campaign=campaign,
@@ -309,7 +309,6 @@ class CampaignExperienceFormView(MethodView):
             abort(403)
         return catalog.render(
             "campaign.partials.ExperienceForm",
-            user_id=user_id,
             campaign_id=campaign_id,
             campaign_name=get_campaign_name(campaign_id),
         )
@@ -331,7 +330,6 @@ class CampaignAddExperienceView(MethodView):
         if errors:
             return catalog.render(
                 "campaign.partials.ExperienceForm",
-                user_id=user_id,
                 campaign_id=campaign_id,
                 campaign_name=get_campaign_name(campaign_id),
                 form_data=form_data,
@@ -339,8 +337,8 @@ class CampaignAddExperienceView(MethodView):
             )
 
         card_url = url_for("campaign.experience_card", campaign_id=campaign_id)
-        return render_template(
-            "partials/crud_refetch.html",
+        return catalog.render(
+            "shared.crud.Refetch",
             table_url=card_url,
             table_target_id="index-experience-card",
         )

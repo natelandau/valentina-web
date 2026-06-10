@@ -14,14 +14,8 @@
 
   <div class="card surface-card">
     <div class="card-body">
-      <div id="crud-campaign_notes"
-           hx-get="{{ url_for('campaign_notes.notes_table', campaign_id=campaign.id) }}?editable={{ editable_param }}"
-           hx-trigger="load"
-           hx-swap="innerHTML">
-        <div class="text-center py-8">
-          <span class="loading loading-spinner loading-md"></span>
-        </div>
-      </div>
+      <shared.LazyFragment target_id="crud-campaign_notes"
+                           url={{ url_for('campaign_notes.notes_table', campaign_id=campaign.id) ~ "?editable=" ~ editable_param }} />
     </div>
   </div>
 </div>

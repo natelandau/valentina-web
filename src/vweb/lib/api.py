@@ -242,5 +242,5 @@ def validate_and_submit_experience(
     if cp_amount > 0:
         svc.add_cool_points(user_id, campaign_id, amount=cp_amount)
 
-    cache.global_context.clear(session["company_id"], session["user_id"])
+    cache.global_context.clear_current()
     return []

@@ -43,6 +43,11 @@ class CrudHandler(Protocol[T_co]):
         """Delete an item by ID."""
         ...
 
-    def validate(self, form_data: dict[str, str]) -> list[str]:
-        """Validate form data and return a list of error messages."""
+    def validate(self, form_data: dict[str, str]) -> dict[str, str]:
+        """Validate form data and return errors keyed by field name.
+
+        Use the form field name as the key when a message targets a single
+        field; use the ``"_general"`` key for non-field errors. Return an
+        empty dict when the data is valid.
+        """
         ...

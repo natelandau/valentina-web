@@ -51,12 +51,12 @@
 <div class="flex flex-wrap items-center gap-2 mt-1 text-sm opacity-70">
   {% if user.name_first and user.name_last %}
     <span>{{ user.name_first }} {{ user.name_last }}</span>
-    <span>&middot;</span>
+    <span>·</span>
   {% endif %}
   <span class="badge badge-sm badge-outline">{{ user.role }}</span>
-  <span>&middot;</span>
+  <span>·</span>
   <span>Joined {{ user.date_created | humanize_date }}</span>
-  <span>&middot;</span>
+  <span>·</span>
   <span>{{ character_count }} character{{ "s" if character_count != 1 else "" }}</span>
 </div>
 </shared.PageHeader>
@@ -80,12 +80,9 @@
 
   <div class="card surface-card">
     <div class="card-body">
-      <div id="crud-quickrolls"
-           hx-get="{{ url_for("profile.quickrolls", user_id=user.id) }}?editable={{ editable_param }}"
-           hx-trigger="load"
-           hx-swap="innerHTML">
-        <span class="loading loading-spinner loading-md"></span>
-      </div>
+      <shared.LazyFragment target_id="crud-quickrolls"
+                           url={{ url_for("profile.quickrolls", user_id=user.id) ~ "?editable=" ~ editable_param }}
+                           wrapper_class="" />
     </div>
   </div>
 </div>

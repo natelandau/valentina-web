@@ -6,6 +6,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from flask import session
 from loguru import logger
 from vclient import (
     sync_campaigns_service,
@@ -161,3 +162,15 @@ def clear(company_id: str, user_id: str) -> None:
     """
     cache.delete(_ts_key(company_id))
     cache.delete(_ctx_key(company_id, user_id))
+
+
+def clear_current() -> None:
+    """Clear the requesting user's global context, scoped from the Flask session.
+
+    Call after any local mutation that affects the user's global context
+    (campaigns, characters, books, notes, users, etc.) so the next request
+    rebuilds ``g.global_context`` with fresh API data. Requires an active
+    request with ``company_id`` and ``user_id`` in the session; pass explicit
+    ids to :func:`clear` outside that context (e.g. auth flows).
+    """
+    clear(session["company_id"], session["user_id"])

@@ -9,8 +9,8 @@ from __future__ import annotations
 from flask import Blueprint, request, session
 from flask.views import MethodView
 
-from vweb import catalog
 from vweb.lib.api import fetch_campaign_or_404
+from vweb.lib.catalog import catalog
 from vweb.routes.player_list import services
 
 bp = Blueprint("player_list", __name__)

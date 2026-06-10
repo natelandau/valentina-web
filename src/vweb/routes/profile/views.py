@@ -8,7 +8,6 @@ from flask import (
     Blueprint,
     abort,
     g,
-    render_template,
     request,
     session,
     url_for,
@@ -20,12 +19,13 @@ if TYPE_CHECKING:
 from vclient import sync_users_service
 from vclient.models.users import UserUpdate
 
-from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import get_campaign_name, validate_and_submit_experience
+from vweb.lib.catalog import catalog
+from vweb.lib.crud.routing import register_crud_table_routes
 from vweb.lib.guards import can_grant_experience, is_self
+from vweb.lib.htmx import hx_redirect
 from vweb.lib.image_uploads import handle_avatar_delete, handle_avatar_upload
-from vweb.lib.jinja import hx_redirect
 from vweb.routes.profile.views_quickrolls import QuickrollsTableView
 
 bp = Blueprint("profile", __name__)
@@ -104,7 +104,7 @@ class ProfileView(MethodView):
             email=form_data["email"].strip(),
         )
         svc.update(user_id, request=update_request)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
 
         return hx_redirect(url_for("profile.profile", user_id=user_id))
 
@@ -190,8 +190,8 @@ class AddExperienceView(MethodView):
             )
 
         card_url = url_for("profile.experience_card", user_id=user_id)
-        return render_template(
-            "partials/crud_refetch.html",
+        return catalog.render(
+            "shared.crud.Refetch",
             table_url=card_url,
             table_target_id="experience-card",
         )
@@ -233,26 +233,9 @@ bp.add_url_rule(
 )
 bp.add_url_rule("/profile/<string:user_id>/edit", view_func=EditProfileView.as_view("edit_profile"))
 
-_quickrolls_view = QuickrollsTableView.as_view("quickrolls")
-bp.add_url_rule(
-    "/profile/<string:user_id>/quickrolls",
-    defaults={"item_id": None},
-    view_func=_quickrolls_view,
-    methods=["GET", "POST"],
-)
-bp.add_url_rule(
-    "/profile/<string:user_id>/quickrolls/<string:item_id>",
-    view_func=_quickrolls_view,
-    methods=["POST", "DELETE"],
-)
-bp.add_url_rule(
-    "/profile/<string:user_id>/quickrolls/form",
-    defaults={"item_id": None},
-    view_func=QuickrollsTableView.as_view("quickrolls_form"),
-    methods=["GET"],
-)
-bp.add_url_rule(
-    "/profile/<string:user_id>/quickrolls/form/<string:item_id>",
-    view_func=QuickrollsTableView.as_view("quickrolls_form_edit"),
-    methods=["GET"],
+register_crud_table_routes(
+    bp,
+    QuickrollsTableView,
+    base_path="/profile/<string:user_id>/quickrolls",
+    name_prefix="quickrolls",
 )

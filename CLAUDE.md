@@ -36,7 +36,10 @@ Character routes split into `character_view`, `character_trait_edit` (spend type
 ### Conventions
 
 - **`MethodView` only**, not decorated functions. Register via `bp.add_url_rule("/path", view_func=MyView.as_view("name"))`. Always pass `methods=` when handling more than GET.
-- Render templates via `catalog.render("namespace.ComponentName", **kwargs)` — never `render_template()` except for shared partials in `templates/partials/`.
+- Render templates via `catalog.render("namespace.ComponentName", **kwargs)` — `render_template()` is no longer used anywhere.
+- **File roles:** `views.py` (MethodViews + all URL registration, owns `bp`), `handlers.py` (CrudHandler implementations), `services.py` (stateless business logic / API orchestration / validation; no request/response objects, no `flash()`/`redirect()`). Split into `views_<feature>.py` / `handlers_<feature>.py` only when a file would exceed ~300 lines (e.g. `auth/views_oauth.py`, `character_view/views_inventory.py`); sibling view modules define classes only, `views.py` imports and registers them. Each character_create flow pairs `<flow>_views.py` + `<flow>_services.py`.
+- CRUD table URL registration goes through `register_crud_table_routes` (`lib/crud/routing.py`).
+- **Template placement:** `partials/` = rendered from Python via `catalog.render("ns.partials.X", ...)`; `components/` = embedded as JinjaX tags (`<ns.components.X />`). A template used both ways stays in `partials/`.
 
 ## Key Helpers
 
@@ -52,17 +55,17 @@ Character routes split into `character_view`, `character_trait_edit` (spend type
 - `cache.blueprint.traits()` / `cache.blueprint.trait(trait_id)` — blueprint traits (1-hour TTL)
 - `cache.statistics.get(scope_type, scope_id)` — roll statistics (30s TTL)
 - `cache.campaign_content.books(campaign_id)` / `cache.campaign_content.chapters(campaign_id, book_id)` — book/chapter lists
-- `cache.global_context.load(company_id, user_id)` — per-user global context; `cache.global_context.clear(company_id, user_id)` to invalidate after local mutations
+- `cache.global_context.load(company_id, user_id)` — per-user global context; `cache.global_context.clear_current()` (session-scoped) to invalidate after local mutations, or `clear(company_id, user_id)` when ids come from elsewhere (e.g. auth flows)
 
 All domains are built on `cache.base.cached_fetch(key, fetch, strategy)`, which provides single-flight (thundering-herd) protection by default. Freshness strategies: `PureTTL` (pure TTL expiry), `ShortTTL` (same as PureTTL, intent-named for low-TTL eventually-consistent caches), `TimestampValidated` (TTL + external timestamp check for the global context).
 
 **Jinja globals still exist for templates:** `get_options()` (`get_options().characters.character_class`), `get_all_traits()`, `get_system_health()`, `get_all_terms()` — their dict keys are unchanged. Python code calls `cache.<domain>...` directly.
 
-**`GlobalContext` gotcha:** `characters_by_campaign` and `characters` contain ALL characters including other players'. **Routes must filter before rendering.** The `inject_global_context` before_request hook populates `g.global_context` and resolves `g.requesting_user` from `session["user_id"]`. After local mutations, call `cache.global_context.clear(company_id, user_id)` to invalidate the cached context.
+**`GlobalContext` gotcha:** `characters_by_campaign` and `characters` contain ALL characters including other players'. **Routes must filter before rendering.** The `inject_global_context` before_request hook populates `g.global_context` and resolves `g.requesting_user` from `session["user_id"]`. After local mutations, call `cache.global_context.clear_current()` to invalidate the cached context.
 
 ### Auth (OAuth)
 
-Authlib with Discord/GitHub/Google. All resolve via `routes/auth/services.py` (provider ID → email → create UNAPPROVED). `require_auth` before_request hook redirects unauthenticated → landing, UNAPPROVED → `/pending-approval`. 30-day permanent sessions in Redis, keyed by `session["user_id"]`.
+Authlib with Discord/GitHub/Google/Apple. Provider authorize/callback views live in `routes/auth/views_oauth.py`, identity link/unlink in `views_identity.py`, logout/company selection (and `bp`) in `views.py`; all resolve via `routes/auth/services.py` (provider ID → email → create UNAPPROVED). `require_auth` before_request hook redirects unauthenticated → landing, UNAPPROVED → `/pending-approval`. 30-day permanent sessions in Redis, keyed by `session["user_id"]`.
 
 ### Scanner Block Hook (`lib/hooks.py`)
 
@@ -73,17 +76,16 @@ Authlib with Discord/GitHub/Google. All resolve via `routes/auth/services.py` (p
 | Category          | Location                                     | Usage                                              |
 | ----------------- | -------------------------------------------- | -------------------------------------------------- |
 | Shared components | `templates/shared/`                          | `<shared.PageLayout>`, `<shared.CommonButton>`     |
-| Shared partials   | `templates/partials/`                        | `render_template("partials/search_bar.html")`      |
 | Error pages       | `templates/errors/`                          | Error handler templates                            |
 | Route pages       | `routes/<name>/templates/<name>/`            | `catalog.render("book.BookDetail")`                |
 | Route partials    | `routes/<name>/templates/<name>/partials/`   | `catalog.render("book.partials.BookContent", ...)` |
 | Route components  | `routes/<name>/templates/<name>/components/` | `<chapter.components.ChapterNav>`                  |
 
-The inner `<name>/` provides the JinjaX namespace. `render_template()` is **only** for shared partials.
+The inner `<name>/` provides the JinjaX namespace.
 
 ### HTMX OOB + Flash
 
-Flask `flash()` messages render inside `<div id="flash-messages">` via `<shared.layout.FlashMessage />`. HTMX partial swaps lose flashes silently — **any HTMX endpoint calling `flash()` must also OOB-swap the flash container**. Use `htmx_response_with_flash(content)` from `vweb.lib.jinja` (or `htmx_response(content, *oob)` when you need to compose additional OOB swaps); OOB-capable components accept `oob: bool = False`:
+Flask `flash()` messages render inside `<div id="flash-messages">` via `<shared.layout.FlashMessage />`. HTMX partial swaps lose flashes silently — **any HTMX endpoint calling `flash()` must also OOB-swap the flash container**. Use `htmx_response_with_flash(content)` from `vweb.lib.htmx` (or `htmx_response(content, *oob)` when you need to compose additional OOB swaps); OOB-capable components accept `oob: bool = False`:
 
 ```python
 return htmx_response_with_flash(content)
@@ -109,9 +111,9 @@ Use `@plugin "daisyui" { themes: name --default; }`. Do NOT use `@plugin "daisyu
 
 Tailwind v4's JIT scanner only sees **literal** class strings in templates at build time. Classes built at runtime (e.g. `"col-span-" ~ col_span`, `"text-" ~ color`) are invisible to the scanner and won't get CSS rules generated — the class lands in the rendered HTML but has no effect. Safelist them in `src/vweb/static/css/input.css` via `@source inline("...")`. Already covered: `col-span-1..4` + `col-span-full` and the daisyUI `link-*` variants.
 
-## CRUD Table Framework (`lib/crud_view.py`)
+## CRUD Table Framework (`lib/crud/`)
 
-`CrudTableView` handles GET/POST/DELETE, sorting, validation, cache invalidation, and refetch-after-mutation for inline CRUD tables. Each route subclasses it (~8 lines) plus a handler implementing `CrudHandler` (`lib/crud_handler.py`) and a form template. Shared visuals: `templates/shared/crud/CrudTable.jinja` + `CrudForm.jinja`. `CrudTable.jinja` accepts `editable: bool = True`; parents thread `?editable=true/false` on HTMX load URLs. CSRF via `hx-headers` on `<body>` in `PageLayout.jinja`. Copy an existing subclass when adding a new table.
+`CrudTableView` (`lib/crud/view.py`) handles GET/POST/DELETE, sorting, validation, cache invalidation, and refetch-after-mutation for inline CRUD tables. Each route subclasses it (~8 lines) plus a handler implementing `CrudHandler` (`lib/crud/handler.py`) and a form template. `CrudHandler.validate` returns `dict[str, str]` mapping field name → message, with `"_general"` for non-field errors (empty dict when valid). Shared visuals: `templates/shared/crud/CrudTable.jinja` + `CrudForm.jinja`. `CrudTable.jinja` accepts `editable: bool = True`; parents thread `?editable=true/false` on HTMX load URLs. CSRF via `hx-headers` on `<body>` in `PageLayout.jinja`. Copy an existing subclass when adding a new table.
 
 ## Testing
 
@@ -128,7 +130,7 @@ Tailwind v4's JIT scanner only sees **literal** class strings in templates at bu
 
 - **When to use which:** factories for data; `fake_vclient` for code calling `sync_*` factories; `MagicMock()` only for service objects needing `side_effect` or handler/cache mocks.
 - Other shared fixtures: `mock_global_context` (factory-built `GlobalContext`), `get_csrf(client)`. Don't duplicate in test files.
-- **OAuth tests:** mock `oauth.discord`/`oauth.google` and `resolve_or_create_discord_user`; pre-seed `user_id` via `client.session_transaction()`.
+- **OAuth tests:** patch `oauth`, `lookup_user_companies`, and `identify_in_companies` where used (`routes.auth.views_oauth` for login/callback, `views_identity` for link/unlink, `views` for company selection); pre-seed `user_id` via `client.session_transaction()`.
 
 ## Code Style
 

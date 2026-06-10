@@ -42,7 +42,7 @@ repos:
       - id: detect-private-key
         # These files contain PEM armor markers as documentation and as code that
         # rebuilds them from a bare base64 body, not as real key material.
-        exclude: ^(docs/oauth-apple\.md|src/vweb/lib/apple_oauth\.py)$
+        exclude: ^(docs/oauth-apple\.md|src/vweb/routes/auth/apple_oauth\.py)$
       - id: fix-byte-order-marker
       - id: mixed-line-ending
       - id: trailing-whitespace

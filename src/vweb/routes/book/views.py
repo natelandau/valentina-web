@@ -8,16 +8,17 @@ from flask import Blueprint, abort, flash, redirect, request, session, url_for
 from flask.views import MethodView
 from vclient import sync_books_service
 
-from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import (
     count_notes,
     fetch_book_or_404,
     fetch_campaign_or_404,
 )
+from vweb.lib.catalog import catalog
+from vweb.lib.crud.routing import register_crud_table_routes
 from vweb.lib.guards import can_manage_campaign
+from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
-from vweb.lib.jinja import htmx_response_with_flash, hx_redirect
 from vweb.routes.book.views_notes import BookNotesTableView
 
 if TYPE_CHECKING:
@@ -132,7 +133,7 @@ class BookCreateView(MethodView):
             campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
         )
         new_book = books_service.create(name=name, description=description or None)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         cache.campaign_content.clear(session["company_id"], campaign_id=campaign_id)
 
         flash(f"Created book: {name}", "success")
@@ -228,7 +229,7 @@ class BookDetailView(MethodView):
         updated_book = books_service.update(book_id, name=name, description=description)
         if number != book.number:
             updated_book = books_service.renumber(book_id, number)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         cache.campaign_content.clear(session["company_id"], campaign_id=campaign_id)
 
         assets = books_service.list_all_assets(book_id)
@@ -260,7 +261,7 @@ class BookDetailView(MethodView):
             campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
         )
         books_service.delete(book.id)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         cache.campaign_content.clear(
             session["company_id"], campaign_id=campaign_id, book_id=book.id
         )
@@ -350,28 +351,11 @@ bp.add_url_rule(
     methods=["GET", "POST"],
 )
 
-_book_notes_view = BookNotesTableView.as_view("book_notes")
-bp.add_url_rule(
-    "/campaign/<campaign_id>/book/<book_id>/notes",
-    defaults={"item_id": None},
-    view_func=_book_notes_view,
-    methods=["GET", "POST"],
-)
-bp.add_url_rule(
-    "/campaign/<campaign_id>/book/<book_id>/notes/<string:item_id>",
-    view_func=_book_notes_view,
-    methods=["POST", "DELETE"],
-)
-bp.add_url_rule(
-    "/campaign/<campaign_id>/book/<book_id>/notes/form",
-    defaults={"item_id": None},
-    view_func=BookNotesTableView.as_view("book_notes_form"),
-    methods=["GET"],
-)
-bp.add_url_rule(
-    "/campaign/<campaign_id>/book/<book_id>/notes/form/<string:item_id>",
-    view_func=BookNotesTableView.as_view("book_notes_form_edit"),
-    methods=["GET"],
+register_crud_table_routes(
+    bp,
+    BookNotesTableView,
+    base_path="/campaign/<campaign_id>/book/<book_id>/notes",
+    name_prefix="book_notes",
 )
 
 bp.add_url_rule(

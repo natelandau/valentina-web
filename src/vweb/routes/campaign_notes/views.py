@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING, Any
 from flask import Blueprint, abort, request, session
 from flask.views import MethodView
 
-from vweb import catalog
 from vweb.lib.api import fetch_campaign_or_404
+from vweb.lib.catalog import catalog
+from vweb.lib.crud.routing import register_crud_table_routes
 from vweb.lib.crud.view import Column, CrudTableView
 from vweb.routes.campaign_notes.handlers import CampaignNotesHandler
 
@@ -59,26 +60,10 @@ bp.add_url_rule(
     methods=["GET"],
 )
 
-_campaign_notes_view = CampaignNotesTableView.as_view("notes_table")
-bp.add_url_rule(
-    "/campaign/<string:campaign_id>/notes/items",
-    defaults={"item_id": None},
-    view_func=_campaign_notes_view,
-    methods=["GET", "POST"],
-)
-bp.add_url_rule(
-    "/campaign/<string:campaign_id>/notes/items/<string:item_id>",
-    view_func=_campaign_notes_view,
-    methods=["POST", "DELETE"],
-)
-bp.add_url_rule(
-    "/campaign/<string:campaign_id>/notes/items/form",
-    defaults={"item_id": None},
-    view_func=CampaignNotesTableView.as_view("notes_form"),
-    methods=["GET"],
-)
-bp.add_url_rule(
-    "/campaign/<string:campaign_id>/notes/items/form/<string:item_id>",
-    view_func=CampaignNotesTableView.as_view("notes_form_edit"),
-    methods=["GET"],
+register_crud_table_routes(
+    bp,
+    CampaignNotesTableView,
+    base_path="/campaign/<string:campaign_id>/notes/items",
+    name_prefix="notes",
+    table_endpoint="notes_table",
 )

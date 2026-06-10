@@ -113,11 +113,6 @@
         'ignore::pytest.PytestUnraisableExceptionWarning',
         'ignore:unclosed.*:ResourceWarning',
     ]
-    markers = [
-        "drop_db: drops the database before the test creating fresh data",
-        "no_db: marks tests as not needing a database",
-        "serial",
-    ]
     testpaths = ["tests"]
     timeout = 10
     xfail_strict = true

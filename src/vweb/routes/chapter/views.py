@@ -8,16 +8,17 @@ from flask import Blueprint, abort, flash, request, session, url_for
 from flask.views import MethodView
 from vclient import sync_chapters_service
 
-from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import (
     count_notes,
     fetch_book_or_404,
     fetch_chapter_or_404,
 )
+from vweb.lib.catalog import catalog
+from vweb.lib.crud.routing import register_crud_table_routes
 from vweb.lib.guards import can_manage_campaign
+from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
-from vweb.lib.jinja import htmx_response_with_flash, hx_redirect
 from vweb.routes.chapter.views_notes import ChapterNotesTableView
 
 if TYPE_CHECKING:
@@ -130,7 +131,7 @@ class ChapterDetailView(MethodView):
         fetch_book_or_404(campaign_id, book_id)
         chapters_service = _chapters_service(campaign_id, book_id)
         chapters_service.delete(chapter_id)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         cache.campaign_content.clear(
             session["company_id"], campaign_id=campaign_id, book_id=book_id
         )
@@ -196,7 +197,7 @@ class ChapterEditView(MethodView):
         updated = chapters_service.update(chapter_id, name=name, description=description)
         if number != chapter.number:
             updated = chapters_service.renumber(chapter_id, number)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         cache.campaign_content.clear(session["company_id"], book_id=book_id)
 
         assets = chapters_service.list_all_assets(chapter_id)
@@ -260,7 +261,7 @@ class ChapterCreateView(MethodView):
 
         chapters_service = _chapters_service(campaign_id, book_id)
         new_chapter = chapters_service.create(name=name, description=description)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         cache.campaign_content.clear(
             session["company_id"], campaign_id=campaign_id, book_id=book_id
         )
@@ -328,28 +329,11 @@ class ChapterImageDeleteView(MethodView):
         return htmx_response_with_flash(content_html)
 
 
-_chapter_notes_view = ChapterNotesTableView.as_view("chapter_notes")
-bp.add_url_rule(
-    "/campaign/<campaign_id>/book/<book_id>/chapter/<chapter_id>/crud-notes",
-    defaults={"item_id": None},
-    view_func=_chapter_notes_view,
-    methods=["GET", "POST"],
-)
-bp.add_url_rule(
-    "/campaign/<campaign_id>/book/<book_id>/chapter/<chapter_id>/crud-notes/<string:item_id>",
-    view_func=_chapter_notes_view,
-    methods=["POST", "DELETE"],
-)
-bp.add_url_rule(
-    "/campaign/<campaign_id>/book/<book_id>/chapter/<chapter_id>/crud-notes/form",
-    defaults={"item_id": None},
-    view_func=ChapterNotesTableView.as_view("chapter_notes_form"),
-    methods=["GET"],
-)
-bp.add_url_rule(
-    "/campaign/<campaign_id>/book/<book_id>/chapter/<chapter_id>/crud-notes/form/<string:item_id>",
-    view_func=ChapterNotesTableView.as_view("chapter_notes_form_edit"),
-    methods=["GET"],
+register_crud_table_routes(
+    bp,
+    ChapterNotesTableView,
+    base_path="/campaign/<campaign_id>/book/<book_id>/chapter/<chapter_id>/crud-notes",
+    name_prefix="chapter_notes",
 )
 
 # Register routes

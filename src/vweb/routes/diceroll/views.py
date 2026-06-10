@@ -10,9 +10,9 @@ from flask.views import MethodView
 from vclient.constants import DiceSize
 from vclient.exceptions import APIError, ValidationError
 
-from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import get_character_and_campaign
+from vweb.lib.catalog import catalog
 from vweb.routes.diceroll.services import (
     get_character_traits,
     get_roll_context,
