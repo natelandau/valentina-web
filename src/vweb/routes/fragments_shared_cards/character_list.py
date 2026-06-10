@@ -9,33 +9,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from vweb.lib.jinja import CHARACTER_TYPE_LABELS
+
 if TYPE_CHECKING:
     from vclient.models import Character
 
 # Player-facing character types in display order, shared with CharacterTypeBadge.
 CHARACTER_TYPE_ORDER: tuple[str, ...] = ("PLAYER", "NPC", "STORYTELLER")
-
-# Labels shared with the CharacterTypeBadge chips so the filter reads the same.
-CHARACTER_TYPE_LABELS: dict[str, str] = {
-    "PLAYER": "Player Character",
-    "NPC": "NPC",
-    "STORYTELLER": "Storyteller Character",
-}
-
-
-def character_type_label(character_type: str) -> str:
-    """Return the display label for a character type.
-
-    Registered as a Jinja global so templates (the CharacterTypeBadge chip) read
-    labels from the same source as the filter options, preventing drift.
-
-    Args:
-        character_type: A character type value (e.g. ``"PLAYER"``).
-
-    Returns:
-        The human-readable label, or a title-cased fallback for unknown types.
-    """
-    return CHARACTER_TYPE_LABELS.get(character_type, character_type.title())
 
 
 def filter_characters(

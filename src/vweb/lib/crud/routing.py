@@ -34,7 +34,10 @@ def register_crud_table_routes(
         name_prefix: Endpoint name for the collection/item rules; the form
             rules are named ``{name_prefix}_form`` and ``{name_prefix}_form_edit``.
         table_endpoint: Override for the collection/item endpoint name when
-            it does not match ``name_prefix`` (legacy naming).
+            it does not match ``name_prefix``. Endpoint names are frozen by
+            ``url_for`` references in templates, so renaming one is a behavior
+            change — campaign_notes keeps its historical ``notes_table`` name
+            this way. New tables should not need the override.
     """
     table_view = view_class.as_view(table_endpoint or name_prefix)
     bp.add_url_rule(

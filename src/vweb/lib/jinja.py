@@ -97,6 +97,29 @@ def threat_badge_class(value: int) -> str:
     return "badge-neutral"
 
 
+# Labels shared by the CharacterTypeBadge chips and the character list filters.
+CHARACTER_TYPE_LABELS: dict[str, str] = {
+    "PLAYER": "Player Character",
+    "NPC": "NPC",
+    "STORYTELLER": "Storyteller Character",
+}
+
+
+def character_type_label(character_type: str) -> str:
+    """Return the display label for a character type.
+
+    Registered as a Jinja global so templates (the CharacterTypeBadge chip) read
+    labels from the same source as the filter options, preventing drift.
+
+    Args:
+        character_type: A character type value (e.g. ``"PLAYER"``).
+
+    Returns:
+        The human-readable label, or a title-cased fallback for unknown types.
+    """
+    return CHARACTER_TYPE_LABELS.get(character_type, character_type.title())
+
+
 def build_fragment_url(endpoint: str, **kwargs: object) -> str:
     """Build an HTMX fragment URL, dropping kwargs with empty or None values.
 
@@ -169,10 +192,6 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
         s: The application settings.
         catalog: The JinjaX catalog to sync with Flask's Jinja environment.
     """
-    # Imported lazily: route modules import from this module at import time, so a
-    # module-level import of a route package here would create a circular import.
-    from vweb.routes.fragments_shared_cards.character_list import character_type_label
-
     app.jinja_env.add_extension("jinja2.ext.loopcontrols")
     jinja_globals = cast("dict[str, Any]", app.jinja_env.globals)
     jinja_globals["catalog"] = catalog

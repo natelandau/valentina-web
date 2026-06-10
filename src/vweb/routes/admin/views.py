@@ -13,7 +13,7 @@ from vclient.models.companies import CompanySettingsUpdate, CompanyUpdate
 from vweb.lib import cache
 from vweb.lib.catalog import catalog
 from vweb.lib.guards import is_admin, is_self
-from vweb.lib.htmx import htmx_response, hx_redirect
+from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
 from vweb.routes.admin import services as admin_services
 
 if TYPE_CHECKING:
@@ -206,8 +206,7 @@ class ApproveUserView(MethodView):
             return str(exc), 400
 
         flash("User approved.", "success")
-        flash_html = catalog.render("shared.layout.FlashMessage", oob=True)
-        return htmx_response("", flash_html)
+        return htmx_response_with_flash("")
 
 
 class ChangeRoleView(MethodView):
@@ -230,8 +229,7 @@ class ChangeRoleView(MethodView):
 
         flash("Role updated.", "success")
         row = catalog.render("admin.components.ApprovedUserRow", user=user)
-        flash_html = catalog.render("shared.layout.FlashMessage", oob=True)
-        return htmx_response(row, flash_html)
+        return htmx_response_with_flash(row)
 
 
 class DenyUserView(MethodView):
@@ -244,8 +242,7 @@ class DenyUserView(MethodView):
 
         admin_services.deny(user_id, g.requesting_user.id)
         flash("User denied.", "success")
-        flash_html = catalog.render("shared.layout.FlashMessage", oob=True)
-        return htmx_response("", flash_html)
+        return htmx_response_with_flash("")
 
 
 class MergeFormView(MethodView):

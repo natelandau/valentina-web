@@ -21,7 +21,7 @@ from vweb.lib.api import get_character_and_campaign
 from vweb.lib.catalog import catalog
 from vweb.lib.crud.routing import register_crud_table_routes
 from vweb.lib.guards import can_edit_character
-from vweb.lib.htmx import htmx_response, hx_redirect
+from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
 from vweb.routes.character_view.views_inventory import CharacterInventoryTableView
 from vweb.routes.character_view.views_notes import CharacterNotesTableView
@@ -244,8 +244,7 @@ class ImageUploadView(MethodView):
             character=character,
             assets=assets,
         )
-        flash_html = catalog.render("shared.layout.FlashMessage", oob=True)
-        return htmx_response(content, flash_html)
+        return htmx_response_with_flash(content)
 
 
 bp.add_url_rule(
@@ -286,8 +285,7 @@ class ImageDeleteView(MethodView):
             character=character,
             assets=assets,
         )
-        flash_html = catalog.render("shared.layout.FlashMessage", oob=True)
-        return htmx_response(content, flash_html)
+        return htmx_response_with_flash(content)
 
 
 bp.add_url_rule(

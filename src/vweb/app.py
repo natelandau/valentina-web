@@ -154,9 +154,9 @@ def create_app(settings_override: Settings | None = None) -> Flask:
             DebugToolbarExtension(app)
 
     # Imported lazily so the route modules load only when the app is built.
-    from vweb.routes import BLUEPRINTS
+    from vweb.routes import get_blueprints
 
-    for blueprint in BLUEPRINTS:
+    for blueprint in get_blueprints():
         app.register_blueprint(blueprint)
 
     app.extensions["vclient"] = SyncVClient(
