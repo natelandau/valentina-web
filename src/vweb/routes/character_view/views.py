@@ -19,6 +19,7 @@ from vclient import sync_character_blueprint_service, sync_characters_service
 from vweb.lib import cache
 from vweb.lib.api import get_character_and_campaign
 from vweb.lib.catalog import catalog
+from vweb.lib.crud.routing import register_crud_table_routes
 from vweb.lib.guards import can_edit_character
 from vweb.lib.htmx import htmx_response, hx_redirect
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
@@ -296,57 +297,16 @@ bp.add_url_rule(
 )
 
 
-# ---------------------------------------------------------------------------
-# Character notes CRUD table
-# ---------------------------------------------------------------------------
-_notes_view = CharacterNotesTableView.as_view("character_notes")
-bp.add_url_rule(
-    "/character/<string:parent_id>/notes/items",
-    defaults={"item_id": None},
-    view_func=_notes_view,
-    methods=["GET", "POST"],
-)
-bp.add_url_rule(
-    "/character/<string:parent_id>/notes/items/<string:item_id>",
-    view_func=_notes_view,
-    methods=["POST", "DELETE"],
-)
-bp.add_url_rule(
-    "/character/<string:parent_id>/notes/items/form",
-    defaults={"item_id": None},
-    view_func=CharacterNotesTableView.as_view("character_notes_form"),
-    methods=["GET"],
-)
-bp.add_url_rule(
-    "/character/<string:parent_id>/notes/items/form/<string:item_id>",
-    view_func=CharacterNotesTableView.as_view("character_notes_form_edit"),
-    methods=["GET"],
+register_crud_table_routes(
+    bp,
+    CharacterNotesTableView,
+    base_path="/character/<string:parent_id>/notes/items",
+    name_prefix="character_notes",
 )
 
-
-# ---------------------------------------------------------------------------
-# Character inventory CRUD table
-# ---------------------------------------------------------------------------
-_inventory_view = CharacterInventoryTableView.as_view("character_inventory")
-bp.add_url_rule(
-    "/character/<string:parent_id>/inventory/items",
-    defaults={"item_id": None},
-    view_func=_inventory_view,
-    methods=["GET", "POST"],
-)
-bp.add_url_rule(
-    "/character/<string:parent_id>/inventory/items/<string:item_id>",
-    view_func=_inventory_view,
-    methods=["POST", "DELETE"],
-)
-bp.add_url_rule(
-    "/character/<string:parent_id>/inventory/items/form",
-    defaults={"item_id": None},
-    view_func=CharacterInventoryTableView.as_view("character_inventory_form"),
-    methods=["GET"],
-)
-bp.add_url_rule(
-    "/character/<string:parent_id>/inventory/items/form/<string:item_id>",
-    view_func=CharacterInventoryTableView.as_view("character_inventory_form_edit"),
-    methods=["GET"],
+register_crud_table_routes(
+    bp,
+    CharacterInventoryTableView,
+    base_path="/character/<string:parent_id>/inventory/items",
+    name_prefix="character_inventory",
 )

@@ -80,12 +80,9 @@
 
   <div class="card surface-card">
     <div class="card-body">
-      <div id="crud-quickrolls"
-           hx-get="{{ url_for("profile.quickrolls", user_id=user.id) }}?editable={{ editable_param }}"
-           hx-trigger="load"
-           hx-swap="innerHTML">
-        <span class="loading loading-spinner loading-md"></span>
-      </div>
+      <shared.LazyFragment target_id="crud-quickrolls"
+                           url={{ url_for("profile.quickrolls", user_id=user.id) ~ "?editable=" ~ editable_param }}
+                           wrapper_class="" />
     </div>
   </div>
 </div>

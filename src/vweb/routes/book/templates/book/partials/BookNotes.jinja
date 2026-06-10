@@ -5,9 +5,7 @@
 
 {% set editable_param = 'true' if can_manage_campaign() else 'false' %}
 
-<div id="crud-book_notes"
-     hx-get="{{ url_for('book_view.book_notes', campaign_id=campaign.id, book_id=book.id) }}?editable={{ editable_param }}"
-     hx-trigger="load"
-     hx-swap="innerHTML">
-  <span class="loading loading-spinner loading-sm"></span>
-</div>
+<shared.LazyFragment target_id="crud-book_notes"
+                     url={{ url_for('book_view.book_notes', campaign_id=campaign.id, book_id=book.id) ~ "?editable=" ~ editable_param }}
+                     wrapper_class=""
+                     spinner_class="loading loading-spinner loading-sm" />

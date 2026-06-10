@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, Response, abort, g, render_template, request, session, url_for
+from flask import Blueprint, Response, abort, g, request, session, url_for
 from flask.views import MethodView
 from vclient import sync_campaigns_service
 from vclient.models import CampaignCreate, CampaignUpdate
@@ -309,7 +309,6 @@ class CampaignExperienceFormView(MethodView):
             abort(403)
         return catalog.render(
             "campaign.partials.ExperienceForm",
-            user_id=user_id,
             campaign_id=campaign_id,
             campaign_name=get_campaign_name(campaign_id),
         )
@@ -331,7 +330,6 @@ class CampaignAddExperienceView(MethodView):
         if errors:
             return catalog.render(
                 "campaign.partials.ExperienceForm",
-                user_id=user_id,
                 campaign_id=campaign_id,
                 campaign_name=get_campaign_name(campaign_id),
                 form_data=form_data,
@@ -339,8 +337,8 @@ class CampaignAddExperienceView(MethodView):
             )
 
         card_url = url_for("campaign.experience_card", campaign_id=campaign_id)
-        return render_template(
-            "partials/crud_refetch.html",
+        return catalog.render(
+            "shared.crud.Refetch",
             table_url=card_url,
             table_target_id="index-experience-card",
         )

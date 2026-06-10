@@ -1,0 +1,58 @@
+{#def
+    columns: tuple,
+    fields: tuple,
+    markdown_fields: tuple = (),
+    items: list,
+    parent_id: str,
+    table_base_url: str,
+    form_base_url: str,
+    table_target_id: str,
+    editable: bool = True,
+    extra_params: str = "",
+    page_size: int = 0,
+#}
+{# Mobile: card layout (hidden at md+) #}
+<div class="flex flex-col gap-3 md:hidden">
+  {% for item in items %}
+    <div class="card surface-card" {% if page_size > 0 %}x-cloak x-show="({{ loop.index0 }} >= (currentPage - 1) * pageSize) && ({{ loop.index0 }} < currentPage * pageSize)"{% endif %}>
+      <div class="card-body p-4 gap-1">
+        <h3 class="card-title text-lg">{{ item[fields[0]] | default("", true) | title }}</h3>
+
+        {% for field in fields %}
+          {% if not loop.first %}
+            {% if field in markdown_fields %}
+              <div class="prose max-w-none mt-1">{{ item[field] | default("", true) | from_markdown }}</div>
+            {% else %}
+              <p class="text-base-content/70">
+                <span class="font-medium text-base-content/50">{{ columns[loop.index0] }}:</span>
+                {{ item[field] | default("", true) }}
+              </p>
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+
+        {% if editable %}
+          <div class="card-actions justify-end mt-2">
+            <shared.CommonButton variant="edit" extra_class="btn-xs"
+                          hx-get={{ form_base_url ~ "/" ~ item.id ~ "?parent_id=" ~ parent_id ~ extra_params }}
+                          hx-target={{ "#" ~ table_target_id }}
+                          hx-swap="innerHTML"
+                          title="Edit">
+              <i class="fa-regular fa-pen-to-square"></i>
+              Edit
+            </shared.CommonButton>
+
+            {% set delete_url = table_base_url ~ "/" ~ item.id ~ "?parent_id=" ~ parent_id ~ extra_params %}
+            {# djlint:off #}
+            <button type="button" class="btn btn-error btn-soft btn-xs" title="Delete"
+                    hx-on:click="var btn = document.getElementById('delete-confirm-btn-{{ table_target_id }}'); btn.setAttribute('hx-delete', '{{ delete_url }}'); htmx.process(btn); document.getElementById('delete-modal-{{ table_target_id }}').showModal()">
+              <i class="fa-solid fa-trash-can"></i>
+              Delete
+            </button>
+            {# djlint:on #}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  {% endfor %}
+</div>

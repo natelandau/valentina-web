@@ -15,6 +15,7 @@ from vweb.lib.api import (
     fetch_chapter_or_404,
 )
 from vweb.lib.catalog import catalog
+from vweb.lib.crud.routing import register_crud_table_routes
 from vweb.lib.guards import can_manage_campaign
 from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
@@ -328,28 +329,11 @@ class ChapterImageDeleteView(MethodView):
         return htmx_response_with_flash(content_html)
 
 
-_chapter_notes_view = ChapterNotesTableView.as_view("chapter_notes")
-bp.add_url_rule(
-    "/campaign/<campaign_id>/book/<book_id>/chapter/<chapter_id>/crud-notes",
-    defaults={"item_id": None},
-    view_func=_chapter_notes_view,
-    methods=["GET", "POST"],
-)
-bp.add_url_rule(
-    "/campaign/<campaign_id>/book/<book_id>/chapter/<chapter_id>/crud-notes/<string:item_id>",
-    view_func=_chapter_notes_view,
-    methods=["POST", "DELETE"],
-)
-bp.add_url_rule(
-    "/campaign/<campaign_id>/book/<book_id>/chapter/<chapter_id>/crud-notes/form",
-    defaults={"item_id": None},
-    view_func=ChapterNotesTableView.as_view("chapter_notes_form"),
-    methods=["GET"],
-)
-bp.add_url_rule(
-    "/campaign/<campaign_id>/book/<book_id>/chapter/<chapter_id>/crud-notes/form/<string:item_id>",
-    view_func=ChapterNotesTableView.as_view("chapter_notes_form_edit"),
-    methods=["GET"],
+register_crud_table_routes(
+    bp,
+    ChapterNotesTableView,
+    base_path="/campaign/<campaign_id>/book/<book_id>/chapter/<chapter_id>/crud-notes",
+    name_prefix="chapter_notes",
 )
 
 # Register routes

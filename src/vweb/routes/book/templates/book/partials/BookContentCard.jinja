@@ -106,14 +106,8 @@
 
       {% set notes_editable_param = 'true' if editable else 'false' %}
       <div x-show="view === 'notes'" x-cloak>
-        <div id="crud-book_notes"
-             hx-get="{{ url_for('book_view.book_notes', campaign_id=campaign.id, book_id=book.id) }}?editable={{ notes_editable_param }}"
-             hx-trigger="load"
-             hx-swap="innerHTML">
-          <div class="text-center py-8">
-            <span class="loading loading-spinner loading-md"></span>
-          </div>
-        </div>
+        <shared.LazyFragment target_id="crud-book_notes"
+                             url={{ url_for('book_view.book_notes', campaign_id=campaign.id, book_id=book.id) ~ "?editable=" ~ notes_editable_param }} />
       </div>
 
       <div class="flex flex-wrap gap-2 lg:hidden">

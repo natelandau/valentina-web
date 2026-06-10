@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from flask import abort, render_template, request, session
+from flask import abort, request, session
 from flask.views import MethodView
 from loguru import logger
 from vclient.exceptions import APIError
@@ -157,8 +157,8 @@ class CrudTableView(MethodView):
         # to get the table list URL (.../notes) for the refetch GET
         if request.view_args and request.view_args.get("item_id"):
             base = base.rsplit("/", 1)[0]
-        return render_template(
-            "partials/crud_refetch.html",
+        return catalog.render(
+            "shared.crud.Refetch",
             table_url=f"{base}?editable={editable}",
             table_target_id=self.table_id,
         )

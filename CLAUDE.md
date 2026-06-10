@@ -36,7 +36,7 @@ Character routes split into `character_view`, `character_trait_edit` (spend type
 ### Conventions
 
 - **`MethodView` only**, not decorated functions. Register via `bp.add_url_rule("/path", view_func=MyView.as_view("name"))`. Always pass `methods=` when handling more than GET.
-- Render templates via `catalog.render("namespace.ComponentName", **kwargs)` — never `render_template()` except for shared partials in `templates/partials/`.
+- Render templates via `catalog.render("namespace.ComponentName", **kwargs)` — `render_template()` is no longer used anywhere.
 
 ## Key Helpers
 
@@ -73,13 +73,12 @@ Authlib with Discord/GitHub/Google. All resolve via `routes/auth/services.py` (p
 | Category          | Location                                     | Usage                                              |
 | ----------------- | -------------------------------------------- | -------------------------------------------------- |
 | Shared components | `templates/shared/`                          | `<shared.PageLayout>`, `<shared.CommonButton>`     |
-| Shared partials   | `templates/partials/`                        | `render_template("partials/search_bar.html")`      |
 | Error pages       | `templates/errors/`                          | Error handler templates                            |
 | Route pages       | `routes/<name>/templates/<name>/`            | `catalog.render("book.BookDetail")`                |
 | Route partials    | `routes/<name>/templates/<name>/partials/`   | `catalog.render("book.partials.BookContent", ...)` |
 | Route components  | `routes/<name>/templates/<name>/components/` | `<chapter.components.ChapterNav>`                  |
 
-The inner `<name>/` provides the JinjaX namespace. `render_template()` is **only** for shared partials.
+The inner `<name>/` provides the JinjaX namespace.
 
 ### HTMX OOB + Flash
 
