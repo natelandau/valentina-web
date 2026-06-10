@@ -18,14 +18,13 @@ if TYPE_CHECKING:
 from vweb.config import Settings, get_settings
 from vweb.constants import STATIC_PATH, TEMPLATES_PATH
 from vweb.extensions import cache, csrf
+from vweb.lib.catalog import catalog
 from vweb.lib.errors import register_error_handlers
 from vweb.lib.hooks import register_before_request_hooks
-from vweb.lib.jinja import configure_jinja, register_jinjax_catalog
+from vweb.lib.jinja import configure_jinja
 from vweb.lib.log_config import instantiate_logger
 from vweb.lib.oauth_setup import register_oauth_providers
 from vweb.lib.security import configure_security
-
-catalog = register_jinjax_catalog()
 
 
 class _RealIPMiddleware:
@@ -113,7 +112,7 @@ def _configure_cache_and_session(app: Flask, settings: Settings) -> None:
         Session(app)
 
 
-def create_app(settings_override: Settings | None = None) -> Flask:  # noqa: PLR0915
+def create_app(settings_override: Settings | None = None) -> Flask:
     """Create and configure the Flask application.
 
     Args:
@@ -154,43 +153,11 @@ def create_app(settings_override: Settings | None = None) -> Flask:  # noqa: PLR
         if settings.debug_toolbar:
             DebugToolbarExtension(app)
 
-    from vweb.routes.admin.views import bp as admin_bp
-    from vweb.routes.auth.views import bp as auth_bp
-    from vweb.routes.book.views import bp as book_view_bp
-    from vweb.routes.campaign.views import bp as campaign_bp
-    from vweb.routes.campaign_notes.views import bp as campaign_notes_bp
-    from vweb.routes.chapter.views import bp as chapter_view_bp
-    from vweb.routes.character_create import bp as character_create_bp
-    from vweb.routes.character_list.views import bp as character_list_bp
-    from vweb.routes.character_trait_edit.views import bp as character_trait_edit_bp
-    from vweb.routes.character_view.views import bp as character_view_bp
-    from vweb.routes.company_hub.views import bp as company_hub_bp
-    from vweb.routes.diceroll.views import bp as diceroll_bp
-    from vweb.routes.dictionary.views import bp as dictionary_bp
-    from vweb.routes.fragments_shared_cards.views import bp as shared_cards_bp
-    from vweb.routes.index.views import bp as index_bp
-    from vweb.routes.player_list.views import bp as player_list_bp
-    from vweb.routes.profile.views import bp as profile_bp
-    from vweb.routes.static_files.views import bp as static_files_bp
+    # Imported lazily so the route modules load only when the app is built.
+    from vweb.routes import BLUEPRINTS
 
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(index_bp)
-    app.register_blueprint(company_hub_bp)
-    app.register_blueprint(campaign_bp)
-    app.register_blueprint(shared_cards_bp)
-    app.register_blueprint(campaign_notes_bp)
-    app.register_blueprint(character_view_bp)
-    app.register_blueprint(character_trait_edit_bp)
-    app.register_blueprint(book_view_bp)
-    app.register_blueprint(chapter_view_bp)
-    app.register_blueprint(profile_bp)
-    app.register_blueprint(diceroll_bp)
-    app.register_blueprint(dictionary_bp)
-    app.register_blueprint(character_create_bp)
-    app.register_blueprint(character_list_bp)
-    app.register_blueprint(player_list_bp)
-    app.register_blueprint(admin_bp)
-    app.register_blueprint(static_files_bp)
+    for blueprint in BLUEPRINTS:
+        app.register_blueprint(blueprint)
 
     app.extensions["vclient"] = SyncVClient(
         base_url=settings.api.base_url,

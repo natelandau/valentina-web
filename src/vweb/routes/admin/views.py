@@ -10,10 +10,10 @@ from pydantic import ValidationError
 from vclient import sync_companies_service
 from vclient.models.companies import CompanySettingsUpdate, CompanyUpdate
 
-from vweb import catalog
 from vweb.lib import cache
+from vweb.lib.catalog import catalog
 from vweb.lib.guards import is_admin, is_self
-from vweb.lib.jinja import htmx_response, hx_redirect
+from vweb.lib.htmx import htmx_response, hx_redirect
 from vweb.routes.admin import services as admin_services
 
 if TYPE_CHECKING:

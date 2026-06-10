@@ -1,9 +1,8 @@
 """Filtering and filter-option helpers for the shared character list card.
 
 The shared ``CharacterListCard`` fragment (and its endpoint) narrow an
-already-visibility-filtered roster by player, class, and type. Keeping these
-pure helpers in ``lib`` lets the cross-cutting card endpoint reuse them without
-importing from a sibling route package.
+already-visibility-filtered roster by player, class, and type. These pure
+helpers live alongside their sole consumer, the cross-cutting card endpoint.
 """
 
 from __future__ import annotations

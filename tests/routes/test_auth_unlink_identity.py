@@ -12,7 +12,7 @@ from vclient.testing import (
 from werkzeug.test import TestResponse
 
 from tests.conftest import get_csrf
-from vweb import catalog
+from vweb.lib.catalog import catalog
 
 
 class TestUnlinkIdentityView:

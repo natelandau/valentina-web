@@ -208,7 +208,7 @@ class TestStatisticsWrapperComponent:
     ) -> None:
         """Verify the wrapper-rendered HTML includes an hx-get to /cards/statistics with scope."""
         # Given an app context for url_for resolution
-        from vweb import catalog
+        from vweb.lib.catalog import catalog
 
         # When rendering the wrapper with a campaign scope
         with client.application.test_request_context():
@@ -230,7 +230,7 @@ class TestRecentDiceRollsWrapperComponent:
     ) -> None:
         """Verify the wrapper-rendered HTML includes an hx-get to /cards/dice-rolls with scope."""
         # Given an app context
-        from vweb import catalog
+        from vweb.lib.catalog import catalog
 
         # When rendering the wrapper with a character scope
         with client.application.test_request_context():
@@ -246,7 +246,7 @@ class TestRecentDiceRollsWrapperComponent:
     ) -> None:
         """Verify unused scope kwargs don't appear as empty query args."""
         # Given an app context
-        from vweb import catalog
+        from vweb.lib.catalog import catalog
 
         # When rendering the wrapper with only one scope set
         with client.application.test_request_context():
@@ -749,7 +749,7 @@ class TestAuditLogWrapperComponent:
     ) -> None:
         """Verify the wrapper's hx-get URL targets /cards/audit-log."""
         # Given an app context for url_for
-        from vweb import catalog
+        from vweb.lib.catalog import catalog
 
         # When rendering the wrapper with a character scope
         with client.application.test_request_context():
@@ -765,7 +765,7 @@ class TestAuditLogWrapperComponent:
         self, client: FlaskClient, mock_global_context
     ) -> None:
         """Verify unset filter kwargs don't appear as empty query args."""
-        from vweb import catalog
+        from vweb.lib.catalog import catalog
 
         # When rendering the wrapper with only one filter set
         with client.application.test_request_context():

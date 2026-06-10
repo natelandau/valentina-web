@@ -2,6 +2,7 @@
 
 __version__ = "0.10.2"
 
-from vweb.app import catalog, create_app, main
+from vweb.app import create_app, main
+from vweb.lib.catalog import catalog
 
 __all__ = ["__version__", "catalog", "create_app", "main"]

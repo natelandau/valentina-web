@@ -5,7 +5,7 @@ from __future__ import annotations
 from flask import Blueprint, g
 from flask.views import MethodView
 
-from vweb import catalog
+from vweb.lib.catalog import catalog
 
 bp = Blueprint("company_hub", __name__)
 

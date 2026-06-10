@@ -7,7 +7,6 @@ from flask.views import MethodView
 from vclient import sync_campaigns_service
 from vclient.models import CampaignCreate, CampaignUpdate
 
-from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import (
     fetch_campaign_or_404,
@@ -15,8 +14,9 @@ from vweb.lib.api import (
     get_user_campaign_experience,
     validate_and_submit_experience,
 )
+from vweb.lib.catalog import catalog
 from vweb.lib.guards import can_grant_experience, can_manage_campaign
-from vweb.lib.jinja import hx_redirect
+from vweb.lib.htmx import hx_redirect
 
 bp = Blueprint("campaign", __name__)
 

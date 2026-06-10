@@ -8,6 +8,8 @@ from flask_wtf.csrf import CSRFError
 from loguru import logger
 from werkzeug.exceptions import HTTPException
 
+from vweb.lib.catalog import catalog
+
 if TYPE_CHECKING:
     from flask import Flask
 
@@ -18,7 +20,6 @@ def register_error_handlers(app: Flask) -> None:
     Args:
         app: The Flask application instance.
     """
-    from vweb.app import catalog
 
     @app.errorhandler(CSRFError)
     def csrf_error(error: CSRFError) -> tuple[str, int]:

@@ -12,7 +12,7 @@ from joserfc.jwk import ECKey
 
 from vweb.config import APISettings, AppleOAuthSettings, OAuthSettings, RedisSettings, Settings
 from vweb.lib import oauth_setup
-from vweb.lib.apple_oauth import build_apple_client_secret
+from vweb.routes.auth.apple_oauth import build_apple_client_secret
 from vweb.routes.auth.views import _apple_display_name
 
 

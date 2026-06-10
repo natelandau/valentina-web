@@ -13,11 +13,11 @@ from vclient import sync_character_traits_service, sync_characters_service
 from vclient.exceptions import APIError, ValidationError
 from vclient.models import CharacterCreate, CharacterTraitAdd, CharacterUpdate
 
-from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import fetch_campaign_or_404
+from vweb.lib.catalog import catalog
 from vweb.lib.guards import can_edit_character, can_manage_npcs, is_storyteller
-from vweb.lib.jinja import hx_redirect
+from vweb.lib.htmx import hx_redirect
 from vweb.routes.character_create import bp
 from vweb.routes.character_create.autogen_services import fetch_form_options
 from vweb.routes.character_create.profile import (

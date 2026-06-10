@@ -13,20 +13,20 @@ from typing import TYPE_CHECKING, Any
 from flask import Blueprint, abort, g, request, session, url_for
 from flask.views import MethodView
 
-from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import (
     fetch_campaign_or_404,
     get_characters_for_campaign,
 )
-from vweb.lib.audit_log import (
+from vweb.lib.catalog import catalog
+from vweb.routes.fragments_shared_cards.audit_log import (
     ENTITY_TYPES,
     get_audit_log_page,
     resolve_acting_user,
     resolve_entities,
     split_changes,
 )
-from vweb.lib.character_list import (
+from vweb.routes.fragments_shared_cards.character_list import (
     build_filter_options,
     filter_characters,
     present_type_options,

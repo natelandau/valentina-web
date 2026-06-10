@@ -8,7 +8,7 @@ import pytest
 from markupsafe import Markup
 from vclient.testing import DictionaryTermFactory
 
-from vweb.lib.jinja import from_markdown, link_terms
+from vweb.lib.jinja_filters import from_markdown, link_terms
 
 if TYPE_CHECKING:
     from collections.abc import Callable

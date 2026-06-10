@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 from flask import Blueprint, g, redirect, session, url_for
 from flask.views import MethodView
 
-from vweb import catalog
 from vweb.lib.api import get_remembered_campaign
+from vweb.lib.catalog import catalog
 
 if TYPE_CHECKING:
     from werkzeug.wrappers.response import Response as WerkzeugResponse

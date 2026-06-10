@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 def _render(app: Flask, **kwargs: object) -> str:
     """Render the Button component and return the HTML output."""
-    from vweb import catalog  # type: ignore[attr-defined]
+    from vweb.lib.catalog import catalog
 
     with app.test_request_context():
         return catalog.render("shared.CommonButton", **kwargs)  # type: ignore[arg-type]

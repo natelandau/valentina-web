@@ -10,8 +10,8 @@ from flask.views import MethodView
 from loguru import logger
 from vclient.exceptions import APIError
 
-from vweb import catalog
 from vweb.lib import cache
+from vweb.lib.catalog import catalog
 
 if TYPE_CHECKING:
     from vweb.lib.crud.handler import CrudHandler

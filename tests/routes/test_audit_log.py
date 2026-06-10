@@ -1,4 +1,4 @@
-"""Tests for the shared audit log helpers in vweb.lib.audit_log."""
+"""Tests for the shared audit log helpers in vweb.routes.fragments_shared_cards.audit_log."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from vclient.testing import (
     CharacterFactory,
 )
 
-from vweb.lib.audit_log import (
+from vweb.routes.fragments_shared_cards.audit_log import (
     FieldDiff,
     OtherEntry,
     _resolve_book,
@@ -459,7 +459,7 @@ class TestGetAuditLogPage:
         mock_svc = mocker.MagicMock()
         mock_svc.get_audit_log_page.return_value = mocker.MagicMock()
         mocker.patch(
-            "vweb.lib.audit_log.sync_companies_service",
+            "vweb.routes.fragments_shared_cards.audit_log.sync_companies_service",
             autospec=True,
             return_value=mock_svc,
         )
@@ -512,7 +512,9 @@ class TestGetAuditLogPage:
             from vclient.models.audit_logs import AuditLog
             from vclient.models.pagination import PaginatedResponse
 
-            svc = mocker.patch("vweb.lib.audit_log.sync_companies_service")
+            svc = mocker.patch(
+                "vweb.routes.fragments_shared_cards.audit_log.sync_companies_service"
+            )
             svc.return_value.get_audit_log_page.return_value = PaginatedResponse[AuditLog](
                 items=[], total=0, limit=10, offset=0
             )
@@ -536,7 +538,9 @@ class TestGetAuditLogPage:
             from vclient.models.audit_logs import AuditLog
             from vclient.models.pagination import PaginatedResponse
 
-            svc = mocker.patch("vweb.lib.audit_log.sync_companies_service")
+            svc = mocker.patch(
+                "vweb.routes.fragments_shared_cards.audit_log.sync_companies_service"
+            )
             svc.return_value.get_audit_log_page.return_value = PaginatedResponse[AuditLog](
                 items=[], total=0, limit=10, offset=0
             )
@@ -554,7 +558,7 @@ class TestGetAuditLogPage:
         mock_svc = mocker.MagicMock()
         mock_svc.get_audit_log_page.return_value = mocker.MagicMock()
         mocker.patch(
-            "vweb.lib.audit_log.sync_companies_service",
+            "vweb.routes.fragments_shared_cards.audit_log.sync_companies_service",
             autospec=True,
             return_value=mock_svc,
         )

@@ -13,10 +13,10 @@ if TYPE_CHECKING:
 
 from vclient.exceptions import APIError
 
-from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import fetch_campaign_or_404
-from vweb.lib.jinja import hx_redirect
+from vweb.lib.catalog import catalog
+from vweb.lib.htmx import hx_redirect
 from vweb.routes.character_create import bp
 from vweb.routes.character_create.autogen_services import (
     finalize_session,

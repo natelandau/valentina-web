@@ -19,11 +19,11 @@ from vclient.constants import TraitModifyCurrency
 from vclient.exceptions import AuthorizationError, ConflictError, ValidationError
 from vclient.models import TraitCreate
 
-from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import get_character_and_campaign
+from vweb.lib.catalog import catalog
 from vweb.lib.guards import can_edit_character, can_edit_traits_free
-from vweb.lib.jinja import hx_redirect
+from vweb.lib.htmx import hx_redirect
 
 bp = Blueprint("character_trait_edit", __name__)
 

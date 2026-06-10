@@ -9,9 +9,9 @@ from flask import Blueprint, abort, request
 from flask.views import MethodView
 from vclient.exceptions import APIError
 
-from vweb import catalog
 from vweb.lib import cache
-from vweb.lib.jinja import htmx_response
+from vweb.lib.catalog import catalog
+from vweb.lib.htmx import htmx_response
 from vweb.routes.dictionary.services import create_term as svc_create_term
 from vweb.routes.dictionary.services import delete_term as svc_delete_term
 from vweb.routes.dictionary.services import update_term as svc_update_term

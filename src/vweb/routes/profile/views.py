@@ -20,12 +20,12 @@ if TYPE_CHECKING:
 from vclient import sync_users_service
 from vclient.models.users import UserUpdate
 
-from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import get_campaign_name, validate_and_submit_experience
+from vweb.lib.catalog import catalog
 from vweb.lib.guards import can_grant_experience, is_self
+from vweb.lib.htmx import hx_redirect
 from vweb.lib.image_uploads import handle_avatar_delete, handle_avatar_upload
-from vweb.lib.jinja import hx_redirect
 from vweb.routes.profile.views_quickrolls import QuickrollsTableView
 
 bp = Blueprint("profile", __name__)

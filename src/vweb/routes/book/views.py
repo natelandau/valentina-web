@@ -8,16 +8,16 @@ from flask import Blueprint, abort, flash, redirect, request, session, url_for
 from flask.views import MethodView
 from vclient import sync_books_service
 
-from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import (
     count_notes,
     fetch_book_or_404,
     fetch_campaign_or_404,
 )
+from vweb.lib.catalog import catalog
 from vweb.lib.guards import can_manage_campaign
+from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
-from vweb.lib.jinja import htmx_response_with_flash, hx_redirect
 from vweb.routes.book.views_notes import BookNotesTableView
 
 if TYPE_CHECKING:

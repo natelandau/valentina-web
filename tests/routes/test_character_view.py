@@ -175,7 +175,7 @@ class TestSheetSidebarOwnerLink:
         from flask import g
 
         from tests.helpers import build_global_context
-        from vweb import catalog
+        from vweb.lib.catalog import catalog
 
         # Given an NPC with no owning player, viewed by a storyteller
         npc = CharacterFactory.build(

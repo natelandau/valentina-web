@@ -21,11 +21,12 @@ from vclient.exceptions import (
 )
 from werkzeug.wrappers.response import Response
 
-from vweb import catalog
 from vweb.extensions import csrf, oauth
 from vweb.lib import cache
-from vweb.lib.apple_oauth import build_apple_client_secret
-from vweb.lib.jinja import approved_companies, htmx_response_with_flash, hx_redirect
+from vweb.lib.catalog import catalog
+from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
+from vweb.lib.jinja import approved_companies
+from vweb.routes.auth.apple_oauth import build_apple_client_secret
 from vweb.routes.auth.services import (
     build_companies_mapping,
     identify_in_companies,

@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, Any
 from flask import Blueprint, abort, request, session
 from flask.views import MethodView
 
-from vweb import catalog
 from vweb.lib.api import fetch_campaign_or_404
+from vweb.lib.catalog import catalog
 from vweb.lib.crud.view import Column, CrudTableView
 from vweb.routes.campaign_notes.handlers import CampaignNotesHandler
 

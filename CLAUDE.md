@@ -83,7 +83,7 @@ The inner `<name>/` provides the JinjaX namespace. `render_template()` is **only
 
 ### HTMX OOB + Flash
 
-Flask `flash()` messages render inside `<div id="flash-messages">` via `<shared.layout.FlashMessage />`. HTMX partial swaps lose flashes silently — **any HTMX endpoint calling `flash()` must also OOB-swap the flash container**. Use `htmx_response_with_flash(content)` from `vweb.lib.jinja` (or `htmx_response(content, *oob)` when you need to compose additional OOB swaps); OOB-capable components accept `oob: bool = False`:
+Flask `flash()` messages render inside `<div id="flash-messages">` via `<shared.layout.FlashMessage />`. HTMX partial swaps lose flashes silently — **any HTMX endpoint calling `flash()` must also OOB-swap the flash container**. Use `htmx_response_with_flash(content)` from `vweb.lib.htmx` (or `htmx_response(content, *oob)` when you need to compose additional OOB swaps); OOB-capable components accept `oob: bool = False`:
 
 ```python
 return htmx_response_with_flash(content)

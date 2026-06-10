@@ -10,8 +10,8 @@ from __future__ import annotations
 from flask import Blueprint, session
 from flask.views import MethodView
 
-from vweb import catalog
 from vweb.lib.api import fetch_campaign_or_404
+from vweb.lib.catalog import catalog
 
 bp = Blueprint("character_list", __name__)
 

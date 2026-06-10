@@ -14,11 +14,11 @@ if TYPE_CHECKING:
     from vclient.models import ChargenSessionResponse, User
     from werkzeug.wrappers.response import Response
 
-from vweb import catalog
 from vweb.lib import cache
 from vweb.lib.api import fetch_campaign_or_404, get_user_campaign_experience
+from vweb.lib.catalog import catalog
 from vweb.lib.guards import is_storyteller
-from vweb.lib.jinja import hx_redirect
+from vweb.lib.htmx import hx_redirect
 from vweb.routes.character_create import bp
 from vweb.routes.character_create.autogen_services import (
     fetch_form_options,
