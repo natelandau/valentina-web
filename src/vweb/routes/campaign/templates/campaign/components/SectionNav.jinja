@@ -1,7 +1,6 @@
 {#def
     active: str = "overview",
     campaign_id: str = "",
-    show_admin: bool = false,
     bordered: bool = true
 #}
 
@@ -13,14 +12,6 @@
   {"key": "dictionary",  "label": "Dictionary",       "url": url_for('dictionary.index'),                           "badge": false},
   {"key": "notes",       "label": "Notes",            "url": url_for('campaign_notes.index', campaign_id=campaign_id), "badge": false},
 ] %}
-{% if show_admin %}
-  {% set _ = items.append({
-    "key": "admin",
-    "label": "Admin",
-    "url": url_for('admin.audit_log'),
-    "badge": global_context().pending_user_count > 0,
-  }) %}
-{% endif %}
 
 <nav aria-label="Campaign sections"
      class="{% if bordered %}border-b border-base-300 {% endif %}relative"

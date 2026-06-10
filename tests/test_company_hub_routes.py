@@ -174,3 +174,18 @@ def test_hub_empty_state_for_player(client, mocker) -> None:
     # Then the ask-your-storyteller empty state renders
     assert "storyteller" in body
     assert "New Campaign" not in body
+
+
+def test_campaign_nav_has_no_admin_tab(client, mocker) -> None:
+    """Verify the campaign section nav no longer offers an Admin tab, even to admins."""
+    # Given an admin viewing a campaign page
+    ctx = build_global_context(user_role="ADMIN")
+    mocker.patch(LOAD_PATH, return_value=ctx)
+    campaign = ctx.campaigns[0]
+
+    # When loading the campaign overview
+    body = client.get(f"/campaign/{campaign.id}").get_data(as_text=True)
+
+    # Then the section nav items exclude Admin (the header dropdown still links /admin)
+    assert '"key": "admin"' not in body
+    assert '"label": "Admin"' not in body
