@@ -25,7 +25,7 @@ from vweb import catalog
 from vweb.extensions import csrf, oauth
 from vweb.lib import cache
 from vweb.lib.apple_oauth import build_apple_client_secret
-from vweb.lib.jinja import htmx_response_with_flash, hx_redirect
+from vweb.lib.jinja import approved_companies, htmx_response_with_flash, hx_redirect
 from vweb.routes.auth.services import (
     build_companies_mapping,
     identify_in_companies,
@@ -617,9 +617,7 @@ class SelectCompanyView(MethodView):
 
     def get(self) -> str:
         """Render the company picker for users with multiple approved companies."""
-        companies = session.get("companies", {})
-        approved = {cid: data for cid, data in companies.items() if data["role"] != "UNAPPROVED"}
-        return catalog.render("auth.SelectCompany", companies=approved)
+        return catalog.render("auth.SelectCompany", companies=approved_companies())
 
     def post(self) -> Response:
         """Switch the active company for the current session."""
@@ -637,6 +635,9 @@ class SelectCompanyView(MethodView):
 
         session["company_id"] = company_id
         session["user_id"] = data["user_id"]
+        # The remembered campaign belongs to the previous company; drop it so
+        # the index entry rules re-evaluate against the new company's campaigns.
+        session.pop("last_campaign_id", None)
         return redirect(url_for("index.index"))
 
 

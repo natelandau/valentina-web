@@ -1,4 +1,4 @@
-{#def company, errors, form_values, pending_count=0 #}
+{#def company, errors, form_values #}
 {# Field-value resolver: prefer submitted form_values on re-render, otherwise current company. #}
 {%- macro field_val(name, default="") -%}
   {%- if form_values is not none -%}{{ form_values.get(name, default) }}{%- else -%}{{ default }}{%- endif -%}
@@ -17,20 +17,12 @@
   {%- set perm_free_trait_val = field_val("permission_free_trait_changes", (s.permission_free_trait_changes if s and s.permission_free_trait_changes else "")) -%}
   {%- set perm_recoup_xp_val = field_val("permission_recoup_xp", (s.permission_recoup_xp if s and s.permission_recoup_xp else "")) -%}
 
-  {% set current_campaign = active_campaign() %}
   <shared.PageLayout title="Company Settings">
   <div class="max-w-3xl mx-auto p-4 flex flex-col gap-4">
 
-    {% if current_campaign %}
-      <shared.layout.CampaignChrome
-          campaign={{ current_campaign }}
-          active="admin"
-          show_admin={{ is_admin() }} />
-    {% endif %}
+    <shared.layout.CompanyChrome active="settings" />
 
     <h1 class="sr-only">Company Settings</h1>
-
-    <admin.components.AdminTabs active="settings" pending_count={{ pending_count }} />
 
     {% if errors %}
       <div class="alert alert-error">

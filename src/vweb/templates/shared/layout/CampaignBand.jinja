@@ -1,7 +1,6 @@
 {#def
     active: str = "",
-    campaign_id: str = "",
-    show_admin: bool = false
+    campaign_id: str = ""
 #}
 
 {# Shared chrome shell for campaign-scoped pages. Renders a branded chrome card
@@ -15,7 +14,6 @@
     <campaign.components.SectionNav
         active={{ active }}
         campaign_id={{ campaign_id }}
-        show_admin={{ show_admin }}
         bordered={{ false }} />
   </div>
 </div>

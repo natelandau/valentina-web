@@ -1,7 +1,6 @@
 {#def
     campaign,
-    active: str = "",
-    show_admin: bool = false
+    active: str = ""
 #}
 
 {# Campaign chrome for subpages: compact strip + nav wrapped in the shared
@@ -10,8 +9,7 @@
 
 <shared.layout.CampaignBand
     active={{ active }}
-    campaign_id={{ campaign.id }}
-    show_admin={{ show_admin }}>
+    campaign_id={{ campaign.id }}>
   <div class="surface-panel rounded-b-none px-4 sm:px-6">
     <shared.layout.CampaignStrip campaign={{ campaign }} />
   </div>

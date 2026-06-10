@@ -351,8 +351,10 @@ def test_hook_retries_on_user_not_found(app, mocker) -> None:
         }
     response = client.get("/")
 
-    # Then the hook retried and the request succeeded
-    assert response.status_code == 200
+    # Then the hook retried and the request proceeded to the entry redirect
+    # (zero campaigns now route to the company hub instead of rendering inline)
+    assert response.status_code == 302
+    assert "/home" in response.headers["Location"]
     assert mock_load.call_count == 2
 
 
@@ -529,3 +531,21 @@ def test_load_global_context_single_flight_collapses_concurrent_rebuilds(app, mo
     assert fetch_count == 1
     assert results["a"] is built_context
     assert results["b"] == built_context
+
+
+def test_hook_clears_legacy_session_without_company(app, mocker) -> None:
+    """Verify a legacy session lacking company_id is cleared and redirected to login."""
+    # Given an authenticated session with no company scope (pre-multi-company shape)
+    mock_load = mocker.patch("vweb.lib.cache.global_context.load")
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user_id"] = "test-user-id"
+
+    # When requesting a context-backed page
+    response = client.get("/home")
+
+    # Then the session is cleared, the user is redirected, and no context load was attempted
+    assert response.status_code == 302
+    with client.session_transaction() as sess:
+        assert "user_id" not in sess
+    mock_load.assert_not_called()

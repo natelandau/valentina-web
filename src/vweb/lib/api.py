@@ -44,6 +44,24 @@ def get_characters_for_campaign(campaign_id: str) -> list[Character]:
     return sorted(characters, key=lambda character: character.name.lower())
 
 
+def get_remembered_campaign(campaigns: list[Campaign]) -> Campaign | None:
+    """Return the session-remembered campaign if it still exists in the given list.
+
+    The remembered id may be stale (a deleted campaign, or one belonging to a
+    previously selected company), so it only counts when it resolves against
+    the provided list. Shared by the index entry redirect and
+    ``get_active_campaign`` so both layers agree on what "remembered" means.
+
+    Args:
+        campaigns: The campaigns to resolve the remembered id against.
+
+    Returns:
+        The remembered campaign, or None when nothing valid is remembered.
+    """
+    last_id = session.get("last_campaign_id")
+    return next((c for c in campaigns if c.id == last_id), None)
+
+
 def get_active_campaign() -> Campaign | None:
     """Return the user's currently active campaign.
 
@@ -55,10 +73,9 @@ def get_active_campaign() -> Campaign | None:
     if ctx is None or not ctx.campaigns:
         return None
 
-    last_id = session.get("last_campaign_id")
-    selected = next((c for c in ctx.campaigns if c.id == last_id), None)
-    if selected is not None:
-        return selected
+    remembered = get_remembered_campaign(ctx.campaigns)
+    if remembered is not None:
+        return remembered
 
     return max(ctx.campaigns, key=lambda c: c.date_modified)
 

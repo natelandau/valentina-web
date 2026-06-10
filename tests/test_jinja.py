@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
 from flask import flash
 from vclient.testing import CampaignBookFactory, CampaignFactory
 
 import vweb
-from vweb.lib.jinja import build_fragment_url
+from vweb.lib.jinja import build_fragment_url, threat_badge_class
 
 
 class TestCatalogAutoescape:
@@ -109,3 +110,20 @@ class TestBuildFragmentUrl:
 
         # Then the space is URL-encoded
         assert "title=Hello+World" in url or "title=Hello%20World" in url
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (0, "badge-neutral"),
+        (1, "badge-neutral"),
+        (2, "badge-warning"),
+        (3, "badge-warning"),
+        (4, "badge-error"),
+        (5, "badge-error"),
+    ],
+)
+def test_threat_badge_class_thresholds(value, expected) -> None:
+    """Verify the danger/desperation severity-to-badge-color mapping."""
+    # Given a threat level, when mapping it, then the shared thresholds apply
+    assert threat_badge_class(value) == expected

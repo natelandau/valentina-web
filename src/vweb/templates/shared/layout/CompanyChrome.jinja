@@ -1,0 +1,14 @@
+{#def active: str = "" #}
+
+{# Company-level sibling of CampaignBand: masthead identity block with the
+   company tab row attached below for admins. Used by the hub and the
+   relocated admin pages so the "company zone + tabs" shell looks identical. #}
+
+<div class="surface-chrome rounded-box border-t-2 border-secondary/50">
+  <shared.layout.CompanyMasthead />
+  {% if is_admin() %}
+    <div class="px-2 sm:px-4 border-t border-base-300/60">
+      <shared.layout.CompanyTabs active={{ active }} />
+    </div>
+  {% endif %}
+</div>

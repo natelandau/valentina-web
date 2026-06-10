@@ -1,0 +1,20 @@
+{#def campaign #}
+
+<a href="{{ url_for('campaign.campaign', campaign_id=campaign.id) }}"
+   class="card bg-base-100 border border-base-300 shadow-sm hover:shadow-md hover:border-primary/40 transition-all">
+  <div class="card-body p-4 gap-2">
+    <h2 class="card-title font-serif">{{ campaign.name }}</h2>
+    {% if campaign.description %}
+      <p class="text-sm text-base-content/60 line-clamp-2">{{ campaign.description }}</p>
+    {% endif %}
+    <p class="text-sm text-base-content/70">
+      {{ campaign.num_books }} {{ "book" if campaign.num_books == 1 else "books" }}
+      &middot; {{ campaign.num_player_characters }} {{ "PC" if campaign.num_player_characters == 1 else "PCs" }}
+      &middot; {{ campaign.num_npc_characters }} {{ "NPC" if campaign.num_npc_characters == 1 else "NPCs" }}
+    </p>
+    <div class="flex items-center gap-2 flex-wrap">
+      <span class="badge {{ threat_badge_class(campaign.danger) }} badge-sm font-semibold">Danger {{ campaign.danger }}</span>
+      <span class="badge {{ threat_badge_class(campaign.desperation) }} badge-sm font-semibold">Desperation {{ campaign.desperation }}</span>
+    </div>
+  </div>
+</a>

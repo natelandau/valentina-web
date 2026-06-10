@@ -400,3 +400,29 @@ class TestSelectCompanyView:
         # Then redirected back to select-company
         assert response.status_code == 302
         assert response.location == "/select-company"
+
+
+def test_select_company_clears_remembered_campaign(client, mock_global_context) -> None:
+    """Verify switching company drops last_campaign_id so entry rules re-evaluate."""
+    # Given a session with two approved companies and a remembered campaign
+    with client.session_transaction() as sess:
+        sess["companies"]["second-co"] = {
+            "user_id": "second-user-id",
+            "company_name": "Second Company",
+            "role": "PLAYER",
+        }
+        sess["last_campaign_id"] = "stale-campaign-id"
+    csrf_token = get_csrf(client)
+
+    # When switching to the second company
+    response = client.post(
+        "/select-company",
+        data={"company_id": "second-co", "csrf_token": csrf_token},
+    )
+
+    # Then the remembered campaign is forgotten and the user lands on entry rules
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/"
+    with client.session_transaction() as sess:
+        assert "last_campaign_id" not in sess
+        assert sess["company_id"] == "second-co"
