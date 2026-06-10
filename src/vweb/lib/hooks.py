@@ -150,8 +150,14 @@ def _hook_inject_global_context() -> Response | WerkzeugResponse | None:
 
     user_id = session.get("user_id")
     company_id = session.get("company_id")
-    if not user_id or not company_id:
+    if not user_id:
         return None
+    if not company_id:
+        # Legacy session minted before multi-company support: authenticated but
+        # missing the company scope every g.global_context consumer requires.
+        # Self-heal by forcing a fresh login instead of letting views 500.
+        session.clear()
+        return _redirect_for_request(url_for("index.index"))
 
     ctx = cache.global_context.load(company_id, user_id)
     g.global_context = ctx

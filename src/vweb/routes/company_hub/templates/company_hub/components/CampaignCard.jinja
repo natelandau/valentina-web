@@ -12,12 +12,9 @@
       &middot; {{ campaign.num_player_characters }} {{ "PC" if campaign.num_player_characters == 1 else "PCs" }}
       &middot; {{ campaign.num_npc_characters }} {{ "NPC" if campaign.num_npc_characters == 1 else "NPCs" }}
     </p>
-    {# Same color thresholds as campaign.partials.DangerDesperation #}
-    {% set danger_color = "badge-neutral" if campaign.danger < 2 else "badge-warning" if campaign.danger in [2, 3] else "badge-error" %}
-    {% set desperation_color = "badge-neutral" if campaign.desperation < 2 else "badge-warning" if campaign.desperation in [2, 3] else "badge-error" %}
     <div class="flex items-center gap-2 flex-wrap">
-      <span class="badge {{ danger_color }} badge-sm text-semibold">Danger {{ campaign.danger }}</span>
-      <span class="badge {{ desperation_color }} badge-sm text-semibold">Desperation {{ campaign.desperation }}</span>
+      <span class="badge {{ threat_badge_class(campaign.danger) }} badge-sm font-semibold">Danger {{ campaign.danger }}</span>
+      <span class="badge {{ threat_badge_class(campaign.desperation) }} badge-sm font-semibold">Desperation {{ campaign.desperation }}</span>
     </div>
   </div>
 </a>

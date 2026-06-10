@@ -1,6 +1,7 @@
-{#def company #}
+{#def #}
 
 {% set ctx = global_context() %}
+{% set company = ctx.company %}
 <div class="rounded-t-box bg-gradient-to-br from-neutral to-neutral/85 text-neutral-content px-4 sm:px-6 py-5">
   <h1 class="font-serif text-2xl sm:text-3xl tracking-wide">{{ company.name }}</h1>
   {% if company.description %}

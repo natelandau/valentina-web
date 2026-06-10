@@ -257,6 +257,37 @@ def static_url(filename: str) -> str:
     return f"{base}?v={version}"
 
 
+def approved_companies() -> dict[str, dict[str, str]]:
+    """Return the session's companies the user is approved in, keyed by company id.
+
+    Single source for the UNAPPROVED filter shared by the header company
+    switcher and the select-company page.
+    """
+    companies = session.get("companies", {})
+    return {
+        company_id: data
+        for company_id, data in companies.items()
+        if data.get("role") != "UNAPPROVED"
+    }
+
+
+_THREAT_WARNING_THRESHOLD = 2
+_THREAT_ERROR_THRESHOLD = 4
+
+
+def threat_badge_class(value: int) -> str:
+    """Map a danger/desperation level (0-5) to its daisyUI badge color class.
+
+    Single source for the severity thresholds shared by the campaign page
+    badges and the company hub campaign cards.
+    """
+    if value >= _THREAT_ERROR_THRESHOLD:
+        return "badge-error"
+    if value >= _THREAT_WARNING_THRESHOLD:
+        return "badge-warning"
+    return "badge-neutral"
+
+
 def build_fragment_url(endpoint: str, **kwargs: object) -> str:
     """Build an HTMX fragment URL, dropping kwargs with empty or None values.
 
@@ -410,21 +441,8 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
     jinja_globals["can_edit_traits_free"] = can_edit_traits_free
     jinja_globals["can_edit_character"] = can_edit_character
 
-    def _approved_company_count() -> int:
-        companies = session.get("companies", {})
-        return sum(1 for data in companies.values() if data.get("role") != "UNAPPROVED")
-
-    jinja_globals["approved_company_count"] = _approved_company_count
-
-    def _approved_companies() -> dict[str, dict[str, str]]:
-        companies = session.get("companies", {})
-        return {
-            company_id: data
-            for company_id, data in companies.items()
-            if data.get("role") != "UNAPPROVED"
-        }
-
-    jinja_globals["approved_companies"] = _approved_companies
+    jinja_globals["approved_companies"] = approved_companies
+    jinja_globals["threat_badge_class"] = threat_badge_class
 
     def _is_authenticated() -> bool:
         """Report whether a logged-in user backs this request.

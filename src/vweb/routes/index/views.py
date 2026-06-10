@@ -8,6 +8,7 @@ from flask import Blueprint, g, redirect, session, url_for
 from flask.views import MethodView
 
 from vweb import catalog
+from vweb.lib.api import get_remembered_campaign
 
 if TYPE_CHECKING:
     from werkzeug.wrappers.response import Response as WerkzeugResponse
@@ -28,11 +29,11 @@ class IndexView(MethodView):
         if "user_id" not in session:
             return catalog.render("auth.LandingPage")
 
-        ctx = g.get("global_context")
-        campaigns = ctx.campaigns if ctx else []
+        # The inject_global_context hook guarantees a context here: sessions
+        # missing the company scope are cleared and redirected before any view.
+        campaigns = g.global_context.campaigns
 
-        last_id = session.get("last_campaign_id")
-        remembered = next((c for c in campaigns if c.id == last_id), None)
+        remembered = get_remembered_campaign(campaigns)
         if remembered is not None:
             return redirect(url_for("campaign.campaign", campaign_id=remembered.id))
 
