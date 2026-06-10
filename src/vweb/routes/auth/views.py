@@ -637,6 +637,9 @@ class SelectCompanyView(MethodView):
 
         session["company_id"] = company_id
         session["user_id"] = data["user_id"]
+        # The remembered campaign belongs to the previous company; drop it so
+        # the index entry rules re-evaluate against the new company's campaigns.
+        session.pop("last_campaign_id", None)
         return redirect(url_for("index.index"))
 
 
