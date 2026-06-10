@@ -30,8 +30,12 @@ class TestUnlinkIdentityView:
         # Given a users service that unlinks successfully
         mock_users_svc = MagicMock()
         mock_users_svc.unlink_identity.return_value = UserFactory.build(id="test-user-id")
-        mocker.patch("vweb.routes.auth.views.sync_users_service", return_value=mock_users_svc)
-        mock_cache_clear = mocker.patch("vweb.routes.auth.views.cache.global_context.clear")
+        mocker.patch(
+            "vweb.routes.auth.views_identity.sync_users_service", return_value=mock_users_svc
+        )
+        mock_cache_clear = mocker.patch(
+            "vweb.routes.auth.views_identity.cache.global_context.clear"
+        )
 
         # When the unlink route is hit
         response = self._post_unlink(client)
@@ -51,8 +55,12 @@ class TestUnlinkIdentityView:
         mock_users_svc.unlink_identity.side_effect = ConflictError(
             "conflict", 409, {"code": "LAST_IDENTITY"}
         )
-        mocker.patch("vweb.routes.auth.views.sync_users_service", return_value=mock_users_svc)
-        mock_cache_clear = mocker.patch("vweb.routes.auth.views.cache.global_context.clear")
+        mocker.patch(
+            "vweb.routes.auth.views_identity.sync_users_service", return_value=mock_users_svc
+        )
+        mock_cache_clear = mocker.patch(
+            "vweb.routes.auth.views_identity.cache.global_context.clear"
+        )
 
         # When the unlink route is hit
         response = self._post_unlink(client)
@@ -69,7 +77,9 @@ class TestUnlinkIdentityView:
         mock_users_svc.unlink_identity.side_effect = NotFoundError(
             "missing", 404, {"code": "IDENTITY_NOT_LINKED"}
         )
-        mocker.patch("vweb.routes.auth.views.sync_users_service", return_value=mock_users_svc)
+        mocker.patch(
+            "vweb.routes.auth.views_identity.sync_users_service", return_value=mock_users_svc
+        )
 
         # When the unlink route is hit
         response = self._post_unlink(client)
@@ -83,7 +93,9 @@ class TestUnlinkIdentityView:
         # Given the acting user is not permitted to unlink
         mock_users_svc = MagicMock()
         mock_users_svc.unlink_identity.side_effect = AuthorizationError("denied", 403, {})
-        mocker.patch("vweb.routes.auth.views.sync_users_service", return_value=mock_users_svc)
+        mocker.patch(
+            "vweb.routes.auth.views_identity.sync_users_service", return_value=mock_users_svc
+        )
 
         # When the unlink route is hit
         response = self._post_unlink(client)
@@ -120,8 +132,10 @@ class TestUnlinkIdentityView:
         # Given a users service that unlinks successfully
         mock_users_svc = MagicMock()
         mock_users_svc.unlink_identity.return_value = UserFactory.build(id="test-user-id")
-        mocker.patch("vweb.routes.auth.views.sync_users_service", return_value=mock_users_svc)
-        mocker.patch("vweb.routes.auth.views.cache.global_context.clear")
+        mocker.patch(
+            "vweb.routes.auth.views_identity.sync_users_service", return_value=mock_users_svc
+        )
+        mocker.patch("vweb.routes.auth.views_identity.cache.global_context.clear")
 
         # When the Apple unlink route is hit
         response = self._post_unlink(client, provider="apple")

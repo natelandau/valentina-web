@@ -13,7 +13,7 @@ from joserfc.jwk import ECKey
 from vweb.config import APISettings, AppleOAuthSettings, OAuthSettings, RedisSettings, Settings
 from vweb.lib import oauth_setup
 from vweb.routes.auth.apple_oauth import build_apple_client_secret
-from vweb.routes.auth.views import _apple_display_name
+from vweb.routes.auth.services import extract_apple_display_name
 
 
 def _apple_settings(**overrides) -> AppleOAuthSettings:
@@ -104,15 +104,15 @@ class TestAppleDisplayName:
     def test_returns_full_name_from_user_payload(self) -> None:
         """Verify first and last names are joined into a display name."""
         raw = '{"name": {"firstName": "Ada", "lastName": "Lovelace"}}'
-        assert _apple_display_name(raw) == "Ada Lovelace"
+        assert extract_apple_display_name(raw) == "Ada Lovelace"
 
     def test_returns_partial_name_when_only_one_present(self) -> None:
         """Verify a single supplied name part is used on its own."""
-        assert _apple_display_name('{"name": {"firstName": "Ada"}}') == "Ada"
+        assert extract_apple_display_name('{"name": {"firstName": "Ada"}}') == "Ada"
 
     def test_ignores_non_string_name_parts(self) -> None:
         """Verify non-string name parts are dropped rather than crashing the parse."""
-        assert _apple_display_name('{"name": {"firstName": "Ada", "lastName": 5}}') == "Ada"
+        assert extract_apple_display_name('{"name": {"firstName": "Ada", "lastName": 5}}') == "Ada"
 
     @pytest.mark.parametrize(
         "raw",
@@ -134,7 +134,7 @@ class TestAppleDisplayName:
     )
     def test_returns_none_for_missing_or_invalid_payload(self, raw: str | None) -> None:
         """Verify absent, malformed, or wrongly-shaped payloads yield no display name."""
-        assert _apple_display_name(raw) is None
+        assert extract_apple_display_name(raw) is None
 
 
 class TestAppleProviderRegistration:

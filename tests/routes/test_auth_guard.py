@@ -30,7 +30,7 @@ class TestRequireAuth:
         # Mock OAuth to avoid real Discord redirect
         mock_discord = MagicMock()
         mock_discord.authorize_redirect.return_value = MagicMock(status_code=302)
-        mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
 
         client = app.test_client()
         response = client.get("/auth/discord")

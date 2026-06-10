@@ -28,7 +28,7 @@ class TestDiscordLoginView:
         )
         mock_discord = MagicMock()
         mock_discord.authorize_redirect.return_value = mock_redirect_response
-        mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
 
         # When the login route is hit
         client.get("/auth/discord")
@@ -43,7 +43,7 @@ class TestDiscordLoginView:
             sess["oauth_link_mode"] = True
         mock_discord = MagicMock()
         mock_discord.authorize_redirect.return_value = MagicMock(status_code=302)
-        mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
 
         # When a fresh login is initiated
         client.get("/auth/discord")
@@ -69,15 +69,15 @@ class TestDiscordCallbackView:
             "email": "test@example.com",
         }
         mock_discord.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
 
         # Given a single approved lookup result
         result = _make_lookup_result()
         mocker.patch(
-            "vweb.routes.auth.views.lookup_user_companies",
+            "vweb.routes.auth.views_oauth.lookup_user_companies",
             return_value=[result],
         )
-        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
+        mocker.patch("vweb.routes.auth.views_oauth.identify_in_companies", return_value={})
 
         # When the callback is hit
         response = client.get("/auth/discord/callback")
@@ -102,15 +102,15 @@ class TestDiscordCallbackView:
             "email": "new@example.com",
         }
         mock_discord.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
 
         # Given a single unapproved lookup result
         result = _make_lookup_result(user_id="unapproved-user-id", role="UNAPPROVED")
         mocker.patch(
-            "vweb.routes.auth.views.lookup_user_companies",
+            "vweb.routes.auth.views_oauth.lookup_user_companies",
             return_value=[result],
         )
-        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
+        mocker.patch("vweb.routes.auth.views_oauth.identify_in_companies", return_value={})
 
         # When the callback is hit
         response = client.get("/auth/discord/callback")
@@ -129,14 +129,14 @@ class TestDiscordCallbackView:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"id": "789", "username": "u", "email": "e@e.com"}
         mock_discord.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
 
         result = _make_lookup_result()
         mocker.patch(
-            "vweb.routes.auth.views.lookup_user_companies",
+            "vweb.routes.auth.views_oauth.lookup_user_companies",
             return_value=[result],
         )
-        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
+        mocker.patch("vweb.routes.auth.views_oauth.identify_in_companies", return_value={})
 
         # When the callback is hit
         client.get("/auth/discord/callback")
@@ -153,11 +153,11 @@ class TestDiscordCallbackView:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"id": "new", "username": "u", "email": "e@e.com"}
         mock_discord.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
 
         # Given no lookup results (new user)
         mocker.patch(
-            "vweb.routes.auth.views.lookup_user_companies",
+            "vweb.routes.auth.views_oauth.lookup_user_companies",
             return_value=[],
         )
 
@@ -182,7 +182,7 @@ class TestGitHubLoginView:
         )
         mock_github = MagicMock()
         mock_github.authorize_redirect.return_value = mock_redirect_response
-        mocker.patch("vweb.routes.auth.views.oauth", github=mock_github)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", github=mock_github)
 
         # When the login route is hit
         client.get("/auth/github")
@@ -207,15 +207,15 @@ class TestGitHubCallbackView:
             "email": "test@example.com",
         }
         mock_github.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views.oauth", github=mock_github)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", github=mock_github)
 
         # Given a single approved lookup result
         result = _make_lookup_result()
         mocker.patch(
-            "vweb.routes.auth.views.lookup_user_companies",
+            "vweb.routes.auth.views_oauth.lookup_user_companies",
             return_value=[result],
         )
-        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
+        mocker.patch("vweb.routes.auth.views_oauth.identify_in_companies", return_value={})
 
         # When the callback is hit
         response = client.get("/auth/github/callback")
@@ -239,15 +239,15 @@ class TestGitHubCallbackView:
             "email": "new@example.com",
         }
         mock_github.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views.oauth", github=mock_github)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", github=mock_github)
 
         # Given a single unapproved lookup result
         result = _make_lookup_result(user_id="unapproved-user-id", role="UNAPPROVED")
         mocker.patch(
-            "vweb.routes.auth.views.lookup_user_companies",
+            "vweb.routes.auth.views_oauth.lookup_user_companies",
             return_value=[result],
         )
-        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
+        mocker.patch("vweb.routes.auth.views_oauth.identify_in_companies", return_value={})
 
         # When the callback is hit
         response = client.get("/auth/github/callback")
@@ -266,14 +266,14 @@ class TestGitHubCallbackView:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"id": 789, "login": "u", "email": "e@e.com"}
         mock_github.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views.oauth", github=mock_github)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", github=mock_github)
 
         result = _make_lookup_result()
         mocker.patch(
-            "vweb.routes.auth.views.lookup_user_companies",
+            "vweb.routes.auth.views_oauth.lookup_user_companies",
             return_value=[result],
         )
-        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
+        mocker.patch("vweb.routes.auth.views_oauth.identify_in_companies", return_value={})
 
         # When the callback is hit
         client.get("/auth/github/callback")
@@ -297,15 +297,15 @@ class TestGitHubCallbackView:
             {"email": "primary@example.com", "primary": True, "verified": True},
         ]
         mock_github.get.side_effect = [user_resp, emails_resp]
-        mocker.patch("vweb.routes.auth.views.oauth", github=mock_github)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", github=mock_github)
 
         # Given a single approved lookup result
         result = _make_lookup_result()
         mock_lookup = mocker.patch(
-            "vweb.routes.auth.views.lookup_user_companies",
+            "vweb.routes.auth.views_oauth.lookup_user_companies",
             return_value=[result],
         )
-        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
+        mocker.patch("vweb.routes.auth.views_oauth.identify_in_companies", return_value={})
 
         # When the callback is hit
         client.get("/auth/github/callback")
@@ -327,7 +327,7 @@ class TestGoogleLoginView:
         )
         mock_google = MagicMock()
         mock_google.authorize_redirect.return_value = mock_redirect_response
-        mocker.patch("vweb.routes.auth.views.oauth", google=mock_google)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", google=mock_google)
 
         # When the login route is hit
         client.get("/auth/google")
@@ -353,15 +353,15 @@ class TestGoogleCallbackView:
         }
         mock_google = MagicMock()
         mock_google.authorize_access_token.return_value = mock_token
-        mocker.patch("vweb.routes.auth.views.oauth", google=mock_google)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", google=mock_google)
 
         # Given a single approved lookup result
         result = _make_lookup_result()
         mocker.patch(
-            "vweb.routes.auth.views.lookup_user_companies",
+            "vweb.routes.auth.views_oauth.lookup_user_companies",
             return_value=[result],
         )
-        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
+        mocker.patch("vweb.routes.auth.views_oauth.identify_in_companies", return_value={})
 
         # When the callback is hit
         response = client.get("/auth/google/callback")
@@ -386,15 +386,15 @@ class TestGoogleCallbackView:
         }
         mock_google = MagicMock()
         mock_google.authorize_access_token.return_value = mock_token
-        mocker.patch("vweb.routes.auth.views.oauth", google=mock_google)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", google=mock_google)
 
         # Given a single unapproved lookup result
         result = _make_lookup_result(user_id="unapproved-user-id", role="UNAPPROVED")
         mocker.patch(
-            "vweb.routes.auth.views.lookup_user_companies",
+            "vweb.routes.auth.views_oauth.lookup_user_companies",
             return_value=[result],
         )
-        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
+        mocker.patch("vweb.routes.auth.views_oauth.identify_in_companies", return_value={})
 
         # When the callback is hit
         response = client.get("/auth/google/callback")
@@ -414,14 +414,14 @@ class TestGoogleCallbackView:
             "id_token": "fake",
             "userinfo": {"sub": "789", "name": "u", "email": "e@e.com"},
         }
-        mocker.patch("vweb.routes.auth.views.oauth", google=mock_google)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", google=mock_google)
 
         result = _make_lookup_result()
         mocker.patch(
-            "vweb.routes.auth.views.lookup_user_companies",
+            "vweb.routes.auth.views_oauth.lookup_user_companies",
             return_value=[result],
         )
-        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
+        mocker.patch("vweb.routes.auth.views_oauth.identify_in_companies", return_value={})
 
         # When the callback is hit
         client.get("/auth/google/callback")
@@ -439,7 +439,7 @@ class TestAppleLoginView:
         # Given a mock OAuth apple client
         mock_apple = MagicMock()
         mock_apple.authorize_redirect.return_value = MagicMock(status_code=302)
-        mocker.patch("vweb.routes.auth.views.oauth", apple=mock_apple)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", apple=mock_apple)
 
         # When the login route is hit
         client.get("/auth/apple")
@@ -460,15 +460,17 @@ class TestAppleCallbackView:
             "id_token": "fake-id-token",
             "userinfo": {"sub": "apple-123", "email": "test@example.com"},
         }
-        mocker.patch("vweb.routes.auth.views.oauth", apple=mock_apple)
-        mocker.patch("vweb.routes.auth.views.build_apple_client_secret", return_value="secret")
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", apple=mock_apple)
+        mocker.patch(
+            "vweb.routes.auth.views_oauth.build_apple_client_secret", return_value="secret"
+        )
 
         # Given a single approved lookup result
         mocker.patch(
-            "vweb.routes.auth.views.lookup_user_companies",
+            "vweb.routes.auth.views_oauth.lookup_user_companies",
             return_value=[_make_lookup_result()],
         )
-        mocker.patch("vweb.routes.auth.views.identify_in_companies", return_value={})
+        mocker.patch("vweb.routes.auth.views_oauth.identify_in_companies", return_value={})
 
         # When Apple POSTs the callback (no CSRF token — the view is exempt)
         response = client.post("/auth/apple/callback", data={"code": "abc", "state": "xyz"})
@@ -487,9 +489,11 @@ class TestAppleCallbackView:
             "id_token": "fake-id-token",
             "userinfo": {"sub": "apple-new", "email": "new@example.com"},
         }
-        mocker.patch("vweb.routes.auth.views.oauth", apple=mock_apple)
-        mocker.patch("vweb.routes.auth.views.build_apple_client_secret", return_value="secret")
-        mocker.patch("vweb.routes.auth.views.lookup_user_companies", return_value=[])
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", apple=mock_apple)
+        mocker.patch(
+            "vweb.routes.auth.views_oauth.build_apple_client_secret", return_value="secret"
+        )
+        mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=[])
 
         # When Apple POSTs the callback with the first-login name payload
         response = client.post(
@@ -576,16 +580,16 @@ class TestIdentifyIntegration:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"id": "1", "username": "u", "email": "e@e.com"}
         mock_discord.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
 
         # Given lookup results across two companies
         results = [
             _make_lookup_result(company_id="c1", user_id="u1"),
             _make_lookup_result(company_id="c2", user_id="u2", role="ADMIN"),
         ]
-        mocker.patch("vweb.routes.auth.views.lookup_user_companies", return_value=results)
+        mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=results)
         mock_identify = mocker.patch(
-            "vweb.routes.auth.views.identify_in_companies", return_value={}
+            "vweb.routes.auth.views_oauth.identify_in_companies", return_value={}
         )
 
         # When the callback is hit
@@ -603,13 +607,13 @@ class TestIdentifyIntegration:
             "id_token": "oidc-id-tok",
             "userinfo": {"sub": "1", "name": "u", "email": "e@e.com"},
         }
-        mocker.patch("vweb.routes.auth.views.oauth", google=mock_google)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", google=mock_google)
         mocker.patch(
-            "vweb.routes.auth.views.lookup_user_companies",
+            "vweb.routes.auth.views_oauth.lookup_user_companies",
             return_value=[_make_lookup_result()],
         )
         mock_identify = mocker.patch(
-            "vweb.routes.auth.views.identify_in_companies", return_value={}
+            "vweb.routes.auth.views_oauth.identify_in_companies", return_value={}
         )
 
         # When the callback is hit
@@ -628,15 +632,15 @@ class TestIdentifyIntegration:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"id": "1", "username": "u", "email": "e@e.com"}
         mock_discord.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
         mocker.patch(
-            "vweb.routes.auth.views.lookup_user_companies",
+            "vweb.routes.auth.views_oauth.lookup_user_companies",
             return_value=[_make_lookup_result(user_id="other-user")],
         )
 
         # Given identify rejects the token
         mocker.patch(
-            "vweb.routes.auth.views.identify_in_companies",
+            "vweb.routes.auth.views_oauth.identify_in_companies",
             side_effect=UnprocessableEntityError("bad", 422, {"code": "TOKEN_VERIFICATION_FAILED"}),
         )
 
@@ -662,8 +666,8 @@ class TestIdentifyIntegration:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"id": "n", "username": "newbie", "email": "n@e.com"}
         mock_discord.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views.oauth", discord=mock_discord)
-        mocker.patch("vweb.routes.auth.views.lookup_user_companies", return_value=[])
+        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
+        mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=[])
 
         # When the callback is hit
         client.get("/auth/discord/callback")

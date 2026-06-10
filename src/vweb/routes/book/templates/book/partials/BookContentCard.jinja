@@ -101,7 +101,7 @@
       </div>
 
       <div x-show="view === 'chapters'" x-cloak>
-        <book.partials.ChaptersCard book={{ book }} campaign={{ campaign }} chapters={{ chapters }} />
+        <book.components.ChaptersCard book={{ book }} campaign={{ campaign }} chapters={{ chapters }} />
       </div>
 
       {% set notes_editable_param = 'true' if editable else 'false' %}

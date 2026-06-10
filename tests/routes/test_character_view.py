@@ -187,7 +187,7 @@ class TestSheetSidebarOwnerLink:
         with app.test_request_context():
             g.global_context = ctx
             g.requesting_user = ctx.users[0]
-            html = catalog.render("character_view.partials.SheetSidebar", character=npc)
+            html = catalog.render("character_view.components.SheetSidebar", character=npc)
 
         # Then it renders without building a profile URL (no owner to link to)
         assert "/profile/" not in html

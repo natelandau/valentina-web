@@ -37,6 +37,9 @@ Character routes split into `character_view`, `character_trait_edit` (spend type
 
 - **`MethodView` only**, not decorated functions. Register via `bp.add_url_rule("/path", view_func=MyView.as_view("name"))`. Always pass `methods=` when handling more than GET.
 - Render templates via `catalog.render("namespace.ComponentName", **kwargs)` — `render_template()` is no longer used anywhere.
+- **File roles:** `views.py` (MethodViews + all URL registration, owns `bp`), `handlers.py` (CrudHandler implementations), `services.py` (stateless business logic / API orchestration / validation; no request/response objects, no `flash()`/`redirect()`). Split into `views_<feature>.py` / `handlers_<feature>.py` only when a file would exceed ~300 lines (e.g. `auth/views_oauth.py`, `character_view/views_inventory.py`); sibling view modules define classes only, `views.py` imports and registers them. Each character_create flow pairs `<flow>_views.py` + `<flow>_services.py`.
+- CRUD table URL registration goes through `register_crud_table_routes` (`lib/crud/routing.py`).
+- **Template placement:** `partials/` = rendered from Python via `catalog.render("ns.partials.X", ...)`; `components/` = embedded as JinjaX tags (`<ns.components.X />`). A template used both ways stays in `partials/`.
 
 ## Key Helpers
 
@@ -62,7 +65,7 @@ All domains are built on `cache.base.cached_fetch(key, fetch, strategy)`, which 
 
 ### Auth (OAuth)
 
-Authlib with Discord/GitHub/Google. All resolve via `routes/auth/services.py` (provider ID → email → create UNAPPROVED). `require_auth` before_request hook redirects unauthenticated → landing, UNAPPROVED → `/pending-approval`. 30-day permanent sessions in Redis, keyed by `session["user_id"]`.
+Authlib with Discord/GitHub/Google/Apple. Provider authorize/callback views live in `routes/auth/views_oauth.py`, identity link/unlink in `views_identity.py`, logout/company selection (and `bp`) in `views.py`; all resolve via `routes/auth/services.py` (provider ID → email → create UNAPPROVED). `require_auth` before_request hook redirects unauthenticated → landing, UNAPPROVED → `/pending-approval`. 30-day permanent sessions in Redis, keyed by `session["user_id"]`.
 
 ### Scanner Block Hook (`lib/hooks.py`)
 
@@ -127,7 +130,7 @@ Tailwind v4's JIT scanner only sees **literal** class strings in templates at bu
 
 - **When to use which:** factories for data; `fake_vclient` for code calling `sync_*` factories; `MagicMock()` only for service objects needing `side_effect` or handler/cache mocks.
 - Other shared fixtures: `mock_global_context` (factory-built `GlobalContext`), `get_csrf(client)`. Don't duplicate in test files.
-- **OAuth tests:** mock `oauth.discord`/`oauth.google` and `resolve_or_create_discord_user`; pre-seed `user_id` via `client.session_transaction()`.
+- **OAuth tests:** patch `oauth`, `lookup_user_companies`, and `identify_in_companies` where used (`routes.auth.views_oauth` for login/callback, `views_identity` for link/unlink, `views` for company selection); pre-seed `user_id` via `client.session_transaction()`.
 
 ## Code Style
 

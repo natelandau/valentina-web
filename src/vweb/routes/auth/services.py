@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import TYPE_CHECKING
 
@@ -51,6 +52,28 @@ def build_companies_mapping(results: list[UserLookupResult]) -> dict[str, dict[s
         }
         for r in results
     }
+
+
+def extract_apple_display_name(raw_user: str | None) -> str | None:
+    """Extract a display name from Apple's first-login ``user`` form field.
+
+    Apple includes the user's name only on the first authorization, as a JSON
+    string in the form POST (never in the id_token), so treat it as best-effort.
+    """
+    if not raw_user:
+        return None
+    try:
+        parsed = json.loads(raw_user)
+    except (ValueError, TypeError):
+        return None
+    # The field is attacker-controllable (the callback is CSRF-exempt), so accept
+    # only the shape Apple actually sends and ignore anything else.
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("name"), dict):
+        return None
+    name = parsed["name"]
+    parts = (name.get("firstName"), name.get("lastName"))
+    full_name = " ".join(part for part in parts if isinstance(part, str) and part)
+    return full_name or None
 
 
 def identify_in_companies(
