@@ -3,5 +3,40 @@
 <shared.PageLayout title="Home">
   <div class="max-w-6xl mx-auto p-4 flex flex-col gap-4">
     <shared.layout.CompanyChrome active="campaigns" />
+    <h1 class="sr-only">Company home</h1>
+
+    {% if campaigns %}
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for campaign in campaigns %}
+          <company_hub.components.CampaignCard campaign={{ campaign }} />
+        {% endfor %}
+        {% if can_manage_campaign() %}
+          <button type="button"
+                  x-data
+                  @click="document.getElementById('campaign-create-modal').showModal()"
+                  class="card border-2 border-dashed border-base-300 bg-transparent hover:border-primary/50 hover:bg-base-100 transition-colors cursor-pointer min-h-32">
+            <div class="card-body items-center justify-center text-base-content/60">
+              <span class="text-lg font-semibold">+ New Campaign</span>
+            </div>
+          </button>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="card surface-card">
+        <div class="card-body items-center text-center py-12">
+          {% if can_manage_campaign() %}
+            <h2 class="card-title font-serif">Create your first campaign</h2>
+            <p class="text-base-content/60">Campaigns hold your books, characters, and dice rolls.</p>
+            <button type="button"
+                    x-data
+                    @click="document.getElementById('campaign-create-modal').showModal()"
+                    class="btn btn-primary mt-2">+ New Campaign</button>
+          {% else %}
+            <h2 class="card-title font-serif">No campaigns yet</h2>
+            <p class="text-base-content/60">Ask your storyteller to create a campaign and add you to it.</p>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
   </div>
 </shared.PageLayout>

@@ -92,3 +92,85 @@ def test_hub_members_tab_shows_pending_badge(client, mocker) -> None:
 
     # Then the ping badge animation markup is present
     assert "animate-ping" in body
+
+
+def test_hub_lists_campaign_cards(client, mocker) -> None:
+    """Verify the hub renders a linked card per campaign with stats."""
+    # Given two campaigns with known names and counts
+    blood = CampaignFactory.build(name="Blood and Smoke", num_books=3, num_player_characters=5)
+    nights = CampaignFactory.build(name="Chicago Nights", num_books=1, num_player_characters=2)
+    ctx = build_global_context(user_role="PLAYER", campaigns=[blood, nights])
+    mocker.patch(LOAD_PATH, return_value=ctx)
+
+    # When visiting the hub
+    body = client.get("/home").get_data(as_text=True)
+
+    # Then both campaigns render as links with their stats
+    assert "Blood and Smoke" in body
+    assert "Chicago Nights" in body
+    assert f"/campaign/{blood.id}" in body
+    assert f"/campaign/{nights.id}" in body
+    assert "3 books" in body
+
+
+def test_hub_create_card_respects_permission(client, mocker) -> None:
+    """Verify the New Campaign card renders only for users who may manage campaigns."""
+    # Given a player in a company restricted to storytellers
+    company = CompanyFactory.build(name="Test Company")
+    company.settings.permission_manage_campaign = "STORYTELLER"
+    ctx = build_global_context(
+        user_role="PLAYER", company=company, campaigns=CampaignFactory.batch(1)
+    )
+    mocker.patch(LOAD_PATH, return_value=ctx)
+
+    # When visiting the hub
+    body = client.get("/home").get_data(as_text=True)
+
+    # Then no create affordance renders
+    assert "New Campaign" not in body
+
+
+def test_hub_create_card_for_unrestricted_company(client, mocker) -> None:
+    """Verify players get the create card when campaign management is unrestricted."""
+    # Given a player in an unrestricted company
+    company = CompanyFactory.build(name="Test Company")
+    company.settings.permission_manage_campaign = "UNRESTRICTED"
+    ctx = build_global_context(
+        user_role="PLAYER", company=company, campaigns=CampaignFactory.batch(1)
+    )
+    mocker.patch(LOAD_PATH, return_value=ctx)
+
+    # When visiting the hub
+    body = client.get("/home").get_data(as_text=True)
+
+    # Then the create card renders
+    assert "New Campaign" in body
+
+
+def test_hub_empty_state_for_manager(client, mocker) -> None:
+    """Verify managers with zero campaigns see a create call-to-action."""
+    # Given an admin with no campaigns
+    ctx = build_global_context(user_role="ADMIN", campaigns=[])
+    mocker.patch(LOAD_PATH, return_value=ctx)
+
+    # When visiting the hub
+    body = client.get("/home").get_data(as_text=True)
+
+    # Then the create-first-campaign empty state renders
+    assert "Create your first campaign" in body
+
+
+def test_hub_empty_state_for_player(client, mocker) -> None:
+    """Verify players with zero campaigns see guidance instead of a create button."""
+    # Given a player with no campaigns in a restricted company
+    company = CompanyFactory.build(name="Test Company")
+    company.settings.permission_manage_campaign = "STORYTELLER"
+    ctx = build_global_context(user_role="PLAYER", company=company, campaigns=[])
+    mocker.patch(LOAD_PATH, return_value=ctx)
+
+    # When visiting the hub
+    body = client.get("/home").get_data(as_text=True)
+
+    # Then the ask-your-storyteller empty state renders
+    assert "storyteller" in body
+    assert "New Campaign" not in body
