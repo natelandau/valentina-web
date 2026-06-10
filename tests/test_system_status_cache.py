@@ -9,17 +9,10 @@ import pytest
 from vclient.models import SystemHealth
 from vclient.testing import SystemHealthFactory
 
-from tests.helpers import make_cache_store_mock
 from vweb.lib.cache.system_status import clear, get
 
 if TYPE_CHECKING:
     from flask import Flask
-
-
-@pytest.fixture
-def mock_cache_store(mocker) -> dict:
-    """Provide a dict-backed cache mock for system_status cache."""
-    return make_cache_store_mock(mocker, "vweb.lib.cache.base.cache")
 
 
 @pytest.fixture

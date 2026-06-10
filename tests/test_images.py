@@ -1,30 +1,262 @@
-"""Tests for character image upload and delete views."""
+"""Tests for image upload, delete, and carousel rendering (book, chapter, character)."""
 
 from __future__ import annotations
 
 import io
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import pytest
-from vclient.testing import AssetFactory, CampaignFactory, CharacterFactory
+from vclient.testing import AssetFactory, CampaignChapterFactory, CharacterFactory
 
 from tests.conftest import get_csrf
 
+if TYPE_CHECKING:
+    from unittest.mock import MagicMock
+
+    from pytest_mock import MockerFixture
+
+
+@dataclass(frozen=True)
+class ImageEntityCase:
+    """Describe one image-bearing entity for the shared carousel/upload/delete tests."""
+
+    name: str
+    detail_url: str
+    images_url: str
+    carousel_id: str
+    guard_path: str
+    asset_parent_id: str
+    service: MagicMock
+
 
 @pytest.fixture
-def mock_character():
-    """Build a factory character owned by the test session user."""
-    return CharacterFactory.build(
-        id="char-123",
-        name="Test Character",
-        campaign_id="camp-1",
-        user_player_id="test-user-id",
+def mock_chapter():
+    """Build a factory chapter."""
+    return CampaignChapterFactory.build(
+        id="ch-1",
+        book_id="book-1",
+        number=1,
+        name="Chapter One",
+        description="A beginning.",
     )
 
 
 @pytest.fixture
-def mock_campaign():
-    """Build a factory campaign."""
-    return CampaignFactory.build(id="camp-1", name="Test Campaign")
+def book_image_entity(
+    mocker: MockerFixture, mock_book, mock_campaign, mock_chapters
+) -> ImageEntityCase:
+    """Mock the book lookups and books service factory for image tests."""
+    mocker.patch(
+        "vweb.routes.book.views.fetch_book_or_404",
+        return_value=(mock_book, mock_campaign),
+    )
+    mocker.patch(
+        "vweb.lib.cache.campaign_content.chapters",
+        return_value=mock_chapters,
+    )
+    service = mocker.patch("vweb.routes.book.views.sync_books_service").return_value
+    detail_url = f"/campaign/{mock_campaign.id}/book/{mock_book.id}"
+    return ImageEntityCase(
+        name="book",
+        detail_url=detail_url,
+        images_url=f"{detail_url}/images",
+        carousel_id="book-carousel",
+        guard_path="vweb.routes.book.views.can_manage_campaign",
+        asset_parent_id=mock_book.id,
+        service=service,
+    )
+
+
+@pytest.fixture
+def chapter_image_entity(
+    mocker: MockerFixture, mock_book, mock_campaign, mock_chapter
+) -> ImageEntityCase:
+    """Mock the chapter lookups and chapters service factory for image tests."""
+    mocker.patch(
+        "vweb.routes.chapter.views.fetch_book_or_404",
+        return_value=(mock_book, mock_campaign),
+    )
+    mocker.patch(
+        "vweb.routes.chapter.views.fetch_chapter_or_404",
+        return_value=mock_chapter,
+    )
+    mocker.patch(
+        "vweb.lib.cache.campaign_content.chapters",
+        return_value=[mock_chapter],
+    )
+    service = mocker.patch("vweb.routes.chapter.views.sync_chapters_service").return_value
+    service.list_all.return_value = [mock_chapter]
+    service.list_all_assets.return_value = []
+    service.list_all_notes.return_value = []
+    detail_url = f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/{mock_chapter.id}"
+    return ImageEntityCase(
+        name="chapter",
+        detail_url=detail_url,
+        images_url=f"{detail_url}/images",
+        carousel_id="chapter-carousel",
+        guard_path="vweb.routes.chapter.views.can_manage_campaign",
+        asset_parent_id=mock_chapter.id,
+        service=service,
+    )
+
+
+@pytest.fixture(params=["book_image_entity", "chapter_image_entity"])
+def image_entity(request: pytest.FixtureRequest) -> ImageEntityCase:
+    """Parametrize the shared image tests over the book and chapter entities."""
+    return request.getfixturevalue(request.param)
+
+
+class TestImageCarousel:
+    """Tests for carousel rendering on the entity detail page."""
+
+    def test_detail_renders_carousel_when_assets_present(
+        self, client, image_entity, mock_asset
+    ) -> None:
+        """Verify carousel renders when assets exist."""
+        # Given the entity has one asset
+        image_entity.service.list_all_assets.return_value = [mock_asset]
+
+        # When fetching the detail page
+        response = client.get(image_entity.detail_url)
+
+        # Then the carousel and asset URL appear
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert image_entity.carousel_id in body
+        assert mock_asset.public_url in body
+
+    def test_detail_hides_carousel_when_no_assets(self, client, image_entity) -> None:
+        """Verify carousel is absent when no assets exist."""
+        # Given no assets
+        image_entity.service.list_all_assets.return_value = []
+
+        # When fetching the detail page
+        response = client.get(image_entity.detail_url)
+
+        # Then the carousel id is not present
+        assert response.status_code == 200
+        assert image_entity.carousel_id not in response.get_data(as_text=True)
+
+
+class TestImageUpload:
+    """Tests for image upload on books and chapters."""
+
+    def test_book_image_upload_happy_path(
+        self, client, mocker, book_image_entity, mock_asset
+    ) -> None:
+        """Verify a valid book upload re-renders the partial with the new asset."""
+        # Given a privileged user and a successful upload
+        mocker.patch(book_image_entity.guard_path, return_value=True)
+        book_image_entity.service.list_all_assets.return_value = [mock_asset]
+        csrf = get_csrf(client)
+
+        # When uploading an image
+        response = client.post(
+            book_image_entity.images_url,
+            data={
+                "csrf_token": csrf,
+                "image": (io.BytesIO(b"fakeimage"), "img.jpg", "image/jpeg"),
+            },
+            content_type="multipart/form-data",
+        )
+
+        # Then upload is called and the response renders the new asset
+        assert response.status_code == 200
+        book_image_entity.service.upload_asset.assert_called_once()
+        assert mock_asset.public_url in response.get_data(as_text=True)
+
+    def test_chapter_image_upload_happy_path(
+        self, client, mocker, chapter_image_entity, mock_asset
+    ) -> None:
+        """Verify a valid chapter upload re-renders the partial with the new asset."""
+        # Given a privileged user; assets list goes from empty to populated after upload
+        mocker.patch(chapter_image_entity.guard_path, return_value=True)
+        # side_effect proves the view re-fetches AFTER mutation rather than reusing a stale list
+        chapter_image_entity.service.list_all_assets.side_effect = [[mock_asset]]
+        csrf = get_csrf(client)
+
+        # When uploading an image
+        response = client.post(
+            chapter_image_entity.images_url,
+            data={
+                "csrf_token": csrf,
+                "image": (io.BytesIO(b"fakeimage"), "img.jpg", "image/jpeg"),
+            },
+            content_type="multipart/form-data",
+        )
+
+        # Then upload is called with the expected kwargs and the new asset is rendered
+        assert response.status_code == 200
+        chapter_image_entity.service.upload_asset.assert_called_once_with(
+            "ch-1", "img.jpg", b"fakeimage", "image/jpeg"
+        )
+        assert mock_asset.public_url in response.get_data(as_text=True)
+
+    def test_image_upload_rejects_wrong_type(self, client, mocker, image_entity) -> None:
+        """Verify upload of an unsupported MIME type does not call the API."""
+        # Given a privileged user
+        mocker.patch(image_entity.guard_path, return_value=True)
+        image_entity.service.list_all_assets.return_value = []
+        csrf = get_csrf(client)
+
+        # When uploading a non-image file
+        response = client.post(
+            image_entity.images_url,
+            data={
+                "csrf_token": csrf,
+                "image": (io.BytesIO(b"junk"), "file.bin", "application/octet-stream"),
+            },
+            content_type="multipart/form-data",
+        )
+
+        # Then upload was not called
+        assert response.status_code == 200
+        image_entity.service.upload_asset.assert_not_called()
+
+    def test_image_upload_forbidden_for_non_editor(self, client, mocker, image_entity) -> None:
+        """Verify non-privileged users get 403 on upload."""
+        # Given an unprivileged user
+        mocker.patch(image_entity.guard_path, return_value=False)
+        csrf = get_csrf(client)
+
+        # When attempting an upload
+        response = client.post(
+            image_entity.images_url,
+            data={
+                "csrf_token": csrf,
+                "image": (io.BytesIO(b"x"), "img.jpg", "image/jpeg"),
+            },
+            content_type="multipart/form-data",
+        )
+
+        # Then access is forbidden
+        assert response.status_code == 403
+        image_entity.service.upload_asset.assert_not_called()
+
+
+class TestImageDelete:
+    """Tests for image delete on books and chapters."""
+
+    def test_image_delete_happy_path(self, client, mocker, image_entity) -> None:
+        """Verify deletion calls the service and re-renders without the carousel."""
+        # Given a privileged user and an empty asset list after delete
+        mocker.patch(image_entity.guard_path, return_value=True)
+        image_entity.service.list_all_assets.return_value = []
+        csrf = get_csrf(client)
+
+        # When deleting an asset
+        response = client.delete(
+            f"{image_entity.images_url}/asset-1",
+            headers={"X-CSRFToken": csrf},
+        )
+
+        # Then delete is called and the carousel is gone
+        assert response.status_code == 200
+        image_entity.service.delete_asset.assert_called_once_with(
+            image_entity.asset_parent_id, "asset-1"
+        )
+        assert image_entity.carousel_id not in response.get_data(as_text=True)
 
 
 @pytest.fixture
@@ -49,7 +281,7 @@ def sample_assets():
     )
 
 
-class TestImagesTabRendering:
+class TestCharacterImagesTabRendering:
     """Tests for GET /character/<id>/images via HTMX."""
 
     def test_images_tab_passes_assets_to_template(
@@ -123,7 +355,7 @@ class TestImagesTabRendering:
         assert "No images uploaded for this character" in body
 
 
-class TestImageUpload:
+class TestCharacterImageUpload:
     """Tests for POST /character/<character_id>/images."""
 
     def test_owner_can_upload_image(
@@ -250,7 +482,7 @@ class TestImageUpload:
         mock_svc.upload_asset.assert_not_called()
 
 
-class TestImageDelete:
+class TestCharacterImageDelete:
     """Tests for DELETE /character/<character_id>/images/<asset_id>."""
 
     def test_owner_can_delete_image(self, client, mocker, mock_character_lookup) -> None:

@@ -9,17 +9,10 @@ import pytest
 from vclient.models.full_sheet import CharacterFullSheet
 from vclient.testing import CharacterFullSheetFactory
 
-from tests.helpers import make_cache_store_mock
 from vweb.lib.cache.character_sheet import clear, get
 
 if TYPE_CHECKING:
     from flask import Flask
-
-
-@pytest.fixture
-def mock_cache_store(mocker) -> dict:
-    """Provide a dict-backed cache mock for character_sheet cache."""
-    return make_cache_store_mock(mocker, "vweb.lib.cache.base.cache")
 
 
 @pytest.fixture

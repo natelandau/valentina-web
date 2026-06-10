@@ -8,6 +8,7 @@ import pytest
 from vclient.models import InventoryItemCreate, InventoryItemUpdate
 from vclient.testing import CharacterFactory
 
+from tests.helpers import seed_session
 from vweb.routes.character_view.handlers_inventory import CharacterInventoryHandler
 
 
@@ -87,11 +88,10 @@ class TestCharacterInventoryHandlerOperations:
         """Verify list_items delegates to the vclient service."""
         with app.test_request_context():
             # Given a handler with a mocked service
-            from flask import g, session
+            from flask import g
 
             g.global_context = mock_global_context
-            session["user_id"] = "test-user-id"
-            session["company_id"] = "test-company-id"
+            seed_session()
             handler = CharacterInventoryHandler("char-123")
 
             # When listing items
@@ -106,11 +106,10 @@ class TestCharacterInventoryHandlerOperations:
         """Verify create_item strips name whitespace and omits empty description."""
         with app.test_request_context():
             # Given a handler with a mocked service
-            from flask import g, session
+            from flask import g
 
             g.global_context = mock_global_context
-            session["user_id"] = "test-user-id"
-            session["company_id"] = "test-company-id"
+            seed_session()
             handler = CharacterInventoryHandler("char-123")
 
             # When creating an item with padded name and empty description
@@ -128,11 +127,10 @@ class TestCharacterInventoryHandlerOperations:
         """Verify create_item passes description when non-empty."""
         with app.test_request_context():
             # Given a handler with a mocked service
-            from flask import g, session
+            from flask import g
 
             g.global_context = mock_global_context
-            session["user_id"] = "test-user-id"
-            session["company_id"] = "test-company-id"
+            seed_session()
             handler = CharacterInventoryHandler("char-123")
 
             # When creating an item with a description
@@ -152,11 +150,10 @@ class TestCharacterInventoryHandlerOperations:
         """Verify update_item converts empty description to None."""
         with app.test_request_context():
             # Given a handler with a mocked service
-            from flask import g, session
+            from flask import g
 
             g.global_context = mock_global_context
-            session["user_id"] = "test-user-id"
-            session["company_id"] = "test-company-id"
+            seed_session()
             handler = CharacterInventoryHandler("char-123")
 
             # When updating with an empty description
@@ -177,11 +174,10 @@ class TestCharacterInventoryHandlerOperations:
         """Verify delete_item delegates to the vclient service."""
         with app.test_request_context():
             # Given a handler with a mocked service
-            from flask import g, session
+            from flask import g
 
             g.global_context = mock_global_context
-            session["user_id"] = "test-user-id"
-            session["company_id"] = "test-company-id"
+            seed_session()
             handler = CharacterInventoryHandler("char-123")
 
             # When deleting an item
@@ -196,11 +192,10 @@ class TestCharacterInventoryHandlerOperations:
         """Verify get_item delegates to the vclient service."""
         with app.test_request_context():
             # Given a handler with a mocked service
-            from flask import g, session
+            from flask import g
 
             g.global_context = mock_global_context
-            session["user_id"] = "test-user-id"
-            session["company_id"] = "test-company-id"
+            seed_session()
             handler = CharacterInventoryHandler("char-123")
 
             # When getting a single item
@@ -213,11 +208,10 @@ class TestCharacterInventoryHandlerOperations:
         """Verify constructor raises ValueError for a character not in global context."""
         with app.test_request_context():
             # Given an empty characters list in global context
-            from flask import g, session
+            from flask import g
 
             g.global_context = mock_global_context
-            session["user_id"] = "test-user-id"
-            session["company_id"] = "test-company-id"
+            seed_session()
             mock_global_context.characters = []
 
             # When/Then constructing with an unknown character ID raises ValueError

@@ -7,19 +7,13 @@ from unittest.mock import MagicMock
 import pytest
 from vclient.testing import DictionaryTermFactory
 
-from tests.helpers import make_cache_store_mock
+from tests.helpers import seed_session
 from vweb.lib.cache.dictionary import (
     clear,
     search,
     term,
     terms,
 )
-
-
-@pytest.fixture
-def mock_cache_store(mocker) -> dict:
-    """Provide a dict-backed cache mock for dictionary cache."""
-    return make_cache_store_mock(mocker, "vweb.lib.cache.base.cache")
 
 
 @pytest.fixture
@@ -41,10 +35,7 @@ class TestTerms:
 
         # When fetching all terms
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             result = terms()
 
         # Then the result is a sorted list of 3 terms and the API was called once
@@ -59,10 +50,7 @@ class TestTerms:
         mock_dict_svc.list_all.return_value = term_list
 
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             first = terms()
             second = terms()
 
@@ -77,10 +65,7 @@ class TestTerms:
 
         # When fetching all terms
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             result = terms()
 
         # Then the result is an empty list
@@ -98,10 +83,7 @@ class TestTerms:
 
         # When fetching all terms
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             result = terms()
 
         # Then the result is sorted alphabetically
@@ -119,10 +101,7 @@ class TestTerm:
 
         # When looking up by ID
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             result = term("term-1")
 
         # Then the term is returned
@@ -135,10 +114,7 @@ class TestTerm:
 
         # When looking up an unknown ID
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             result = term("nonexistent")
 
         # Then None is returned
@@ -156,10 +132,7 @@ class TestClear:
         mock_dict_svc.list_all.side_effect = [terms_v1, terms_v2]
 
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             first = terms()
             assert len(first) == 2
 
@@ -188,10 +161,7 @@ class TestSearch:
 
         # When searching for a substring
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             result = search("aus")
 
         # Then only matching terms are returned
@@ -206,10 +176,7 @@ class TestSearch:
 
         # When searching with uppercase
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             result = search("AUS")
 
         # Then the term is found
@@ -224,10 +191,7 @@ class TestSearch:
 
         # When searching with empty string
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             result = search("")
 
         # Then all terms are returned
@@ -244,10 +208,7 @@ class TestSearch:
 
         # When searching for a non-matching string
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             result = search("zzz")
 
         # Then an empty list is returned
@@ -268,10 +229,7 @@ class TestSearchSynonyms:
 
         # When searching for the synonym text
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             result = search("heightened", include_synonyms=True)
 
         # Then the parent term is returned
@@ -290,10 +248,7 @@ class TestSearchSynonyms:
 
         # When searching with synonyms disabled
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             result = search("heightened", include_synonyms=False)
 
         # Then no results are returned
@@ -309,10 +264,7 @@ class TestSearchSynonyms:
 
         # When searching with synonyms disabled
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             result = search("aus", include_synonyms=False)
 
         # Then the term is still found by name
@@ -329,10 +281,7 @@ class TestSearchSynonyms:
 
         # When searching with empty query and synonyms disabled
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             result = search("", include_synonyms=False)
 
         # Then all terms are returned
@@ -348,10 +297,7 @@ class TestSearchSynonyms:
 
         # When searching
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             result = search("aus", include_synonyms=True)
 
         # Then the term appears exactly once
@@ -365,10 +311,7 @@ class TestSearchSynonyms:
 
         # When searching with lowercase
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             result = search("monster", include_synonyms=True)
 
         # Then the term is found

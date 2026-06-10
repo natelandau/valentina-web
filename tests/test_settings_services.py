@@ -8,6 +8,8 @@ from unittest.mock import MagicMock
 import pytest
 from vclient.testing import UserFactory
 
+from tests.helpers import seed_session
+
 if TYPE_CHECKING:
     from flask import Flask
 
@@ -44,10 +46,7 @@ class TestListPendingAndApproved:
         from vweb.routes.admin.services import list_pending_and_approved
 
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             result_pending, result_approved = list_pending_and_approved(self_id)
 
         # Then "self" is gone from both lists
@@ -79,10 +78,7 @@ class TestApprove:
         from vweb.routes.admin.services import approve
 
         with app.test_request_context():
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "admin-id"
+            seed_session(user_id="admin-id")
             result = approve("u1", "PLAYER", "admin-id")
 
         # Then users_svc.approve_user is called with the right args
@@ -123,10 +119,7 @@ class TestChangeRole:
         from vweb.routes.admin.services import change_role
 
         with app.test_request_context():
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "admin-id"
+            seed_session(user_id="admin-id")
             result = change_role("u1", "STORYTELLER", "admin-id")
 
         # Then users_svc.update is called with keyword args and cache is cleared
@@ -162,10 +155,7 @@ class TestDeny:
 
         # When denying a user
         with app.test_request_context():
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "admin-id"
+            seed_session(user_id="admin-id")
             deny("u1", "admin-id")
 
         # Then deny_user is called and cache is cleared
@@ -197,10 +187,7 @@ class TestMerge:
 
         # When calling merge
         with app.test_request_context():
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "admin-id"
+            seed_session(user_id="admin-id")
             result = merge("primary", "pending-1", "admin-id")
 
         # Then the service is called and cache cleared

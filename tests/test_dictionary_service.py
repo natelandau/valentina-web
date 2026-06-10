@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 from vclient.models import DictionaryTermCreate, DictionaryTermUpdate
 
+from tests.helpers import seed_session
 from vweb.routes.dictionary.services import (
     create_term,
     delete_term,
@@ -107,10 +108,7 @@ class TestCreateTerm:
             "synonyms": "sight, vision",
         }
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             create_term(form_data)
 
         mock_svc.create.assert_called_once()
@@ -125,10 +123,7 @@ class TestCreateTerm:
         """Verify empty optional fields are passed as None."""
         form_data = {"term": "Auspex", "definition": "", "link": "", "synonyms": ""}
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             create_term(form_data)
 
         call_arg = mock_svc.create.call_args[1]["request"]
@@ -144,10 +139,7 @@ class TestUpdateTerm:
         """Verify update_term calls the API with parsed form data."""
         form_data = {"term": "Auspex", "definition": "Updated.", "link": "", "synonyms": "a, b"}
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             update_term("term-1", form_data)
 
         mock_svc.update.assert_called_once()
@@ -165,10 +157,7 @@ class TestDeleteTerm:
     def test_deletes_term_via_api(self, app, mock_svc: MagicMock) -> None:
         """Verify delete_term calls the API."""
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             delete_term("term-1")
 
         mock_svc.delete.assert_called_once_with("term-1")

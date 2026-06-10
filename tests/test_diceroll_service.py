@@ -17,6 +17,7 @@ from vclient.testing import (
 )
 
 from tests.conftest import make_dice_roll_result
+from tests.helpers import seed_session
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -83,10 +84,7 @@ class TestGetRollContext:
 
         # When get_roll_context is called inside a request context
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             g.requesting_user = user
             result = get_roll_context(character=character, campaign=campaign)
 
@@ -111,10 +109,7 @@ class TestGetRollContext:
 
         # When get_roll_context is called
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "test-user-id"
+            seed_session()
             g.requesting_user = user
             result = get_roll_context(character=character, campaign=campaign)
 

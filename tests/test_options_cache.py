@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tests.helpers import make_cache_store_mock
 from vweb.lib.cache.options import (
     ApiOptions,
     AssetOptions,
@@ -53,12 +52,6 @@ SAMPLE_RAW: dict = {
         "RollResultType": ["SUCCESS", "FAILURE", "BOTCH", "CRITICAL", "OTHER"],
     },
 }
-
-
-@pytest.fixture
-def mock_cache_store(mocker) -> dict:
-    """Provide a dict-backed cache mock for options_cache."""
-    return make_cache_store_mock(mocker, "vweb.lib.cache.base.cache")
 
 
 @pytest.fixture

@@ -8,19 +8,12 @@ from unittest.mock import MagicMock
 import pytest
 from vclient.testing import TraitFactory
 
-from tests.helpers import make_cache_store_mock
 from vweb.lib.cache.blueprint import (
     clear,
     subcategories,
     trait,
     traits,
 )
-
-
-@pytest.fixture
-def mock_cache_store(mocker) -> dict:
-    """Provide a dict-backed cache mock for blueprint cache."""
-    return make_cache_store_mock(mocker, "vweb.lib.cache.base.cache")
 
 
 @pytest.fixture

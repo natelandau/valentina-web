@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
-from vclient.testing import CampaignFactory, CompanyFactory, UserFactory
+from flask import session
+from vclient.testing import CampaignFactory, CompanyFactory, SystemHealthFactory, UserFactory
 
 from vweb.lib.cache.global_context import GlobalContext
 
@@ -151,6 +152,83 @@ def build_global_context(
         resources_modified_at="2026-01-01T00:00:00+00:00",
         pending_user_count=pending_user_count,
     )
+
+
+def seed_session(user_id: str = "test-user-id", company_id: str = "test-company-id") -> None:
+    """Seed the active request context's session with the auth keys hooks and services expect.
+
+    Call inside an `app.test_request_context()` block. Route tests using the
+    `client` fixture already get a pre-seeded session and do not need this.
+
+    Args:
+        user_id: Value stored in `session["user_id"]`.
+        company_id: Value stored in `session["company_id"]`.
+    """
+    session["company_id"] = company_id
+    session["user_id"] = user_id
+
+
+def build_mock_options_service() -> MagicMock:
+    """Build an options-service mock returning the canned API enumerations.
+
+    Returns:
+        MagicMock: A service mock whose get_options() returns the raw options payload.
+    """
+    return MagicMock(
+        get_options=MagicMock(
+            return_value={
+                "companies": {},
+                "characters": {
+                    "CharacterClass": [
+                        "VAMPIRE",
+                        "WEREWOLF",
+                        "MAGE",
+                        "HUNTER",
+                        "GHOUL",
+                        "MORTAL",
+                    ],
+                    "CharacterType": ["PLAYER", "NPC", "STORYTELLER"],
+                    "AutoGenExperienceLevel": ["NEW", "INTERMEDIATE", "ADVANCED", "ELITE"],
+                    "AbilityFocus": ["JACK_OF_ALL_TRADES", "BALANCED", "SPECIALIST"],
+                    "InventoryItemType": [
+                        "BOOK",
+                        "CONSUMABLE",
+                        "ENCHANTED",
+                        "EQUIPMENT",
+                        "OTHER",
+                        "WEAPON",
+                    ],
+                    "GameVersion": ["V4", "V5"],
+                    "HunterCreed": [
+                        "JUDGE",
+                        "DEFENDER",
+                        "INNOCENT",
+                        "MARTYR",
+                        "REDEEMER",
+                        "VISIONARY",
+                    ],
+                    "TraitModifyCurrency": ["NO_COST", "XP", "STARTING_POINTS"],
+                },
+                "users": {"UserRole": ["ADMIN", "STORYTELLER", "PLAYER", "UNAPPROVED"]},
+                "gameplay": {
+                    "DiceSize": [4, 6, 8, 10, 20, 100],
+                    "RollResultType": ["SUCCESS", "FAILURE", "BOTCH", "CRITICAL", "OTHER"],
+                },
+                "assets": {},
+            }
+        )
+    )
+
+
+def build_mock_system_service() -> MagicMock:
+    """Build a system-service mock whose health() returns a factory-built payload.
+
+    Returns:
+        MagicMock: A service mock with a canned health() response.
+    """
+    service = MagicMock()
+    service.health.return_value = SystemHealthFactory.build()
+    return service
 
 
 def make_cache_store_mock(mocker: MockerFixture, module_path: str) -> dict:

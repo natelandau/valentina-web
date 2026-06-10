@@ -3,37 +3,9 @@
 from __future__ import annotations
 
 import pytest
-from vclient.testing import CampaignFactory, CharacterFactory
+from vclient.testing import CharacterFactory
 
 from tests.conftest import get_csrf
-
-
-@pytest.fixture
-def mock_character():
-    """Build a factory character with profile fields."""
-    return CharacterFactory.build(
-        id="char-123",
-        name="Test Character",
-        name_full="Test Character",
-        name_first="Test",
-        name_last="Character",
-        name_nick="Testy",
-        biography="A test biography",
-        nature="Brave",
-        demeanor="Calm",
-        character_class="VAMPIRE",
-        campaign_id="camp-1",
-        user_player_id="test-user-id",
-        concept_id=None,
-        specialties=[],
-        starting_points=0,
-    )
-
-
-@pytest.fixture
-def mock_campaign():
-    """Build a factory campaign."""
-    return CampaignFactory.build(id="camp-1", name="Test Campaign")
 
 
 @pytest.fixture

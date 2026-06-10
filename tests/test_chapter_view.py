@@ -5,39 +5,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from vclient.testing import (
-    CampaignBookFactory,
-    CampaignChapterFactory,
-    CampaignFactory,
-)
+from vclient.testing import CampaignChapterFactory
 
 from tests.conftest import get_csrf
 from tests.helpers import build_global_context
 
 if TYPE_CHECKING:
     from vclient.models import CampaignChapter
-
-
-@pytest.fixture
-def mock_campaign():
-    """Build a factory campaign."""
-    return CampaignFactory.build(id="camp-1")
-
-
-@pytest.fixture
-def mock_book():
-    """Build a factory book."""
-    return CampaignBookFactory.build(id="book-1", campaign_id="camp-1", name="Book One", number=1)
-
-
-@pytest.fixture
-def mock_chapters():
-    """Build factory chapters."""
-    return [
-        CampaignChapterFactory.build(id="ch-1", book_id="book-1", number=1, name="Chapter One"),
-        CampaignChapterFactory.build(id="ch-2", book_id="book-1", number=2, name="Chapter Two"),
-        CampaignChapterFactory.build(id="ch-3", book_id="book-1", number=3, name="Chapter Three"),
-    ]
 
 
 @pytest.fixture
