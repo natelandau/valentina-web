@@ -127,10 +127,7 @@ class AuditLogView(MethodView):
 
     def get(self) -> str:
         """Render the page shell. The shared card fetches and paginates entries."""
-        return catalog.render(
-            "admin.AuditLogPage",
-            pending_count=g.global_context.pending_user_count,
-        )
+        return catalog.render("admin.AuditLogPage")
 
 
 class SettingsView(MethodView):
@@ -145,7 +142,6 @@ class SettingsView(MethodView):
             company=company,
             errors={},
             form_values=None,
-            pending_count=g.global_context.pending_user_count,
         )
 
     def post(self) -> Response | tuple[str, int]:
@@ -169,7 +165,6 @@ class SettingsView(MethodView):
                 company=company,
                 errors=errors,
                 form_values=form,
-                pending_count=g.global_context.pending_user_count,
             )
             return page, 400
 
@@ -189,7 +184,6 @@ class UsersView(MethodView):
             "admin.UsersPage",
             pending=pending,
             approved=approved,
-            pending_count=len(pending),
         )
 
 
