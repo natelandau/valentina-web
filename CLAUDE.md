@@ -109,9 +109,9 @@ Use `@plugin "daisyui" { themes: name --default; }`. Do NOT use `@plugin "daisyu
 
 Tailwind v4's JIT scanner only sees **literal** class strings in templates at build time. Classes built at runtime (e.g. `"col-span-" ~ col_span`, `"text-" ~ color`) are invisible to the scanner and won't get CSS rules generated — the class lands in the rendered HTML but has no effect. Safelist them in `src/vweb/static/css/input.css` via `@source inline("...")`. Already covered: `col-span-1..4` + `col-span-full` and the daisyUI `link-*` variants.
 
-## CRUD Table Framework (`lib/crud_view.py`)
+## CRUD Table Framework (`lib/crud/`)
 
-`CrudTableView` handles GET/POST/DELETE, sorting, validation, cache invalidation, and refetch-after-mutation for inline CRUD tables. Each route subclasses it (~8 lines) plus a handler implementing `CrudHandler` (`lib/crud_handler.py`) and a form template. Shared visuals: `templates/shared/crud/CrudTable.jinja` + `CrudForm.jinja`. `CrudTable.jinja` accepts `editable: bool = True`; parents thread `?editable=true/false` on HTMX load URLs. CSRF via `hx-headers` on `<body>` in `PageLayout.jinja`. Copy an existing subclass when adding a new table.
+`CrudTableView` (`lib/crud/view.py`) handles GET/POST/DELETE, sorting, validation, cache invalidation, and refetch-after-mutation for inline CRUD tables. Each route subclasses it (~8 lines) plus a handler implementing `CrudHandler` (`lib/crud/handler.py`) and a form template. Shared visuals: `templates/shared/crud/CrudTable.jinja` + `CrudForm.jinja`. `CrudTable.jinja` accepts `editable: bool = True`; parents thread `?editable=true/false` on HTMX load URLs. CSRF via `hx-headers` on `<body>` in `PageLayout.jinja`. Copy an existing subclass when adding a new table.
 
 ## Testing
 
