@@ -1,0 +1,10 @@
+{#def active: str = "" #}
+
+{# Company-level sibling of CampaignBand: masthead identity block with the
+   company tab row attached below for admins. Used by the hub and the
+   relocated admin pages so the "company zone + tabs" shell looks identical. #}
+
+{% set ctx = global_context() %}
+<div class="surface-chrome rounded-box border-t-2 border-secondary/50">
+  <shared.layout.CompanyMasthead company={{ ctx.company }} />
+</div>

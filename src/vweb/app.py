@@ -164,6 +164,7 @@ def create_app(settings_override: Settings | None = None) -> Flask:  # noqa: PLR
     from vweb.routes.character_list.views import bp as character_list_bp
     from vweb.routes.character_trait_edit.views import bp as character_trait_edit_bp
     from vweb.routes.character_view.views import bp as character_view_bp
+    from vweb.routes.company_hub.views import bp as company_hub_bp
     from vweb.routes.diceroll.views import bp as diceroll_bp
     from vweb.routes.dictionary.views import bp as dictionary_bp
     from vweb.routes.fragments_shared_cards.views import bp as shared_cards_bp
@@ -174,6 +175,7 @@ def create_app(settings_override: Settings | None = None) -> Flask:  # noqa: PLR
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(index_bp)
+    app.register_blueprint(company_hub_bp)
     app.register_blueprint(campaign_bp)
     app.register_blueprint(shared_cards_bp)
     app.register_blueprint(campaign_notes_bp)

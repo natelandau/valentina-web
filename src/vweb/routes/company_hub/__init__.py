@@ -1,0 +1,1 @@
+"""Company hub route package."""

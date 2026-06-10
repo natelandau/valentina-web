@@ -98,7 +98,9 @@ def build_global_context(
     company: Company | None = None,
     user: User | None = None,
     campaign: Campaign | None = None,
+    campaigns: list[Campaign] | None = None,
     characters: list[Character] | None = None,
+    pending_user_count: int = 0,
 ) -> GlobalContext:
     """Build a GlobalContext with sensible defaults for testing.
 
@@ -109,8 +111,12 @@ def build_global_context(
         user_role: The role for the test user (e.g., "STORYTELLER", "PLAYER").
         company: Optional custom Company. Defaults to factory-built.
         user: Optional custom User. Defaults to factory-built with id="test-user-id".
-        campaign: Optional custom Campaign. Defaults to factory-built.
-        characters: Optional list of characters to associate with the campaign.
+        campaign: Optional custom Campaign. Defaults to factory-built. Ignored
+            when `campaigns` is provided.
+        campaigns: Optional explicit campaign list (may be empty). Takes
+            precedence over `campaign`.
+        characters: Optional list of characters for the first campaign.
+        pending_user_count: Number of pending users to report on the context.
 
     Returns:
         A populated GlobalContext ready for use in tests.
@@ -130,16 +136,20 @@ def build_global_context(
         company_id="test-company-id",
         role=user_role,
     )
-    campaign = campaign or CampaignFactory.build(name="Test Campaign")
+    if campaigns is None:
+        campaigns = [campaign or CampaignFactory.build(name="Test Campaign")]
 
-    characters = characters or []
+    characters_by_campaign: dict[str, list[Character]] = {c.id: [] for c in campaigns}
+    if characters and campaigns:
+        characters_by_campaign[campaigns[0].id] = characters
 
     return GlobalContext(
         company=company,
         users=[user],
-        campaigns=[campaign],
-        characters_by_campaign={campaign.id: characters},
+        campaigns=campaigns,
+        characters_by_campaign=characters_by_campaign,
         resources_modified_at="2026-01-01T00:00:00+00:00",
+        pending_user_count=pending_user_count,
     )
 
 
