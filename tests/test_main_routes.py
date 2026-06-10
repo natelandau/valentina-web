@@ -58,9 +58,9 @@ def test_index_redirects_to_session_campaign(client, mocker) -> None:
     assert f"/campaign/{older.id}" in response.headers["Location"]
 
 
-def test_index_defaults_to_most_recent_campaign(client, mocker) -> None:
-    """Verify the index defaults to the most recently modified campaign when no session."""
-    # Given two campaigns with different modification dates
+def test_index_multiple_campaigns_redirects_to_hub(client, mocker) -> None:
+    """Verify ambiguous entry (many campaigns, none remembered) lands on the hub."""
+    # Given two campaigns and no session campaign
     older = CampaignFactory.build(
         name="Older",
         date_modified=datetime(2025, 1, 1, tzinfo=UTC),
@@ -80,12 +80,12 @@ def test_index_defaults_to_most_recent_campaign(client, mocker) -> None:
     )
     mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
-    # When visiting the index (no session campaign)
+    # When visiting the index
     response = client.get("/")
 
-    # Then redirected to the newer campaign
+    # Then redirected to the company hub
     assert response.status_code == 302
-    assert f"/campaign/{newer.id}" in response.headers["Location"]
+    assert "/home" in response.headers["Location"]
 
 
 def test_index_unauthenticated_returns_200(app) -> None:
@@ -128,8 +128,8 @@ def test_authenticated_page_includes_csrf_header(client, mock_global_context) ->
     assert "X-CSRFToken" in body
 
 
-def test_index_no_campaigns_shows_empty_state(client, mocker) -> None:
-    """Verify the empty state message when no campaigns exist."""
+def test_index_no_campaigns_redirects_to_hub(client, mocker) -> None:
+    """Verify entry with zero campaigns lands on the hub (which owns the empty state)."""
     # Given a global context with no campaigns
     company = CompanyFactory.build(name="Test Company")
     user = UserFactory.build(id="test-user-id", company_id="test-company-id")
@@ -143,12 +143,10 @@ def test_index_no_campaigns_shows_empty_state(client, mocker) -> None:
 
     # When visiting the index
     response = client.get("/")
-    body = response.get_data(as_text=True)
 
-    # Then the empty state is shown
-    assert response.status_code == 200
-    assert "No campaigns exist yet." in body
-    assert "Create one." in body
+    # Then redirected to the company hub
+    assert response.status_code == 302
+    assert "/home" in response.headers["Location"]
 
 
 def test_development_mode_uses_cookie_sessions(app) -> None:
@@ -207,12 +205,10 @@ def test_global_header_omits_campaign_switcher_when_no_campaigns(client, mocker)
     )
     mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
-    # When loading the landing index (empty state)
-    response = client.get("/")
+    # When visiting the index (redirects to the hub)
+    response = client.get("/", follow_redirects=True)
     body = response.get_data(as_text=True)
 
     # Then the "Campaign" overline is not rendered
     assert response.status_code == 200
     assert ">Campaign<" not in body
-    # And the empty state is still shown
-    assert "No campaigns exist yet." in body
