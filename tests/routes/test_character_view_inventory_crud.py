@@ -45,7 +45,7 @@ def mock_inventory_handler(mocker, _mock_character):
     handler.create_item.return_value = None
     handler.update_item.return_value = None
     handler.delete_item.return_value = None
-    handler.validate.return_value = []
+    handler.validate.return_value = {}
 
     mocker.patch(
         "vweb.routes.character_view.views_inventory.CharacterInventoryTableView._build_handler",

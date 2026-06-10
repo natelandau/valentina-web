@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from flask import abort, request, session
+from flask import abort, request
 from flask.views import MethodView
 from loguru import logger
 from vclient.exceptions import APIError
@@ -201,7 +201,7 @@ class CrudTableView(MethodView):
     def _render_form(
         self,
         item: Any | None = None,
-        errors: list | None = None,
+        errors: dict[str, str] | None = None,
         form_data: dict | None = None,
     ) -> str:
         """Render the add/edit form fragment."""
@@ -228,7 +228,7 @@ class CrudTableView(MethodView):
             post_url=post_url,
             table_url=f"{table_base}?editable={editable}",
             table_target_id=self.table_id,
-            errors=errors or [],
+            errors=errors or {},
             is_edit=is_edit,
             _content=form_fields_html,
         )
@@ -271,11 +271,11 @@ class CrudTableView(MethodView):
             item = handler.get_item(item_id) if item_id else None
             return self._render_form(
                 item=item,
-                errors=["An error occurred. Please try again."],
+                errors={"_general": "An error occurred. Please try again."},
                 form_data=form_data,
             )
 
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         return self._render_refetch()
 
     def delete(self, item_id: str | None = None, **kwargs: str) -> str:  # noqa: ARG002
@@ -292,5 +292,5 @@ class CrudTableView(MethodView):
         except APIError:
             logger.exception("Delete operation failed")
 
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         return self._render_refetch()

@@ -153,7 +153,7 @@ class DictionaryCreateView(MethodView):
             logger.exception("Dictionary term creation failed")
             return catalog.render(
                 "dictionary.partials.TermForm",
-                errors=["An error occurred. Please try again."],
+                errors={"_general": "An error occurred. Please try again."},
                 form_data=form_data,
             )
 
@@ -190,7 +190,7 @@ class DictionaryUpdateView(MethodView):
             return catalog.render(
                 "dictionary.partials.TermForm",
                 term=term,
-                errors=["An error occurred. Please try again."],
+                errors={"_general": "An error occurred. Please try again."},
                 form_data=form_data,
             )
 
@@ -219,7 +219,7 @@ class DictionaryDeleteView(MethodView):
             return catalog.render(
                 "dictionary.partials.TermDetail",
                 term=term,
-                errors=["Failed to delete. Please try again."],
+                errors={"_general": "Failed to delete. Please try again."},
             )
 
         return _mutation_success_response(None)

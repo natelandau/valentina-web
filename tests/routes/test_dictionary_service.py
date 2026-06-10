@@ -51,41 +51,41 @@ class TestValidateTerm:
     def test_valid_term(self) -> None:
         """Verify valid form data returns no errors."""
         form_data = {"term": "Auspex", "definition": "A discipline", "link": "", "synonyms": ""}
-        assert validate_term(form_data) == []
+        assert validate_term(form_data) == {}
 
     def test_missing_term(self) -> None:
         """Verify missing term name returns error."""
         errors = validate_term({"term": "", "definition": "", "link": "", "synonyms": ""})
-        assert any("required" in e.lower() for e in errors)
+        assert "required" in errors["term"].lower()
 
     def test_term_too_short(self) -> None:
         """Verify term under 3 characters returns error."""
         errors = validate_term({"term": "ab", "definition": "", "link": "", "synonyms": ""})
-        assert any("3" in e for e in errors)
+        assert "3" in errors["term"]
 
     def test_term_too_long(self) -> None:
         """Verify term over 50 characters returns error."""
         errors = validate_term({"term": "a" * 51, "definition": "", "link": "", "synonyms": ""})
-        assert any("50" in e for e in errors)
+        assert "50" in errors["term"]
 
     def test_invalid_link(self) -> None:
         """Verify non-URL link returns error."""
         errors = validate_term(
             {"term": "Auspex", "definition": "", "link": "not-a-url", "synonyms": ""}
         )
-        assert any("url" in e.lower() for e in errors)
+        assert "url" in errors["link"].lower()
 
     def test_valid_link(self) -> None:
         """Verify valid URL link returns no errors."""
         errors = validate_term(
             {"term": "Auspex", "definition": "", "link": "https://example.com", "synonyms": ""}
         )
-        assert errors == []
+        assert errors == {}
 
     def test_empty_link_is_valid(self) -> None:
         """Verify empty link field is accepted."""
         errors = validate_term({"term": "Auspex", "definition": "", "link": "", "synonyms": ""})
-        assert errors == []
+        assert errors == {}
 
 
 @pytest.fixture

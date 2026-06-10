@@ -55,13 +55,13 @@ Character routes split into `character_view`, `character_trait_edit` (spend type
 - `cache.blueprint.traits()` / `cache.blueprint.trait(trait_id)` — blueprint traits (1-hour TTL)
 - `cache.statistics.get(scope_type, scope_id)` — roll statistics (30s TTL)
 - `cache.campaign_content.books(campaign_id)` / `cache.campaign_content.chapters(campaign_id, book_id)` — book/chapter lists
-- `cache.global_context.load(company_id, user_id)` — per-user global context; `cache.global_context.clear(company_id, user_id)` to invalidate after local mutations
+- `cache.global_context.load(company_id, user_id)` — per-user global context; `cache.global_context.clear_current()` (session-scoped) to invalidate after local mutations, or `clear(company_id, user_id)` when ids come from elsewhere (e.g. auth flows)
 
 All domains are built on `cache.base.cached_fetch(key, fetch, strategy)`, which provides single-flight (thundering-herd) protection by default. Freshness strategies: `PureTTL` (pure TTL expiry), `ShortTTL` (same as PureTTL, intent-named for low-TTL eventually-consistent caches), `TimestampValidated` (TTL + external timestamp check for the global context).
 
 **Jinja globals still exist for templates:** `get_options()` (`get_options().characters.character_class`), `get_all_traits()`, `get_system_health()`, `get_all_terms()` — their dict keys are unchanged. Python code calls `cache.<domain>...` directly.
 
-**`GlobalContext` gotcha:** `characters_by_campaign` and `characters` contain ALL characters including other players'. **Routes must filter before rendering.** The `inject_global_context` before_request hook populates `g.global_context` and resolves `g.requesting_user` from `session["user_id"]`. After local mutations, call `cache.global_context.clear(company_id, user_id)` to invalidate the cached context.
+**`GlobalContext` gotcha:** `characters_by_campaign` and `characters` contain ALL characters including other players'. **Routes must filter before rendering.** The `inject_global_context` before_request hook populates `g.global_context` and resolves `g.requesting_user` from `session["user_id"]`. After local mutations, call `cache.global_context.clear_current()` to invalidate the cached context.
 
 ### Auth (OAuth)
 
@@ -113,7 +113,7 @@ Tailwind v4's JIT scanner only sees **literal** class strings in templates at bu
 
 ## CRUD Table Framework (`lib/crud/`)
 
-`CrudTableView` (`lib/crud/view.py`) handles GET/POST/DELETE, sorting, validation, cache invalidation, and refetch-after-mutation for inline CRUD tables. Each route subclasses it (~8 lines) plus a handler implementing `CrudHandler` (`lib/crud/handler.py`) and a form template. Shared visuals: `templates/shared/crud/CrudTable.jinja` + `CrudForm.jinja`. `CrudTable.jinja` accepts `editable: bool = True`; parents thread `?editable=true/false` on HTMX load URLs. CSRF via `hx-headers` on `<body>` in `PageLayout.jinja`. Copy an existing subclass when adding a new table.
+`CrudTableView` (`lib/crud/view.py`) handles GET/POST/DELETE, sorting, validation, cache invalidation, and refetch-after-mutation for inline CRUD tables. Each route subclasses it (~8 lines) plus a handler implementing `CrudHandler` (`lib/crud/handler.py`) and a form template. `CrudHandler.validate` returns `dict[str, str]` mapping field name → message, with `"_general"` for non-field errors (empty dict when valid). Shared visuals: `templates/shared/crud/CrudTable.jinja` + `CrudForm.jinja`. `CrudTable.jinja` accepts `editable: bool = True`; parents thread `?editable=true/false` on HTMX load URLs. CSRF via `hx-headers` on `<body>` in `PageLayout.jinja`. Copy an existing subclass when adding a new table.
 
 ## Testing
 

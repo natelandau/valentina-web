@@ -137,7 +137,7 @@ class CampaignCreateView(MethodView):
             on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         new_campaign = service.create(CampaignCreate(name=name, description=description or None))
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
 
         return hx_redirect(url_for("campaign.campaign", campaign_id=new_campaign.id))
 
@@ -182,7 +182,7 @@ class CampaignUpdateView(MethodView):
             on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         service.update(campaign_id, CampaignUpdate(name=name, description=description or None))
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
 
         return hx_redirect(url_for("campaign.campaign", campaign_id=campaign_id))
 
@@ -215,7 +215,7 @@ class CampaignDeleteView(MethodView):
             on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         service.delete(campaign_id)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         session.pop("last_campaign_id", None)
 
         return hx_redirect("/")
@@ -268,7 +268,7 @@ class CampaignUpdateDangerDesperationView(MethodView):
             on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         campaign = service.update(campaign_id, update)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         return catalog.render(
             "campaign.partials.DangerDesperation",
             campaign=campaign,

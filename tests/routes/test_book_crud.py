@@ -21,7 +21,7 @@ def mock_book_notes_handler(mocker):
     handler.create_item.return_value = None
     handler.update_item.return_value = None
     handler.delete_item.return_value = None
-    handler.validate.return_value = []
+    handler.validate.return_value = {}
 
     mocker.patch(
         "vweb.routes.book.views_notes.BookNotesTableView._build_handler",

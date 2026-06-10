@@ -212,7 +212,7 @@ class CharacterTraitsView(MethodView):
                     get_method_url=get_method_url,
                 )
                 cache.character_sheet.clear(character.id)
-                cache.global_context.clear(session["company_id"], session["user_id"])
+                cache.global_context.clear_current()
                 return result
 
             if trait_id.startswith("ADD_UNASSIGNED"):
@@ -232,7 +232,7 @@ class CharacterTraitsView(MethodView):
 
                 flash(f"Assigned {trait.name}", "success")
                 cache.character_sheet.clear(character.id)
-                cache.global_context.clear(session["company_id"], session["user_id"])
+                cache.global_context.clear_current()
                 return hx_redirect(get_method_url)
 
             if trait_id.startswith("CUSTOM_"):
@@ -253,7 +253,7 @@ class CharacterTraitsView(MethodView):
 
                 flash(f"Created {new_trait_name}", "success")
                 cache.character_sheet.clear(character.id)
-                cache.global_context.clear(session["company_id"], session["user_id"])
+                cache.global_context.clear_current()
                 return hx_redirect(get_method_url)
 
             result = self._update_trait_value(
@@ -263,7 +263,7 @@ class CharacterTraitsView(MethodView):
                 get_method_url=get_method_url,
             )
             cache.character_sheet.clear(character.id)
-            cache.global_context.clear(session["company_id"], session["user_id"])
+            cache.global_context.clear_current()
             return result
 
         flash("Something went wrong", "error")

@@ -42,7 +42,7 @@ class TestCharacterInventoryHandlerValidation:
         errors = handler.validate({"name": "", "type": "WEAPON"})
 
         # Then a name error is returned
-        assert "Name is required" in errors
+        assert errors["name"] == "Name is required"
 
     def test_empty_type_returns_error(self) -> None:
         """Verify validation rejects an empty type."""
@@ -53,7 +53,7 @@ class TestCharacterInventoryHandlerValidation:
         errors = handler.validate({"name": "Sword", "type": ""})
 
         # Then a type error is returned
-        assert "Type is required" in errors
+        assert errors["type"] == "Type is required"
 
     def test_whitespace_only_fields_return_errors(self) -> None:
         """Verify validation rejects whitespace-only fields."""
@@ -64,8 +64,8 @@ class TestCharacterInventoryHandlerValidation:
         errors = handler.validate({"name": "   ", "type": "  \t  "})
 
         # Then both errors are returned
-        assert "Name is required" in errors
-        assert "Type is required" in errors
+        assert errors["name"] == "Name is required"
+        assert errors["type"] == "Type is required"
 
     def test_valid_data_returns_no_errors(self) -> None:
         """Verify validation accepts valid form data."""
@@ -76,7 +76,7 @@ class TestCharacterInventoryHandlerValidation:
         errors = handler.validate({"name": "Sword", "type": "WEAPON"})
 
         # Then no errors are returned
-        assert errors == []
+        assert errors == {}
 
 
 class TestCharacterInventoryHandlerOperations:

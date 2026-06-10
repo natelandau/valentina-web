@@ -169,7 +169,7 @@ class SettingsView(MethodView):
             return page, 400
 
         sync_companies_service().update(company_id, request=update)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         flash("Settings updated.", "success")
         return redirect(url_for("admin.settings"))
 

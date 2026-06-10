@@ -131,7 +131,7 @@ class ChapterDetailView(MethodView):
         fetch_book_or_404(campaign_id, book_id)
         chapters_service = _chapters_service(campaign_id, book_id)
         chapters_service.delete(chapter_id)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         cache.campaign_content.clear(
             session["company_id"], campaign_id=campaign_id, book_id=book_id
         )
@@ -197,7 +197,7 @@ class ChapterEditView(MethodView):
         updated = chapters_service.update(chapter_id, name=name, description=description)
         if number != chapter.number:
             updated = chapters_service.renumber(chapter_id, number)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         cache.campaign_content.clear(session["company_id"], book_id=book_id)
 
         assets = chapters_service.list_all_assets(chapter_id)
@@ -261,7 +261,7 @@ class ChapterCreateView(MethodView):
 
         chapters_service = _chapters_service(campaign_id, book_id)
         new_chapter = chapters_service.create(name=name, description=description)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         cache.campaign_content.clear(
             session["company_id"], campaign_id=campaign_id, book_id=book_id
         )

@@ -27,20 +27,20 @@ class BaseNotesHandler:
         """Fetch a single note by ID."""
         return self._svc.get_note(self._parent_id, item_id)
 
-    def validate(self, form_data: dict[str, str]) -> list[str]:
+    def validate(self, form_data: dict[str, str]) -> dict[str, str]:
         """Validate note form data.
 
         Args:
             form_data: Form field values keyed by field name.
 
         Returns:
-            List of validation error messages (empty if valid).
+            Errors keyed by field name (empty if valid).
         """
-        errors: list[str] = []
+        errors: dict[str, str] = {}
         if not form_data.get("title", "").strip():
-            errors.append("Title is required")
+            errors["title"] = "Title is required"
         if not form_data.get("content", "").strip():
-            errors.append("Content is required")
+            errors["content"] = "Content is required"
         return errors
 
     def create_item(self, form_data: dict[str, str]) -> None:

@@ -94,7 +94,7 @@ class TestNotesHandlerValidation:
         errors = handler.validate({"title": "", "content": "Some content"})
 
         # Then a title error is returned
-        assert "Title is required" in errors
+        assert errors["title"] == "Title is required"
 
     def test_empty_content_returns_error(self, handler_case) -> None:
         """Verify validation rejects empty content."""
@@ -105,7 +105,7 @@ class TestNotesHandlerValidation:
         errors = handler.validate({"title": "A Title", "content": ""})
 
         # Then a content error is returned
-        assert "Content is required" in errors
+        assert errors["content"] == "Content is required"
 
     def test_whitespace_only_fields_return_errors(self, handler_case) -> None:
         """Verify validation rejects whitespace-only fields."""
@@ -116,8 +116,8 @@ class TestNotesHandlerValidation:
         errors = handler.validate({"title": "   ", "content": "  \t  "})
 
         # Then both errors are returned
-        assert "Title is required" in errors
-        assert "Content is required" in errors
+        assert errors["title"] == "Title is required"
+        assert errors["content"] == "Content is required"
 
     def test_valid_data_returns_no_errors(self, handler_case) -> None:
         """Verify validation accepts valid form data."""
@@ -128,7 +128,7 @@ class TestNotesHandlerValidation:
         errors = handler.validate({"title": "My Title", "content": "My content"})
 
         # Then no errors are returned
-        assert errors == []
+        assert errors == {}
 
 
 class TestNotesHandlerOperations:

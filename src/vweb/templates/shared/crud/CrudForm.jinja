@@ -4,7 +4,7 @@
     post_url: str,
     table_url: str,
     table_target_id: str,
-    errors: list = [],
+    errors: dict = {},
     is_edit: bool = False,
 #}
 
@@ -17,7 +17,7 @@
     <i class="fa-solid fa-circle-exclamation"></i>
     <div>
       <ul>
-        {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+        {% for error in errors.values() %}<li>{{ error }}</li>{% endfor %}
       </ul>
     </div>
   </div>

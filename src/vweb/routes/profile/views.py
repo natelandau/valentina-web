@@ -104,7 +104,7 @@ class ProfileView(MethodView):
             email=form_data["email"].strip(),
         )
         svc.update(user_id, request=update_request)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
 
         return hx_redirect(url_for("profile.profile", user_id=user_id))
 

@@ -39,7 +39,7 @@ def mock_notes_handler(mocker, _mock_character):
     handler.create_item.return_value = None
     handler.update_item.return_value = None
     handler.delete_item.return_value = None
-    handler.validate.return_value = []
+    handler.validate.return_value = {}
 
     mocker.patch(
         "vweb.routes.character_view.views_notes.CharacterNotesTableView._build_handler",
@@ -106,7 +106,7 @@ class TestCharacterNotesPost:
 
     def test_validation_errors_return_form(self, client, mock_notes_handler) -> None:
         """Verify POST with validation errors re-renders form with error messages."""
-        mock_notes_handler.validate.return_value = ["Title is required"]
+        mock_notes_handler.validate.return_value = {"title": "Title is required"}
         response = client.post(
             "/character/char-123/notes/items",
             data={"title": "", "content": ""},

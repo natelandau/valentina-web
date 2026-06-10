@@ -157,7 +157,7 @@ class SingleAutogenFormView(MethodView):
                 **options,
             )
 
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         flash("Character created successfully!", "success")
         return hx_redirect(url_for("character_view.character", character_id=new_char.id))
 

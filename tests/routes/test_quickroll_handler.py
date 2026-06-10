@@ -243,7 +243,7 @@ class TestValidate:
         errors = handler.validate({"name": "", "trait_one_id": "t1"})
 
         # Then a name error is returned
-        assert "Name is required" in errors
+        assert errors["name"] == "Name is required"
 
     def test_whitespace_only_name_rejected(self) -> None:
         """Verify validation rejects a whitespace-only name."""
@@ -251,7 +251,7 @@ class TestValidate:
 
         errors = handler.validate({"name": "   "})
 
-        assert "Name is required" in errors
+        assert errors["name"] == "Name is required"
 
     def test_valid_data_accepted(self) -> None:
         """Verify validation accepts valid form data."""
@@ -259,7 +259,7 @@ class TestValidate:
 
         errors = handler.validate({"name": "Attack Roll", "trait_one_id": "trait-1"})
 
-        assert errors == []
+        assert errors == {}
 
     def test_no_traits_rejected(self) -> None:
         """Verify validation rejects form data with no traits selected."""
@@ -267,4 +267,4 @@ class TestValidate:
 
         errors = handler.validate({"name": "Attack Roll"})
 
-        assert "At least one trait is required" in errors
+        assert errors["_general"] == "At least one trait is required"

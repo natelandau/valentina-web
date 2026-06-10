@@ -172,7 +172,7 @@ class ManualProfileView(MethodView):
         if errors:
             return self._render_edit_form(campaign, character_id, form_data, errors)
 
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         flash("Profile updated successfully", "success")
         return hx_redirect(url_for("character_view.character", character_id=character_id))
 
@@ -320,7 +320,7 @@ class ManualFinalizeView(MethodView):
             )
 
         clear_temp_session()
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         flash("Character created successfully!", "success")
         return hx_redirect(url_for("character_view.character", character_id=temp_char_id))
 

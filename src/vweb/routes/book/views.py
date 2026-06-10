@@ -133,7 +133,7 @@ class BookCreateView(MethodView):
             campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
         )
         new_book = books_service.create(name=name, description=description or None)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         cache.campaign_content.clear(session["company_id"], campaign_id=campaign_id)
 
         flash(f"Created book: {name}", "success")
@@ -229,7 +229,7 @@ class BookDetailView(MethodView):
         updated_book = books_service.update(book_id, name=name, description=description)
         if number != book.number:
             updated_book = books_service.renumber(book_id, number)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         cache.campaign_content.clear(session["company_id"], campaign_id=campaign_id)
 
         assets = books_service.list_all_assets(book_id)
@@ -261,7 +261,7 @@ class BookDetailView(MethodView):
             campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
         )
         books_service.delete(book.id)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
         cache.campaign_content.clear(
             session["company_id"], campaign_id=campaign_id, book_id=book.id
         )

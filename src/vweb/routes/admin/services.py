@@ -46,7 +46,7 @@ def approve(user_id: str, role: str, requesting_user_id: str) -> User:
         user_id,
         role,  # ty:ignore[invalid-argument-type]
     )
-    cache.global_context.clear(session["company_id"], session["user_id"])
+    cache.global_context.clear_current()
     return user
 
 
@@ -63,7 +63,7 @@ def change_role(user_id: str, role: str, requesting_user_id: str) -> User:
     user = sync_users_service(
         on_behalf_of=requesting_user_id, company_id=session["company_id"]
     ).update(user_id, role=role)
-    cache.global_context.clear(session["company_id"], session["user_id"])
+    cache.global_context.clear_current()
     return user
 
 
@@ -72,7 +72,7 @@ def deny(user_id: str, requesting_user_id: str) -> None:
     sync_users_service(on_behalf_of=requesting_user_id, company_id=session["company_id"]).deny_user(
         user_id
     )
-    cache.global_context.clear(session["company_id"], session["user_id"])
+    cache.global_context.clear_current()
 
 
 def merge(
@@ -87,5 +87,5 @@ def merge(
         primary_user_id=primary_user_id,
         secondary_user_id=secondary_user_id,
     )
-    cache.global_context.clear(session["company_id"], session["user_id"])
+    cache.global_context.clear_current()
     return user

@@ -202,7 +202,7 @@ class CharacterDeleteView(MethodView):
         user = g.requesting_user
         char_svc = sync_characters_service(on_behalf_of=user.id, company_id=session["company_id"])
         char_svc.delete(character_id)
-        cache.global_context.clear(session["company_id"], session["user_id"])
+        cache.global_context.clear_current()
 
         return hx_redirect("/")
 
