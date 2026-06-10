@@ -7,4 +7,9 @@
 {% set ctx = global_context() %}
 <div class="surface-chrome rounded-box border-t-2 border-secondary/50">
   <shared.layout.CompanyMasthead company={{ ctx.company }} />
+  {% if is_admin() %}
+    <div class="px-2 sm:px-4 border-t border-base-300/60">
+      <shared.layout.CompanyTabs active={{ active }} />
+    </div>
+  {% endif %}
 </div>
