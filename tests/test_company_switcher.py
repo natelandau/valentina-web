@@ -84,3 +84,24 @@ def test_company_dropdown_admin_links(client, mocker) -> None:
     assert "Members" in body
     assert "/admin/settings" in body
     assert "Audit log" in body
+
+
+def test_user_menu_omits_switch_company(client, mock_global_context) -> None:
+    """Verify the Switch Company item left the user menu (it lives in the company pill now)."""
+    # Given a session with two approved companies (the old menu item's trigger condition)
+    with client.session_transaction() as sess:
+        sess["companies"] = {
+            **sess["companies"],
+            "second-co": {
+                "user_id": "second-user-id",
+                "company_name": "Night Owls LARP",
+                "role": "ADMIN",
+            },
+        }
+    campaign = mock_global_context.campaigns[0]
+
+    # When loading a campaign page
+    body = client.get(f"/campaign/{campaign.id}").get_data(as_text=True)
+
+    # Then the user-menu link text is gone
+    assert "Switch Company" not in body

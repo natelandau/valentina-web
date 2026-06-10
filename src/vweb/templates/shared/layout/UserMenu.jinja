@@ -12,11 +12,6 @@
     <li>
       <a href="{{ url_for('profile.profile', user_id=user.id) }}">Profile</a>
     </li>
-    {% if approved_company_count() >= 2 %}
-      <li>
-        <a href="{{ url_for('auth.select_company') }}">Switch Company</a>
-      </li>
-    {% endif %}
     <li>
       <a x-data @click="document.getElementById('logout-form').submit()">Logout</a>
     </li>
