@@ -1,3 +1,14 @@
+## v0.11.0 (2026-06-10)
+
+### Feat
+
+- **company**: add company hub (#52)
+- **profile**: upload and remove a custom user avatar (#51)
+
+### Refactor
+
+- unify codebase structure and remove duplication (#53)
+
 ## v0.10.2 (2026-06-08)
 
 ### Fix
