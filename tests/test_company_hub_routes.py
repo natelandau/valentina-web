@@ -96,8 +96,14 @@ def test_hub_members_tab_shows_pending_badge(client, mocker) -> None:
 
 def test_hub_lists_campaign_cards(client, mocker) -> None:
     """Verify the hub renders a linked card per campaign with stats."""
-    # Given two campaigns with known names and counts
-    blood = CampaignFactory.build(name="Blood and Smoke", num_books=3, num_player_characters=5)
+    # Given two campaigns with known names, counts, and threat levels
+    blood = CampaignFactory.build(
+        name="Blood and Smoke",
+        num_books=3,
+        num_player_characters=5,
+        danger=3,
+        desperation=0,
+    )
     nights = CampaignFactory.build(name="Chicago Nights", num_books=1, num_player_characters=2)
     ctx = build_global_context(user_role="PLAYER", campaigns=[blood, nights])
     mocker.patch(LOAD_PATH, return_value=ctx)
@@ -111,6 +117,9 @@ def test_hub_lists_campaign_cards(client, mocker) -> None:
     assert f"/campaign/{blood.id}" in body
     assert f"/campaign/{nights.id}" in body
     assert "3 books" in body
+    # And danger/desperation badges render even at zero
+    assert "Danger 3" in body
+    assert "Desperation 0" in body
 
 
 def test_hub_create_card_respects_permission(client, mocker) -> None:
