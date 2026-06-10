@@ -4,18 +4,23 @@
 
 <header class="navbar surface-chrome px-4 gap-2 min-h-16">
   <div class="flex-none">
-    <a href="{{ url_for('index.index') }}" class="flex items-center gap-2">
+    <a href="{% if ctx %}{{ url_for('company_hub.home') }}{% else %}{{ url_for('index.index') }}{% endif %}"
+       class="flex items-center gap-2">
       <img src="{{ static_url('img/valentina120.png') }}"
            alt="{{ app_name }}"
            width="32" height="32"
            class="rounded-md" />
-      <span class="text-xl font-semibold hidden sm:inline">{{ app_name }}</span>
+      <span class="text-xl font-semibold hidden lg:inline">{{ app_name }}</span>
     </a>
   </div>
 
-  <div class="flex-1 min-w-0 flex justify-start">
-    {% if active %}
-      <shared.layout.CampaignSwitcher active={{ active }} campaigns={{ ctx.campaigns }} />
+  <div class="flex-1 min-w-0 flex items-center justify-start gap-1 sm:gap-2">
+    {% if ctx %}
+      <shared.layout.CompanySwitcher company={{ ctx.company }} />
+      {% if active %}
+        <span class="text-base-content/40 hidden sm:inline" aria-hidden="true">/</span>
+        <shared.layout.CampaignSwitcher active={{ active }} campaigns={{ ctx.campaigns }} />
+      {% endif %}
     {% endif %}
   </div>
 

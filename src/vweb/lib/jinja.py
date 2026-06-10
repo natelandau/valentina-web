@@ -416,6 +416,16 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
 
     jinja_globals["approved_company_count"] = _approved_company_count
 
+    def _approved_companies() -> dict[str, dict[str, str]]:
+        companies = session.get("companies", {})
+        return {
+            company_id: data
+            for company_id, data in companies.items()
+            if data.get("role") != "UNAPPROVED"
+        }
+
+    jinja_globals["approved_companies"] = _approved_companies
+
     def _is_authenticated() -> bool:
         """Report whether a logged-in user backs this request.
 

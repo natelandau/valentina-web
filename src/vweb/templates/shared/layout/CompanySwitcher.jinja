@@ -1,0 +1,67 @@
+{#def company #}
+
+{% set pending = global_context().pending_user_count %}
+{% set show_badge = is_admin() and pending > 0 %}
+
+<div class="flex items-stretch bg-base-200 border border-base-300 rounded-full min-w-0 relative">
+  {# Desktop: labeled company name linking to the hub. #}
+  <a href="{{ url_for('company_hub.home') }}"
+     class="hidden sm:flex flex-col justify-center px-4 py-1.5 rounded-l-full hover:bg-base-300 transition-colors min-w-0">
+    <span class="text-[10px] uppercase tracking-wider text-base-content/60 font-semibold leading-tight">Company</span>
+    <span class="text-sm font-semibold truncate max-w-[8rem] md:max-w-[12rem] leading-tight">
+      {{ company.name }}
+      {% if show_badge %}<shared.PingBadge extra_class="ml-1" />{% endif %}
+    </span>
+  </a>
+  {# Mobile: generated monogram chip (no stored image; first letter of the name). #}
+  <a href="{{ url_for('company_hub.home') }}"
+     aria-label="{{ company.name }}"
+     title="{{ company.name }}"
+     class="sm:hidden flex items-center pl-1.5 pr-0.5 rounded-l-full hover:bg-base-300 transition-colors">
+    <span class="relative w-7 h-7 rounded-full bg-secondary text-secondary-content flex items-center justify-center text-sm font-bold">
+      {{ company.name[:1] | upper }}
+      {% if show_badge %}<shared.PingBadge extra_class="absolute -top-0.5 -right-0.5" />{% endif %}
+    </span>
+  </a>
+
+  <details class="dropdown [position:static]" x-data @click.outside="$el.removeAttribute('open')">
+    <summary class="list-none cursor-pointer flex items-center px-3 h-full rounded-r-full hover:bg-base-300 transition-colors">
+      <i class="fa-solid fa-chevron-down text-xs text-base-content/60"></i>
+    </summary>
+    <ul class="menu dropdown-content bg-base-100 border border-base-300 rounded-box z-10 mt-2 w-64 p-2 shadow absolute top-full left-0">
+      {% if approved_company_count() >= 2 %}
+        <li class="menu-title">Switch company</li>
+        {% for company_id, data in approved_companies().items() %}
+          <li>
+            <form method="post" action="{{ url_for('auth.select_company') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+              <input type="hidden" name="company_id" value="{{ company_id }}" />
+              <button type="submit"
+                      class="w-full text-left {% if company_id == company.id %}menu-active{% endif %}">
+                {{ data.company_name }}
+              </button>
+            </form>
+          </li>
+        {% endfor %}
+        <div class="divider my-1"></div>
+      {% endif %}
+      <li>
+        <a href="{{ url_for('company_hub.home') }}">Company home</a>
+      </li>
+      {% if is_admin() %}
+        <li>
+          <a href="{{ url_for('admin.users') }}">
+            Members
+            {% if pending > 0 %}<shared.PingBadge extra_class="ml-2" />{% endif %}
+          </a>
+        </li>
+        <li>
+          <a href="{{ url_for('admin.settings') }}">Settings</a>
+        </li>
+        <li>
+          <a href="{{ url_for('admin.audit_log') }}">Audit log</a>
+        </li>
+      {% endif %}
+    </ul>
+  </details>
+</div>
