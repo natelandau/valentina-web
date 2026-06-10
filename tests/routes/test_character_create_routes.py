@@ -27,7 +27,7 @@ class TestSelectionPageView:
         campaign = ctx.campaigns[0]
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
         mocker.patch(
-            "vweb.routes.character_create.picker_views.list_sessions",
+            "vweb.routes.character_create.picker_services.list_sessions",
             return_value=[],
         )
 
@@ -56,7 +56,7 @@ class TestSelectionCardsView:
         campaign = ctx.campaigns[0]
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
         mocker.patch(
-            "vweb.routes.character_create.picker_views.list_sessions",
+            "vweb.routes.character_create.picker_services.list_sessions",
             return_value=[],
         )
 
@@ -235,7 +235,7 @@ class TestMultiAutogenView:
             side_effect=APIError("Insufficient XP"),
         )
         mocker.patch(
-            "vweb.routes.character_create.picker_views.list_sessions",
+            "vweb.routes.character_create.picker_services.list_sessions",
             return_value=[],
         )
         csrf = get_csrf(client)
@@ -350,7 +350,7 @@ class TestPendingSessionsOnSelectionCards:
         future = datetime.now(tz=UTC) + timedelta(hours=1)
         sessions = ChargenSessionResponseFactory.batch(2, expires_at=future)
         mocker.patch(
-            "vweb.routes.character_create.picker_views.list_sessions",
+            "vweb.routes.character_create.picker_services.list_sessions",
             return_value=sessions,
         )
 
@@ -367,7 +367,7 @@ class TestPendingSessionsOnSelectionCards:
         campaign = ctx.campaigns[0]
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
         mocker.patch(
-            "vweb.routes.character_create.picker_views.list_sessions",
+            "vweb.routes.character_create.picker_services.list_sessions",
             return_value=[],
         )
 
@@ -391,7 +391,7 @@ class TestPendingSessionsOnSelectionCards:
             expires_at=datetime.now(tz=UTC) + timedelta(hours=1),
         )
         mocker.patch(
-            "vweb.routes.character_create.picker_views.list_sessions",
+            "vweb.routes.character_create.picker_services.list_sessions",
             return_value=[expired, active],
         )
 

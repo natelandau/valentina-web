@@ -2,6 +2,7 @@
     section_name: str = "",
     category: FullSheetTraitCategory,
 #}
+{# Alpine-driven variant for the manual-create wizard; HTMX sibling: templates/shared/traits/TraitCategory.jinja #}
 <div class="bg-base-200/50 rounded-lg p-3 prose" x-data="{ selected: {} }">
   <h3 class="font-semibold uppercase text-base-content/70 mb-2">
     {{ category.name | title }}
@@ -13,7 +14,7 @@
         <td class="text-lg">{{ trait.name | title }}</td>
         <td class="text-right">
           <input type="hidden" name="trait:{{ trait.id }}" :value="val" />
-          <character_manual_create.components.ValuePicker trait_id={{ trait.id }} current_value={{ 0 }} min_value={{ trait.min_value }} max_value={{ trait.max_value }} alpine_var="val" />
+          <character_create.manual.components.ValuePicker trait_id={{ trait.id }} current_value={{ 0 }} min_value={{ trait.min_value }} max_value={{ trait.max_value }} alpine_var="val" />
         </td>
       </tr>
     {% endfor %}
@@ -42,7 +43,7 @@
                     @click="let s = {...selected}; delete s['{{ trait.id }}']; selected = s">
               <i class="fa-solid fa-trash"></i>
             </button>
-            <character_manual_create.components.ValuePicker trait_id={{ trait.id }} current_value={{ 0 }} min_value={{ trait.min_value }} max_value={{ trait.max_value }} alpine_var={{ avar }} />
+            <character_create.manual.components.ValuePicker trait_id={{ trait.id }} current_value={{ 0 }} min_value={{ trait.min_value }} max_value={{ trait.max_value }} alpine_var={{ avar }} />
             <input type="hidden"
                    name="trait:{{ trait.id }}"
                    :value="selected['{{ trait.id }}'] || 0"
@@ -52,7 +53,7 @@
       {% endfor %}
     {% endfor %}
     {# ---- Add trait dropdowns ---- #}
-    {# <character_manual_create.components.AddTraitDropdownFlat available_traits={{ category.available_traits }} /> #}
-    <character_manual_create.components.AddTraitDropdownSubCat category={{ category }} />
+    {# <character_create.manual.components.AddTraitDropdownFlat available_traits={{ category.available_traits }} /> #}
+    <character_create.manual.components.AddTraitDropdownSubCat category={{ category }} />
   </table>
 </div>

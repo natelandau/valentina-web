@@ -3,85 +3,37 @@
 from __future__ import annotations
 
 import logging
-import time
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from flask import flash, g, request, session, url_for
 from flask.views import MethodView
-from pydantic import ValidationError as PydanticValidationError
-from vclient import sync_character_traits_service, sync_characters_service
-from vclient.exceptions import APIError, ValidationError
-from vclient.models import CharacterCreate, CharacterTraitAdd, CharacterUpdate
+from vclient.exceptions import APIError
 
 from vweb.lib import cache
 from vweb.lib.api import fetch_campaign_or_404
 from vweb.lib.catalog import catalog
-from vweb.lib.guards import can_edit_character, can_manage_npcs, is_storyteller
+from vweb.lib.guards import can_edit_character
 from vweb.lib.htmx import hx_redirect
 from vweb.routes.character_create import bp
 from vweb.routes.character_create.autogen_services import fetch_form_options
-from vweb.routes.character_create.profile import (
-    build_class_attrs,
-    character_to_form_data,
-    validate_profile,
+from vweb.routes.character_create.manual_services import (
+    build_trait_items,
+    bulk_assign_traits,
+    character_type_permission_error,
+    clear_temp_session,
+    fetch_character,
+    load_temp_character_form_data,
+    mark_character_permanent,
+    save_temp_character,
+    update_character_profile,
 )
+from vweb.routes.character_create.profile_form import character_to_form_data, validate_profile
 
 if TYPE_CHECKING:
-    from vclient.constants import CharacterClass, CharacterType, GameVersion
     from vclient.models import Campaign
     from werkzeug.wrappers.response import Response
 
 logger = logging.getLogger(__name__)
-
-
-_TRAIT_PREFIX: str = "trait:"
-_SESSION_TTL_SECONDS: int = 30 * 60  # 30 minutes
-
-
-def _map_pydantic_errors(exc: PydanticValidationError) -> dict[str, str]:
-    """Convert a PydanticValidationError into a template-friendly error dict.
-
-    Profile fields are already checked by validate_profile before the payload is
-    built, so a pydantic error here means a value the form cannot surface inline
-    (e.g. a crafted "type"). Collect all messages under "_general" so the user
-    always receives visible feedback.
-
-    Args:
-        exc: The validation error raised by a CharacterCreate or CharacterUpdate call.
-
-    Returns:
-        Dict with a single "_general" key mapping to the combined error messages.
-    """
-    messages = [err["msg"] for err in exc.errors()]
-    return {"_general": "; ".join(messages)}
-
-
-def _character_type_permission_error(char_type: str) -> str | None:
-    """Return an authorization error if the user may not assign ``char_type``.
-
-    NPCs require NPC-management permission; STORYTELLER characters are always
-    storyteller/admin-only. Returns None when the type is permitted, so callers
-    can use it as a single gate for both the create and edit flows.
-    """
-    if char_type == "NPC" and not can_manage_npcs():
-        return "You are not authorized to assign the NPC character type."
-    if char_type == "STORYTELLER" and not is_storyteller():
-        return "You are not authorized to assign the storyteller character type."
-    return None
-
-
-def _clear_temp_session() -> None:
-    """Remove temporary character creation data from the session."""
-    session.pop("temp_character_id", None)
-    session.pop("temp_character_created_at", None)
-
-
-def _is_temp_session_expired() -> bool:
-    """Check whether the temporary character session data has exceeded its TTL."""
-    created_at = session.get("temp_character_created_at")
-    if created_at is None:
-        return False
-    return (time.monotonic() - created_at) > _SESSION_TTL_SECONDS
 
 
 class ManualProfileView(MethodView):
@@ -105,36 +57,16 @@ class ManualProfileView(MethodView):
         character_id = request.args.get("character_id")
 
         if character_id:
-            svc = sync_characters_service(
-                on_behalf_of=session["user_id"],
-                company_id=session["company_id"],
-            )
-            character = svc.get(character_id)
+            character = fetch_character(character_id)
             form_data = character_to_form_data(character)
             mode = "edit"
         else:
             mode = "create"
             character_id = ""
-
-            is_resuming = request.args.get("resume") == "1"
-            if not is_resuming or _is_temp_session_expired():
-                _clear_temp_session()
-
-            temp_char_id = session.get("temp_character_id")
-            if temp_char_id:
-                try:
-                    svc = sync_characters_service(
-                        on_behalf_of=session["user_id"],
-                        company_id=session["company_id"],
-                    )
-                    character = svc.get(temp_char_id)
-                    form_data = character_to_form_data(character)
-                except APIError:
-                    logger.warning("Failed to fetch temp character %s", temp_char_id)
-                    _clear_temp_session()
-                    form_data = dict(request.args)
-            else:
-                form_data = dict(request.args)
+            form_data = load_temp_character_form_data(
+                is_resuming=request.args.get("resume") == "1",
+                fallback=dict(request.args),
+            )
 
         render_kwargs = {
             "campaign": campaign,
@@ -146,12 +78,12 @@ class ManualProfileView(MethodView):
 
         if request.headers.get("HX-Request"):
             return catalog.render(
-                "character_manual_create.partials.ProfileForm",
+                "character_create.manual.partials.ProfileForm",
                 **render_kwargs,  # ty:ignore[invalid-argument-type]
             )
 
         return catalog.render(
-            "character_manual_create.Main",
+            "character_create.manual.Main",
             **render_kwargs,  # ty:ignore[invalid-argument-type]
         )
 
@@ -192,7 +124,7 @@ class ManualProfileView(MethodView):
             Rendered ProfileForm HTML.
         """
         return catalog.render(
-            "character_manual_create.partials.ProfileForm",
+            "character_create.manual.partials.ProfileForm",
             campaign=campaign,
             form_options=fetch_form_options(),
             form_data=form_data,
@@ -201,7 +133,7 @@ class ManualProfileView(MethodView):
             character_id=character_id,
         )
 
-    def _post_edit(  # noqa: PLR0911
+    def _post_edit(
         self,
         campaign: Campaign,
         character_id: str,
@@ -217,12 +149,8 @@ class ManualProfileView(MethodView):
         Returns:
             Rendered form with errors or HX-Redirect on success.
         """
-        svc = sync_characters_service(
-            on_behalf_of=session["user_id"],
-            company_id=session["company_id"],
-        )
         try:
-            character = svc.get(character_id)
+            character = fetch_character(character_id)
         except APIError as exc:
             errors = {"_general": exc.detail or exc.message or "Failed to load character"}
             return self._render_edit_form(campaign, character_id, form_data, errors)
@@ -234,53 +162,14 @@ class ManualProfileView(MethodView):
         if errors:
             return self._render_edit_form(campaign, character_id, form_data, errors)
 
-        character_class = cast("CharacterClass", form_data["character_class"])
-        game_version = cast("GameVersion", form_data["game_version"])
-        age_str = form_data.get("age", "").strip()
-
-        _create_attrs, update_attrs = build_class_attrs(character_class, form_data)
-        vampire_u, werewolf_u, hunter_u, mage_attrs = update_attrs
-
-        char_type = cast("CharacterType", form_data.get("character_type") or "PLAYER")
-
-        type_error = _character_type_permission_error(char_type)
+        type_error = character_type_permission_error(form_data.get("character_type") or "PLAYER")
         if type_error:
             return self._render_edit_form(
                 campaign, character_id, form_data, {"character_type": type_error}
             )
 
-        try:
-            update_payload = CharacterUpdate(
-                character_class=character_class,
-                game_version=game_version,
-                name_first=form_data["name_first"],
-                name_last=form_data["name_last"],
-                type=char_type,
-                name_nick=form_data.get("name_nick") or None,
-                age=int(age_str) if age_str else None,
-                biography=form_data.get("biography") or None,
-                demeanor=form_data.get("demeanor") or None,
-                nature=form_data.get("nature") or None,
-                concept_id=form_data.get("concept_id") or None,
-                vampire_attributes=vampire_u,
-                werewolf_attributes=werewolf_u,
-                hunter_attributes=hunter_u,
-                mage_attributes=mage_attrs,
-            )
-            svc.update(character_id, update_payload)
-        except PydanticValidationError as e:
-            errors = {}
-            for err in e.errors():
-                field_name = str(err["loc"][0]) if err["loc"] else "unknown"
-                errors[field_name] = err["msg"]
-            return self._render_edit_form(campaign, character_id, form_data, errors)
-        except ValidationError as e:
-            errors = {p["field"]: p["message"] for p in e.invalid_parameters}
-            if e.detail:
-                errors["_general"] = e.detail
-            return self._render_edit_form(campaign, character_id, form_data, errors)
-        except APIError as e:
-            errors = {"_general": e.detail or e.message or "Failed to update profile"}
+        errors = update_character_profile(character_id, form_data)
+        if errors:
             return self._render_edit_form(campaign, character_id, form_data, errors)
 
         cache.global_context.clear(session["company_id"], session["user_id"])
@@ -307,7 +196,7 @@ class ManualProfileView(MethodView):
             Rendered ProfileForm HTML in create mode.
         """
         return catalog.render(
-            "character_manual_create.partials.ProfileForm",
+            "character_create.manual.partials.ProfileForm",
             campaign=campaign,
             form_options=fetch_form_options(),
             form_data=form_data,
@@ -328,103 +217,26 @@ class ManualProfileView(MethodView):
         Returns:
             Rendered HTML fragment (profile form on error, traits form on success).
         """
-        campaign_id = campaign.id
         errors = validate_profile(form_data)
         if errors:
             return self._render_create_form(campaign, form_data, errors)
 
-        character_class = cast("CharacterClass", form_data["character_class"])
-        game_version = cast("GameVersion", form_data["game_version"])
-        age_str = form_data.get("age", "").strip()
-
-        create_attrs, update_attrs = build_class_attrs(character_class, form_data)
-        vampire_c, werewolf_c, hunter_c, mage_attrs = create_attrs
-        vampire_u, werewolf_u, hunter_u, _ = update_attrs
-
-        char_type = cast("CharacterType", form_data.get("character_type") or "PLAYER")
-
-        type_error = _character_type_permission_error(char_type)
+        type_error = character_type_permission_error(form_data.get("character_type") or "PLAYER")
         if type_error:
             return self._render_create_form(campaign, form_data, {"character_type": type_error})
 
-        name_nick = form_data.get("name_nick") or None
-        age = int(age_str) if age_str else None
-        biography = form_data.get("biography") or None
-        demeanor = form_data.get("demeanor") or None
-        nature = form_data.get("nature") or None
-        concept_id = form_data.get("concept_id") or None
-
-        svc = sync_characters_service(
-            on_behalf_of=session["user_id"],
-            company_id=session["company_id"],
-        )
-        temp_char_id = session.get("temp_character_id")
-
-        try:
-            if temp_char_id:
-                update_payload = CharacterUpdate(
-                    character_class=character_class,
-                    game_version=game_version,
-                    name_first=form_data["name_first"],
-                    name_last=form_data["name_last"],
-                    type=char_type,
-                    name_nick=name_nick,
-                    age=age,
-                    biography=biography,
-                    demeanor=demeanor,
-                    nature=nature,
-                    concept_id=concept_id,
-                    vampire_attributes=vampire_u,
-                    werewolf_attributes=werewolf_u,
-                    hunter_attributes=hunter_u,
-                    mage_attributes=mage_attrs,
-                )
-                svc.update(temp_char_id, update_payload)
-            else:
-                create_payload = CharacterCreate(
-                    campaign_id=campaign_id,
-                    character_class=character_class,
-                    game_version=game_version,
-                    name_first=form_data["name_first"],
-                    name_last=form_data["name_last"],
-                    type=char_type,
-                    name_nick=name_nick,
-                    age=age,
-                    biography=biography,
-                    demeanor=demeanor,
-                    nature=nature,
-                    concept_id=concept_id,
-                    is_temporary=True,
-                    user_player_id=session["user_id"],
-                    vampire_attributes=vampire_c,
-                    werewolf_attributes=werewolf_c,
-                    hunter_attributes=hunter_c,
-                    mage_attributes=mage_attrs,
-                )
-                new_char = svc.create(create_payload)
-                session["temp_character_id"] = new_char.id
-                session["temp_character_created_at"] = time.monotonic()
-        except PydanticValidationError as exc:
-            return self._render_create_form(campaign, form_data, _map_pydantic_errors(exc))
-        except ValidationError as exc:
-            errors = {p["field"]: p["message"] for p in exc.invalid_parameters}
-            if exc.detail:
-                errors["_general"] = exc.detail
-            return self._render_create_form(campaign, form_data, errors)
-        except APIError as exc:
-            logger.exception("Failed to save temporary character")
-            errors = {"_general": exc.detail or exc.message or "Failed to save profile"}
+        errors = save_temp_character(campaign.id, form_data)
+        if errors:
             return self._render_create_form(campaign, form_data, errors)
 
-        char_id = temp_char_id or session["temp_character_id"]
-        character = svc.get(char_id)
+        character = fetch_character(session["temp_character_id"])
         full_sheet = cache.character_sheet.get(
             character.id, g.requesting_user.id, include_available_traits=True
         )
 
-        back_url = url_for("character_create.manual_profile", campaign_id=campaign_id, resume="1")
+        back_url = url_for("character_create.manual_profile", campaign_id=campaign.id, resume="1")
         return catalog.render(
-            "character_manual_create.partials.TraitsForm",
+            "character_create.manual.partials.TraitsForm",
             campaign=campaign,
             full_sheet=full_sheet,
             back_url=back_url,
@@ -479,45 +291,19 @@ class ManualFinalizeView(MethodView):
             flash("No character in progress.", "error")
             return hx_redirect(url_for("character_create.manual_profile", campaign_id=campaign_id))
 
-        trait_items: list[CharacterTraitAdd] = []
-        for key, value in request.form.items():
-            if not key.startswith(_TRAIT_PREFIX):
-                continue
-            trait_id = key[len(_TRAIT_PREFIX) :]
-            try:
-                int_val = int(value)
-            except ValueError:
-                continue
-            if int_val > 0:
-                trait_items.append(
-                    CharacterTraitAdd(trait_id=trait_id, value=int_val, currency="NO_COST")
-                )
-
-        user_id = session["user_id"]
+        trait_items = build_trait_items(request.form)
 
         try:
-            if trait_items:
-                traits_svc = sync_character_traits_service(
-                    on_behalf_of=user_id,
-                    character_id=temp_char_id,
-                    company_id=session["company_id"],
-                )
-                result = traits_svc.bulk_assign(trait_items)
-                if result.failed:
-                    failed_names = [f.trait_id for f in result.failed]
-                    flash(f"Some traits failed to assign: {', '.join(failed_names)}", "warning")
+            failed_names = bulk_assign_traits(temp_char_id, trait_items)
+            if failed_names:
+                flash(f"Some traits failed to assign: {', '.join(failed_names)}", "warning")
 
-            char_svc = sync_characters_service(
-                on_behalf_of=user_id, company_id=session["company_id"]
-            )
-            char_svc.update(temp_char_id, CharacterUpdate(is_temporary=False))
+            mark_character_permanent(temp_char_id)
         except APIError as exc:
             logger.exception("Failed to finalize character")
             flash(str(exc), "error")
 
-            character = sync_characters_service(
-                on_behalf_of=user_id, company_id=session["company_id"]
-            ).get(temp_char_id)
+            character = fetch_character(temp_char_id)
             full_sheet = cache.character_sheet.get(
                 character.id, g.requesting_user.id, include_available_traits=True
             )
@@ -526,14 +312,14 @@ class ManualFinalizeView(MethodView):
             )
 
             return catalog.render(
-                "character_manual_create.partials.TraitsForm",
+                "character_create.manual.partials.TraitsForm",
                 campaign=campaign,
                 full_sheet=full_sheet,
                 back_url=back_url,
                 errors=[str(exc)],
             )
 
-        _clear_temp_session()
+        clear_temp_session()
         cache.global_context.clear(session["company_id"], session["user_id"])
         flash("Character created successfully!", "success")
         return hx_redirect(url_for("character_view.character", character_id=temp_char_id))

@@ -1,12 +1,13 @@
 {#def
     section: FullSheetTraitSection,
 #}
+{# Alpine-driven variant for the manual-create wizard; HTMX sibling: templates/shared/traits/TraitSection.jinja #}
 
 <div class="divider text-lg uppercase tracking-wide font-semibold text-base-content/75">
   {{ section.name | title }}
 </div>
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
   {% for category in section.categories if category.available_traits or category.subcategories %}
-    <character_manual_create.components.TraitCategory category={{ category }} />
+    <character_create.manual.components.TraitCategory category={{ category }} />
   {% endfor %}
 </div>

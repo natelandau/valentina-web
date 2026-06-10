@@ -23,7 +23,7 @@ from vweb.routes.character_create.autogen_services import (
     get_session,
     start_session,
 )
-from vweb.routes.character_create.picker_views import (
+from vweb.routes.character_create.picker_services import (
     build_characters_data,
     selection_card_context,
 )

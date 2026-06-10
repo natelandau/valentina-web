@@ -1,6 +1,7 @@
 {#def
     category: FullSheetTraitCategory,
 #}
+{# Alpine-driven variant for the manual-create wizard; HTMX sibling: templates/shared/traits/AddTraitDropdownSubCat.jinja #}
 {% set has_available = category.subcategories | selectattr("available_traits") | list %}
 {% if has_available %}
   <tr>

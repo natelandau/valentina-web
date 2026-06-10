@@ -23,7 +23,7 @@ class TestValidateProfile:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            from vweb.routes.character_create.profile import validate_profile
+            from vweb.routes.character_create.profile_form import validate_profile
 
             errors = validate_profile(form_data)
 
@@ -45,7 +45,7 @@ class TestValidateProfile:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            from vweb.routes.character_create.profile import validate_profile
+            from vweb.routes.character_create.profile_form import validate_profile
 
             errors = validate_profile(form_data)
 
@@ -67,7 +67,7 @@ class TestValidateProfile:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            from vweb.routes.character_create.profile import validate_profile
+            from vweb.routes.character_create.profile_form import validate_profile
 
             errors = validate_profile(form_data)
 
@@ -89,7 +89,7 @@ class TestValidateProfile:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            from vweb.routes.character_create.profile import validate_profile
+            from vweb.routes.character_create.profile_form import validate_profile
 
             errors = validate_profile(form_data)
 
@@ -111,7 +111,7 @@ class TestValidateProfile:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            from vweb.routes.character_create.profile import validate_profile
+            from vweb.routes.character_create.profile_form import validate_profile
 
             errors = validate_profile(form_data)
 
@@ -133,7 +133,7 @@ class TestValidateProfile:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            from vweb.routes.character_create.profile import validate_profile
+            from vweb.routes.character_create.profile_form import validate_profile
 
             errors = validate_profile(form_data)
 
@@ -155,7 +155,7 @@ class TestValidateProfile:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            from vweb.routes.character_create.profile import validate_profile
+            from vweb.routes.character_create.profile_form import validate_profile
 
             errors = validate_profile(form_data)
 
@@ -168,7 +168,7 @@ class TestCharacterToFormData:
 
     def test_extracts_required_fields(self) -> None:
         """Verify required character fields appear in the returned form data."""
-        from vweb.routes.character_create.profile import character_to_form_data
+        from vweb.routes.character_create.profile_form import character_to_form_data
 
         # Given a character with known required fields
         character = CharacterFactory.build(
@@ -190,7 +190,7 @@ class TestCharacterToFormData:
 
     def test_extracts_optional_fields(self) -> None:
         """Verify optional fields are included when set on the character."""
-        from vweb.routes.character_create.profile import character_to_form_data
+        from vweb.routes.character_create.profile_form import character_to_form_data
 
         # Given a character with optional fields populated
         character = CharacterFactory.build(
@@ -215,7 +215,7 @@ class TestCharacterToFormData:
 
     def test_omits_none_optional_fields(self) -> None:
         """Verify None optional fields are not included in form data."""
-        from vweb.routes.character_create.profile import character_to_form_data
+        from vweb.routes.character_create.profile_form import character_to_form_data
 
         # Given a character with None optional fields (factory defaults)
         character = CharacterFactory.build(
@@ -244,7 +244,7 @@ class TestBuildClassAttrs:
 
     def test_vampire_builds_create_and_update_attrs(self) -> None:
         """Verify VAMPIRE class builds both create and update attr tuples with clan_id."""
-        from vweb.routes.character_create.profile import build_class_attrs
+        from vweb.routes.character_create.profile_form import build_class_attrs
 
         # Given a vampire form with a clan
         form_data = {"vampire_clan_id": "clan-brujah"}
@@ -266,7 +266,7 @@ class TestBuildClassAttrs:
 
     def test_mortal_returns_all_none(self) -> None:
         """Verify MORTAL class returns all-None attr tuples."""
-        from vweb.routes.character_create.profile import build_class_attrs
+        from vweb.routes.character_create.profile_form import build_class_attrs
 
         # Given a mortal form with no class-specific data
         form_data: dict[str, str] = {}
@@ -280,7 +280,7 @@ class TestBuildClassAttrs:
 
     def test_werewolf_builds_tribe_and_auspice(self) -> None:
         """Verify WEREWOLF class builds attrs with tribe_id and auspice_id."""
-        from vweb.routes.character_create.profile import build_class_attrs
+        from vweb.routes.character_create.profile_form import build_class_attrs
 
         # Given a werewolf form with tribe and auspice
         form_data = {
