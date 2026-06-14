@@ -1,3 +1,9 @@
+## v0.11.1 (2026-06-14)
+
+### Fix
+
+- **deps**: migrate from httpx to httpx2
+
 ## v0.11.0 (2026-06-10)
 
 ### Feat
