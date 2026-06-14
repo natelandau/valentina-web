@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-import httpx
+import httpx2
 from authlib.integrations.base_client.errors import OAuthError
 from flask import current_app, flash, redirect, request, session, url_for
 from flask.views import MethodView
@@ -45,7 +45,7 @@ def _safe_lookup(
             provider_id=provider_id,
             email=email,
         )
-    except (httpx.HTTPError, APIError):
+    except (httpx2.HTTPError, APIError):
         logger.exception("%s OAuth callback failed: API unreachable", provider)
         flash(
             f"We couldn't reach the Valentina API to complete your {provider} login. "

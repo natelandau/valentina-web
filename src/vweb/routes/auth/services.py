@@ -6,7 +6,7 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
-import httpx
+import httpx2
 from vclient import sync_identity_service, sync_user_lookup_service
 from vclient.exceptions import APIError, ServerError, UnprocessableEntityError
 
@@ -119,7 +119,7 @@ def identify_in_companies(
                 username=username,
                 email=email,
             )
-        except (httpx.HTTPError, APIError) as exc:
+        except (httpx2.HTTPError, APIError) as exc:
             # 422/5xx are token- or provider-level: failing in one company means
             # failing in all, so surface them instead of logging per company
             if isinstance(exc, (UnprocessableEntityError, ServerError)):

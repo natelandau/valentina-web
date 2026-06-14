@@ -50,9 +50,9 @@ def instantiate_logger(log_level: LogLevel | None = None) -> None:  # pragma: no
     logging.getLogger("asyncio").setLevel(level="ERROR")
     for service in [
         "jinjax",
-        "httpcore",
+        "httpcore2",
         "asyncio",
-        "httpx",
+        "httpx2",
     ]:
         logging.getLogger(service).setLevel(level="WARNING")
 
