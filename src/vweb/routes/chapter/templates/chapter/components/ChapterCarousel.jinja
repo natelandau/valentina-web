@@ -7,8 +7,12 @@
 
 {# Horizontal carousel of chapters in the current book. Mirrors BookCarousel:
    card selection navigates to that chapter's detail URL (full page load), the
-   active card auto-centers on mount, and on desktop the row shows left/right
-arrow buttons that smooth-scroll. Prev/Next strip beneath. #}
+   row jumps instantly to just shy of the active card's resting position and
+   then smooth-slides the final short distance into place (so it animates
+   without scrolling the whole list from #1), keeping the adjacent cards on each
+   side visible (right edge wins when all three can't fit), and on desktop the
+   row shows left/right arrow buttons that smooth-scroll. Prev/Next strip
+   beneath. #}
 
 {% set current_id = current_chapter.id if current_chapter else "" %}
 
@@ -30,7 +34,7 @@ arrow buttons that smooth-scroll. Prev/Next strip beneath. #}
 
 <div class="flex flex-col gap-3"
      x-data="{ start: true, end: false, refreshEdges() { const el = this.$refs.scroller; this.start = el.scrollLeft <= 1; this.end = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1; }, scrollBy(amount) { this.$refs.scroller.scrollBy({ left: amount, behavior: 'smooth' }); }, }"
-     x-init="$nextTick(() => { const active = $el.querySelector('[data-active-card]'); if (active) { $refs.scroller.scrollLeft = active.offsetLeft - ($refs.scroller.clientWidth / 2) + (active.clientWidth / 2); } refreshEdges(); })">
+     x-init="$nextTick(() => { const el = $refs.scroller; const active = $el.querySelector('[data-active-card]'); if (active) { const leftEl = active.previousElementSibling || active; const rightEl = active.nextElementSibling || active; const leftBound = leftEl.offsetLeft; const rightBound = rightEl.offsetLeft + rightEl.clientWidth; let target = el.scrollLeft; if (leftBound < target) { target = leftBound; } if (rightBound > target + el.clientWidth) { target = rightBound - el.clientWidth; } if (target !== el.scrollLeft) { const restore = () => { el.style.scrollSnapType = ''; }; el.style.scrollSnapType = 'none'; el.addEventListener('scrollend', restore, { once: true }); setTimeout(restore, 700); const nudge = Math.min(active.clientWidth, target); el.scrollLeft = target - nudge; el.scrollTo({ left: target, behavior: 'smooth' }); } } refreshEdges(); })">
 
   <div class="relative">
     <button type="button"
@@ -43,7 +47,7 @@ arrow buttons that smooth-scroll. Prev/Next strip beneath. #}
 
     <div x-ref="scroller"
          @scroll.throttle.50ms="refreshEdges()"
-         class="flex gap-3 overflow-x-auto scrollbar-none snap-x snap-mandatory scroll-smooth pb-2 -mx-1 px-1">
+         class="flex gap-3 overflow-x-auto scrollbar-none snap-x snap-mandatory pb-2 -mx-1 px-1">
       {% for chapter in chapters %}
 
         {% set is_active = chapter.id == current_id %}
