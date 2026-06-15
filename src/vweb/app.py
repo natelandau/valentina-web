@@ -123,6 +123,7 @@ def create_app(settings_override: Settings | None = None) -> Flask:
         The configured application instance.
     """
     settings = settings_override or get_settings()
+    instantiate_logger(settings=settings)
 
     app = Flask(
         __name__,
@@ -186,7 +187,6 @@ def create_app(settings_override: Settings | None = None) -> Flask:
 def main() -> None:
     """Entry point for the vweb CLI command."""
     settings = get_settings()
-    instantiate_logger()
     app = create_app(settings_override=settings)
 
     if settings.env == "development":

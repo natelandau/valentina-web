@@ -2,29 +2,35 @@
 
 import logging
 import sys
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from vweb.config import get_settings
-from vweb.constants import LogLevel
+
+if TYPE_CHECKING:
+    from vweb.config import Settings
 
 __all__ = ("instantiate_logger",)
 
 
-def instantiate_logger(log_level: LogLevel | None = None) -> None:  # pragma: no cover
+def instantiate_logger(settings: "Settings | None" = None) -> None:  # pragma: no cover
     """Instantiate the Loguru logger for Valentina.
 
     Configure the logger with the specified verbosity level, log file path,
     and whether to log to a file.
 
-    Args:
-        log_level (LogLevel): The verbosity level for the logger.
+    Call this from ``create_app`` as well as ``main`` so that WSGI servers
+    (e.g. gunicorn workers) that import ``create_app`` directly configure
+    loguru too — otherwise they keep loguru's default DEBUG stderr handler and
+    ignore ``VWEB_LOG_LEVEL`` entirely.
 
-    Returns:
-        None
+    Args:
+        settings (Settings): Resolved settings to honor a test override; falls
+            back to the lazy singleton when not provided.
     """
-    s = get_settings()
-    log_level_name = log_level.value if log_level else s.log_level.value
+    settings = settings or get_settings()
+    log_level_name = settings.log_level.value
 
     # Configure Loguru
     logger.remove()
@@ -34,16 +40,16 @@ def instantiate_logger(log_level: LogLevel | None = None) -> None:  # pragma: no
         colorize=True,
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>: <level>{message}</level> | <level>{extra}</level>",
     )
-    if s.log_file_path:
+    if settings.log_file_path:
         logger.add(
-            s.log_file_path,
+            settings.log_file_path,
             level=log_level_name,
             rotation="10 MB",
             retention=3,
             compression="zip",
         )
 
-    if s.api.enable_logs:
+    if settings.api.enable_logs:
         logger.enable("vclient")
 
     # # Intercept standard discord.py logs and redirect to Loguru
