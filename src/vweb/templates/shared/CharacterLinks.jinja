@@ -1,0 +1,18 @@
+{#def
+    characters: list = [],
+#}
+{% if characters %}
+  <div class="flex flex-col gap-2">
+    <div class="text-xs uppercase tracking-wider opacity-60">Characters</div>
+    <ul class="flex flex-col gap-1 text-sm">
+      {% for character in characters %}
+        <li>
+          <a class="link link-hover"
+             href="{{ url_for('character_view.character', character_id=character.id) }}">
+            {{ character.name }}
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}

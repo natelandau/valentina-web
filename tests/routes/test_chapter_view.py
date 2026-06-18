@@ -330,6 +330,42 @@ class TestChapterCharacterAssociations:
         assert b"chapter-content" in response.data
 
 
+class TestChapterSidebarCharacters:
+    """Tests for associated-character links in the chapter sidebar."""
+
+    def test_sidebar_links_associated_characters(
+        self, client, mocker, mock_campaign, mock_book
+    ) -> None:
+        """Verify the chapter sidebar renders a link to each associated character."""
+        # Given a campaign whose roster contains the associated character
+        from vclient.testing import CampaignChapterFactory, CharacterFactory
+
+        hero = CharacterFactory.build(
+            id="hero-1", type="PLAYER", name="Sidebar Hero", campaign_id=mock_campaign.id
+        )
+        ctx = build_global_context(user_role="PLAYER", campaign=mock_campaign, characters=[hero])
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+
+        chapter = CampaignChapterFactory.build(
+            id="ch-2", book_id=mock_book.id, number=2, name="Chapter Two", character_ids=["hero-1"]
+        )
+        mocker.patch("vweb.routes.chapter.views.fetch_chapter_or_404", return_value=chapter)
+        mocker.patch(
+            "vweb.routes.chapter.views.fetch_book_or_404", return_value=(mock_book, mock_campaign)
+        )
+        svc = mocker.patch("vweb.routes.chapter.views.sync_chapters_service").return_value
+        svc.list_all_assets.return_value = []
+        svc.list_all_notes.return_value = []
+        mocker.patch("vweb.lib.cache.campaign_content.chapters", return_value=[chapter])
+
+        # When viewing the chapter
+        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2")
+
+        # Then the sidebar links to the character detail page
+        assert b"Sidebar Hero" in response.data
+        assert b"/character/hero-1" in response.data
+
+
 @pytest.mark.usefixtures("_mock_chapter_lookup")
 class TestChapterCarouselAddCard:
     """Tests for the create-chapter add-card in the chapter carousel."""

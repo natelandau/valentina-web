@@ -145,6 +145,8 @@
         </div>
       </dl>
 
+      <shared.CharacterLinks characters={{ resolve_characters(campaign.id, book.character_ids) }} />
+
       {% if editable %}
         <div class="flex items-center gap-2">
           {{ book_actions(book, campaign) }}

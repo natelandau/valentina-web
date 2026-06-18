@@ -379,6 +379,46 @@ class TestBooksEmptyState:
         assert b"/books/create" not in response.data
 
 
+class TestBookSidebarCharacters:
+    """Tests for associated-character links in the book sidebar."""
+
+    def test_sidebar_links_associated_characters(
+        self, client, mocker, mock_campaign, mock_chapters
+    ) -> None:
+        """Verify the book sidebar renders a link to each associated character."""
+        from vclient.testing import CharacterFactory
+
+        # Given a campaign whose roster contains the associated character
+        hero = CharacterFactory.build(
+            id="hero-1", type="PLAYER", name="Sidebar Hero", campaign_id=mock_campaign.id
+        )
+        ctx = build_global_context(user_role="PLAYER", campaign=mock_campaign, characters=[hero])
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+
+        book = CampaignBookFactory.build(
+            id="book-1",
+            campaign_id=mock_campaign.id,
+            name="The Gathering Storm",
+            number=1,
+            character_ids=["hero-1"],
+        )
+        mocker.patch(
+            "vweb.routes.book.views.fetch_book_or_404",
+            return_value=(book, mock_campaign),
+        )
+        mocker.patch(
+            "vweb.lib.cache.campaign_content.chapters",
+            return_value=mock_chapters,
+        )
+
+        # When viewing the book detail page
+        response = client.get(f"/campaign/{mock_campaign.id}/book/{book.id}")
+
+        # Then the sidebar links to the character detail page
+        assert b"Sidebar Hero" in response.data
+        assert b"/character/hero-1" in response.data
+
+
 @pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")
 class TestBookCarouselAddCard:
     """Tests for the create-book add-card in the book carousel."""
