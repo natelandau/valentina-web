@@ -15,6 +15,12 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
+def chapters_service(_mock_chapter_lookup) -> object:
+    """Return the chapters service mock from _mock_chapter_lookup for assertion-based tests."""
+    return _mock_chapter_lookup
+
+
+@pytest.fixture
 def _mock_chapter_lookup(mocker, mock_book, mock_campaign, mock_chapters) -> None:
     """Mock book lookup, chapter lookup, and chapters service for chapter detail."""
     mocker.patch(
@@ -236,6 +242,92 @@ class TestChapterDelete:
         _, kwargs = clear_cache.call_args
         assert kwargs["book_id"] == mock_book.id
         assert kwargs["campaign_id"] == mock_campaign.id
+
+
+@pytest.mark.usefixtures("_mock_chapter_lookup")
+class TestChapterCharacterAssociations:
+    """Tests for associating characters via the chapter create/edit forms."""
+
+    def test_create_forwards_character_ids(
+        self, client, mocker, mock_campaign, mock_book, chapters_service
+    ) -> None:
+        """Verify selected character ids are forwarded to the create call."""
+        # Given a privileged user
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+        csrf = get_csrf(client)
+
+        # When creating a chapter with two selected characters
+        client.post(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter",
+            data={"name": "New Chapter", "character_ids": ["c1", "c2"], "csrf_token": csrf},
+        )
+
+        # Then the ids are passed through to vclient create
+        _, kwargs = chapters_service.create.call_args
+        assert kwargs["character_ids"] == ["c1", "c2"]
+
+    def test_edit_forwards_character_ids(
+        self, client, mocker, mock_campaign, mock_book, chapters_service
+    ) -> None:
+        """Verify the chapter edit form forwards the selected ids to update."""
+        # Given a privileged user
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+        csrf = get_csrf(client)
+
+        # When submitting the edit form with one selected character
+        client.post(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2/edit",
+            data={"name": "Chapter Two", "character_ids": ["c9"], "csrf_token": csrf},
+        )
+
+        # Then the id list is passed to vclient update
+        _, kwargs = chapters_service.update.call_args
+        assert kwargs["character_ids"] == ["c9"]
+
+    def test_edit_clears_associations_when_none_selected(
+        self, client, mocker, mock_campaign, mock_book, chapters_service
+    ) -> None:
+        """Verify submitting the edit form with no characters clears associations."""
+        # Given a privileged user
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+        csrf = get_csrf(client)
+
+        # When submitting the edit form with no character_ids
+        client.post(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2/edit",
+            data={"name": "Chapter Two", "csrf_token": csrf},
+        )
+
+        # Then an empty list is passed to clear all associations
+        _, kwargs = chapters_service.update.call_args
+        assert kwargs["character_ids"] == []
+
+    def test_edit_invalid_character_id_rerenders_form(
+        self, client, mocker, mock_campaign, mock_book, chapters_service
+    ) -> None:
+        """Verify a server-rejected character id re-renders the form, not a 500."""
+        # Given a privileged user and an update that the API rejects
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+        from vclient.exceptions import ValidationError
+
+        chapters_service.update.side_effect = ValidationError(
+            "bad",
+            response_data={
+                "detail": "unknown character",
+                "invalid_parameters": [{"field": "character_ids", "message": "unknown character"}],
+            },
+        )
+        csrf = get_csrf(client)
+
+        # When submitting with an invalid character id
+        response = client.post(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2/edit",
+            data={"name": "Chapter Two", "character_ids": ["nope"], "csrf_token": csrf},
+        )
+
+        # Then the form is re-rendered with an error and no 500 is raised
+        assert response.status_code == 200
+        assert b"chapter-content" in response.data
 
 
 @pytest.mark.usefixtures("_mock_chapter_lookup")

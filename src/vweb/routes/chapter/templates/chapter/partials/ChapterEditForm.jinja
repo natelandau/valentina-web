@@ -26,7 +26,7 @@
           <label class="input w-full">
             <input type="text"
                    name="name"
-                   value="{{ form_data.name if form_data else chapter.name }}"
+                   value="{{ form_data.get('name', chapter.name) if form_data else chapter.name }}"
                    class="grow"
                    required
                    minlength="1"
@@ -39,7 +39,7 @@
           <label class="input w-full">
             <input type="number"
                    name="number"
-                   value="{{ form_data.number if form_data else chapter.number }}"
+                   value="{{ form_data.get('number', chapter.number) if form_data else chapter.number }}"
                    class="grow"
                    min="1">
           </label>
@@ -51,8 +51,11 @@
         <textarea name="description"
                   class="textarea w-full"
                   rows="10"
-                  placeholder="Chapter description...">{{ form_data.description if form_data else (chapter.description or '') }}</textarea>
+                  placeholder="Chapter description...">{{ form_data.get('description', chapter.description or '') if form_data else (chapter.description or '') }}</textarea>
       </fieldset>
+
+      {% set picker_selected = (form_data.getlist('character_ids') if form_data else (chapter.character_ids or [])) %}
+      <shared.CharacterPicker campaign={{ campaign }} selected_ids={{ picker_selected }} />
 
       <div class="flex gap-2 justify-end">
         <shared.CommonButton variant="cancel" hx-get={{ url_for('chapter_view.chapter_detail', campaign_id=campaign.id, book_id=book.id, chapter_id=chapter.id) }} hx-target="#chapter-content" hx-swap="outerHTML" hx-select="#chapter-content">
