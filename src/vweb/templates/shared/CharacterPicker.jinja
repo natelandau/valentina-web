@@ -1,0 +1,66 @@
+{#def
+    campaign: object,
+    selected_ids: list = [],
+#}
+{% set characters = get_selectable_characters(campaign.id) %}
+{% set picker_all = [] %}
+{% for character in characters %}
+  {% do picker_all.append({"id": character.id, "name": character.name}) %}
+{% endfor %}
+{% set picker_selected = [] %}
+{% for character in characters %}
+  {% if character.id in selected_ids %}
+    {% do picker_selected.append({"id": character.id, "name": character.name}) %}
+  {% endif %}
+{% endfor %}
+
+<fieldset class="fieldset mb-4">
+  <legend class="fieldset-legend">Characters</legend>
+  {% if not characters %}
+    <p class="text-sm text-base-content/50 italic">No player or NPC characters in this campaign yet.</p>
+  {% else %}
+    {# djlint:off #}
+    <div class="flex flex-col gap-2"
+         x-data='{
+           all: {{ picker_all | tojson }},
+           selected: {{ picker_selected | tojson }},
+           query: "",
+           get available() {
+             const chosen = this.selected.map(c => c.id);
+             const term = this.query.toLowerCase();
+             return this.all.filter(c => !chosen.includes(c.id) && c.name.toLowerCase().includes(term));
+           },
+           add(c) { this.selected.push(c); this.query = ""; },
+           remove(id) { this.selected = this.selected.filter(c => c.id !== id); }
+         }'>
+    {# djlint:on #}
+      <template x-for="c in selected" :key="c.id">
+        <input type="hidden" name="character_ids" :value="c.id">
+      </template>
+
+      <div class="flex flex-wrap gap-2" x-show="selected.length > 0" x-cloak>
+        <template x-for="c in selected" :key="c.id">
+          <span class="badge badge-neutral gap-1">
+            <span x-text="c.name"></span>
+            <button type="button" class="cursor-pointer leading-none" @click="remove(c.id)">
+              <span class="sr-only">Remove</span>×
+            </button>
+          </span>
+        </template>
+      </div>
+
+      <div class="dropdown w-full">
+        <label class="input w-full">
+          <input type="text" class="grow" placeholder="Search characters..." x-model="query">
+        </label>
+        <ul x-show="query.length > 0 && available.length > 0"
+            x-cloak
+            class="dropdown-content menu bg-base-100 rounded-box z-10 w-full p-2 shadow-md border border-base-300 max-h-60 flex-nowrap overflow-y-auto">
+          <template x-for="c in available" :key="c.id">
+            <li><button type="button" @click="add(c)" x-text="c.name"></button></li>
+          </template>
+        </ul>
+      </div>
+    </div>
+  {% endif %}
+</fieldset>
