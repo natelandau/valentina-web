@@ -75,7 +75,8 @@ def resolve_characters(campaign_id: str, character_ids: list[str]) -> list[Chara
         character_ids: The associated character ids to resolve.
 
     Returns:
-        The resolved characters, sorted by name; empty when nothing resolves.
+        The resolved characters, in the campaign roster's name-sorted order;
+        empty when nothing resolves.
     """
     if not character_ids:
         return []

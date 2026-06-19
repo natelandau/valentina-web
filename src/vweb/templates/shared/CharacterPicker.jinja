@@ -7,16 +7,17 @@
 {% for character in characters %}
   {% do picker_all.append({"id": character.id, "name": character.name}) %}
 {% endfor %}
+{# Resolve already-associated characters from the full roster, not just the
+   selectable (PLAYER/NPC) set, so an association to any other character type is
+   preserved as a badge and re-submitted rather than silently dropped on save. #}
 {% set picker_selected = [] %}
-{% for character in characters %}
-  {% if character.id in selected_ids %}
-    {% do picker_selected.append({"id": character.id, "name": character.name}) %}
-  {% endif %}
+{% for character in resolve_characters(campaign.id, selected_ids) %}
+  {% do picker_selected.append({"id": character.id, "name": character.name}) %}
 {% endfor %}
 
 <fieldset class="fieldset mb-4">
   <legend class="fieldset-legend">Characters</legend>
-  {% if not characters %}
+  {% if not picker_all and not picker_selected %}
     <p class="text-sm text-base-content/50 italic">No player or NPC characters in this campaign yet.</p>
   {% else %}
     {# djlint:off #}
@@ -49,18 +50,20 @@
         </template>
       </div>
 
-      <div class="dropdown w-full">
-        <label class="input w-full">
-          <input type="text" class="grow" placeholder="Search characters..." x-model="query" aria-label="Search characters">
-        </label>
-        <ul x-show="query.length > 0 && available.length > 0"
-            x-cloak
-            class="dropdown-content menu bg-base-100 rounded-box z-10 w-full p-2 shadow-md border border-base-300 max-h-60 flex-nowrap overflow-y-auto">
-          <template x-for="c in available" :key="c.id">
-            <li><button type="button" @click="add(c)" x-text="c.name"></button></li>
-          </template>
-        </ul>
-      </div>
+      {% if picker_all %}
+        <div class="dropdown w-full">
+          <label class="input w-full">
+            <input type="text" class="grow" placeholder="Search characters..." x-model="query" aria-label="Search characters">
+          </label>
+          <ul x-show="query.length > 0 && available.length > 0"
+              x-cloak
+              class="dropdown-content menu bg-base-100 rounded-box z-10 w-full p-2 shadow-md border border-base-300 max-h-60 flex-nowrap overflow-y-auto">
+            <template x-for="c in available" :key="c.id">
+              <li><button type="button" @click="add(c)" x-text="c.name"></button></li>
+            </template>
+          </ul>
+        </div>
+      {% endif %}
     </div>
   {% endif %}
 </fieldset>

@@ -366,6 +366,42 @@ class TestChapterSidebarCharacters:
         assert b"/character/hero-1" in response.data
 
 
+class TestChapterEditPickerPreservesAssociations:
+    """Tests that the edit form preserves associations the picker cannot offer."""
+
+    def test_edit_form_preserves_non_selectable_associated_character(
+        self, client, mocker, mock_campaign, mock_book
+    ) -> None:
+        """Verify an already-associated storyteller character survives an edit-form render."""
+        # Given a roster with a storyteller character the picker would not offer
+        from vclient.testing import CampaignChapterFactory, CharacterFactory
+
+        boss = CharacterFactory.build(
+            id="boss-1", type="STORYTELLER", name="Story Boss", campaign_id=mock_campaign.id
+        )
+        ctx = build_global_context(
+            user_role="STORYTELLER", campaign=mock_campaign, characters=[boss]
+        )
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+
+        chapter = CampaignChapterFactory.build(
+            id="ch-2", book_id=mock_book.id, number=2, name="Chapter Two", character_ids=["boss-1"]
+        )
+        mocker.patch("vweb.routes.chapter.views.fetch_chapter_or_404", return_value=chapter)
+        mocker.patch(
+            "vweb.routes.chapter.views.fetch_book_or_404", return_value=(mock_book, mock_campaign)
+        )
+
+        # When rendering the chapter edit form
+        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2/edit")
+
+        # Then the storyteller association is seeded into the picker, not silently dropped
+        assert response.status_code == 200
+        assert b"boss-1" in response.data
+        assert b"Story Boss" in response.data
+
+
 @pytest.mark.usefixtures("_mock_chapter_lookup")
 class TestChapterCarouselAddCard:
     """Tests for the create-chapter add-card in the chapter carousel."""
