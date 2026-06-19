@@ -1290,7 +1290,7 @@ wheels = [
 
 [[package]]
 name = "valentina-python-client"
-version = "3.0.0"
+version = "3.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -1299,9 +1299,9 @@ dependencies = [
     { name = "polyfactory" },
     { name = "pydantic", extra = ["email"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/37/47/fb98ed618b7570ae6f400f72373552db35f1c359cdc8e2d3ebd10c1ab83b/valentina_python_client-3.0.0.tar.gz", hash = "sha256:71a35b3bc706b31579f38dc9200ef6f83b02823c2505e621e4a64d2b75473fea", size = 124764, upload-time = "2026-06-14T18:32:45.418Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2d/d2/0cbfea3c1a0c2bcd31092dc6937be05876f93757a6a29f8d41280aed5344/valentina_python_client-3.1.0.tar.gz", hash = "sha256:9bb56f05fac4fd830c614ce6c6021051c8e105dbcc6b04595456498f95b7340c", size = 125000, upload-time = "2026-06-15T19:50:58.655Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2b/0f/956c59efe97fd5ad88dbf2bb16b39aa5d10eb5af6e0585852772dbb980fb/valentina_python_client-3.0.0-py3-none-any.whl", hash = "sha256:2f387b6a3ae39e8ce8116adde18507580d22aac65baf5e226ca91d1e3f57e666", size = 182260, upload-time = "2026-06-14T18:32:44.289Z" },
+    { url = "https://files.pythonhosted.org/packages/71/3a/0e95c89b6e57d09f20ab5d638aaa6d5afd9e98c19d546080181fd182a039/valentina_python_client-3.1.0-py3-none-any.whl", hash = "sha256:303c4f567fe7214eee504d6c1d018c70194094f46c7f52175279fc27681e9eba", size = 182486, upload-time = "2026-06-15T19:50:57.497Z" },
 ]
 
 [package.optional-dependencies]
@@ -1376,7 +1376,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.14.1,<3.0.0" },
     { name = "redis", specifier = ">=8.0.0,<9.0.0" },
     { name = "requests", specifier = ">=2.34.2,<3.0.0" },
-    { name = "valentina-python-client", extras = ["testing"], specifier = ">=3.0.0,<4.0.0" },
+    { name = "valentina-python-client", extras = ["testing"], specifier = ">=3.1.0,<4.0.0" },
 ]
 
 [package.metadata.requires-dev]

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from flask import Blueprint, abort, flash, request, session, url_for
 from flask.views import MethodView
 from vclient import sync_chapters_service
+from vclient.exceptions import ValidationError
 
 from vweb.lib import cache
 from vweb.lib.api import (
@@ -194,7 +195,21 @@ class ChapterEditView(MethodView):
                 form_data=request.form,
             )
 
-        updated = chapters_service.update(chapter_id, name=name, description=description)
+        character_ids = request.form.getlist("character_ids")
+        try:
+            updated = chapters_service.update(
+                chapter_id, name=name, description=description, character_ids=character_ids
+            )
+        except ValidationError as error:
+            errors.append(error.detail or "One or more selected characters are invalid")
+            return catalog.render(
+                "chapter.partials.ChapterEditForm",
+                chapter=chapter,
+                book=book,
+                campaign=campaign,
+                errors=errors,
+                form_data=request.form,
+            )
         if number != chapter.number:
             updated = chapters_service.renumber(chapter_id, number)
         cache.global_context.clear_current()
@@ -260,7 +275,23 @@ class ChapterCreateView(MethodView):
             )
 
         chapters_service = _chapters_service(campaign_id, book_id)
-        new_chapter = chapters_service.create(name=name, description=description)
+        character_ids = request.form.getlist("character_ids")
+        try:
+            new_chapter = chapters_service.create(
+                name=name, description=description, character_ids=character_ids
+            )
+        except ValidationError as error:
+            errors.append(error.detail or "One or more selected characters are invalid")
+            return catalog.render(
+                "book.partials.ChapterCreateForm",
+                book=book,
+                campaign=campaign,
+                target_id=target_id,
+                from_chapter=from_chapter,
+                cancel_url=_chapter_create_cancel_url(campaign_id, book_id, from_chapter),
+                errors=errors,
+                form_data=request.form,
+            )
         cache.global_context.clear_current()
         cache.campaign_content.clear(
             session["company_id"], campaign_id=campaign_id, book_id=book_id

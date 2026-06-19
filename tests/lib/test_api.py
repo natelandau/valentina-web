@@ -27,6 +27,8 @@ from vweb.lib.api import (
     fetch_chapter_or_404,
     get_active_campaign,
     get_characters_for_campaign,
+    get_selectable_characters,
+    resolve_characters,
 )
 from vweb.lib.cache.dicerolls import recent
 from vweb.lib.cache.global_context import GlobalContext
@@ -483,3 +485,65 @@ class TestGetCharactersForCampaign:
 
         # Then the result is empty
         assert characters == []
+
+
+class TestGetSelectableCharacters:
+    """Tests for ``get_selectable_characters``."""
+
+    def test_returns_only_player_and_npc_sorted(self, app) -> None:
+        """Verify only PLAYER and NPC characters are returned, name-sorted."""
+        # Given a campaign whose roster includes every character type
+        campaign = CampaignFactory.build(name="Picker Campaign")
+        roster = [
+            CharacterFactory.build(type="STORYTELLER", name="Story One", campaign_id=campaign.id),
+            CharacterFactory.build(type="PLAYER", name="Zed Player", campaign_id=campaign.id),
+            CharacterFactory.build(type="NPC", name="Amy NPC", campaign_id=campaign.id),
+        ]
+        ctx = build_global_context(user_role="STORYTELLER", campaign=campaign, characters=roster)
+
+        # When listing selectable characters
+        with app.test_request_context():
+            g.global_context = ctx
+            result = get_selectable_characters(campaign.id)
+
+        # Then storyteller characters are excluded and the rest are name-sorted
+        assert [c.name for c in result] == ["Amy NPC", "Zed Player"]
+
+
+class TestResolveCharacters:
+    """Tests for ``resolve_characters``."""
+
+    def test_resolves_ids_to_characters_sorted_dropping_unknown(self, app) -> None:
+        """Verify known ids resolve to name-sorted characters and unknown ids are dropped."""
+        # Given a campaign roster
+        campaign = CampaignFactory.build(name="Resolve Campaign")
+        hero = CharacterFactory.build(
+            id="c-hero", type="PLAYER", name="Hero", campaign_id=campaign.id
+        )
+        villain = CharacterFactory.build(
+            id="c-vil", type="NPC", name="Villain", campaign_id=campaign.id
+        )
+        ctx = build_global_context(
+            user_role="PLAYER", campaign=campaign, characters=[hero, villain]
+        )
+
+        # When resolving a mix of known and unknown ids
+        with app.test_request_context():
+            g.global_context = ctx
+            result = resolve_characters(campaign.id, ["c-vil", "c-hero", "c-missing"])
+
+        # Then only the known characters are returned, name-sorted
+        assert [c.id for c in result] == ["c-hero", "c-vil"]
+
+    def test_empty_ids_returns_empty(self, app) -> None:
+        """Verify an empty id list returns an empty list without touching the roster."""
+        # Given any context
+        ctx = build_global_context(user_role="PLAYER")
+
+        # When resolving an empty id list
+        with app.test_request_context():
+            g.global_context = ctx
+            result = resolve_characters("any-campaign", [])
+
+        # Then the result is empty
+        assert result == []

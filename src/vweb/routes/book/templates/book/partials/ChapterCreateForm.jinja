@@ -47,6 +47,9 @@
                   placeholder="Chapter description (optional)...">{{ (form_data.get('description', '') if form_data else '') | e }}</textarea>
       </fieldset>
 
+      {% set picker_selected = (form_data.getlist('character_ids') if form_data else []) %}
+      <shared.CharacterPicker campaign={{ campaign }} selected_ids={{ picker_selected }} />
+
       <div class="flex gap-2 justify-end">
         <shared.CommonButton variant="cancel" hx-get={{ cancel_url }} hx-target={{ "#" ~ target_id }} hx-swap="outerHTML" hx-select={{ "#" ~ target_id }}>
         Cancel

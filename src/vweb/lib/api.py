@@ -44,6 +44,50 @@ def get_characters_for_campaign(campaign_id: str) -> list[Character]:
     return sorted(characters, key=lambda character: character.name.lower())
 
 
+def get_selectable_characters(campaign_id: str) -> list[Character]:
+    """Return the campaign's PLAYER and NPC characters for the chapter picker.
+
+    Storyteller characters are excluded so the chapter association picker only
+    offers characters appropriate to attach to story content.
+
+    Args:
+        campaign_id: The campaign to list selectable characters for.
+
+    Returns:
+        The campaign's PLAYER/NPC characters, sorted by name.
+    """
+    return [
+        character
+        for character in get_characters_for_campaign(campaign_id)
+        if character.type in ("PLAYER", "NPC")
+    ]
+
+
+def resolve_characters(campaign_id: str, character_ids: list[str]) -> list[Character]:
+    """Resolve associated character ids to Character objects for sidebar display.
+
+    Ids that don't resolve against the campaign roster (e.g. a storyteller
+    character the requesting user cannot see) are silently dropped so the
+    sidebar only links to characters the viewer can actually open.
+
+    Args:
+        campaign_id: The campaign the character ids belong to.
+        character_ids: The associated character ids to resolve.
+
+    Returns:
+        The resolved characters, in the campaign roster's name-sorted order;
+        empty when nothing resolves.
+    """
+    if not character_ids:
+        return []
+    wanted = set(character_ids)
+    return [
+        character
+        for character in get_characters_for_campaign(campaign_id)
+        if character.id in wanted
+    ]
+
+
 def get_remembered_campaign(campaigns: list[Campaign]) -> Campaign | None:
     """Return the session-remembered campaign if it still exists in the given list.
 

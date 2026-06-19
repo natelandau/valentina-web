@@ -12,7 +12,12 @@ import vweb
 from vweb.config import get_settings
 from vweb.constants import MAX_AVATAR_SIZE, MAX_IMAGE_SIZE, STATIC_PATH, TEMPLATES_PATH
 from vweb.lib import cache
-from vweb.lib.api import get_active_campaign, get_user_campaign_experience
+from vweb.lib.api import (
+    get_active_campaign,
+    get_selectable_characters,
+    get_user_campaign_experience,
+    resolve_characters,
+)
 from vweb.lib.guards import (
     can_edit_character,
     can_edit_traits_free,
@@ -209,6 +214,8 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
 
     jinja_globals["global_context"] = _get_global_context
     jinja_globals["active_campaign"] = get_active_campaign
+    jinja_globals["get_selectable_characters"] = get_selectable_characters
+    jinja_globals["resolve_characters"] = resolve_characters
 
     def _get_requesting_user() -> User | None:
         return g.get("requesting_user")
