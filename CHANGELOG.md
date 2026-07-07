@@ -1,3 +1,14 @@
+## v0.12.0 (2026-07-06)
+
+### Feat
+
+- **chapters**: associate characters and link them in sidebars (#54)
+
+### Fix
+
+- **chapters**: bound chapter and book bar scroll animation
+- **logging**: respect log level under gunicorn
+
 ## v0.11.1 (2026-06-14)
 
 ### Fix
