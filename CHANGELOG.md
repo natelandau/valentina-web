@@ -1,3 +1,11 @@
+## v0.12.1 (2026-07-11)
+
+### Fix
+
+- **characters**: show werewolf tribe/auspice options without versions
+- **traits**: charge currency when creating custom traits (#57)
+- **characters**: drop character name from sheet back button
+
 ## v0.12.0 (2026-07-06)
 
 ### Feat
