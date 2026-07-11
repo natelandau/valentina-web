@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+from vclient.exceptions import ValidationError
 from vclient.testing import CharacterFactory
 
 from tests.conftest import get_csrf
 from tests.helpers import build_global_context
+
+if TYPE_CHECKING:
+    from vclient.models import Character
 
 
 class TestCharacterTraitsViewPermissions:
@@ -44,3 +49,169 @@ class TestCharacterTraitsViewPermissions:
         # Then the user is redirected to the character view and no trait service is used
         assert response.headers.get("HX-Redirect") == f"/character/{npc.id}"
         traits_svc.assert_not_called()
+
+
+class TestCustomTraitCreation:
+    """POST /character/<id>/traits/<spend_type> with a CUSTOM_<category> field."""
+
+    def _setup(self, client, mocker) -> tuple[Character, MagicMock]:
+        """Wire a PLAYER-owned player character and a mocked traits service."""
+        ctx = build_global_context(user_role="PLAYER")
+        campaign = ctx.campaigns[0]
+        character = CharacterFactory.build(
+            id="pc-1",
+            campaign_id=campaign.id,
+            type="PLAYER",
+            user_player_id="test-user-id",
+        )
+        ctx.characters = [character]
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+
+        traits_svc = MagicMock()
+        created = MagicMock()
+        created.id = "new-trait-1"
+        traits_svc.create.return_value = created
+        options = MagicMock()
+        options.xp_current = 4
+        options.starting_points_current = 9
+        options.options = {"DELETE": MagicMock(point_change=1)}
+        traits_svc.get_value_options.return_value = options
+        mocker.patch(
+            "vweb.routes.character_trait_edit.views.sync_character_traits_service",
+            return_value=traits_svc,
+        )
+        return character, traits_svc
+
+    def _flashes(self, client) -> list[str]:
+        """Return the flashed message strings from the session cookie."""
+        with client.session_transaction() as sess:
+            return [message for _, message in sess.get("_flashes", [])]
+
+    def test_create_custom_trait_xp_sends_currency_and_summary(self, client, mocker) -> None:
+        """Verify an XP-mode custom trait sends currency=XP and flashes spent/remaining."""
+        # Given a PLAYER editing their own character in XP mode
+        character, traits_svc = self._setup(client, mocker)
+        csrf = get_csrf(client)
+
+        # When adding a custom trait in the "skills" category
+        response = client.post(
+            f"/character/{character.id}/traits/XP",
+            data={"CUSTOM_skills": "street smarts"},
+            headers={"HX-Request": "true", "X-CSRFToken": csrf},
+        )
+
+        # Then the trait is created with the XP currency and title-cased name
+        assert response.headers.get("HX-Redirect") == f"/character/{character.id}/traits/XP"
+        sent = traits_svc.create.call_args.args[0]
+        assert sent.currency == "XP"
+        assert sent.name == "Street Smarts"
+        assert sent.category_id == "skills"
+        # And the flash reports the amount spent and the remaining balance
+        assert any("You spent 1 xp, 4 remaining" in m for m in self._flashes(client))
+
+    def test_create_custom_trait_category_id_with_underscores(self, client, mocker) -> None:
+        """Verify a category id containing underscores is parsed intact from the field name."""
+        # Given a PLAYER editing their own character
+        character, traits_svc = self._setup(client, mocker)
+        csrf = get_csrf(client)
+
+        # When the custom-trait field carries an underscore-laden category id
+        client.post(
+            f"/character/{character.id}/traits/XP",
+            data={"CUSTOM_skills_category_id": "street smarts"},
+            headers={"HX-Request": "true", "X-CSRFToken": csrf},
+        )
+
+        # Then the full category id is sent, not just its first segment
+        assert traits_svc.create.call_args.args[0].category_id == "skills_category_id"
+
+    def test_create_custom_trait_starting_points_summary(self, client, mocker) -> None:
+        """Verify a STARTING_POINTS custom trait reports the starting-points balance."""
+        # Given a PLAYER editing their own character in starting-points mode
+        character, traits_svc = self._setup(client, mocker)
+        csrf = get_csrf(client)
+
+        # When adding a custom trait paid with starting points
+        client.post(
+            f"/character/{character.id}/traits/STARTING_POINTS",
+            data={"CUSTOM_skills": "street smarts"},
+            headers={"HX-Request": "true", "X-CSRFToken": csrf},
+        )
+
+        # Then STARTING_POINTS is sent and the flash reports the starting-points balance
+        assert traits_svc.create.call_args.args[0].currency == "STARTING_POINTS"
+        assert any("You spent 1 starting points, 9 remaining" in m for m in self._flashes(client))
+
+    def test_create_custom_trait_no_cost_omits_spend_summary(self, client, mocker) -> None:
+        """Verify a NO_COST custom trait sends currency=NO_COST and omits the spend note."""
+        # Given a PLAYER editing their own character in free mode
+        character, traits_svc = self._setup(client, mocker)
+        csrf = get_csrf(client)
+
+        # When adding a custom trait for free
+        client.post(
+            f"/character/{character.id}/traits/NO_COST",
+            data={"CUSTOM_skills": "street smarts"},
+            headers={"HX-Request": "true", "X-CSRFToken": csrf},
+        )
+
+        # Then NO_COST is sent, no balance lookup happens, and no spend note appears
+        assert traits_svc.create.call_args.args[0].currency == "NO_COST"
+        traits_svc.get_value_options.assert_not_called()
+        flashes = self._flashes(client)
+        assert any("Created Street Smarts." in m for m in flashes)
+        assert not any("You spent" in m for m in flashes)
+
+    def test_create_custom_trait_balance_lookup_failure_falls_back(self, client, mocker) -> None:
+        """Verify a failed balance lookup still flashes bare success without erroring."""
+        # Given the post-create value-options lookup raises
+        character, traits_svc = self._setup(client, mocker)
+        traits_svc.get_value_options.side_effect = ValidationError("boom")
+        csrf = get_csrf(client)
+
+        # When adding a custom trait in XP mode
+        response = client.post(
+            f"/character/{character.id}/traits/XP",
+            data={"CUSTOM_skills": "street smarts"},
+            headers={"HX-Request": "true", "X-CSRFToken": csrf},
+        )
+
+        # Then the request still succeeds with the bare "Created" message
+        assert response.headers.get("HX-Redirect") == f"/character/{character.id}/traits/XP"
+        flashes = self._flashes(client)
+        assert any("Created Street Smarts." in m for m in flashes)
+        assert not any("You spent" in m for m in flashes)
+
+    def test_create_custom_trait_api_error_flashes_error(self, client, mocker) -> None:
+        """Verify an API error during create flashes an error and does not raise."""
+        # Given the create call raises an API error
+        character, traits_svc = self._setup(client, mocker)
+        traits_svc.create.side_effect = ValidationError("nope")
+        csrf = get_csrf(client)
+
+        # When adding a custom trait
+        client.post(
+            f"/character/{character.id}/traits/XP",
+            data={"CUSTOM_skills": "street smarts"},
+            headers={"HX-Request": "true", "X-CSRFToken": csrf},
+        )
+
+        # Then the failure message is flashed
+        assert any("Failed to create custom trait" in m for m in self._flashes(client))
+
+    def test_create_custom_trait_empty_name_warns(self, client, mocker) -> None:
+        """Verify a blank custom-trait name warns and never calls the service."""
+        # Given a PLAYER editing their own character
+        character, traits_svc = self._setup(client, mocker)
+        csrf = get_csrf(client)
+
+        # When submitting a whitespace-only name
+        client.post(
+            f"/character/{character.id}/traits/XP",
+            data={"CUSTOM_skills": "   "},
+            headers={"HX-Request": "true", "X-CSRFToken": csrf},
+        )
+
+        # Then a warning is flashed and no trait is created
+        assert any("Trait name is required" in m for m in self._flashes(client))
+        traits_svc.create.assert_not_called()

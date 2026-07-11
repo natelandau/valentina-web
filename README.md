@@ -27,18 +27,19 @@ Before you install, make sure you have:
 
 - Python 3.13
 - [uv](https://docs.astral.sh/uv/)
-- Node.js (for the Tailwind CLI)
+- Node.js and npm (for building the Tailwind CSS)
 - A running Redis instance
 - Access to the [Valentina Noir API](https://docs.valentina-noir.com/), along with an API key
 
 ## Quick Start
 
-Clone the repo and install dependencies:
+Clone the repo and install both the Python and Node dependencies:
 
 ```bash
 git clone https://github.com/natelandau/valentina-web.git
 cd valentina-web
-uv sync
+uv sync      # Python dependencies
+npm install  # Tailwind CSS and daisyUI, used to build the stylesheet
 ```
 
 Copy the example env file and fill in your values:
@@ -49,18 +50,19 @@ cp .env.example .env.secret
 
 At a minimum, set `VWEB_SECRET_KEY`, the `VWEB_API__*` block, and (for production) `VWEB_REDIS__URL`. See [Configuration](#configuration) for details.
 
-Start the dev server:
-
-```bash
-uv run vweb
-```
-
-The app runs at <http://127.0.0.1:8089>.
-
-To run Flask alongside the Tailwind watcher so CSS rebuilds on change:
+Start Flask and the Tailwind CSS watcher together:
 
 ```bash
 duty run
+```
+
+The app runs at <http://127.0.0.1:8089>. `duty run` builds `src/vweb/static/css/style.css` and rebuilds it whenever a template or `input.css` changes. That file is gitignored, so it does not exist on a fresh clone until the first build. If you skip the build, pages load without any styling.
+
+To run Flask on its own, build the stylesheet first:
+
+```bash
+duty css     # Build src/vweb/static/css/style.css once
+uv run vweb  # Start the dev server without the watcher
 ```
 
 ## Configuration

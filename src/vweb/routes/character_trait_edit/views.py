@@ -16,7 +16,7 @@ from flask import (
 from flask.views import MethodView
 from vclient import sync_character_traits_service
 from vclient.constants import TraitModifyCurrency
-from vclient.exceptions import AuthorizationError, ConflictError, ValidationError
+from vclient.exceptions import APIError, AuthorizationError, ConflictError, ValidationError
 from vclient.models import TraitCreate
 
 from vweb.lib import cache
@@ -132,6 +132,42 @@ class CharacterTraitsView(MethodView):
         flash(msg, "success")
         return hx_redirect(get_method_url)
 
+    def _spend_summary(
+        self,
+        svc: SyncCharacterTraitsService,
+        *,
+        character_trait_id: str,
+    ) -> str:
+        """Build the trailing spent/remaining note for a paid custom trait.
+
+        Return an empty string in free (``NO_COST``) mode or when the balance
+        lookup is unavailable, so the caller can append it unconditionally. The
+        value-options response reports the post-mutation balance directly, which
+        avoids reloading the now-stale request-scoped global context.
+
+        Args:
+            svc: The character traits service.
+            character_trait_id: The freshly created trait's ID.
+
+        Returns:
+            A leading-space suffix like " You spent 1 xp, 4 remaining", or an
+            empty string when nothing should be appended.
+        """
+        if self.spend_type == "NO_COST":
+            return ""
+
+        try:
+            options = svc.get_value_options(character_trait_id)
+            remaining = (
+                options.xp_current if self.spend_type == "XP" else options.starting_points_current
+            )
+            # DELETE's refund equals what was paid for the trait's first dot.
+            spent = options.options["DELETE"].point_change
+        except (APIError, KeyError):
+            return ""
+
+        return f" You spent {spent} {self.spend_type_humanized}, {remaining} remaining"
+
     def get(self, character_id: str) -> str | Response:
         """Get the character traits form."""
         requesting_user = g.requesting_user
@@ -243,15 +279,21 @@ class CharacterTraitsView(MethodView):
                 custom_trait = TraitCreate(
                     name=new_trait_name,
                     show_when_zero=True,
-                    category_id=trait_id.split("_")[1],
+                    # maxsplit=1: the field is "CUSTOM_<category_id>" and ids may contain "_"
+                    category_id=trait_id.split("_", 1)[1],
+                    currency=self.spend_type,
                 )
                 try:
-                    api_svc.create(custom_trait)
+                    created = api_svc.create(custom_trait)
                 except _API_ERRORS as error:
                     flash(error.detail or "Failed to create custom trait", "error")
                     return hx_redirect(get_method_url)
 
-                flash(f"Created {new_trait_name}", "success")
+                flash(
+                    f"Created {new_trait_name}."
+                    f"{self._spend_summary(svc=api_svc, character_trait_id=created.id)}",
+                    "success",
+                )
                 cache.character_sheet.clear(character.id)
                 cache.global_context.clear_current()
                 return hx_redirect(get_method_url)

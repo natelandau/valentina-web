@@ -43,7 +43,7 @@ Character routes split into `character_view`, `character_trait_edit` (spend type
 
 ## Key Helpers
 
-- **VClient:** `SyncVClient` is created in `create_app()` with a default `company_id`. Just call `sync_*` service factories — `sync_companies_service().list_all()`.
+- **VClient:** `SyncVClient` is created in `create_app()` with a default `company_id`. Just call `sync_*` service factories — `sync_companies_service().list_all()`. For model shapes, service methods, exceptions, and testing helpers, use the `vclient-guide` skill; if it is not installed, read it live at https://github.com/natelandau/valentina-python-client/tree/main/vclient-guide-skill.
 - **Data access:** `lib/api.get_character_and_campaign(character_id)` (reads `g.global_context`, no API call). Campaigns via `g.global_context.campaigns`. Requesting user via `g.requesting_user`.
 - **Permission guards (`lib/guards.py`):** `is_admin`, `is_storyteller`, `is_self`, `can_manage_campaign`, `can_grant_experience`, `can_edit_traits_free`, `can_edit_character`, etc. **Never inline `g.requesting_user.role in (...)` or ownership checks — always call a guard** (Python and templates). Don't pass a guard result as a prop if the child already has the parent object in scope. New check? Add to `lib/guards.py`, register in `app.py`'s `jinja_globals`, test in `tests/test_guards.py`.
 
