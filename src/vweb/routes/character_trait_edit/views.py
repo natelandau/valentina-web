@@ -279,7 +279,8 @@ class CharacterTraitsView(MethodView):
                 custom_trait = TraitCreate(
                     name=new_trait_name,
                     show_when_zero=True,
-                    category_id=trait_id.split("_")[1],
+                    # maxsplit=1: the field is "CUSTOM_<category_id>" and ids may contain "_"
+                    category_id=trait_id.split("_", 1)[1],
                     currency=self.spend_type,
                 )
                 try:

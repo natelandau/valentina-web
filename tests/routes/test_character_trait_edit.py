@@ -109,6 +109,22 @@ class TestCustomTraitCreation:
         # And the flash reports the amount spent and the remaining balance
         assert any("You spent 1 xp, 4 remaining" in m for m in self._flashes(client))
 
+    def test_create_custom_trait_category_id_with_underscores(self, client, mocker) -> None:
+        """Verify a category id containing underscores is parsed intact from the field name."""
+        # Given a PLAYER editing their own character
+        character, traits_svc = self._setup(client, mocker)
+        csrf = get_csrf(client)
+
+        # When the custom-trait field carries an underscore-laden category id
+        client.post(
+            f"/character/{character.id}/traits/XP",
+            data={"CUSTOM_skills_category_id": "street smarts"},
+            headers={"HX-Request": "true", "X-CSRFToken": csrf},
+        )
+
+        # Then the full category id is sent, not just its first segment
+        assert traits_svc.create.call_args.args[0].category_id == "skills_category_id"
+
     def test_create_custom_trait_starting_points_summary(self, client, mocker) -> None:
         """Verify a STARTING_POINTS custom trait reports the starting-points balance."""
         # Given a PLAYER editing their own character in starting-points mode
@@ -124,9 +140,7 @@ class TestCustomTraitCreation:
 
         # Then STARTING_POINTS is sent and the flash reports the starting-points balance
         assert traits_svc.create.call_args.args[0].currency == "STARTING_POINTS"
-        assert any(
-            "You spent 1 starting points, 9 remaining" in m for m in self._flashes(client)
-        )
+        assert any("You spent 1 starting points, 9 remaining" in m for m in self._flashes(client))
 
     def test_create_custom_trait_no_cost_omits_spend_summary(self, client, mocker) -> None:
         """Verify a NO_COST custom trait sends currency=NO_COST and omits the spend note."""
