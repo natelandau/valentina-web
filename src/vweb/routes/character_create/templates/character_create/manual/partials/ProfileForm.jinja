@@ -243,9 +243,13 @@
                   :required="charClass === 'VAMPIRE' || charClass === 'GHOUL'">
             <option value="">-- Select Clan --</option>
             {% for clan in form_options.get("vampire_clans", []) %}
+              {# Empty game_versions means "no version restriction" — always show. #}
+              {% set clan_versions = clan.game_versions | join(",") %}
               <option value="{{ clan.id }}"
-                      :hidden="gameVersion && !'{{ clan.game_versions | join(",") }}'.split(',').includes(gameVersion)"
-                      :disabled="gameVersion && !'{{ clan.game_versions | join(",") }}'.split(',').includes(gameVersion)"
+                      {% if clan_versions %}
+                      :hidden="gameVersion && !'{{ clan_versions }}'.split(',').includes(gameVersion)"
+                      :disabled="gameVersion && !'{{ clan_versions }}'.split(',').includes(gameVersion)"
+                      {% endif %}
                       {% if form_data.get("vampire_clan_id") == clan.id %}selected{% endif %}>
                 {{ clan.name | title }}
               </option>
@@ -271,9 +275,13 @@
                     :required="charClass === 'WEREWOLF'">
               <option value="">-- Select Tribe --</option>
               {% for tribe in form_options.get("werewolf_tribes", []) %}
+                {# Empty game_versions means "no version restriction" — always show. #}
+                {% set tribe_versions = tribe.game_versions | join(",") %}
                 <option value="{{ tribe.id }}"
-                        :hidden="gameVersion && !'{{ tribe.game_versions | join(",") }}'.split(',').includes(gameVersion)"
-                        :disabled="gameVersion && !'{{ tribe.game_versions | join(",") }}'.split(',').includes(gameVersion)"
+                        {% if tribe_versions %}
+                        :hidden="gameVersion && !'{{ tribe_versions }}'.split(',').includes(gameVersion)"
+                        :disabled="gameVersion && !'{{ tribe_versions }}'.split(',').includes(gameVersion)"
+                        {% endif %}
                         {% if form_data.get("werewolf_tribe_id") == tribe.id %}selected{% endif %}>
                   {{ tribe.name | title }}
                 </option>
@@ -290,9 +298,13 @@
             <select name="werewolf_auspice_id" class="select w-full">
               <option value="">-- None --</option>
               {% for auspice in form_options.get("werewolf_auspices", []) %}
+                {# Empty game_versions means "no version restriction" — always show. #}
+                {% set auspice_versions = auspice.game_versions | join(",") %}
                 <option value="{{ auspice.id }}"
-                        :hidden="gameVersion && !'{{ auspice.game_versions | join(",") }}'.split(',').includes(gameVersion)"
-                        :disabled="gameVersion && !'{{ auspice.game_versions | join(",") }}'.split(',').includes(gameVersion)"
+                        {% if auspice_versions %}
+                        :hidden="gameVersion && !'{{ auspice_versions }}'.split(',').includes(gameVersion)"
+                        :disabled="gameVersion && !'{{ auspice_versions }}'.split(',').includes(gameVersion)"
+                        {% endif %}
                         {% if form_data.get("werewolf_auspice_id") == auspice.id %}selected{% endif %}>
                   {{ auspice.name | title }}
                 </option>

@@ -51,6 +51,35 @@ class TestManualProfileView:
         assert "name_first" in body
         assert "character_class" in body
 
+    def test_options_without_game_versions_are_not_hidden(self, client, mocker) -> None:
+        """Verify options with an empty game_versions list are never hidden by the version filter."""
+        # Given form options where werewolf tribes/auspices carry no game_versions
+        # (the real blueprint data leaves these untagged, unlike vampire clans)
+        ctx = build_global_context(user_role="PLAYER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        setup_form_options(
+            mocker,
+            "vweb.routes.character_create.manual_views.fetch_form_options",
+            character_classes=["VAMPIRE", "WEREWOLF"],
+            experience_levels=[],
+            skill_focuses=[],
+            concepts=[],
+            vampire_clans=[],
+            werewolf_tribes=[WerewolfTribeFactory.build(name="Black Furies", game_versions=[])],
+            werewolf_auspices=[WerewolfAuspiceFactory.build(name="Ahroun", game_versions=[])],
+        )
+
+        # When requesting the profile form
+        response = client.get(f"/campaign/{campaign.id}/characters/profile_edit")
+
+        # Then the empty-version options render without the always-hide filter that
+        # would otherwise suppress every option once a game version is selected
+        body = response.get_data(as_text=True)
+        assert "Black Furies" in body
+        assert "Ahroun" in body
+        assert "!''.split(','" not in body
+
     def test_returns_404_for_invalid_campaign(self, client) -> None:
         """Verify 404 for a non-existent campaign."""
         # When requesting with a bad campaign ID
