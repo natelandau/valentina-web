@@ -16,7 +16,13 @@ from flask import (
 from flask.views import MethodView
 from vclient import sync_character_traits_service
 from vclient.constants import TraitModifyCurrency
-from vclient.exceptions import APIError, AuthorizationError, ConflictError, ValidationError
+from vclient.exceptions import (
+    APIError,
+    AuthorizationError,
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from vclient.models import TraitCreate
 
 from vweb.lib import cache
@@ -31,7 +37,9 @@ if TYPE_CHECKING:
     from vclient._sync.services import SyncCharacterTraitsService
     from werkzeug.wrappers.response import Response
 
-_API_ERRORS = (AuthorizationError, ConflictError, ValidationError)
+# NotFoundError included so a stale page acting on an already-deleted trait
+# (or missing character) surfaces a flash instead of a 500.
+_API_ERRORS = (AuthorizationError, ConflictError, NotFoundError, ValidationError)
 
 
 class CharacterTraitsView(MethodView):
@@ -117,10 +125,13 @@ class CharacterTraitsView(MethodView):
         Returns:
             An HX-Redirect response.
         """
-        value_options = svc.get_value_options(trait_id)
-        point_change = value_options.options["DELETE"].point_change
-
         try:
+            # The refund amount is only surfaced for paid currencies; skip the
+            # extra lookup (and its failure surface) on free deletes.
+            point_change = 0
+            if self.spend_type != "NO_COST":
+                value_options = svc.get_value_options(trait_id)
+                point_change = value_options.options["DELETE"].point_change
             svc.delete(trait_id, currency=self.spend_type)
         except _API_ERRORS as error:
             flash(error.detail or "Failed to delete trait", "error")
@@ -229,6 +240,10 @@ class CharacterTraitsView(MethodView):
 
         if not can_edit_character(character):
             flash("You are not authorized to update this character", "error")
+            return hx_redirect(url_for("character_view.character", character_id=character_id))
+
+        if self.spend_type == "NO_COST" and not can_edit_traits_free(character):
+            flash("You are not authorized to update traits without spending points", "error")
             return hx_redirect(url_for("character_view.character", character_id=character_id))
 
         get_method_url = url_for(

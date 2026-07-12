@@ -60,8 +60,30 @@
 </div>
 
 {% for section in full_sheet.sections %}
-  <shared.traits.TraitSection section={{ section }} post_url={{ post_url }} />
+  <shared.traits.TraitSection section={{ section }} show_delete={{ current_spend_type == "NO_COST" }} post_url={{ post_url }} />
 
 {% endfor %}
+
+{% if current_spend_type == "NO_COST" %}
+  {# Shared delete-confirmation modal; the trigger sets the confirm button's form-field name to the trait id #}
+  <dialog id="trait-delete-modal" class="modal" aria-labelledby="trait-delete-heading">
+    <div class="modal-box">
+      <h3 id="trait-delete-heading" class="text-lg font-bold">Confirm Delete</h3>
+      <p class="py-4">
+        Are you sure you want to delete <strong id="trait-delete-name"></strong>? This cannot be undone.
+      </p>
+      <div class="modal-action">
+        {# djlint:off #}
+        <button type="button" class="btn btn-ghost"
+                hx-on:click="this.closest('dialog').close()">Cancel</button>
+        <button type="button" id="trait-delete-confirm" value="DELETE" class="btn btn-error"
+                hx-post="{{ post_url }}"
+                hx-on:click="this.closest('dialog').close()">Delete</button>
+        {# djlint:on #}
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+{% endif %}
 
 </shared.PageLayout>

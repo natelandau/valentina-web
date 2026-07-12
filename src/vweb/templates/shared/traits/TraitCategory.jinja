@@ -1,6 +1,7 @@
 {#def
     section_name: str = "",
     category: FullSheetTraitCategory,
+    show_delete: bool = False,
     post_url: str = "",
 #}
 {# HTMX-driven variant for live character sheets; Alpine sibling: routes/character_create/templates/character_create/manual/components/TraitCategory.jinja #}
@@ -14,7 +15,7 @@
       <tr>
         <td class="text-lg">{{ trait.trait.name | title }}</td>
         <td class="text-right text-2xl text-bold justify-end">
-          <shared.traits.ValuePicker trait_id={{ trait.id }} current_value={{ trait.value }} min_value={{ trait.trait.min_value }} max_value={{ trait.trait.max_value }} show_delete={{ False }} post_url={{ post_url }} />
+          <shared.traits.ValuePicker trait_id={{ trait.id }} current_value={{ trait.value }} min_value={{ trait.trait.min_value }} max_value={{ trait.trait.max_value }} show_delete={{ show_delete }} trait_name={{ trait.trait.name }} post_url={{ post_url }} />
         </td>
       </tr>
     {% endfor %}
@@ -30,7 +31,7 @@
             <span class="pl-4">{{ trait.trait.name | title }}</span>
           </td>
           <td class="text-right text-2xl text-bold justify-end ">
-            <shared.traits.ValuePicker trait_id={{ trait.id }} current_value={{ trait.value }} min_value={{ trait.trait.min_value }} max_value={{ trait.trait.max_value }} show_delete={{ False }} post_url={{ post_url }} />
+            <shared.traits.ValuePicker trait_id={{ trait.id }} current_value={{ trait.value }} min_value={{ trait.trait.min_value }} max_value={{ trait.trait.max_value }} show_delete={{ show_delete }} trait_name={{ trait.trait.name }} post_url={{ post_url }} />
           </td>
         </tr>
       {% endfor %}
