@@ -1,3 +1,9 @@
+## v0.12.2 (2026-07-11)
+
+### Fix
+
+- **traits**: delete a trait from a character on the free-edit form
+
 ## v0.12.1 (2026-07-11)
 
 ### Fix
