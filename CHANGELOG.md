@@ -1,3 +1,13 @@
+## v0.13.0 (2026-09-04)
+
+### Feat
+
+- redesign login screen with full-bleed background (#59)
+
+### Fix
+
+- improve first time contributor experience (#60)
+
 ## v0.12.2 (2026-07-11)
 
 ### Fix
