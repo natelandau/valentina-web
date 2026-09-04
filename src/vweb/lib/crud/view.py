@@ -14,6 +14,8 @@ from vweb.lib import cache
 from vweb.lib.catalog import catalog
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from vweb.lib.crud.handler import CrudHandler
 
 
@@ -128,7 +130,7 @@ class CrudTableView(MethodView):
 
         return field, direction
 
-    def _sort_items(self, items: list) -> tuple[list, str, str]:
+    def _sort_items(self, items: Sequence[Any]) -> tuple[list, str, str]:
         """Sort items based on the current request's sort parameter.
 
         Args:

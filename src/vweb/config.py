@@ -134,5 +134,5 @@ def get_settings() -> Settings:
     """
     global _settings  # noqa: PLW0603
     if _settings is None:
-        _settings = Settings()  # ty:ignore[missing-argument]
+        _settings = Settings()
     return _settings

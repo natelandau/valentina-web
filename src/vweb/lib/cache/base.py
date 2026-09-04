@@ -50,7 +50,10 @@ def hash_key(*parts: object) -> str:
 class Strategy(Protocol):
     """Freshness policy for a cached value (the invalidation axis)."""
 
-    ttl: int
+    @property
+    def ttl(self) -> int:
+        """Backend TTL in seconds."""
+        ...
 
     def is_fresh(self, cached: object) -> bool:
         """Return True when a cache hit may be served without refetching."""

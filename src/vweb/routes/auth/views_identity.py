@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import httpx2
 from flask import abort, flash, redirect, session, url_for
@@ -143,7 +143,7 @@ class UnlinkIdentityView(MethodView):
 
         try:
             user = sync_users_service(on_behalf_of=user_id, company_id=company_id).unlink_identity(
-                user_id, provider=cast("IdentityProvider", provider)
+                user_id, provider=provider
             )
         except ConflictError:
             # LAST_IDENTITY — the API refuses to remove the only sign-in method.

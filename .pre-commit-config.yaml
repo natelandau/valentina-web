@@ -5,7 +5,7 @@ default_stages: [pre-commit, manual]
 fail_fast: true
 repos:
   - repo: "https://github.com/commitizen-tools/commitizen"
-    rev: v4.16.4
+    rev: v4.18.0
     hooks:
       - id: commitizen
 
@@ -59,7 +59,7 @@ repos:
         entry: yamllint --strict --config-file .yamllint.yml
 
   - repo: "https://github.com/astral-sh/ruff-pre-commit"
-    rev: v0.15.20
+    rev: v0.16.6
     hooks:
       - id: ruff
         exclude: tests/
@@ -68,20 +68,20 @@ repos:
         args: [--check]
 
   - repo: "https://github.com/adhtruong/mirrors-typos"
-    rev: v1.48.0
+    rev: v1.50.1
     hooks:
       - id: typos
         args: ["--force-exclude"]
         stages: [commit-msg, pre-commit]
 
   - repo: "https://github.com/djlint/djLint"
-    rev: v1.40.3
+    rev: v1.45.2
     hooks:
       - id: djlint
         args: ["--configuration", "pyproject.toml"]
 
   - repo: "https://github.com/python-jsonschema/check-jsonschema"
-    rev: 0.37.4
+    rev: 0.38.0
     hooks:
       - id: check-github-workflows
         args: ["--verbose"]
@@ -99,7 +99,7 @@ repos:
         stages: [commit-msg]
 
   - repo: "https://github.com/tsvikas/sync-with-uv"
-    rev: v0.5.0
+    rev: v0.6.0
     hooks:
       - id: sync-with-uv
 

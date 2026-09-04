@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Protocol, TypeVar
+from typing import TYPE_CHECKING, Protocol, TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 T_co = TypeVar("T_co", covariant=True)
 
@@ -23,7 +26,7 @@ class CrudHandler(Protocol[T_co]):
     layer duck-types it and treats its absence as always-mutable.
     """
 
-    def list_items(self) -> list[T_co]:
+    def list_items(self) -> Sequence[T_co]:
         """Return all items for the resource."""
         ...
 
