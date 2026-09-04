@@ -48,7 +48,7 @@ Copy the example env file and fill in your values:
 cp .env.example .env.secret
 ```
 
-At a minimum, set `VWEB_SECRET_KEY`, the `VWEB_API__*` block, and (for production) `VWEB_REDIS__URL`. See [Configuration](#configuration) for details.
+At a minimum, set `VWEB_SECRET_KEY`, the `VWEB_API__*` block, and (for production) `VWEB_REDIS__URL`. For a local run, also set `VWEB_ENV=development`. Without it, the app defaults to production mode and redirects every request to HTTPS. See [Configuration](#configuration) for details.
 
 Start Flask and the Tailwind CSS watcher together:
 
@@ -71,23 +71,24 @@ Configuration is handled by [pydantic-settings](https://docs.pydantic.dev/latest
 
 The most important variables:
 
-| Variable                             | Description                                                                                 |
-| ------------------------------------ | ------------------------------------------------------------------------------------------- |
-| `VWEB_ENV`                           | `development` or `production`. Production mode enforces Redis and a non-default secret key. |
-| `VWEB_SECRET_KEY`                    | Flask session secret. Must be changed for production.                                       |
-| `VWEB_API__BASE_URL`                 | URL of the Valentina API.                                                                   |
-| `VWEB_API__API_KEY`                  | API key for the Valentina API.                                                              |
-| `VWEB_REDIS__URL`                    | Redis connection URL.                                                                       |
-| `VWEB_OAUTH__DISCORD__CLIENT_ID`     | Discord OAuth client ID.                                                                    |
-| `VWEB_OAUTH__DISCORD__CLIENT_SECRET` | Discord OAuth client secret.                                                                |
-| `VWEB_OAUTH__GITHUB__CLIENT_ID`      | GitHub OAuth client ID.                                                                     |
-| `VWEB_OAUTH__GITHUB__CLIENT_SECRET`  | GitHub OAuth client secret.                                                                 |
-| `VWEB_OAUTH__GOOGLE__CLIENT_ID`      | Google OAuth client ID.                                                                     |
-| `VWEB_OAUTH__GOOGLE__CLIENT_SECRET`  | Google OAuth client secret.                                                                 |
-| `VWEB_OAUTH__APPLE__SERVICES_ID`     | Sign in with Apple Services ID (the web client ID).                                         |
-| `VWEB_OAUTH__APPLE__TEAM_ID`         | Apple Developer Team ID.                                                                    |
-| `VWEB_OAUTH__APPLE__KEY_ID`          | Sign in with Apple key ID.                                                                  |
-| `VWEB_OAUTH__APPLE__PRIVATE_KEY`     | Sign in with Apple `.p8` key contents (PEM, newlines escaped as `\n`).                      |
+| Variable                             | Description                                                                                                                                                      |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VWEB_ENV`                           | `development` or `production`. Defaults to `production`, which requires Redis, a non-default secret key, and HTTPS. Set `development` for local runs.            |
+| `VWEB_FORCE_HTTPS`                   | Redirect HTTP requests to HTTPS and mark cookies secure. Defaults to `true` in production. Set `false` to run production mode over plain HTTP with no TLS proxy. |
+| `VWEB_SECRET_KEY`                    | Flask session secret. Must be changed for production.                                                                                                            |
+| `VWEB_API__BASE_URL`                 | URL of the Valentina API.                                                                                                                                        |
+| `VWEB_API__API_KEY`                  | API key for the Valentina API.                                                                                                                                   |
+| `VWEB_REDIS__URL`                    | Redis connection URL.                                                                                                                                            |
+| `VWEB_OAUTH__DISCORD__CLIENT_ID`     | Discord OAuth client ID.                                                                                                                                         |
+| `VWEB_OAUTH__DISCORD__CLIENT_SECRET` | Discord OAuth client secret.                                                                                                                                     |
+| `VWEB_OAUTH__GITHUB__CLIENT_ID`      | GitHub OAuth client ID.                                                                                                                                          |
+| `VWEB_OAUTH__GITHUB__CLIENT_SECRET`  | GitHub OAuth client secret.                                                                                                                                      |
+| `VWEB_OAUTH__GOOGLE__CLIENT_ID`      | Google OAuth client ID.                                                                                                                                          |
+| `VWEB_OAUTH__GOOGLE__CLIENT_SECRET`  | Google OAuth client secret.                                                                                                                                      |
+| `VWEB_OAUTH__APPLE__SERVICES_ID`     | Sign in with Apple Services ID (the web client ID).                                                                                                              |
+| `VWEB_OAUTH__APPLE__TEAM_ID`         | Apple Developer Team ID.                                                                                                                                         |
+| `VWEB_OAUTH__APPLE__KEY_ID`          | Sign in with Apple key ID.                                                                                                                                       |
+| `VWEB_OAUTH__APPLE__PRIVATE_KEY`     | Sign in with Apple `.p8` key contents (PEM, newlines escaped as `\n`).                                                                                           |
 
 `.env.example` documents every available setting (timeouts, retries, logging, Docker runtime, etc.). See `src/vweb/config.py` for the full schema.
 
