@@ -15,6 +15,8 @@ duty run              # Flask + Tailwind watcher
 duty css              # Build CSS (production, minified)
 ```
 
+`duty ruff/format/ty/typos/test` and `duty precommit` run through gate-cache: a gate that already passed on the identical working tree is skipped ("already passed on tree ..."). A skip is a valid pass. Force a rerun with `GATE_CACHE_DISABLE=1`. `duty test <args>` is never cached.
+
 ## Stack
 
 - Flask 3.1+, Python 3.13, JinjaX (on Jinja2), HTMX + AlpineJS (CDN)

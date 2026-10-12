@@ -58,21 +58,13 @@ repos:
         files: ^.*\.(yaml|yml)$
         entry: yamllint --strict --config-file .yamllint.yml
 
-  - repo: "https://github.com/astral-sh/ruff-pre-commit"
-    rev: v0.17.0
-    hooks:
-      - id: ruff
-        exclude: tests/
-        args: [--no-fix]
-      - id: ruff-format
-        args: [--check]
-
   - repo: "https://github.com/adhtruong/mirrors-typos"
     rev: v1.51.1
     hooks:
+      # Commit messages only; the local `duty typos` hook checks the files
       - id: typos
         args: ["--force-exclude"]
-        stages: [commit-msg, pre-commit]
+        stages: [commit-msg]
 
   - repo: "https://github.com/djlint/djLint"
     rev: v1.46.4
@@ -111,11 +103,32 @@ repos:
         language: system
         types: [shell]
 
-      - id: ty (type check)
+      # Hooks that duplicate a duty call the duty so they share its gate-cache markers
+      - id: ruff
+        name: ruff
+        entry: uv run duty ruff
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: ruff-format
+        name: ruff-format
+        entry: uv run duty format
+        language: system
+        pass_filenames: false
+        types: [python]
+
+      - id: typos
+        name: typos
+        entry: uv run duty typos
+        language: system
+        pass_filenames: false
+
+      - id: ty
         name: ty
         entry: uv run duty ty
-        pass_filenames: false
         language: system
+        pass_filenames: false
         types: [python]
 
       - id: pytest

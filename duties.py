@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from duty import duty, tools
+from duty import duty
 from rich.console import Console
 
 if TYPE_CHECKING:
@@ -20,7 +20,7 @@ console = Console()
 
 PY_SRC_PATHS = (Path(_) for _ in ("src/", "tests/", "duties.py", "scripts/") if Path(_).exists())
 PY_SRC_LIST = tuple(str(_) for _ in PY_SRC_PATHS)
-CI = os.environ.get("CI", "0") in {"1", "true", "yes", ""}
+CI = os.environ.get("CI", "").strip().lower() in {"1", "true", "yes"}
 PROJECT_ROOT = Path(__file__).parent
 DEV_DIR = PROJECT_ROOT / ".dev"
 DEV_DIRECTORIES = []
@@ -39,6 +39,19 @@ def strip_ansi(text: str) -> str:
 
     # Replace [ with \[ so rich doesn't interpret output as style tags
     return ansi_chars.sub("", text).replace("[", r"\[")
+
+
+def gated(name: str, cmd: list[str]) -> list[str]:
+    """Wrap a gate command in gate-cache so it skips on a tree where it already passed.
+
+    Args:
+        name (str): Marker name for the gate.
+        cmd (list[str]): Command to run.
+
+    Returns:
+        list[str]: The command prefixed with the gate-cache invocation.
+    """
+    return ["gate-cache", "--name", name, "--", *cmd]
 
 
 def pyprefix(title: str) -> str:
@@ -80,9 +93,8 @@ def clean(ctx: Context) -> None:
 def ruff(ctx: Context) -> None:
     """Check the code quality with ruff."""
     ctx.run(
-        tools.ruff.check(*PY_SRC_LIST, fix=False, config="pyproject.toml"),
+        gated("ruff", ["ruff", "check", "--config", "pyproject.toml", "--no-fix", *PY_SRC_LIST]),
         title=pyprefix("code quality check"),
-        command=f"ruff check --config pyproject.toml --no-fix {' '.join(PY_SRC_LIST)}",
     )
 
 
@@ -90,9 +102,8 @@ def ruff(ctx: Context) -> None:
 def format(ctx: Context) -> None:  # noqa: A001
     """Format the code with ruff."""
     ctx.run(
-        tools.ruff.format(*PY_SRC_LIST, check=True, config="pyproject.toml"),
+        gated("format", ["ruff", "format", "--check", "--config", "pyproject.toml", *PY_SRC_LIST]),
         title=pyprefix("code formatting"),
-        command="ruff format --check --config pyproject.toml src/",
     )
 
 
@@ -100,9 +111,8 @@ def format(ctx: Context) -> None:  # noqa: A001
 def ty(ctx: Context) -> None:
     """Type check the code with ty."""
     ctx.run(
-        ["ty", "check", "src/"],
+        gated("ty", ["ty", "check", "src/"]),
         title="ty check",
-        command="ty check src/",
     )
 
 
@@ -110,9 +120,8 @@ def ty(ctx: Context) -> None:
 def typos(ctx: Context) -> None:
     """Check the code with typos."""
     ctx.run(
-        ["typos", "--config", ".typos.toml"],
+        gated("typos", ["typos", "--config", ".typos.toml"]),
         title=pyprefix("typos check"),
-        command="typos --config .typos.toml",
     )
 
 
@@ -120,12 +129,12 @@ def typos(ctx: Context) -> None:
 def precommit(ctx: Context) -> None:
     """Run prek hooks."""
     ctx.run(
-        "PREK_SKIP=ty,pytest,ruff prek run --all-files",
+        "PREK_SKIP=ruff,ruff-format,ty,typos,pytest gate-cache --name prek -- prek run --all-files",
         title=pyprefix("prek hooks"),
     )
 
 
-@duty(pre=[ruff, ty, typos, precommit], capture=CI)
+@duty(pre=[ruff, format, ty, typos, precommit], capture=CI)
 def lint(ctx: Context) -> None:
     """Run all linting duties."""
 
@@ -143,18 +152,21 @@ def update(ctx: Context) -> None:
 @duty()
 def test(ctx: Context, *cli_args: str) -> None:
     """Test package and generate coverage reports."""
+    cmd = [
+        "pytest",
+        "tests/",
+        "-c",
+        "pyproject.toml",
+        "--color=yes",
+        "--cov",
+        "--cov-config=pyproject.toml",
+        "--cov-report=xml",
+        "--cov-report=term",
+        *cli_args,
+    ]
+    # A marker covers the name, not the arguments, so a filtered pass must not skip the full suite
     ctx.run(
-        tools.pytest(
-            "tests/",
-            config_file="pyproject.toml",
-            color="yes",
-        ).add_args(
-            "--cov",
-            "--cov-config=pyproject.toml",
-            "--cov-report=xml",
-            "--cov-report=term",
-            *cli_args,
-        ),
+        cmd if cli_args else gated("test", cmd),
         title=pyprefix("Running tests"),
         capture=CI,
     )
