@@ -135,6 +135,7 @@ repos:
         name: pytest
         entry: uv run duty test
         language: system
+        stages: [pre-push]
         pass_filenames: false
         files: |
           (?x)^(
