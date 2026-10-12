@@ -46,5 +46,5 @@ def filter_players(
 
 def build_filter_options(users: list[User]) -> list[str]:
     """Return the distinct roles present in the roster, sorted."""
-    roles = {user.role for user in users if user.role}
+    roles = {user.role for user in users}
     return sorted(roles)

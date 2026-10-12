@@ -73,8 +73,7 @@ def build_filter_options(
     for character in characters:
         if character.user_player_id:
             player_ids.add(character.user_player_id)
-        if character.character_class:
-            classes.add(character.character_class)
+        classes.add(character.character_class)
 
     player_options = sorted(
         ((player_id, users_by_id.get(player_id, "Unknown")) for player_id in player_ids),
