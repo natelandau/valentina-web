@@ -103,6 +103,11 @@ def _configure_cache_and_session(app: Flask, settings: Settings) -> None:
         app.config["CACHE_KEY_PREFIX"] = settings.redis.key_prefix
     cache.init_app(app)
 
+    # Browsers share cookies across ports, so dev checkouts on different ports would
+    # overwrite each other's login
+    if settings.env == "development":
+        app.config["SESSION_COOKIE_NAME"] = f"session_{settings.port}"
+
     if settings.redis.url:
         import redis
         from flask_session import Session
