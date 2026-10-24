@@ -43,6 +43,18 @@ Before creating credentials, you must configure the consent screen that users se
 | Development | `http://127.0.0.1:8089/auth/google/callback` |
 | Production | `https://your-domain.com/auth/google/callback` |
 
+If you run development worktrees (see the README), also add one URL for each worktree port:
+
+```text
+http://127.0.0.1:8090/auth/google/callback
+http://127.0.0.1:8091/auth/google/callback
+http://127.0.0.1:8092/auth/google/callback
+http://127.0.0.1:8093/auth/google/callback
+http://127.0.0.1:8094/auth/google/callback
+```
+
+The host must match the host in your browser exactly. `127.0.0.1` and `localhost` are different hosts.
+
 6. Click **Create**
 
 ## 4. Get Credentials

@@ -28,7 +28,7 @@ Before you install, make sure you have:
 - Python 3.13
 - [uv](https://docs.astral.sh/uv/)
 - Node.js and npm (for building the Tailwind CSS)
-- A running Redis instance
+- Docker, for the development Redis container (production needs its own Redis instance)
 - Access to the [Valentina Noir API](https://docs.valentina-noir.com/), along with an API key
 
 ## Quick Start
@@ -48,7 +48,15 @@ Copy the example env file and fill in your values:
 cp .env.example .env.secret
 ```
 
-At a minimum, set `VWEB_SECRET_KEY`, the `VWEB_API__*` block, and (for production) `VWEB_REDIS__URL`. For a local run, also set `VWEB_ENV=development`. Without it, the app defaults to production mode and redirects every request to HTTPS. See [Configuration](#configuration) for details.
+At a minimum, set `VWEB_SECRET_KEY`, the `VWEB_API__*` block, and `VWEB_REDIS__URL`. For a local run, also set `VWEB_ENV=development`. Without it, the app defaults to production mode and redirects every request to HTTPS. See [Configuration](#configuration) for details.
+
+For local development, point Redis at the development container that `compose-db.yml` defines:
+
+```bash
+VWEB_REDIS__URL=redis://:redispassword@127.0.0.1:6380/0
+```
+
+The container listens on port 6380, so it does not collide with a Valentina Noir API that uses Redis on port 6379.
 
 Start Flask and the Tailwind CSS watcher together:
 
@@ -56,7 +64,7 @@ Start Flask and the Tailwind CSS watcher together:
 duty run
 ```
 
-The app runs at <http://127.0.0.1:8089>. `duty run` builds `src/vweb/static/css/style.css` and rebuilds it whenever a template or `input.css` changes. That file is gitignored, so it does not exist on a fresh clone until the first build. If you skip the build, pages load without any styling.
+The app runs at <http://127.0.0.1:8089>. `duty run` starts the development Redis container if it is not running. If `VWEB_REDIS__URL` is unset or points at port 6379, `duty run` stops, so the app never shares the Redis of the Valentina Noir API. It also builds `src/vweb/static/css/style.css` and rebuilds it whenever a template or `input.css` changes. That file is gitignored, so it does not exist on a fresh clone until the first build. If you skip the build, pages load without any styling.
 
 To run Flask on its own, build the stylesheet first:
 
@@ -78,7 +86,7 @@ The most important variables:
 | `VWEB_SECRET_KEY`                    | Flask session secret. Must be changed for production.                                                                                                            |
 | `VWEB_API__BASE_URL`                 | URL of the Valentina API.                                                                                                                                        |
 | `VWEB_API__API_KEY`                  | API key for the Valentina API.                                                                                                                                   |
-| `VWEB_REDIS__URL`                    | Redis connection URL.                                                                                                                                            |
+| `VWEB_REDIS__URL`                    | Redis connection URL. For local development, use `redis://:redispassword@127.0.0.1:6380/0`.                                                                      |
 | `VWEB_OAUTH__DISCORD__CLIENT_ID`     | Discord OAuth client ID.                                                                                                                                         |
 | `VWEB_OAUTH__DISCORD__CLIENT_SECRET` | Discord OAuth client secret.                                                                                                                                     |
 | `VWEB_OAUTH__GITHUB__CLIENT_ID`      | GitHub OAuth client ID.                                                                                                                                          |
@@ -113,10 +121,45 @@ duty run              # Flask + Tailwind watcher
 duty test             # Run the test suite with coverage
 duty lint             # Run ruff, ty, typos, and pre-commit
 duty css              # Build production (minified) CSS
+duty redis-up         # Start the development Redis container
+duty redis-down       # Stop the development Redis container and keep its data
+duty redis-cli        # Open redis-cli on this checkout's Redis database
 uv run pytest tests/  # Run tests directly
 ```
 
 Run `duty lint` and `duty test` before opening a pull request.
+
+### Work in several worktrees
+
+You can run up to five git worktrees at the same time. Each worktree gets its own Redis database and its own port, so the dev servers do not share cached data or sessions. The numbers below assume that the main checkout uses Redis database 0 and port 8089.
+
+1. In the main checkout, make sure that `VWEB_REDIS__URL` in `.env.secret` points at port 6380.
+2. Create the worktree:
+
+    ```bash
+    duty worktree branch=my-feature
+    ```
+
+    This command creates `.worktrees/my-feature` on the new branch `my-feature`. It copies `.env.secret` and `CLAUDE.local.md` into the worktree, then gives the worktree a Redis database (1 to 5) and a port (8090 to 8094). It also installs the Python and npm dependencies.
+
+3. Start the worktree:
+
+    ```bash
+    cd .worktrees/my-feature
+    duty run
+    ```
+
+4. When you finish, remove the worktree and delete its Redis data:
+
+    ```bash
+    duty worktree-teardown branch=my-feature
+    ```
+
+    The branch stays. Git refuses to remove a worktree that has uncommitted changes or untracked files.
+
+`duty worktree-prune` deletes the Redis data of worktrees that you removed without `duty worktree-teardown`.
+
+Each worktree port needs its own OAuth callback URL for Discord and Google. The [Discord](docs/oauth-discord.md) and [Google](docs/oauth-google.md) setup guides list the URLs. GitHub accepts the main development callback on every port. Sign in with Apple does not work on a local checkout.
 
 ## Contributing
 

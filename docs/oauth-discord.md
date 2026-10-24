@@ -22,6 +22,18 @@ Under **OAuth2 > Redirects**, add your callback URL:
 | Development | `http://127.0.0.1:8089/auth/discord/callback` |
 | Production | `https://your-domain.com/auth/discord/callback` |
 
+If you run development worktrees (see the README), also add one URL for each worktree port:
+
+```text
+http://127.0.0.1:8090/auth/discord/callback
+http://127.0.0.1:8091/auth/discord/callback
+http://127.0.0.1:8092/auth/discord/callback
+http://127.0.0.1:8093/auth/discord/callback
+http://127.0.0.1:8094/auth/discord/callback
+```
+
+The host must match the host in your browser exactly. `127.0.0.1` and `localhost` are different hosts.
+
 ## 3. Set Environment Variables
 
 Add the credentials to your `.env.secret` file:

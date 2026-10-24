@@ -18,6 +18,8 @@ Valentina Web supports GitHub as an authentication provider. To configure it:
 | Development | `http://127.0.0.1:8089/auth/github/callback` |
 | Production | `https://your-domain.com/auth/github/callback` |
 
+GitHub does not compare the port of a loopback callback URL. The development URL therefore also works for worktrees on ports 8090 to 8094.
+
 ## 3. Get Credentials
 
 After creating the app:

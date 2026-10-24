@@ -13,6 +13,9 @@ duty lint             # ruff, ty, typos, pre-commit
 duty test             # Tests with coverage
 duty run              # Flask + Tailwind watcher
 duty css              # Build CSS (production, minified)
+duty redis-up         # Start the dev Redis container (127.0.0.1:6380); `duty run` does this too
+duty worktree branch=<name>           # New worktree with its own Redis database and port
+duty worktree-teardown branch=<name>  # Remove a worktree and flush its Redis database
 ```
 
 `duty ruff/format/ty/typos/test` and `duty precommit` run through gate-cache: a gate that already passed on the identical working tree is skipped ("already passed on tree ..."). A skip is a valid pass. Force a rerun with `GATE_CACHE_DISABLE=1`. `duty test <args>` is never cached.
