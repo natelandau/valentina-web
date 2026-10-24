@@ -2,7 +2,7 @@
 
 Server-rendered Flask app consuming the valentina-python-client API. HTMX for interactivity — no SPA.
 
-**Workflow:** Work on branches, not worktrees. Plans, specs, and design docs are scratch files — write them under the git-ignored top-level `.agent/` directory and never commit them.
+Specs and plans are never committed to this repo.
 
 ## Quick Reference
 
