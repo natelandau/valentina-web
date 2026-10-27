@@ -1,0 +1,53 @@
+{#def character, character_trait, spend_type, add_label, help_text, ability_name, name_min, name_max #}
+{%- set base_url = url_for("character_trait_edit.specialties_" ~ spend_type, character_id=character.id, character_trait_id=character_trait.id) -%}
+<div id="specialty-dialog-body">
+  <h3 id="specialty-dialog-heading" class="text-lg font-bold">{{ ability_name }} specialties</h3>
+  <ul class="my-4 space-y-2">
+    {% for specialty in character_trait.specialties %}
+      {%- set item_url = url_for("character_trait_edit.specialty_" ~ spend_type, character_id=character.id, character_trait_id=character_trait.id, specialty_id=specialty.id) -%}
+      <li>
+        <form hx-post="{{ item_url }}" hx-disabled-elt="find button" class="flex items-center gap-2">
+          <input type="text"
+                 name="name"
+                 value="{{ specialty.name }}"
+                 required
+                 minlength="{{ name_min }}"
+                 maxlength="{{ name_max }}"
+                 class="input input-bordered input-sm grow"
+                 aria-label="Rename {{ specialty.name }}" />
+          <button type="submit"
+                  class="btn btn-ghost btn-sm btn-square"
+                  aria-label="Save new name for {{ specialty.name }}">
+            <i class="fa-solid fa-check" aria-hidden="true"></i>
+          </button>
+          <button type="button"
+                  class="btn btn-ghost btn-sm btn-square"
+                  aria-label="Remove {{ specialty.name }}"
+                  hx-delete="{{ item_url }}"
+                  hx-disabled-elt="this">
+            <i class="fa-solid fa-trash" aria-hidden="true"></i>
+          </button>
+        </form>
+      </li>
+    {% endfor %}
+  </ul>
+  {% if character_trait.specialties %}<div class="divider my-2"></div>{% endif %}
+  <form hx-post="{{ base_url }}" hx-disabled-elt="find button" class="flex items-center gap-2">
+    <input type="text"
+           name="name"
+           required
+           minlength="{{ name_min }}"
+           maxlength="{{ name_max }}"
+           class="input input-bordered input-sm grow"
+           placeholder="New specialty"
+           aria-label="New specialty name" />
+    <button type="submit" class="btn btn-primary btn-sm">{{ add_label }}</button>
+  </form>
+  <p class="mt-3 text-sm opacity-70">{{ help_text }}</p>
+  <div class="modal-action">
+    {# djlint:off #}
+    <button type="button" class="btn btn-ghost"
+            hx-on:click="this.closest('dialog').close()">Close</button>
+    {# djlint:on #}
+  </div>
+</div>

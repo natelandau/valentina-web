@@ -1,10 +1,39 @@
 {#def
     section_name: str = "",
     category: FullSheetTraitCategory,
+    character: Character,
     show_delete: bool = False,
     post_url: str = "",
+    spend_type: str = "",
 #}
 {# HTMX-driven variant for live character sheets; Alpine sibling: routes/character_create/templates/character_create/manual/components/TraitCategory.jinja #}
+{% macro specialty_controls(trait) %}
+  {%- if spend_type and accepts_specialties(trait) -%}
+    {%- set specialties_url = url_for("character_trait_edit.specialties_" ~ spend_type, character_id=character.id, character_trait_id=trait.id) -%}
+    {# djlint:off #}
+    <div class="flex items-center gap-1">
+      {% if trait.specialties %}
+        <span class="text-sm text-base-content/60 font-normal">{{ trait.specialties | map(attribute="name") | join(", ") }}</span>
+        <button type="button" class="btn btn-ghost btn-xs btn-square"
+                aria-label="Edit {{ trait.trait.name.strip().title() }} specialties"
+                hx-get="{{ specialties_url }}"
+                hx-target="#specialty-modal-body"
+                hx-swap="innerHTML">
+          <i class="fa-solid fa-pencil" aria-hidden="true"></i>
+        </button>
+      {% else %}
+        <button type="button" class="btn btn-link btn-xs text-base-content/60 font-normal px-0"
+                aria-label="Add a specialty to {{ trait.trait.name.strip().title() }}"
+                hx-get="{{ specialties_url }}"
+                hx-target="#specialty-modal-body"
+                hx-swap="innerHTML">
+          <i class="fa-solid fa-plus" aria-hidden="true"></i> specialty
+        </button>
+      {% endif %}
+    </div>
+    {# djlint:on #}
+  {%- endif -%}
+{% endmacro %}
 <div class="bg-base-200/50 rounded-lg p-3 prose">
   <h3 class="font-semibold uppercase text-base-content/70 mb-2">
     {{ category.name | title }}
@@ -13,9 +42,12 @@
     {# ---- Character traits ---- #}
     {% for trait in category.character_traits | sort(attribute="trait.name", case_sensitive=false) %}
       <tr>
-        <td class="text-lg">{{ trait.trait.name | title }}</td>
+        <td class="text-lg">
+          {{ trait.trait.name | title }}
+          {{ specialty_controls(trait) }}
+        </td>
         <td class="text-right text-2xl text-bold justify-end">
-          <shared.traits.ValuePicker trait_id={{ trait.id }} current_value={{ trait.value }} min_value={{ trait.trait.min_value }} max_value={{ trait.trait.max_value }} show_delete={{ show_delete }} trait_name={{ trait.trait.name }} post_url={{ post_url }} />
+          <shared.traits.ValuePicker trait_id={{ trait.id }} current_value={{ trait.value }} min_value={{ trait.trait.min_value }} max_value={{ trait.trait.max_value }} show_delete={{ show_delete }} trait_name={{ trait.trait.name }} post_url={{ post_url }} read_only={{ is_derived_trait(trait, character.game_version) }} specialty_names={{ trait.specialties | map(attribute="name") | list }} />
         </td>
       </tr>
     {% endfor %}
@@ -29,9 +61,10 @@
         <tr>
           <td class="text-lg">
             <span class="pl-4">{{ trait.trait.name | title }}</span>
+            <div class="pl-4">{{ specialty_controls(trait) }}</div>
           </td>
           <td class="text-right text-2xl text-bold justify-end ">
-            <shared.traits.ValuePicker trait_id={{ trait.id }} current_value={{ trait.value }} min_value={{ trait.trait.min_value }} max_value={{ trait.trait.max_value }} show_delete={{ show_delete }} trait_name={{ trait.trait.name }} post_url={{ post_url }} />
+            <shared.traits.ValuePicker trait_id={{ trait.id }} current_value={{ trait.value }} min_value={{ trait.trait.min_value }} max_value={{ trait.trait.max_value }} show_delete={{ show_delete }} trait_name={{ trait.trait.name }} post_url={{ post_url }} read_only={{ is_derived_trait(trait, character.game_version) }} specialty_names={{ trait.specialties | map(attribute="name") | list }} />
           </td>
         </tr>
       {% endfor %}

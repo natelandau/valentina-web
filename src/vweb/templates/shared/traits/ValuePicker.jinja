@@ -6,39 +6,50 @@
     show_delete: bool = False,
     trait_name: str = "",
     post_url: str = "",
+    read_only: bool = False,
+    specialty_names: list = [],
 #}
 {# HTMX-driven variant for live character sheets; Alpine sibling: routes/character_create/templates/character_create/manual/components/ValuePicker.jinja #}
 
 <div class="flex flex-wrap gap-y-0.5 justify-end items-center">
-  {% for row in range(min_value, max_value + 1) | batch(10) %}
-    <div class="join">
-      {% for i in row %}
-        {% if i == current_value %}
-          <button class="btn btn-square btn-xs btn-primary btn-outline btn-active">
-            {{ i }}
-          </button>
-        {% else %}
-          <button class="btn btn-square btn-xs btn-primary btn-outline"
-                  name="{{ trait_id }}"
-                  value="{{ i }}"
-                  hx-trigger="click"
-                  hx-post="{{ post_url }}">{{ i }}</button>
-        {% endif %}
-      {% endfor %}
-    </div>
-  {% endfor %}
-
-  {% if show_delete %}
-    {# djlint:off #}
-    {# Opens the shared confirmation modal; trait id/name passed via data-* to avoid JS-string injection #}
+  {% if read_only %}
+    {# Derived by the API; show the value only #}
     <button type="button"
-            class="btn btn-square btn-xs btn-error ml-1"
-            aria-label="Delete {{ trait_name | title }}"
-            data-trait-id="{{ trait_id }}"
-            data-trait-name="{{ trait_name | title }}"
-            hx-on:click="document.getElementById('trait-delete-confirm').setAttribute('name', this.dataset.traitId); document.getElementById('trait-delete-name').textContent = this.dataset.traitName; document.getElementById('trait-delete-modal').showModal()">
-      <i class="fa-solid fa-trash"></i>
-    </button>
-    {# djlint:on #}
+            class="btn btn-square btn-xs btn-primary btn-outline btn-active"
+            disabled>{{ current_value }}</button>
+  {% else %}
+    {% for row in range(min_value, max_value + 1) | batch(10) %}
+      <div class="join">
+        {% for i in row %}
+          {% if i == current_value %}
+            <button class="btn btn-square btn-xs btn-primary btn-outline btn-active">
+              {{ i }}
+            </button>
+          {% else %}
+            <button class="btn btn-square btn-xs btn-primary btn-outline"
+                    name="{{ trait_id }}"
+                    value="{{ i }}"
+                    hx-trigger="click"
+                    {% if i == 0 and specialty_names %}hx-confirm="Lowering {{ trait_name.strip().title() }} to 0 removes its specialties: {{ specialty_names | join(', ') }}."{% endif %}
+                    hx-post="{{ post_url }}">{{ i }}</button>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endfor %}
+
+    {% if show_delete %}
+      {# djlint:off #}
+      {# Opens the shared confirmation modal; trait id/name passed via data-* to avoid JS-string injection #}
+      <button type="button"
+              class="btn btn-square btn-xs btn-error ml-1"
+              aria-label="Delete {{ trait_name | title }}"
+              data-trait-id="{{ trait_id }}"
+              data-trait-name="{{ trait_name | title }}"
+              data-trait-specialties="{{ specialty_names | join(', ') }}"
+              hx-on:click="document.getElementById('trait-delete-confirm').setAttribute('name', this.dataset.traitId); document.getElementById('trait-delete-name').textContent = this.dataset.traitName; document.getElementById('trait-delete-specialties').textContent = this.dataset.traitSpecialties ? 'This also removes its specialties: ' + this.dataset.traitSpecialties + '.' : ''; document.getElementById('trait-delete-modal').showModal()">
+        <i class="fa-solid fa-trash"></i>
+      </button>
+      {# djlint:on #}
+    {% endif %}
   {% endif %}
 </div>

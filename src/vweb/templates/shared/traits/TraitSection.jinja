@@ -1,7 +1,9 @@
 {#def
     section: FullSheetTraitSection,
+    character: Character,
     show_delete: bool = False,
     post_url: str,
+    spend_type: str = "",
 #}
 {# HTMX-driven variant for live character sheets; Alpine sibling: routes/character_create/templates/character_create/manual/components/TraitSection.jinja #}
 
@@ -10,6 +12,6 @@
 </div>
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
   {% for category in section.categories %}
-    <shared.traits.TraitCategory section_name={{ section.name }} category={{ category }} show_delete={{ show_delete }} post_url={{ post_url }} />
+    <shared.traits.TraitCategory section_name={{ section.name }} category={{ category }} character={{ character }} show_delete={{ show_delete }} post_url={{ post_url }} spend_type={{ spend_type }} />
   {% endfor %}
 </div>

@@ -16,13 +16,7 @@ from flask import (
 from flask.views import MethodView
 from vclient import sync_character_traits_service
 from vclient.constants import TraitModifyCurrency
-from vclient.exceptions import (
-    APIError,
-    AuthorizationError,
-    ConflictError,
-    NotFoundError,
-    ValidationError,
-)
+from vclient.exceptions import APIError
 from vclient.models import TraitCreate
 
 from vweb.lib import cache
@@ -30,6 +24,12 @@ from vweb.lib.api import get_character_and_campaign
 from vweb.lib.catalog import catalog
 from vweb.lib.guards import can_edit_character, can_edit_traits_free
 from vweb.lib.htmx import hx_redirect
+from vweb.routes.character_trait_edit.services import (
+    TRAIT_API_ERRORS,
+    find_character_trait,
+    humanize_spend_type,
+)
+from vweb.routes.character_trait_edit.views_specialties import SpecialtiesView, SpecialtyView
 
 bp = Blueprint("character_trait_edit", __name__)
 
@@ -37,17 +37,13 @@ if TYPE_CHECKING:
     from vclient._sync.services import SyncCharacterTraitsService
     from werkzeug.wrappers.response import Response
 
-# NotFoundError included so a stale page acting on an already-deleted trait
-# (or missing character) surfaces a flash instead of a 500.
-_API_ERRORS = (AuthorizationError, ConflictError, NotFoundError, ValidationError)
-
 
 class CharacterTraitsView(MethodView):
     """Character traits view."""
 
     def __init__(self, spend_type: TraitModifyCurrency) -> None:
         self.spend_type = spend_type
-        self.spend_type_humanized = spend_type.lower().replace("_", " ")
+        self.spend_type_humanized = humanize_spend_type(spend_type)
         self.xp_current: int = 0
         self.xp_total: int = 0
 
@@ -58,6 +54,7 @@ class CharacterTraitsView(MethodView):
         trait_id: str,
         value: str,
         get_method_url: str,
+        removes_specialties: bool,
     ) -> Response:
         """Update a trait value.
 
@@ -66,6 +63,7 @@ class CharacterTraitsView(MethodView):
             trait_id: The trait ID.
             value: The value to set the trait to. A string of an integer.
             get_method_url: The URL to redirect to.
+            removes_specialties: Whether the change removes the trait's specialties.
 
         Returns:
             An HX-Redirect response.
@@ -98,13 +96,15 @@ class CharacterTraitsView(MethodView):
 
         try:
             svc.change_value(trait_id, int(value), currency=self.spend_type)
-        except _API_ERRORS as error:
+        except TRAIT_API_ERRORS as error:
             flash(error.detail or "Failed to update trait", "error")
             return hx_redirect(get_method_url)
 
         msg = f"Updated {value_options.name.strip().title()} to {value}."
         if self.spend_type != "NO_COST":
             msg += f" You {'recouped' if direction == 'decrease' else 'spent'} {point_change} {self.spend_type_humanized}"
+        if removes_specialties:
+            msg += " Its specialties were removed."
         flash(msg, "success")
         return hx_redirect(get_method_url)
 
@@ -114,6 +114,7 @@ class CharacterTraitsView(MethodView):
         *,
         trait_id: str,
         get_method_url: str,
+        had_specialties: bool,
     ) -> Response:
         """Delete a trait.
 
@@ -121,6 +122,7 @@ class CharacterTraitsView(MethodView):
             svc: The character traits service.
             trait_id: The trait ID.
             get_method_url: The URL to redirect to.
+            had_specialties: Whether the trait had specialties before the delete.
 
         Returns:
             An HX-Redirect response.
@@ -133,13 +135,15 @@ class CharacterTraitsView(MethodView):
                 value_options = svc.get_value_options(trait_id)
                 point_change = value_options.options["DELETE"].point_change
             svc.delete(trait_id, currency=self.spend_type)
-        except _API_ERRORS as error:
+        except TRAIT_API_ERRORS as error:
             flash(error.detail or "Failed to delete trait", "error")
             return hx_redirect(get_method_url)
 
         msg = "Trait deleted."
         if self.spend_type != "NO_COST":
             msg += f" You recouped {point_change} {self.spend_type_humanized}"
+        if had_specialties:
+            msg += " Its specialties were removed."
         flash(msg, "success")
         return hx_redirect(get_method_url)
 
@@ -231,6 +235,13 @@ class CharacterTraitsView(MethodView):
             post_url=url_for(f"character_trait_edit.{self.spend_type}", character_id=character_id),
         )
 
+    @staticmethod
+    def _had_specialties(character_id: str, user_id: str, trait_id: str) -> bool:
+        """Report whether a character trait currently has specialties."""
+        sheet = cache.character_sheet.get(character_id, user_id, include_available_traits=True)
+        trait = find_character_trait(sheet, trait_id)
+        return bool(trait and trait.specialties)
+
     def post(self, character_id: str) -> str | Response:  # noqa: C901, PLR0911
         """Post the character traits form."""
         requesting_user = g.requesting_user
@@ -261,6 +272,9 @@ class CharacterTraitsView(MethodView):
                     svc=api_svc,
                     trait_id=trait_id,
                     get_method_url=get_method_url,
+                    had_specialties=self._had_specialties(
+                        character.id, requesting_user.id, trait_id
+                    ),
                 )
                 cache.character_sheet.clear(character.id)
                 cache.global_context.clear_current()
@@ -277,7 +291,7 @@ class CharacterTraitsView(MethodView):
                     api_svc.assign(
                         trait_id=new_trait_id, value=trait.min_value, currency=self.spend_type
                     )
-                except _API_ERRORS as error:
+                except TRAIT_API_ERRORS as error:
                     flash(error.detail or "Failed to assign trait", "error")
                     return hx_redirect(get_method_url)
 
@@ -300,7 +314,7 @@ class CharacterTraitsView(MethodView):
                 )
                 try:
                     created = api_svc.create(custom_trait)
-                except _API_ERRORS as error:
+                except TRAIT_API_ERRORS as error:
                     flash(error.detail or "Failed to create custom trait", "error")
                     return hx_redirect(get_method_url)
 
@@ -318,6 +332,8 @@ class CharacterTraitsView(MethodView):
                 trait_id=trait_id,
                 value=value,
                 get_method_url=get_method_url,
+                removes_specialties=value == "0"
+                and self._had_specialties(character.id, requesting_user.id, trait_id),
             )
             cache.character_sheet.clear(character.id)
             cache.global_context.clear_current()
@@ -332,4 +348,15 @@ for spend_type in get_args(TraitModifyCurrency):
         f"/character/<string:character_id>/traits/{spend_type}",
         view_func=CharacterTraitsView.as_view(spend_type, spend_type=spend_type),
         methods=["GET", "POST"],
+    )
+    base = f"/character/<string:character_id>/traits/{spend_type}/<string:character_trait_id>"
+    bp.add_url_rule(
+        f"{base}/specialties",
+        view_func=SpecialtiesView.as_view(f"specialties_{spend_type}", spend_type=spend_type),
+        methods=["GET", "POST"],
+    )
+    bp.add_url_rule(
+        f"{base}/specialties/<string:specialty_id>",
+        view_func=SpecialtyView.as_view(f"specialty_{spend_type}", spend_type=spend_type),
+        methods=["POST", "DELETE"],
     )

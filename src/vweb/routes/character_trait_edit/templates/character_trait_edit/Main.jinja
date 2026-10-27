@@ -60,7 +60,7 @@
 </div>
 
 {% for section in full_sheet.sections %}
-  <shared.traits.TraitSection section={{ section }} show_delete={{ current_spend_type == "NO_COST" }} post_url={{ post_url }} />
+  <shared.traits.TraitSection section={{ section }} character={{ character }} show_delete={{ current_spend_type == "NO_COST" }} post_url={{ post_url }} spend_type={{ current_spend_type }} />
 
 {% endfor %}
 
@@ -72,6 +72,7 @@
       <p class="py-4">
         Are you sure you want to delete <strong id="trait-delete-name"></strong>? This cannot be undone.
       </p>
+      <p id="trait-delete-specialties" class="pb-4 -mt-2 empty:hidden"></p>
       <div class="modal-action">
         {# djlint:off #}
         <button type="button" class="btn btn-ghost"
@@ -85,5 +86,16 @@
     <form method="dialog" class="modal-backdrop"><button>close</button></form>
   </dialog>
 {% endif %}
+
+{# Shared specialty dialog; the body is loaded by the per-ability triggers #}
+{# djlint:off #}
+<dialog id="specialty-modal" class="modal" aria-labelledby="specialty-dialog-heading"
+        hx-on::after-swap="if (!this.open) this.showModal()">
+{# djlint:on #}
+  <div class="modal-box">
+    <div id="specialty-modal-body"></div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
 
 </shared.PageLayout>
