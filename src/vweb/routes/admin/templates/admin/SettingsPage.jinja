@@ -16,6 +16,8 @@
   {%- set perm_grant_xp_val = field_val("permission_grant_xp", (s.permission_grant_xp if s and s.permission_grant_xp else "")) -%}
   {%- set perm_free_trait_val = field_val("permission_free_trait_changes", (s.permission_free_trait_changes if s and s.permission_free_trait_changes else "")) -%}
   {%- set perm_recoup_xp_val = field_val("permission_recoup_xp", (s.permission_recoup_xp if s and s.permission_recoup_xp else "")) -%}
+  {#- An unchecked box is absent from the submitted form, so presence decides on re-render. -#}
+  {%- set specialty_cost_on = ("specialty_xp_cost_enabled" in form_values) if form_values is not none else (s.specialty_xp_cost_enabled if s else false) -%}
 
   <shared.PageLayout title="Company Settings">
   <div class="max-w-3xl mx-auto p-4 flex flex-col gap-4">
@@ -292,6 +294,21 @@
             {% if errors.get("permission_recoup_xp") %}
               <p class="label text-error">{{ errors["permission_recoup_xp"] }}</p>
             {% endif %}
+          </fieldset>
+
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Charge for specialties</legend>
+            <label class="label cursor-pointer justify-start gap-3">
+              <input type="checkbox"
+                     name="specialty_xp_cost_enabled"
+                     value="on"
+                     class="toggle"
+                     {% if specialty_cost_on %}checked{% endif %} />
+              <span>Charge for specialties</span>
+            </label>
+            <p class="label">
+              When on, a specialty bought with XP or starting points costs 3. A free specialty follows the free trait changes permission. When off, specialties are always free.
+            </p>
           </fieldset>
         </div>
       </div>

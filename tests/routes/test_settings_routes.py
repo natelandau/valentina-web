@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -137,6 +138,7 @@ class TestSettingsGet:
                 permission_grant_xp="UNRESTRICTED",
                 permission_free_trait_changes="WITHIN_24_HOURS",
                 permission_recoup_xp="UNRESTRICTED",
+                specialty_xp_cost_enabled=True,
             ),
         )
         svc = MagicMock()
@@ -207,6 +209,30 @@ class TestSettingsGet:
         assert response.status_code == 200
         body = response.get_data(as_text=True)
         assert 'name="permission_manage_npc"' in body
+
+    def test_settings_page_renders_specialty_cost_toggle(
+        self, client: FlaskClient, mock_companies_svc: MagicMock
+    ) -> None:
+        """Verify the specialty cost toggle renders checked when the setting is on."""
+        body = client.get("/admin/settings").get_data(as_text=True)
+
+        assert 'name="specialty_xp_cost_enabled"' in body
+        tag = re.search(r'<input[^>]*name="specialty_xp_cost_enabled"[^>]*>', body)
+        assert tag is not None
+        assert "checked" in tag.group(0)
+
+    def test_settings_page_toggle_unchecked_when_setting_off(
+        self, client: FlaskClient, mock_companies_svc: MagicMock
+    ) -> None:
+        """Verify the specialty cost toggle renders unchecked when the setting is off."""
+        company = mock_companies_svc.get.return_value
+        company.settings.specialty_xp_cost_enabled = False
+
+        body = client.get("/admin/settings").get_data(as_text=True)
+
+        tag = re.search(r'<input[^>]*name="specialty_xp_cost_enabled"[^>]*>', body)
+        assert tag is not None
+        assert "checked" not in tag.group(0)
 
 
 class TestSettingsPostSuccess:
@@ -287,6 +313,24 @@ class TestSettingsPostSuccess:
         assert update_req.settings.permission_manage_npc == "UNRESTRICTED"
         assert update_req.settings.permission_grant_xp == "UNRESTRICTED"
         assert update_req.settings.permission_free_trait_changes is None
+
+    @pytest.mark.parametrize(
+        ("extra", "expected"),
+        [({"specialty_xp_cost_enabled": "on"}, True), ({}, False)],
+    )
+    def test_post_specialty_cost_checkbox(
+        self, client: FlaskClient, mock_companies_svc, extra: dict[str, str], *, expected: bool
+    ) -> None:
+        """Verify a checked box sends True and an absent box sends False, never None."""
+        from tests.conftest import get_csrf
+
+        response = client.post(
+            "/admin/settings",
+            data={"csrf_token": get_csrf(client), "name": "Acme Co", **extra},
+        )
+        assert response.status_code == 302
+        update_req = mock_companies_svc.update.call_args[1]["request"]
+        assert update_req.settings.specialty_xp_cost_enabled is expected
 
     def test_post_valid_flashes_success(self, client: FlaskClient, mock_companies_svc) -> None:
         """Verify valid POST flashes a success message containing 'updated'."""
@@ -376,6 +420,38 @@ class TestSettingsPostValidation:
             return_value=users_svc,
         )
         return svc
+
+    @pytest.mark.parametrize(
+        ("extra", "expect_checked"),
+        [({"specialty_xp_cost_enabled": "on"}, True), ({}, False)],
+    )
+    def test_post_invalid_rerender_preserves_specialty_toggle(
+        self,
+        client: FlaskClient,
+        mock_companies_svc,
+        extra: dict[str, str],
+        *,
+        expect_checked: bool,
+    ) -> None:
+        """Verify a 400 re-render keeps the submitted toggle state."""
+        from tests.conftest import get_csrf
+
+        response = client.post(
+            "/admin/settings",
+            data={
+                "csrf_token": get_csrf(client),
+                "name": "Acme Co",
+                "character_autogen_xp_cost": "abc",
+                **extra,
+            },
+        )
+
+        assert response.status_code == 400
+        body = response.get_data(as_text=True)
+        tag = re.search(r'<input[^>]*name="specialty_xp_cost_enabled"[^>]*>', body)
+        assert tag is not None
+        assert ("checked" in tag.group(0)) is expect_checked
+        mock_companies_svc.update.assert_not_called()
 
     def test_post_short_name_returns_400_and_preserves_input(
         self, client: FlaskClient, mock_companies_svc
