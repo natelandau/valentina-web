@@ -31,10 +31,13 @@
                     {% continue %}
                   {% endif %}
                   <tr>
-                    <td class="text-lg">
+                    <td class="text-lg align-top">
                       <character_view.components.TermTooltip name={{ character_trait.trait.name }} dictionary_terms={{ dictionary_terms }} />
+                      {% if character_trait.specialties %}
+                        <div class="trait-specialties text-sm text-base-content/60 font-normal">{{ character_trait.specialties | map(attribute="name") | join(", ") }}</div>
+                      {% endif %}
                     </td>
-                    <td class="text-right text-bold whitespace-nowrap">
+                    <td class="text-right text-bold whitespace-nowrap align-top">
                       {% if category.name not in ["Gifts", "Rites"] %}
                         <shared.character.DotRating num={{ character_trait.value }} maximum={{ character_trait.trait.max_value }} />
                       {% endif %}
@@ -52,12 +55,15 @@
                       {% continue %}
                     {% endif %}
                     <tr>
-                      <td class="text-lg">
+                      <td class="text-lg align-top">
                         <span class="pl-4">
                           <character_view.components.TermTooltip name={{ character_trait.trait.name }} dictionary_terms={{ dictionary_terms }} />
                         </span>
+                        {% if character_trait.specialties %}
+                          <div class="trait-specialties pl-4 text-sm text-base-content/60 font-normal">{{ character_trait.specialties | map(attribute="name") | join(", ") }}</div>
+                        {% endif %}
                       </td>
-                      <td class="text-right text-bold whitespace-nowrap">
+                      <td class="text-right text-bold whitespace-nowrap align-top">
                         <shared.character.DotRating num={{ character_trait.value }} maximum={{ character_trait.trait.max_value }} />
                       </td>
                     </tr>

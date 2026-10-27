@@ -2,8 +2,20 @@
 
 from __future__ import annotations
 
+import re
+from datetime import UTC, datetime
+
 import pytest
-from vclient.testing import CharacterFactory
+from vclient.models import CharacterTraitSpecialty
+from vclient.testing import (
+    CharacterFactory,
+    CharacterFullSheetFactory,
+    CharacterTraitFactory,
+    FullSheetTraitCategoryFactory,
+    FullSheetTraitSectionFactory,
+    FullSheetTraitSubcategoryFactory,
+    TraitFactory,
+)
 
 from tests.conftest import get_csrf
 
@@ -191,3 +203,91 @@ class TestSheetSidebarOwnerLink:
 
         # Then it renders without building a profile URL (no owner to link to)
         assert "/profile/" not in html
+
+
+class TestSheetSpecialties:
+    """Tests for ability specialties on the character sheet tab."""
+
+    @staticmethod
+    def _sheet(mocker, *, melee_names: list[str], pistol_names: list[str] | None = None) -> None:
+        """Patch the cached full sheet with a Melee trait and an optional subcategory trait."""
+        now = datetime.now(UTC)
+
+        def specialties(names: list[str]) -> list[CharacterTraitSpecialty]:
+            return [
+                CharacterTraitSpecialty(
+                    id=f"spec-{index}", name=name, date_created=now, date_modified=now
+                )
+                for index, name in enumerate(names)
+            ]
+
+        melee = CharacterTraitFactory.build(
+            value=3,
+            trait=TraitFactory.build(name="Melee", max_value=5),
+            specialties=specialties(melee_names),
+        )
+        subcategories = []
+        if pistol_names is not None:
+            pistols = CharacterTraitFactory.build(
+                value=2,
+                trait=TraitFactory.build(name="Firearms", max_value=5),
+                specialties=specialties(pistol_names),
+            )
+            subcategories = [
+                FullSheetTraitSubcategoryFactory.build(name="Guns", character_traits=[pistols])
+            ]
+        category = FullSheetTraitCategoryFactory.build(
+            name="Skills",
+            show_when_empty=True,
+            character_traits=[melee],
+            subcategories=subcategories,
+        )
+        section = FullSheetTraitSectionFactory.build(name="Abilities", categories=[category])
+        sheet = CharacterFullSheetFactory.build(sections=[section])
+        mocker.patch(
+            "vweb.routes.character_view.views.cache.character_sheet.get", return_value=sheet
+        )
+
+    def test_sheet_shows_specialties_joined(self, client, mocker, mock_character_lookup) -> None:
+        """Verify specialties render comma-joined for category and subcategory traits."""
+        # Given a sheet with specialties on a category trait and a subcategory trait
+        char, _ = mock_character_lookup
+        self._sheet(mocker, melee_names=["Knives", "Swords"], pistol_names=["Pistols"])
+
+        # When viewing the sheet
+        html = client.get(f"/character/{char.id}").get_data(as_text=True)
+
+        # Then both specialty lines are shown
+        lines = re.findall(r'<div class="trait-specialties([^"]*)">([^<]*)</div>', html)
+        assert len(lines) == 2
+        category_classes, category_text = lines[0]
+        assert "text-sm text-base-content/60 font-normal" in category_classes
+        assert category_text == "Knives, Swords"
+        assert lines[1][1] == "Pistols"
+
+    def test_sheet_escapes_specialty_names(self, client, mocker, mock_character_lookup) -> None:
+        """Verify specialty names are HTML-escaped."""
+        # Given a specialty containing markup
+        char, _ = mock_character_lookup
+        self._sheet(mocker, melee_names=['<b>"Edge"</b>'])
+
+        # When viewing the sheet
+        html = client.get(f"/character/{char.id}").get_data(as_text=True)
+
+        # Then the markup is escaped
+        assert "&lt;b&gt;" in html
+        assert '<b>"Edge"</b>' not in html
+
+    def test_sheet_without_specialties_has_no_line(
+        self, client, mocker, mock_character_lookup
+    ) -> None:
+        """Verify a trait with no specialties renders no specialty line."""
+        # Given a sheet whose traits have no specialties
+        char, _ = mock_character_lookup
+        self._sheet(mocker, melee_names=[], pistol_names=[])
+
+        # When viewing the sheet
+        html = client.get(f"/character/{char.id}").get_data(as_text=True)
+
+        # Then no specialty element is rendered
+        assert "trait-specialties" not in html
