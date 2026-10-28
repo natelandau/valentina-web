@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import re
+from html.parser import HTMLParser
 from unittest.mock import MagicMock
 
 from vclient.testing import (
@@ -173,6 +176,28 @@ class TestManualProfileView:
         body = response.get_data(as_text=True)
         assert 'value="Ada"' in body
         assert 'value="Lovelace"' in body
+
+    def test_query_values_stay_inside_alpine_string_literals(self, client, mocker) -> None:
+        """Verify quote characters in query values cannot break out of the x-data expression."""
+        # Given a campaign
+        ctx = build_global_context(user_role="PLAYER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        _mock_form_options(mocker)
+        payload = "';alert(1);'\""
+
+        # When a link carries quote characters in the prefilled class and version
+        response = client.get(
+            f"/campaign/{campaign.id}/characters/profile_edit",
+            query_string={"character_class": payload, "game_version": payload},
+        )
+
+        # Then the x-data expression Alpine evaluates holds each value as one string literal
+        x_data = _x_data_containing(response.get_data(as_text=True), "charClass")
+        for key in ("charClass", "gameVersion"):
+            literal = re.search(rf'{key}: ("(?:[^"\\]|\\.)*")', x_data)
+            assert literal is not None
+            assert json.loads(literal.group(1)) == payload
 
     def test_create_post_inline_errors_on_api_rejection(self, client, mocker, fake_vclient) -> None:
         """Verify an API rejection of a submitted character type shows an inline error."""
@@ -826,3 +851,16 @@ class TestProfileEditMode:
         assert response.status_code == 200
         assert_shows_error(response)
         char_svc.update.assert_not_called()
+
+
+def _x_data_containing(html: str, needle: str) -> str:
+    """Return the decoded x-data attribute value that mentions ``needle``, as a browser sees it."""
+    found: list[str] = []
+
+    class _Collector(HTMLParser):
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            found.extend(v for k, v in attrs if k == "x-data" and v and needle in v)
+
+    _Collector().feed(html)
+    assert found, f"no x-data attribute containing {needle!r}"
+    return found[0]

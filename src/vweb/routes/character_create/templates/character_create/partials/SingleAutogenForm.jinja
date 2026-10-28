@@ -21,7 +21,10 @@
       hx-target="#creation-content"
       hx-swap="innerHTML"
       hx-disabled-elt="button[type='submit']"
-      x-data="{ selectedClass: '{{ form_data.get('character_class', '') }}' }">
+      {# djlint:off #}
+      x-data='{ selectedClass: {{ form_data.get("character_class", "") | tojson }} }'
+      {# djlint:on #}
+      >
 
   <input type="hidden" name="character_type" value="{{ form_data.get('character_type', '') }}" />
 
