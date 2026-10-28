@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING, cast
 from flask import session
 from pydantic import ValidationError as PydanticValidationError
 from vclient import sync_character_traits_service, sync_characters_service
-from vclient.exceptions import APIError, ValidationError
+from vclient.exceptions import APIError, NotFoundError, ValidationError
 from vclient.models import CharacterCreate, CharacterTraitAdd, CharacterUpdate
 
-from vweb.lib.guards import can_manage_npcs, is_storyteller
+from vweb.lib.guards import can_manage_npcs, is_self, is_storyteller
 from vweb.routes.character_create.profile_form import build_class_attrs, character_to_form_data
 
 if TYPE_CHECKING:
@@ -71,7 +71,7 @@ def _is_temp_session_expired() -> bool:
     created_at = session.get("temp_character_created_at")
     if created_at is None:
         return False
-    return (time.monotonic() - created_at) > _SESSION_TTL_SECONDS
+    return (time.time() - created_at) > _SESSION_TTL_SECONDS
 
 
 def fetch_character(character_id: str) -> Character:
@@ -88,6 +88,37 @@ def fetch_character(character_id: str) -> Character:
         company_id=session["company_id"],
     )
     return svc.get(character_id)
+
+
+def finalizable_temp_character(campaign_id: str) -> Character | None:
+    """Return the session's temporary character when it may still be finalized, else None.
+
+    Finalizing assigns traits at NO_COST, so the session pointer alone is not trusted:
+    the character must still be temporary, belong to the requester and to the campaign
+    being finalized in, and be within the temp-session TTL. Any failed check clears the
+    stale session data.
+
+    Args:
+        campaign_id: The campaign the finalize request targets.
+    """
+    temp_char_id = session.get("temp_character_id")
+    if not temp_char_id or _is_temp_session_expired():
+        clear_temp_session()
+        return None
+
+    try:
+        character = fetch_character(temp_char_id)
+    except NotFoundError:
+        clear_temp_session()
+        return None
+    if (
+        not character.is_temporary
+        or character.campaign_id != campaign_id
+        or not is_self(character.user_player_id)
+    ):
+        clear_temp_session()
+        return None
+    return character
 
 
 def load_temp_character_form_data(*, is_resuming: bool, fallback: dict[str, str]) -> dict[str, str]:
@@ -249,7 +280,7 @@ def save_temp_character(campaign_id: str, form_data: dict[str, str]) -> dict[str
         else:
             new_char = svc.create(_build_create_payload(campaign_id, form_data))
             session["temp_character_id"] = new_char.id
-            session["temp_character_created_at"] = time.monotonic()
+            session["temp_character_created_at"] = time.time()
     except PydanticValidationError as exc:
         return _map_pydantic_errors(exc)
     except ValidationError as exc:
