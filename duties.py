@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from dotenv import dotenv_values
 from duty import duty
+from duty.exceptions import DutyFailure
 from rich.console import Console
 
 if TYPE_CHECKING:
@@ -64,6 +65,15 @@ MAIN_WORKTREE_SCRIPT = [
 PY_SRC_PATHS = (Path(_) for _ in ("src/", "tests/", "duties.py", "scripts/") if Path(_).exists())
 PY_SRC_LIST = tuple(str(_) for _ in PY_SRC_PATHS)
 CI = os.environ.get("CI", "").strip().lower() in {"1", "true", "yes"}
+PYPROJECT = PROJECT_ROOT / "pyproject.toml"
+VCLIENT_PACKAGE = "valentina-python-client"
+# The vclient repo sits beside the main checkout, which a worktree is nested inside
+VCLIENT_CHECKOUT = MAIN_ROOT.parent / VCLIENT_PACKAGE
+VCLIENT_SOURCE = (
+    "\n[tool.uv.sources]\n"
+    f'    {VCLIENT_PACKAGE} = {{ path = "{VCLIENT_CHECKOUT.relative_to(PROJECT_ROOT, walk_up=True)}", '
+    "editable = true }\n"
+)
 DEV_DIR = PROJECT_ROOT / ".dev"
 DEV_DIRECTORIES = []
 
@@ -349,6 +359,50 @@ def css(ctx: Context) -> None:
         title="build css",
         capture=False,
     )
+
+
+@duty()
+def vclient_local(ctx: Context) -> None:
+    """Install vclient from the sibling checkout as an editable dependency.
+
+    Never commit pyproject.toml or uv.lock while this is on: the path exists only on this
+    machine. The local-dependency hooks block the commit and the push.
+    """
+    text = PYPROJECT.read_text()
+    if VCLIENT_SOURCE in text:
+        console.print("vclient already installs from the local checkout.")
+        return
+    if "[tool.uv.sources]" in text:
+        console.print("[red]pyproject.toml already has [tool.uv.sources]; edit it by hand.[/red]")
+        raise SystemExit(1)
+    if not VCLIENT_CHECKOUT.is_dir():
+        console.print(f"[red]No vclient checkout at {VCLIENT_CHECKOUT}.[/red]")
+        raise SystemExit(1)
+    PYPROJECT.write_text(text + VCLIENT_SOURCE)
+    try:
+        ctx.run(["uv", "sync"], title=f"install vclient from {VCLIENT_CHECKOUT}")
+    except DutyFailure:
+        PYPROJECT.write_text(text)
+        raise
+    console.print(
+        "[yellow]Leave pyproject.toml and uv.lock unstaged until vclient-release.[/yellow]"
+    )
+
+
+@duty()
+def vclient_release(ctx: Context) -> None:
+    """Switch vclient back to the published package that pyproject.toml pins."""
+    text = PYPROJECT.read_text()
+    if VCLIENT_SOURCE not in text:
+        if "[tool.uv.sources]" in text:
+            console.print("[red][tool.uv.sources] was edited by hand; remove it by hand.[/red]")
+            raise SystemExit(1)
+        console.print("vclient already installs from the published package.")
+        return
+    PYPROJECT.write_text(text.replace(VCLIENT_SOURCE, ""))
+    # A re-lock would resolve vclient and its dependencies afresh, so start from the staged lock
+    ctx.run(["git", "restore", "uv.lock"], title="restore the staged uv.lock")
+    ctx.run(["uv", "sync"], title="install the published vclient")
 
 
 @duty()

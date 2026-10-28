@@ -28,6 +28,10 @@ duty worktree-teardown branch=<name>  # Remove a worktree and flush its Redis da
 - Flask-Talisman (CSP/HSTS), flask-wtf CSRF, Authlib OAuth
 - API: valentina-python-client (`SyncVClient`)
 
+### Local vclient
+
+`duty vclient-local` installs vclient from the sibling `valentina-python-client` checkout; `duty vclient-release` switches back. While local, **never commit `pyproject.toml` or `uv.lock`**: keep making commits, stage files by name (never `git add -A` or `commit -a`), and leave those two unstaged. Hooks and CI reject any path dependency outside the repo. Never bypass them with `--no-verify` or by removing the override.
+
 ### CSP / No inline JS
 
 Production CSP blocks `onclick`, `onchange`, inline `<script>`. Use Alpine `@click`/`@change`/`x-data` directives; add `x-data` directly for elements not already in an Alpine scope: `<button x-data @click="...">`. `'unsafe-eval'` is enabled (Alpine needs it). When adding CDN sources, update the CSP dict in `create_app()`.

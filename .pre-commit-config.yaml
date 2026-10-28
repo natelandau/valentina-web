@@ -97,6 +97,21 @@ repos:
 
   - repo: local
     hooks:
+      - id: no-local-sources
+        name: no local path dependencies (staged)
+        entry: python3 scripts/check_local_sources.py staged
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|uv\.lock)$
+
+      - id: no-local-sources-push
+        name: no local path dependencies (pushed commits)
+        entry: python3 scripts/check_local_sources.py push
+        language: system
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true
+
       - id: shellcheck
         name: shellcheck
         entry: shellcheck --check-sourced --severity=warning
@@ -106,34 +121,34 @@ repos:
       # Hooks that duplicate a duty call the duty so they share its gate-cache markers
       - id: ruff
         name: ruff
-        entry: uv run duty ruff
+        entry: uv run --no-sync duty ruff
         language: system
         pass_filenames: false
         types: [python]
 
       - id: ruff-format
         name: ruff-format
-        entry: uv run duty format
+        entry: uv run --no-sync duty format
         language: system
         pass_filenames: false
         types: [python]
 
       - id: typos
         name: typos
-        entry: uv run duty typos
+        entry: uv run --no-sync duty typos
         language: system
         pass_filenames: false
 
       - id: ty
         name: ty
-        entry: uv run duty ty
+        entry: uv run --no-sync duty ty
         language: system
         pass_filenames: false
         types: [python]
 
       - id: pytest
         name: pytest
-        entry: uv run duty test
+        entry: uv run --no-sync duty test
         language: system
         stages: [pre-push]
         pass_filenames: false

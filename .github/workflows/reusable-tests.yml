@@ -21,6 +21,11 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v7
 
+            # Before setup, whose `uv sync` fails with an unclear error on a leaked path
+            - name: Check for local path dependencies
+              shell: bash
+              run: python3 scripts/check_local_sources.py tree
+
             - name: Setup Python, uv, and the package
               uses: ./.github/actions/setup_python_env
               with:
@@ -44,6 +49,11 @@ jobs:
         steps:
             - name: Checkout repository
               uses: actions/checkout@v7
+
+            # Before setup, whose `uv sync` fails with an unclear error on a leaked path
+            - name: Check for local path dependencies
+              shell: bash
+              run: python3 scripts/check_local_sources.py tree
 
             - uses: actions/cache@v6
               with:
