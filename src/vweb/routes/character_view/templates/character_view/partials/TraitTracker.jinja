@@ -1,0 +1,55 @@
+{#def
+    character: Character,
+    character_trait: CharacterTrait,
+#}
+{%- set tracker = character_trait.tracker -%}
+{%- if tracker -%}
+  {%- set editable = can_edit_trackers(character) -%}
+  {%- set circle_count = [character_trait.value, character_trait.trait.max_value] | max -%}
+  {%- set post_url = url_for("character_view.trait_tracker", character_id=character.id, character_trait_id=character_trait.id) if editable else "" -%}
+  {%- set stepper_class = "btn btn-xs btn-square btn-outline h-7 w-7 min-h-7" -%}
+
+  {# Right-aligned so the squares sit under the trait's DotRating circles. #}
+  <div class="flex flex-col items-end gap-1">
+    <div class="inline-flex flex-col gap-0.5">
+      {%- if tracker.type == "COUNTER" -%}
+        {%- for row_start in range(0, circle_count, 10) %}
+          <span class="inline-flex flex-nowrap gap-0.5 leading-none">
+            {%- for i in range(row_start, [row_start + 10, circle_count] | min) -%}
+              {%- set is_marked = i < tracker.current -%}
+              <character_view.components.TrackerSquare
+                marked={{ is_marked }}
+                disabled={{ i >= tracker.size }}
+                post_url={{ post_url }}
+                label={{ character_trait.trait.name ~ " point " ~ (i + 1) }}
+                vals={{ {"action": "set", "current": i if is_marked else i + 1} }} />
+            {%- endfor -%}
+          </span>
+        {%- endfor %}
+      {%- elif tracker.type == "STAINS" -%}
+        <span class="inline-flex flex-nowrap gap-0.5 leading-none">
+          {%- for i in range(10) -%}
+            <character_view.components.TrackerSquare
+              mark={{ "/" if i >= 10 - tracker.stains else none }}
+              disabled={{ i < tracker.humanity }} />
+          {%- endfor -%}
+        </span>
+      {%- endif -%}
+    </div>
+
+    {%- if editable and tracker.type == "STAINS" %}
+      {%- set stain_actions = tracker_actions_for(character.game_version, "STAINS") %}
+      {%- if "add_stain" in stain_actions or "remove_stain" in stain_actions %}
+        <div class="flex items-center gap-1 text-xs">
+          {%- if "remove_stain" in stain_actions %}
+            <character_view.components.TrackerButton post_url={{ post_url }} vals={{ {"action": "remove_stain"} }} label="Remove stain" extra_class={{ stepper_class }} disabled={{ tracker.stains <= 0 }}>&minus;</character_view.components.TrackerButton>
+          {%- endif %}
+          <span class="min-w-24 text-center">Stains {{ tracker.stains }}</span>
+          {%- if "add_stain" in stain_actions %}
+            <character_view.components.TrackerButton post_url={{ post_url }} vals={{ {"action": "add_stain"} }} label="Add stain" extra_class={{ stepper_class }} disabled={{ tracker.stains >= 10 }}>+</character_view.components.TrackerButton>
+          {%- endif %}
+        </div>
+      {%- endif %}
+    {%- endif %}
+  </div>
+{%- endif -%}

@@ -9,7 +9,7 @@ import pytest
 from vclient.models.full_sheet import CharacterFullSheet
 from vclient.testing import CharacterFullSheetFactory
 
-from vweb.lib.cache.character_sheet import clear, get
+from vweb.lib.cache.character_sheet import clear, get, update
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -183,3 +183,47 @@ class TestClear:
         # Then different objects are returned after the clear
         assert first is not second
         assert mock_char_svc.get_full_sheet.call_count == 2
+
+
+class TestUpdate:
+    """Tests for update()."""
+
+    def test_rewrites_every_cached_variant_without_fetching(
+        self, app: Flask, mock_cache_store: dict, mock_char_svc: MagicMock
+    ) -> None:
+        """Verify update changes both cached variants and makes no API call."""
+        # Given both variants are cached
+        mock_char_svc.get_full_sheet.side_effect = [
+            CharacterFullSheetFactory.build(),
+            CharacterFullSheetFactory.build(),
+        ]
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            get("char-1", "user-1", include_available_traits=False)
+            get("char-1", "user-1", include_available_traits=True)
+
+            # When updating the character's name in place
+            update("char-1", lambda sheet: setattr(sheet.character, "name_first", "Changed"))
+
+            # Then both variants read back changed with no further fetch
+            without = get("char-1", "user-1", include_available_traits=False)
+            with_traits = get("char-1", "user-1", include_available_traits=True)
+
+        assert without.character.name_first == "Changed"
+        assert with_traits.character.name_first == "Changed"
+        assert mock_char_svc.get_full_sheet.call_count == 2
+
+    def test_skips_uncached_sheet(
+        self, app: Flask, mock_cache_store: dict, mock_char_svc: MagicMock
+    ) -> None:
+        """Verify update on a cold cache neither fetches nor stores anything."""
+        apply = MagicMock()
+
+        with app.test_request_context("/"):
+            update("char-1", apply)
+
+        apply.assert_not_called()
+        mock_char_svc.get_full_sheet.assert_not_called()
+        assert mock_cache_store == {}

@@ -1,0 +1,29 @@
+{#def
+    mark: str | None = None,
+    disabled: bool = False,
+    marked: bool = False,
+    post_url: str = "",
+    vals: dict | None = None,
+    label: str = "",
+#}
+{%- set square_class = "inline-flex track-cell h-7 sm:h-5 items-center justify-center border border-base-content/70 text-xs font-bold leading-none" -%}
+{%- set fill_class = "bg-base-content text-base-100" -%}
+{%- if disabled -%}
+  <span class="{{ square_class }} {{ fill_class if marked else 'bg-base-300' }} border-dashed opacity-40"
+        data-tracker-square
+        data-disabled="true"
+        {% if marked %}data-marked="true"{% endif %}>{{ mark or "" }}</span>
+{%- elif post_url -%}
+  <character_view.components.TrackerButton
+    post_url={{ post_url }}
+    vals={{ vals }}
+    label={{ label }}
+    extra_class={{ square_class ~ " cursor-pointer hover:bg-base-200" ~ ((" " ~ fill_class ~ " hover:bg-base-content/80") if marked else "") }}
+    aria-pressed={{ "true" if marked else "false" }}
+    data-marked={{ "true" if marked else false }}
+    data-tracker-square={{ true }}>{{ mark or "" }}</character_view.components.TrackerButton>
+{%- else -%}
+  <span class="{{ square_class }} {% if marked %}{{ fill_class }}{% endif %}"
+        data-tracker-square
+        {% if marked %}data-marked="true"{% endif %}>{{ mark or "" }}</span>
+{%- endif -%}

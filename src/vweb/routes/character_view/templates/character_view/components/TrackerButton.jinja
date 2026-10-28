@@ -1,0 +1,12 @@
+{#def
+    post_url: str,
+    vals: dict,
+    label: str = "",
+    extra_class: str = "",
+    disabled: bool = False,
+#}
+{# Each control sends from its stable [data-tracker-slot] wrapper, which owns the target, swap and request queue. #}
+{# djlint:off #}
+<button type="button" class="{{ extra_class }}" {% if label %}aria-label="{{ label }}" {% endif %}{% if disabled %}disabled {% endif %}{{ attrs.render() }}
+        @click="htmx.ajax('POST', '{{ post_url }}', {source: $el.closest('[data-tracker-slot]'), values: {{ vals | tojson | forceescape }}})">{{ content }}</button>
+{# djlint:on #}

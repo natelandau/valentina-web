@@ -1,4 +1,4 @@
-{# def character #}
+{# def character, full_sheet = None #}
 
 {% set ns = namespace(user_player_owner=none) %}
 
@@ -58,9 +58,11 @@
 
 {% set can_edit = can_edit_character(character) %}
 
-<div class="flex flex-col gap-5 text-sm">
+{% set health = full_sheet.character.health if full_sheet else none %}
 
-  <dl class="flex flex-col divide-y divide-base-300/60">
+<div class="flex flex-col divide-y divide-base-300/60 text-sm">
+
+  <dl class="flex flex-col divide-y divide-base-300/60 {% if health %}pb-2{% endif %}">
     {% for label, value in identity if value is not none %}
       <div class="flex justify-between items-baseline py-2 first:pt-0 last:pb-0 gap-3">
         <dt class="text-xs uppercase tracking-wider opacity-60">
@@ -90,17 +92,32 @@
         </div>
       {% endfor %}
     {% endif %}
+    <div class="flex justify-between items-baseline py-2 first:pt-0 last:pb-0 gap-3">
+      <dt class="text-xs uppercase tracking-wider opacity-60">
+        Status
+      </dt>
+      <dd class="font-medium text-right {% if character.status != 'ALIVE' %}text-error{% endif %}">
+        {{ "Alive" if character.status == "ALIVE" else "Deceased" }}
+      </dd>
+    </div>
+    {% if can_edit %}
+      <div class="flex justify-between items-baseline py-2 first:pt-0 last:pb-0 gap-3">
+        <dt class="text-xs uppercase tracking-wider opacity-60">
+          Type
+        </dt>
+        <dd class="font-medium text-right">
+          {{ character_type_label(character.type) }}
+        </dd>
+      </div>
+    {% endif %}
   </dl>
 
-  <div class="flex flex-wrap gap-2">
-    {% if character.status == "ALIVE" %}
-      <span class="badge badge-sm badge-success badge-soft">Alive</span>
-    {% else %}
-      <span class="badge badge-sm badge-error badge-soft">Deceased</span>
-    {% endif %}
-    {% if can_edit %}
-      <shared.CharacterTypeBadge character_type={{ character.type }} />
-    {% endif %}
-  </div>
+  {% if health %}
+    <div class="pt-2">
+      <character_view.components.TrackerSlot id="health-track">
+        <character_view.partials.HealthTrack character={{ character }} health={{ health }} />
+      </character_view.components.TrackerSlot>
+    </div>
+  {% endif %}
 
 </div>

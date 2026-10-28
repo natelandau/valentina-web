@@ -12,6 +12,7 @@ from vclient.testing import CharacterFactory, CompanyFactory, UserFactory
 from vweb.lib.cache.global_context import GlobalContext
 from vweb.lib.guards import (
     can_edit_character,
+    can_edit_trackers,
     can_edit_traits_free,
     can_grant_experience,
     can_manage_campaign,
@@ -341,3 +342,64 @@ def test_can_edit_character_storyteller_type_denies_owning_player(guard_ctx) -> 
 
     # When / Then
     assert can_edit_character(character) is False
+
+
+@pytest.mark.parametrize("role", ["ADMIN", "STORYTELLER"])
+def test_can_edit_trackers_privileged(guard_ctx, role) -> None:
+    """Verify privileged users may edit trackers on any character."""
+    # Given a privileged user and a character owned by someone else
+    guard_ctx(role=role, user_id="me")
+    character = CharacterFactory.build(user_player_id="someone-else")
+
+    # When / Then
+    assert can_edit_trackers(character) is True
+
+
+def test_can_edit_trackers_owner(guard_ctx) -> None:
+    """Verify players may edit trackers on their own characters."""
+    # Given a player and their own player character
+    guard_ctx(role="PLAYER", user_id="me")
+    character = CharacterFactory.build(user_player_id="me", type="PLAYER")
+
+    # When / Then
+    assert can_edit_trackers(character) is True
+
+
+def test_can_edit_trackers_non_owner_denied(guard_ctx) -> None:
+    """Verify players may not edit trackers on characters owned by other users."""
+    # Given a player and someone else's player character
+    guard_ctx(role="PLAYER", user_id="me")
+    character = CharacterFactory.build(user_player_id="someone-else", type="PLAYER")
+
+    # When / Then
+    assert can_edit_trackers(character) is False
+
+
+def test_can_edit_trackers_npc_unrestricted_setting_still_denies_non_owner(guard_ctx) -> None:
+    """Verify the NPC setting does not open tracker edits to non-owning players."""
+    # Given a player, an unrestricted NPC setting, and an NPC owned by someone else
+    guard_ctx(role="PLAYER", user_id="me", permission_manage_npc="UNRESTRICTED")
+    character = CharacterFactory.build(user_player_id="someone-else", type="NPC")
+
+    # When / Then
+    assert can_edit_trackers(character) is False
+
+
+def test_can_edit_trackers_owner_of_storyteller_character(guard_ctx) -> None:
+    """Verify a player may edit trackers on a storyteller-type character they own."""
+    # Given a player who owns a STORYTELLER-type character
+    guard_ctx(role="PLAYER", user_id="me")
+    character = CharacterFactory.build(user_player_id="me", type="STORYTELLER")
+
+    # When / Then
+    assert can_edit_trackers(character) is True
+
+
+def test_can_edit_trackers_ownerless_npc_denies_player(guard_ctx) -> None:
+    """Verify a player may not edit trackers on an NPC that has no owner."""
+    # Given a player and an NPC with no owning player
+    guard_ctx(role="PLAYER", user_id="me")
+    character = CharacterFactory.build(user_player_id=None, type="NPC")
+
+    # When / Then
+    assert can_edit_trackers(character) is False

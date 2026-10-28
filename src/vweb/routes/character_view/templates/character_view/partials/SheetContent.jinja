@@ -30,19 +30,7 @@
                   {% if character_trait.value == 0 and not character_trait.trait.show_when_zero %}
                     {% continue %}
                   {% endif %}
-                  <tr>
-                    <td class="text-lg align-top">
-                      <character_view.components.TermTooltip name={{ character_trait.trait.name }} dictionary_terms={{ dictionary_terms }} />
-                      {% if character_trait.specialties %}
-                        <div class="trait-specialties text-sm text-base-content/60 font-normal">{{ character_trait.specialties | map(attribute="name") | join(", ") }}</div>
-                      {% endif %}
-                    </td>
-                    <td class="text-right text-bold whitespace-nowrap align-top">
-                      {% if category.name not in ["Gifts", "Rites"] %}
-                        <shared.character.DotRating num={{ character_trait.value }} maximum={{ character_trait.trait.max_value }} />
-                      {% endif %}
-                    </td>
-                  </tr>
+                  <character_view.components.TraitRow character={{ character }} character_trait={{ character_trait }} dictionary_terms={{ dictionary_terms }} show_dots={{ category.name not in ["Gifts", "Rites"] }} />
                 {% endfor %}
                 {% for subcategory in category.subcategories if subcategory.character_traits %}
                   <tr>
@@ -54,19 +42,7 @@
                     {% if character_trait.value == 0 and not character_trait.trait.show_when_zero %}
                       {% continue %}
                     {% endif %}
-                    <tr>
-                      <td class="text-lg align-top">
-                        <span class="pl-4">
-                          <character_view.components.TermTooltip name={{ character_trait.trait.name }} dictionary_terms={{ dictionary_terms }} />
-                        </span>
-                        {% if character_trait.specialties %}
-                          <div class="trait-specialties pl-4 text-sm text-base-content/60 font-normal">{{ character_trait.specialties | map(attribute="name") | join(", ") }}</div>
-                        {% endif %}
-                      </td>
-                      <td class="text-right text-bold whitespace-nowrap align-top">
-                        <shared.character.DotRating num={{ character_trait.value }} maximum={{ character_trait.trait.max_value }} />
-                      </td>
-                    </tr>
+                    <character_view.components.TraitRow character={{ character }} character_trait={{ character_trait }} dictionary_terms={{ dictionary_terms }} indent={{ true }} />
                   {% endfor %}
                 {% endfor %}
               </table>
@@ -79,6 +55,6 @@
 
   <aside class="order-first lg:order-none lg:w-56 shrink-0
                 lg:border-l lg:border-base-300/60 lg:pl-6">
-    <character_view.components.SheetSidebar character={{ character }} />
+    <character_view.components.SheetSidebar character={{ character }} full_sheet={{ full_sheet }} />
   </aside>
 </div>

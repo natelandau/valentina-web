@@ -50,6 +50,7 @@ class CharacterOptions:
     inventory_item_type: list[str] = field(default_factory=list)
     specialty_type: list[str] = field(default_factory=list)
     trait_modify_currency: list[str] = field(default_factory=list)
+    tracker_rules: dict[str, dict[str, dict[str, list[str]]]] = field(default_factory=dict)
     werewolf_renown: list[str] = field(default_factory=list)
 
 
@@ -135,6 +136,7 @@ def _parse_options(raw: dict) -> ApiOptions:
             inventory_item_type=characters_raw.get("InventoryItemType", []),
             specialty_type=characters_raw.get("SpecialtyType", []),
             trait_modify_currency=characters_raw.get("TraitModifyCurrency", []),
+            tracker_rules=characters_raw.get("TrackerRules") or {},
             werewolf_renown=characters_raw.get("WerewolfRenown", []),
         ),
         autogen=AutogenOptions(
@@ -153,6 +155,22 @@ def _parse_options(raw: dict) -> ApiOptions:
 def get() -> ApiOptions:
     """Return the company's API options, fetching on cache miss (1-hour TTL, per company)."""
     return base.cached_fetch(_key(), _fetch, _STRATEGY)
+
+
+def tracker_actions_for(game_version: str, tracker_type: str) -> list[str]:
+    """Return the actions the API allows for a tracker type in a game version.
+
+    Use this to decide which controls a tracker draws, so the sheet only offers what the API accepts.
+
+    Args:
+        game_version: The game version, such as ``V4`` or ``V5``.
+        tracker_type: The tracker type, one of ``COUNTER``, ``STAINS``, or ``DAMAGE`` (health).
+
+    Returns:
+        A new list of action names, or an empty list when the version or tracker is unknown.
+    """
+    rules = get().characters.tracker_rules.get(game_version, {}).get(tracker_type, {})
+    return list(rules.get("actions", []))
 
 
 def clear() -> None:

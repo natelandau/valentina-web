@@ -25,6 +25,7 @@ from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
 from vweb.routes.character_view.views_inventory import CharacterInventoryTableView
 from vweb.routes.character_view.views_notes import CharacterNotesTableView
+from vweb.routes.character_view.views_trackers import HealthView, TraitTrackerView
 
 if TYPE_CHECKING:
     from vclient.models import Campaign, Character
@@ -294,6 +295,17 @@ bp.add_url_rule(
     methods=["DELETE"],
 )
 
+
+bp.add_url_rule(
+    "/character/<string:character_id>/traits/<string:character_trait_id>/tracker",
+    view_func=TraitTrackerView.as_view("trait_tracker"),
+    methods=["POST"],
+)
+bp.add_url_rule(
+    "/character/<string:character_id>/health",
+    view_func=HealthView.as_view("health"),
+    methods=["POST"],
+)
 
 register_crud_table_routes(
     bp,

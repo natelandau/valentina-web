@@ -97,6 +97,15 @@
   border-radius: var(--radius-box);
 }
 
+/* One tracker cell: tracker squares and the trait circles drawn above them share this
+   width so the two rows line up. */
+@utility track-cell {
+  width: --spacing(7);
+  @variant sm {
+    width: --spacing(5);
+  }
+}
+
 @utility scrollbar-none {
   scrollbar-width: none;
   &::-webkit-scrollbar {

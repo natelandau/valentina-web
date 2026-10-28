@@ -20,6 +20,7 @@ from vweb.lib.api import (
 )
 from vweb.lib.guards import (
     can_edit_character,
+    can_edit_trackers,
     can_edit_traits_free,
     can_grant_experience,
     can_manage_campaign,
@@ -226,6 +227,7 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
     jinja_globals["character_type_label"] = character_type_label
     jinja_globals["user_display_name"] = user_display_name
     jinja_globals["get_options"] = cache.options.get
+    jinja_globals["tracker_actions_for"] = cache.options.tracker_actions_for
     jinja_globals["get_system_health"] = cache.system_status.get
     jinja_globals["MAX_IMAGE_SIZE"] = MAX_IMAGE_SIZE
     jinja_globals["MAX_AVATAR_SIZE"] = MAX_AVATAR_SIZE
@@ -240,6 +242,7 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
     jinja_globals["can_grant_experience"] = can_grant_experience
     jinja_globals["can_edit_traits_free"] = can_edit_traits_free
     jinja_globals["can_edit_character"] = can_edit_character
+    jinja_globals["can_edit_trackers"] = can_edit_trackers
     jinja_globals["is_derived_trait"] = is_derived_trait
     jinja_globals["accepts_specialties"] = accepts_specialties
 

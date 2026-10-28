@@ -11,6 +11,8 @@ from vweb.constants import CACHE_CHARACTER_FULL_SHEET_TTL
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from vclient.models import CharacterFullSheet
 
 _CACHE_CHARACTER_FULL_SHEET_PREFIX: Final[str] = "char_full_sheet:"
@@ -45,7 +47,25 @@ def get(
     )
 
 
+def _variant_keys(character_id: str) -> tuple[str, str]:
+    prefix = f"{_CACHE_CHARACTER_FULL_SHEET_PREFIX}{character_id}"
+    return f"{prefix}:{True}", f"{prefix}:{False}"
+
+
+def update(character_id: str, apply: Callable[[CharacterFullSheet], None]) -> None:
+    """Apply a local change to every cached sheet variant for a character, without fetching.
+
+    Use after an API write that returns the new state, so the next sheet read is served
+    from the cache instead of a full-sheet fetch. Variants that are not cached are skipped.
+
+    Args:
+        character_id: The character whose cached sheets to change.
+        apply: Callable that mutates a sheet in place.
+    """
+    for key in _variant_keys(character_id):
+        base.update_key(key, apply, _STRATEGY)
+
+
 def clear(character_id: str) -> None:
     """Evict both sheet variants (with and without available traits) for a character."""
-    prefix = f"{_CACHE_CHARACTER_FULL_SHEET_PREFIX}{character_id}"
-    base.clear_key(f"{prefix}:{True}", f"{prefix}:{False}")
+    base.clear_key(*_variant_keys(character_id))

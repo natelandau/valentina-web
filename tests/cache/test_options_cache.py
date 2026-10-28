@@ -17,6 +17,7 @@ from vweb.lib.cache.options import (
     _parse_options,
     clear,
     get,
+    tracker_actions_for,
 )
 
 if TYPE_CHECKING:
@@ -113,6 +114,26 @@ class TestParseOptions:
         # _related is not a field on CharacterOptions, so it's silently skipped
         assert not hasattr(result.characters, "_related")
 
+    def test_parse_options_reads_tracker_rules(self) -> None:
+        """Verify TrackerRules round-trips into the tracker_rules field."""
+        tracker_rules = {
+            "V4": {
+                "COUNTER": {"actions": ["spend", "gain", "reset"]},
+                "DAMAGE": {"actions": ["damage", "heal", "reset"]},
+            },
+        }
+        raw = {"characters": {"TrackerRules": tracker_rules}}
+
+        result = _parse_options(raw)
+
+        assert result.characters.tracker_rules == tracker_rules
+
+    def test_null_tracker_rules_parse_as_empty(self) -> None:
+        """Verify a null TrackerRules value parses as an empty mapping."""
+        result = _parse_options({"characters": {"TrackerRules": None}})
+
+        assert result.characters.tracker_rules == {}
+
     def test_handles_empty_response(self) -> None:
         """Verify _parse_options handles an empty dict gracefully."""
         result = _parse_options({})
@@ -200,3 +221,39 @@ class TestClear:
             assert len(second.characters.character_class) == 1
 
         assert mock_options_svc.get_options.call_count == 2
+
+
+class TestTrackerActionsFor:
+    """Tests for tracker_actions_for()."""
+
+    def test_returns_actions_for_known_type(
+        self, app: Flask, mock_cache_store: dict, mock_options_svc: MagicMock
+    ) -> None:
+        """Verify the actions come from the cached tracker rules."""
+        mock_options_svc.get_options.return_value = {
+            "characters": {
+                "TrackerRules": {"V4": {"DAMAGE": {"actions": ["damage", "heal", "reset"]}}},
+            },
+        }
+
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            result = tracker_actions_for("V4", "DAMAGE")
+
+        assert result == ["damage", "heal", "reset"]
+
+    def test_unknown_type_or_version_is_empty(
+        self, app: Flask, mock_cache_store: dict, mock_options_svc: MagicMock
+    ) -> None:
+        """Verify an unknown tracker type or game version yields an empty list."""
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            unknown_type = tracker_actions_for("V5", "NOT_A_TRACKER")
+            unknown_version = tracker_actions_for("V9", "DAMAGE")
+
+        assert unknown_type == []
+        assert unknown_version == []
