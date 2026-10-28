@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flask import Response
+from flask import Response, make_response
 from markupsafe import Markup
 
 from vweb.lib.catalog import catalog
@@ -46,3 +46,16 @@ def htmx_response_with_flash(content: str) -> Markup:
     """
     flash_html = catalog.render("shared.layout.FlashMessage", oob=True)
     return htmx_response(content, flash_html)
+
+
+def htmx_flash_only() -> Response:
+    """Return only the OOB flash container and tell htmx to leave its target unchanged.
+
+    Use when an HTMX endpoint has flashed a message but has no content to swap in.
+
+    Returns:
+        A Flask Response carrying the flash container and an ``HX-Reswap: none`` header.
+    """
+    response = make_response(htmx_response_with_flash(""))
+    response.headers["HX-Reswap"] = "none"
+    return response

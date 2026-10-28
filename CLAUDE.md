@@ -54,7 +54,7 @@ Character routes split into `character_view`, `character_trait_edit` (spend type
 
 - **VClient:** `SyncVClient` is created in `create_app()` with a default `company_id`. Just call `sync_*` service factories — `sync_companies_service().list_all()`. For model shapes, service methods, exceptions, and testing helpers, use the `vclient-guide` skill; if it is not installed, read it live at https://github.com/natelandau/valentina-python-client/tree/main/vclient-guide-skill.
 - **Data access:** `lib/api.get_character_and_campaign(character_id)` (reads `g.global_context`, no API call). Campaigns via `g.global_context.campaigns`. Requesting user via `g.requesting_user`.
-- **Permission guards (`lib/guards.py`):** `is_admin`, `is_storyteller`, `is_self`, `can_manage_campaign`, `can_grant_experience`, `can_edit_traits_free`, `can_edit_character`, etc. **Never inline `g.requesting_user.role in (...)` or ownership checks — always call a guard** (Python and templates). Don't pass a guard result as a prop if the child already has the parent object in scope. New check? Add to `lib/guards.py`, register in `app.py`'s `jinja_globals`, test in `tests/test_guards.py`.
+- **Permission guards (`lib/guards.py`):** `is_admin`, `is_storyteller`, `is_self`, `can_manage_campaign`, `can_grant_experience`, `can_edit_traits_free`, `can_edit_character`, `can_edit_trackers`, etc. **Never inline `g.requesting_user.role in (...)` or ownership checks — always call a guard** (Python and templates). Don't pass a guard result as a prop if the child already has the parent object in scope. New check? Add to `lib/guards.py`, register in `lib/jinja.py`'s `jinja_globals`, test in `tests/lib/test_guards.py`.
 - **Trait rules (`lib/trait_rules.py`):** `is_derived_trait` (V5 Willpower is read-only) and `accepts_specialties` (abilities at 1+ dots). Registered as Jinja globals in `lib/jinja.py`. Call these instead of comparing trait names or sections inline.
 
 ### Caching
@@ -66,10 +66,11 @@ Character routes split into `character_view`, `character_trait_edit` (spend type
 - `cache.statistics.get(scope_type, scope_id)` — roll statistics (30s TTL)
 - `cache.campaign_content.books(campaign_id)` / `cache.campaign_content.chapters(campaign_id, book_id)` — book/chapter lists
 - `cache.global_context.load(company_id, user_id)` — per-user global context; `cache.global_context.clear_current()` (session-scoped) to invalidate after local mutations, or `clear(company_id, user_id)` when ids come from elsewhere (e.g. auth flows)
+- `cache.character_sheet.update(character_id, apply)` — change the cached full sheet in place when an API write returns the new state (tracker and health taps), instead of clearing it and refetching
 
 All domains are built on `cache.base.cached_fetch(key, fetch, strategy)`, which provides single-flight (thundering-herd) protection by default. Freshness strategies: `PureTTL` (pure TTL expiry), `ShortTTL` (same as PureTTL, intent-named for low-TTL eventually-consistent caches), `TimestampValidated` (TTL + external timestamp check for the global context).
 
-**Jinja globals still exist for templates:** `get_options()` (`get_options().characters.character_class`), `get_all_traits()`, `get_system_health()`, `get_all_terms()` — their dict keys are unchanged. Python code calls `cache.<domain>...` directly.
+**Jinja globals still exist for templates:** `get_options()` (`get_options().characters.character_class`), `get_all_traits()`, `get_system_health()`, `get_all_terms()`, `tracker_actions_for(game_version, tracker_type)` — their dict keys are unchanged. Python code calls `cache.<domain>...` directly.
 
 **`GlobalContext` gotcha:** `characters_by_campaign` and `characters` contain ALL characters including other players'. **Routes must filter before rendering.** The `inject_global_context` before_request hook populates `g.global_context` and resolves `g.requesting_user` from `session["user_id"]`. After local mutations, call `cache.global_context.clear_current()` to invalidate the cached context.
 
@@ -95,7 +96,7 @@ The inner `<name>/` provides the JinjaX namespace.
 
 ### HTMX OOB + Flash
 
-Flask `flash()` messages render inside `<div id="flash-messages">` via `<shared.layout.FlashMessage />`. HTMX partial swaps lose flashes silently — **any HTMX endpoint calling `flash()` must also OOB-swap the flash container**. Use `htmx_response_with_flash(content)` from `vweb.lib.htmx` (or `htmx_response(content, *oob)` when you need to compose additional OOB swaps); OOB-capable components accept `oob: bool = False`:
+Flask `flash()` messages render inside `<div id="flash-messages">` via `<shared.layout.FlashMessage />`. HTMX partial swaps lose flashes silently — **any HTMX endpoint calling `flash()` must also OOB-swap the flash container**. Use `htmx_response_with_flash(content)` from `vweb.lib.htmx` (or `htmx_response(content, *oob)` when you need to compose additional OOB swaps); When an endpoint flashes but has nothing to swap in, return `htmx_flash_only()`, which sends only the flash container with `HX-Reswap: none`. OOB-capable components accept `oob: bool = False`:
 
 ```python
 return htmx_response_with_flash(content)

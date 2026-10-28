@@ -147,3 +147,14 @@ def can_edit_character(character: Character) -> bool:
         return False
 
     return is_self(character.user_player_id)
+
+
+def can_edit_trackers(character: Character) -> bool:
+    """Check whether the user may change trackers on ``character``.
+
+    Storytellers and admins may edit any character's trackers. Otherwise only
+    the owner may. Unlike ``can_edit_character``, the company's NPC setting and
+    the character type are ignored, because the API's tracker endpoints allow
+    only the owner or a storyteller regardless of those.
+    """
+    return is_storyteller() or is_self(character.user_player_id)

@@ -1,4 +1,4 @@
-"""Tests for services/character_profile.py."""
+"""Tests for routes/character_create/profile_form.py."""
 
 from __future__ import annotations
 

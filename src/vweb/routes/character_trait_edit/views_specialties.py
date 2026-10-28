@@ -11,6 +11,7 @@ from vclient import sync_character_traits_service
 from vweb.lib import cache
 from vweb.lib.api import get_character_and_campaign
 from vweb.lib.catalog import catalog
+from vweb.lib.character_profile import TRAIT_API_ERRORS, find_character_trait
 from vweb.lib.guards import can_edit_character, can_edit_traits_free
 from vweb.lib.htmx import hx_redirect
 from vweb.lib.trait_rules import accepts_specialties
@@ -18,8 +19,6 @@ from vweb.routes.character_trait_edit.services import (
     SPECIALTY_COST,
     SPECIALTY_NAME_MAX_LENGTH,
     SPECIALTY_NAME_MIN_LENGTH,
-    TRAIT_API_ERRORS,
-    find_character_trait,
     humanize_spend_type,
     specialty_add_label,
     specialty_cost,

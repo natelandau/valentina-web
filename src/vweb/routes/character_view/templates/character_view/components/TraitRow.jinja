@@ -1,0 +1,31 @@
+{#def
+    character: Character,
+    character_trait: CharacterTrait,
+    dictionary_terms: list = [],
+    indent: bool = False,
+    show_dots: bool = True,
+#}
+<tr>
+  <td class="text-lg align-top" {% if character_trait.tracker %}colspan="2"{% endif %}>
+    {% if indent %}
+      <span class="pl-4">
+        <character_view.components.TermTooltip name={{ character_trait.trait.name }} dictionary_terms={{ dictionary_terms }} />
+      </span>
+    {% else %}
+      <character_view.components.TermTooltip name={{ character_trait.trait.name }} dictionary_terms={{ dictionary_terms }} />
+    {% endif %}
+    {% if character_trait.specialties %}
+      <div class="trait-specialties {% if indent %}pl-4 {% endif %}text-sm text-base-content/60 font-normal">{{ character_trait.specialties | map(attribute="name") | join(", ") }}</div>
+    {% endif %}
+  </td>
+  {% if not character_trait.tracker %}
+    <td class="text-right text-bold whitespace-nowrap align-top">
+      {% if show_dots %}
+        <shared.character.DotRating num={{ character_trait.value }} maximum={{ character_trait.trait.max_value }} />
+      {% endif %}
+    </td>
+  {% endif %}
+</tr>
+{% if character_trait.tracker %}
+  <character_view.components.TrackerRow character={{ character }} character_trait={{ character_trait }} show_dots={{ show_dots }} />
+{% endif %}

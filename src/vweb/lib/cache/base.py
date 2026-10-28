@@ -199,6 +199,33 @@ def cached_fetch[T](key: str, fetch: Callable[[], T], strategy: Strategy) -> T:
     return single_flight(key, rebuild)
 
 
+def update_key[T](key: str, apply: Callable[[T], None], strategy: Strategy) -> None:
+    """Change a cached value in place without fetching, so a local write keeps the cache warm.
+
+    Runs under the key's single-flight lock so a concurrent rebuild in this process cannot
+    overwrite the change with a value fetched before it. The lock is per process, so two
+    workers updating the same key at once can still lose one write until the TTL expires.
+    The write restarts the key's TTL.
+
+    Args:
+        key: The fully-qualified cache key.
+        apply: Callable that mutates the cached value. It receives the value as loaded
+            from the cache backend.
+        strategy: Freshness policy the key was stored with. A missing or stale entry is
+            left alone.
+    """
+
+    def rewrite() -> None:
+        cached = cache.get(key)
+        if cached is None or not strategy.is_fresh(cached):
+            return
+        value: T = strategy.unwrap(cached)  # ty:ignore[invalid-assignment]
+        apply(value)
+        cache.set(key, strategy.wrap(value), timeout=strategy.ttl)
+
+    single_flight(key, rewrite)
+
+
 def clear_key(*keys: str) -> None:
     """Delete one or more cache keys, forcing a fresh fetch on next access."""
     for key in keys:

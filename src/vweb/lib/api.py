@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
+import httpx2
 from flask import abort, g, session
 from vclient.exceptions import APIError
 
@@ -13,6 +14,9 @@ if TYPE_CHECKING:
     from vclient.models import CampaignBook, CampaignChapter, Character
     from vclient.models.campaigns import Campaign
     from vclient.models.users import CampaignExperience
+
+# vclient raises httpx2 connection and timeout errors as-is once its retries run out.
+API_UNAVAILABLE_ERRORS: Final = (httpx2.HTTPError, APIError)
 
 
 def count_notes(service: Any, parent_id: str) -> int:

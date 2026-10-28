@@ -1,0 +1,12 @@
+{#def
+    id: str,
+#}
+{# A stable wrapper that htmx swaps into, so queued requests survive each redraw of its contents. #}
+<div id="{{ id }}"
+     data-tracker-slot
+     x-data
+     hx-target="this"
+     hx-swap="innerHTML"
+     hx-sync="this:queue all">
+  {{ content }}
+</div>

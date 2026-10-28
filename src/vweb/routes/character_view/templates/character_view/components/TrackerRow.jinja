@@ -1,0 +1,18 @@
+{#def
+    character: Character,
+    character_trait: CharacterTrait,
+    show_dots: bool = True,
+#}
+{# Circles and squares share a full-width row under the trait name so neither crowds the name on phones, and equal cell widths stack them in line. #}
+<tr>
+  <td colspan="2" class="align-top">
+    <div class="flex flex-col items-end gap-1">
+      {% if show_dots %}
+        <shared.character.DotRating num={{ character_trait.value }} maximum={{ character_trait.trait.max_value }} fixed_cells={{ true }} />
+      {% endif %}
+      <character_view.components.TrackerSlot id={{ "tracker-" ~ character_trait.id }}>
+        <character_view.partials.TraitTracker character={{ character }} character_trait={{ character_trait }} />
+      </character_view.components.TrackerSlot>
+    </div>
+  </td>
+</tr>
