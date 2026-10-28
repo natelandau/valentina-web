@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 from vweb.config import Settings, get_settings
-from vweb.constants import STATIC_PATH, TEMPLATES_PATH
+from vweb.constants import MAX_REQUEST_BODY_BYTES, STATIC_PATH, TEMPLATES_PATH
 from vweb.extensions import cache, csrf
 from vweb.lib.catalog import catalog
 from vweb.lib.errors import register_error_handlers
@@ -36,10 +36,14 @@ class _RealIPMiddleware:
        extracted by skipping ``trusted_proxy_depth`` entries from the right.
     3. Raw ``REMOTE_ADDR`` — unchanged socket peer address as a final fallback.
 
-    ``X-Forwarded-Proto`` and ``X-Forwarded-Host`` are also forwarded so Flask
-    generates correct URLs behind TLS-terminating proxies.  These headers are
-    trusted unconditionally (first value wins) — deploy behind at least one
-    proxy that sets them, or strip them at the edge to prevent spoofing.
+    ``X-Forwarded-Proto`` sets the request scheme so Flask detects HTTPS behind a
+    TLS-terminating proxy. Only the rightmost entry is used, the one set by the proxy
+    nearest the app, so a client-prepended value never wins. Proxies usually overwrite
+    this header with a single value, so its length says nothing about proxy depth.
+
+    ``X-Forwarded-Host`` is ignored: the proxies in front of the app pass the original
+    ``Host`` through, and trusting a client-supplied host would let it rewrite absolute
+    URLs such as OAuth redirect URIs.
 
     Args:
         app: The inner WSGI application.
@@ -56,15 +60,9 @@ class _RealIPMiddleware:
         if real_ip:
             environ["REMOTE_ADDR"] = real_ip
 
-        # Trust the first X-Forwarded-Proto/Host value so Flask generates
-        # correct URLs and detects HTTPS behind reverse proxies.
-        proto = environ.get("HTTP_X_FORWARDED_PROTO")
+        proto = environ.get("HTTP_X_FORWARDED_PROTO", "").rsplit(",", 1)[-1].strip()
         if proto:
-            environ["wsgi.url_scheme"] = proto.split(",")[0].strip()
-
-        host = environ.get("HTTP_X_FORWARDED_HOST")
-        if host:
-            environ["HTTP_HOST"] = host.split(",")[0].strip()
+            environ["wsgi.url_scheme"] = proto
 
         return self._app(environ, start_response)
 
@@ -107,6 +105,10 @@ def _configure_cache_and_session(app: Flask, settings: Settings) -> None:
     # overwrite each other's login
     if settings.env == "development":
         app.config["SESSION_COOKIE_NAME"] = f"session_{settings.port}"
+    elif settings.force_https:
+        # Browsers only accept a __Host- cookie that is Secure, host-only, and Path=/,
+        # so a sibling subdomain cannot set or overwrite the session.
+        app.config["SESSION_COOKIE_NAME"] = "__Host-session"
 
     if settings.redis.url:
         import redis
@@ -144,6 +146,7 @@ def create_app(settings_override: Settings | None = None) -> Flask:
 
     app.secret_key = settings.secret_key
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+    app.config["MAX_CONTENT_LENGTH"] = MAX_REQUEST_BODY_BYTES
     app.config["SETTINGS"] = settings
     csrf.init_app(app)
     _configure_cache_and_session(app, settings)

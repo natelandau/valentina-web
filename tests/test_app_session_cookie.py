@@ -39,3 +39,23 @@ def test_production_session_cookie_keeps_default_name(test_settings: Settings) -
 
     # Then the session cookie keeps the default name
     assert app.config["SESSION_COOKIE_NAME"] == "session"
+
+
+def test_https_production_session_cookie_uses_host_prefix(test_settings: Settings) -> None:
+    """Verify HTTPS production names the cookie with the __Host- prefix."""
+    # Given production settings served over HTTPS
+    settings = test_settings.model_copy(
+        update={
+            "env": "production",
+            "force_https": True,
+            "redis": RedisSettings(url="redis://127.0.0.1:6380/0"),
+        }
+    )
+
+    # When the app is built
+    app = create_app(settings_override=settings)
+
+    # Then browsers only accept the cookie as Secure, host-only, and Path=/
+    assert app.config["SESSION_COOKIE_NAME"] == "__Host-session"
+    assert app.config.get("SESSION_COOKIE_DOMAIN") in (None, False)
+    assert app.config["SESSION_COOKIE_PATH"] in (None, "/")
