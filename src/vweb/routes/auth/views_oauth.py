@@ -75,6 +75,41 @@ def flash_identify_error(exc: APIError, provider: str) -> None:
         )
 
 
+def _verify_login_results(
+    results: list[UserLookupResult],
+    *,
+    provider: IdentityProvider,
+    credential: str,
+) -> list[UserLookupResult] | Response:
+    """Server-verify the credential and rebind each lookup result to the verified user.
+
+    The lookup may have matched by an unverified email, so session identity must come
+    from the user the API resolved the verified credential to. Token-level failures and
+    a credential verified in no matched company both abort the login.
+
+    Returns the verified results, or a redirect Response when login must stop.
+    """
+    try:
+        resolutions = identify_in_companies(
+            [r.company_id for r in results],
+            provider=provider,
+            token=credential,
+        )
+    except (UnprocessableEntityError, ServerError) as exc:
+        flash_identify_error(exc, provider)
+        return redirect(url_for("index.index"))
+
+    verified = [
+        r.model_copy(update={"user_id": resolution.user.id, "role": resolution.user.role})
+        for r in results
+        if (resolution := resolutions.get(r.company_id)) is not None
+    ]
+    if not verified:
+        flash(f"Your {provider.title()} login could not be verified. Please try again.", "error")
+        return redirect(url_for("index.index"))
+    return verified
+
+
 def _handle_login_result(
     results: list[UserLookupResult],
     *,
@@ -97,18 +132,10 @@ def _handle_login_result(
         }
         return redirect(url_for("auth.select_companies"))
 
-    # Server-verify the credential and refresh/auto-link the identity in every
-    # company the user belongs to. Token-level failures abort the login;
-    # per-company failures are logged inside the helper and login proceeds.
-    try:
-        identify_in_companies(
-            [r.company_id for r in results],
-            provider=provider,
-            token=credential,
-        )
-    except (UnprocessableEntityError, ServerError) as exc:
-        flash_identify_error(exc, provider)
-        return redirect(url_for("index.index"))
+    verified = _verify_login_results(results, provider=provider, credential=credential)
+    if isinstance(verified, Response):
+        return verified
+    results = verified
 
     companies = build_companies_mapping(results)
     approved = {cid: data for cid, data in companies.items() if data["role"] != "UNAPPROVED"}
@@ -169,11 +196,12 @@ class DiscordCallbackView(MethodView):
 
         resp = oauth.discord.get("users/@me", token=token)
         discord_data = resp.json()
+        email = (discord_data.get("email") or "") if discord_data.get("verified") else ""
 
         result = _safe_lookup(
             provider="discord",
             provider_id=discord_data.get("id", ""),
-            email=discord_data.get("email", ""),
+            email=email,
         )
         if isinstance(result, Response):
             return result
@@ -183,7 +211,7 @@ class DiscordCallbackView(MethodView):
             provider="discord",
             credential=token["access_token"],
             username=discord_data.get("username"),
-            email=discord_data.get("email"),
+            email=email or None,
         )
 
 
@@ -272,11 +300,12 @@ class GoogleCallbackView(MethodView):
             return handle_link("google", token["id_token"])
 
         google_data = token["userinfo"]
+        email = (google_data.get("email") or "") if google_data.get("email_verified") else ""
 
         result = _safe_lookup(
             provider="google",
             provider_id=google_data.get("sub", ""),
-            email=google_data.get("email", ""),
+            email=email,
         )
         if isinstance(result, Response):
             return result
@@ -287,7 +316,7 @@ class GoogleCallbackView(MethodView):
             # Use the OIDC ID token so the API can verify the credential with Google
             credential=token["id_token"],
             username=google_data.get("name"),
-            email=google_data.get("email"),
+            email=email or None,
         )
 
 
