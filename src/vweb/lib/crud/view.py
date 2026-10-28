@@ -242,11 +242,15 @@ class CrudTableView(MethodView):
             item_id is not None and "/form/" in request.path
         )
 
+        can_mutate = self._handler_allows_mutation(handler)
         if is_form:
+            if not can_mutate:
+                abort(403)
             item = handler.get_item(item_id) if item_id else None
             return self._render_form(item=item)
 
-        editable = request.args.get("editable", "true").lower() == "true"
+        # The query flag only lets a parent hide controls; it never grants them.
+        editable = can_mutate and request.args.get("editable", "true").lower() == "true"
         items = handler.list_items()
         sorted_items, sort_field, sort_dir = self._sort_items(items)
         return self._render_table(sorted_items, sort_field, sort_dir, editable=editable)

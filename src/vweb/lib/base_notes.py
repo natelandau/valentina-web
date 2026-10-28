@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from vweb.lib.guards import can_manage_campaign
+
 if TYPE_CHECKING:
     from vclient.models import Note
 
@@ -18,6 +20,14 @@ class BaseNotesHandler:
 
     _parent_id: str
     _svc: Any
+
+    def can_mutate(self) -> bool:
+        """Restrict create/update/delete to users allowed to manage campaign content.
+
+        Campaign, book, and chapter notes inherit this; handlers whose notes belong
+        to a different resource (characters) override it with that resource's guard.
+        """
+        return can_manage_campaign()
 
     def list_items(self) -> list[Note]:
         """Fetch all notes for the parent resource."""

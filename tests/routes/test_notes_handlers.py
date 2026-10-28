@@ -7,10 +7,12 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.testing import CharacterFactory, NoteFactory
+from vclient.testing import CampaignFactory, CharacterFactory, NoteFactory
 
-from tests.helpers import seed_session
+from tests.conftest import get_csrf
+from tests.helpers import build_global_context, seed_session
 from vweb.routes.book.handlers import BookNotesHandler
+from vweb.routes.campaign_notes.handlers import CampaignNotesHandler
 from vweb.routes.chapter.handlers import ChapterNotesHandler
 from vweb.routes.character_view.handlers_notes import CharacterNotesHandler
 
@@ -314,3 +316,123 @@ class TestCharacterNotesHandlerInit:
             # When/Then constructing with an unknown character ID raises ValueError
             with pytest.raises(ValueError, match="Character not found"):
                 CharacterNotesHandler("nonexistent-id")
+
+
+CAMPAIGN_CONTENT_HANDLERS: dict[str, tuple[type, str, dict[str, str]]] = {
+    "campaign": (
+        CampaignNotesHandler,
+        "vweb.routes.campaign_notes.handlers.sync_campaigns_service",
+        {},
+    ),
+    "book": (
+        BookNotesHandler,
+        "vweb.routes.book.handlers.sync_books_service",
+        {"campaign_id": "camp-456"},
+    ),
+    "chapter": (
+        ChapterNotesHandler,
+        "vweb.routes.chapter.handlers.sync_chapters_service",
+        {"campaign_id": "camp-456", "book_id": "book-789"},
+    ),
+}
+
+
+class TestCampaignContentNotesMutationGuard:
+    """Tests for the can_manage_campaign mutation guard on campaign, book, and chapter notes."""
+
+    @pytest.mark.parametrize("handler_name", sorted(CAMPAIGN_CONTENT_HANDLERS))
+    @pytest.mark.parametrize(
+        ("role", "expected"), [("PLAYER", False), ("STORYTELLER", True), ("ADMIN", True)]
+    )
+    def test_can_mutate_follows_can_manage_campaign(
+        self, app, mocker: MockerFixture, handler_name, role, expected
+    ) -> None:
+        """Verify note writes require campaign-management permission."""
+        # Given a user of the given role in a company that restricts campaign management
+        handler_class, service_path, kwargs = CAMPAIGN_CONTENT_HANDLERS[handler_name]
+        mocker.patch(service_path, return_value=MagicMock())
+        context = build_global_context(user_role=role)
+        assert context.company.settings.permission_manage_campaign == "STORYTELLER"
+
+        with app.test_request_context():
+            from flask import g
+
+            seed_session()
+            g.global_context = context
+            g.requesting_user = context.users[0]
+            handler = handler_class("parent-123", **kwargs)
+
+            # When / Then
+            assert handler.can_mutate() is expected
+
+
+class TestCampaignNotesRouteGuard:
+    """Tests for campaign notes write routes when the user cannot manage campaigns."""
+
+    @pytest.mark.parametrize(
+        ("method", "path"),
+        [
+            ("post", "/campaign/camp-1/notes/items"),
+            ("post", "/campaign/camp-1/notes/items/note-1"),
+            ("delete", "/campaign/camp-1/notes/items/note-1"),
+        ],
+    )
+    def test_player_write_is_forbidden(self, client, mocker: MockerFixture, method, path) -> None:
+        """Verify a player cannot create, update, or delete campaign notes."""
+        # Given a player in a company that restricts campaign management
+        campaign = CampaignFactory.build(id="camp-1")
+        context = build_global_context(user_role="PLAYER", campaign=campaign)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
+        svc = MagicMock()
+        mocker.patch("vweb.routes.campaign_notes.handlers.sync_campaigns_service", return_value=svc)
+
+        # When the player sends the write directly
+        response = getattr(client, method)(
+            path,
+            data={"title": "Note title", "content": "Note content"},
+            headers={"X-CSRFToken": get_csrf(client), "HX-Request": "true"},
+        )
+
+        # Then the request is refused and no note write reaches the API
+        assert response.status_code == 403
+        svc.create_note.assert_not_called()
+        svc.update_note.assert_not_called()
+        svc.delete_note.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "path", ["/campaign/camp-1/notes/items/form", "/campaign/camp-1/notes/items/form/note-1"]
+    )
+    def test_player_form_is_forbidden(self, client, mocker: MockerFixture, path) -> None:
+        """Verify a player cannot load the add or edit note form."""
+        # Given a player in a company that restricts campaign management
+        campaign = CampaignFactory.build(id="camp-1")
+        context = build_global_context(user_role="PLAYER", campaign=campaign)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
+        mocker.patch(
+            "vweb.routes.campaign_notes.handlers.sync_campaigns_service", return_value=MagicMock()
+        )
+
+        # When the player requests the form directly
+        response = client.get(path, headers={"HX-Request": "true"})
+
+        # Then the request is refused
+        assert response.status_code == 403
+
+    def test_player_table_ignores_editable_flag(self, client, mocker: MockerFixture) -> None:
+        """Verify a player gets a read-only table even when the URL asks for an editable one."""
+        # Given a player in a company that restricts campaign management
+        campaign = CampaignFactory.build(id="camp-1")
+        context = build_global_context(user_role="PLAYER", campaign=campaign)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
+        svc = MagicMock()
+        svc.list_all_notes.return_value = [NoteFactory.build(id="note-1")]
+        mocker.patch("vweb.routes.campaign_notes.handlers.sync_campaigns_service", return_value=svc)
+
+        # When the player requests the table with editable=true
+        response = client.get(
+            "/campaign/camp-1/notes/items?editable=true", headers={"HX-Request": "true"}
+        )
+
+        # Then no add or edit form links are rendered
+        assert response.status_code == 200
+        assert "/notes/items/form" not in response.get_data(as_text=True)
