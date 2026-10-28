@@ -82,6 +82,20 @@ class TestValidateTerm:
         )
         assert errors == {}
 
+    @pytest.mark.parametrize(
+        "link",
+        [
+            "javascript://x/%0aalert(1)",
+            "data://x/text",
+            "https://a.example/ x-data x-init=alert(1)",
+            "https://a.example/\tpath",
+        ],
+    )
+    def test_rejects_non_http_scheme_and_whitespace(self, link) -> None:
+        """Verify links must be http(s) URLs without whitespace."""
+        errors = validate_term({"term": "Auspex", "definition": "", "link": link, "synonyms": ""})
+        assert "url" in errors["link"].lower()
+
     def test_empty_link_is_valid(self) -> None:
         """Verify empty link field is accepted."""
         errors = validate_term({"term": "Auspex", "definition": "", "link": "", "synonyms": ""})

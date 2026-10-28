@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from flask import Response, flash, request
 from flask_wtf.csrf import CSRFError
 from loguru import logger
 from werkzeug.exceptions import HTTPException
 
+from vweb.constants import MAX_IMAGE_SIZE
 from vweb.lib.catalog import catalog
+from vweb.lib.htmx import htmx_flash_only
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -57,6 +60,21 @@ def register_error_handlers(app: Flask) -> None:
             title="Forbidden",
             message="You don't have permission to access this resource.",
         ), 403
+
+    @app.errorhandler(413)
+    def payload_too_large(error: HTTPException) -> Response | tuple[str, int]:  # noqa: ARG001
+        # htmx discards 4xx responses, so an oversized HTMX upload needs a 200 flash to
+        # give the user any feedback at all
+        message = f"Upload is too large (max {MAX_IMAGE_SIZE // (1024 * 1024)} MB)."
+        if request.headers.get("HX-Request"):
+            flash(message, "error")
+            return htmx_flash_only()
+        return catalog.render(
+            "errors.ErrorPage",
+            code=413,
+            title="Payload Too Large",
+            message=message,
+        ), 413
 
     @app.errorhandler(500)
     def server_error(error: HTTPException) -> tuple[str, int]:  # noqa: ARG001

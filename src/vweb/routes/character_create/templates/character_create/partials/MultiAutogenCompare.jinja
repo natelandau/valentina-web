@@ -39,7 +39,10 @@
 {# Tab navigation #}
 
 <div class="mx-4 md:mx-6 lg:mx-8"
-     x-data="{ selectedCharId: '{{ characters_data[0].character.id if characters_data else '' }}', selectedCharName: '{{ characters_data[0].character.name_full if characters_data else '' }}' }">
+     {# djlint:off #}
+     x-data='{ selectedCharId: {{ (characters_data[0].character.id if characters_data else "") | tojson }}, selectedCharName: {{ (characters_data[0].character.name_full if characters_data else "") | tojson }} }'
+     {# djlint:on #}
+     >
 
   <div class="tabs tabs-lift lg:tabs-lg">
     {% for item in characters_data %}
@@ -48,7 +51,10 @@
              class="tab"
              aria-label="{{ loop.index }}. {{ item.character.name_full or 'Character ' ~ loop.index }}"
              {% if loop.first %}checked="checked"{% endif %}
-             @change="selectedCharId = '{{ item.character.id }}'; selectedCharName = '{{ item.character.name_full or 'Character ' ~ loop.index }}'" />
+             {# djlint:off #}
+             @change='selectedCharId = {{ item.character.id | tojson }}; selectedCharName = {{ (item.character.name_full or "Character " ~ loop.index) | tojson }}'
+             {# djlint:on #}
+             />
       <div class="tab-content bg-base-100 border-base-300 p-6">
 
         <character_view.partials.SheetContent character={{ item.character }} full_sheet={{ item.full_sheet }} />

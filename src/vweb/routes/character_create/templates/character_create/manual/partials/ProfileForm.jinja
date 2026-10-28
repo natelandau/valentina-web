@@ -34,7 +34,9 @@
           hx-target="{{ target_id }}"
           hx-swap="innerHTML"
           hx-disabled-elt="button[type='submit']"
-          x-data="{ charClass: '{{ form_data.get('character_class', '') }}', gameVersion: '{{ form_data.get('game_version', '') }}' }"
+          {# djlint:off #}
+          x-data='{ charClass: {{ form_data.get("character_class", "") | tojson }}, gameVersion: {{ form_data.get("game_version", "") | tojson }} }'
+          {# djlint:on #}
           x-effect="if (charClass === 'HUNTER') { gameVersion = 'V5' }">
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

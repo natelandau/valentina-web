@@ -8,6 +8,7 @@ from vclient.models import UserLookupResult
 from vclient.testing import CompanyFactory, UserFactory
 
 from tests.conftest import get_csrf
+from tests.helpers import identify_resolving
 
 
 def _make_lookup_result(**kwargs) -> UserLookupResult:
@@ -68,7 +69,10 @@ class TestSingleApprovedUser:
         # Given a single approved lookup result
         result = _make_lookup_result(company_id="c1", user_id="u1", role="PLAYER")
         mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=[result])
-        mocker.patch("vweb.routes.auth.views_oauth.identify_in_companies", return_value={})
+        mocker.patch(
+            "vweb.routes.auth.views_oauth.identify_in_companies",
+            return_value=identify_resolving([result]),
+        )
 
         # When the callback is hit
         response = client.get("/auth/discord/callback")
@@ -93,7 +97,10 @@ class TestSingleUnapprovedUser:
         # Given a single unapproved lookup result
         result = _make_lookup_result(company_id="c1", user_id="u1", role="UNAPPROVED")
         mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=[result])
-        mocker.patch("vweb.routes.auth.views_oauth.identify_in_companies", return_value={})
+        mocker.patch(
+            "vweb.routes.auth.views_oauth.identify_in_companies",
+            return_value=identify_resolving([result]),
+        )
 
         # When the callback is hit
         response = client.get("/auth/discord/callback")
@@ -124,7 +131,10 @@ class TestMultipleCompaniesWithApproved:
             ),
         ]
         mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=results)
-        mocker.patch("vweb.routes.auth.views_oauth.identify_in_companies", return_value={})
+        mocker.patch(
+            "vweb.routes.auth.views_oauth.identify_in_companies",
+            return_value=identify_resolving(results),
+        )
 
         # When the callback is hit
         response = client.get("/auth/discord/callback")
@@ -150,7 +160,10 @@ class TestMultipleCompaniesAllUnapproved:
             _make_lookup_result(company_id="c2", user_id="u2", role="UNAPPROVED"),
         ]
         mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=results)
-        mocker.patch("vweb.routes.auth.views_oauth.identify_in_companies", return_value={})
+        mocker.patch(
+            "vweb.routes.auth.views_oauth.identify_in_companies",
+            return_value=identify_resolving(results),
+        )
 
         # When the callback is hit
         response = client.get("/auth/discord/callback")

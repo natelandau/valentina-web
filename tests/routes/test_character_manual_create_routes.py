@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import json
+import re
+import time
+from html.parser import HTMLParser
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+import pytest
 from vclient.testing import (
     CharacterConceptFactory,
     CharacterFactory,
@@ -14,6 +20,9 @@ from vclient.testing import (
 
 from tests.conftest import get_csrf
 from tests.helpers import assert_shows_error, build_global_context, setup_form_options
+
+if TYPE_CHECKING:
+    from flask.testing import TestResponse
 
 
 def _mock_form_options(mocker) -> None:
@@ -173,6 +182,28 @@ class TestManualProfileView:
         body = response.get_data(as_text=True)
         assert 'value="Ada"' in body
         assert 'value="Lovelace"' in body
+
+    def test_query_values_stay_inside_alpine_string_literals(self, client, mocker) -> None:
+        """Verify quote characters in query values cannot break out of the x-data expression."""
+        # Given a campaign
+        ctx = build_global_context(user_role="PLAYER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        _mock_form_options(mocker)
+        payload = "';alert(1);'\""
+
+        # When a link carries quote characters in the prefilled class and version
+        response = client.get(
+            f"/campaign/{campaign.id}/characters/profile_edit",
+            query_string={"character_class": payload, "game_version": payload},
+        )
+
+        # Then the x-data expression Alpine evaluates holds each value as one string literal
+        x_data = _x_data_containing(response.get_data(as_text=True), "charClass")
+        for key in ("charClass", "gameVersion"):
+            literal = re.search(rf'{key}: ("(?:[^"\\]|\\.)*")', x_data)
+            assert literal is not None
+            assert json.loads(literal.group(1)) == payload
 
     def test_create_post_inline_errors_on_api_rejection(self, client, mocker, fake_vclient) -> None:
         """Verify an API rejection of a submitted character type shows an inline error."""
@@ -469,7 +500,17 @@ class TestManualFinalizeView:
         campaign = ctx.campaigns[0]
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
-        temp_char = CharacterFactory.build(id="new-manual-char", campaign_id=campaign.id)
+        temp_char = CharacterFactory.build(
+            id="new-manual-char",
+            campaign_id=campaign.id,
+            is_temporary=True,
+            user_player_id="test-user-id",
+        )
+        fake_vclient.set_response(
+            Routes.CHARACTERS_GET,
+            model=temp_char,
+            params={"character_id": "new-manual-char"},
+        )
         fake_vclient.set_response(
             Routes.CHARACTER_TRAITS_BULK_ASSIGN,
             model=BulkAssignTraitResponseFactory.build(),
@@ -483,6 +524,7 @@ class TestManualFinalizeView:
 
         with client.session_transaction() as sess:
             sess["temp_character_id"] = "new-manual-char"
+            sess["temp_character_created_at"] = time.time()
 
         csrf = get_csrf(client)
 
@@ -537,7 +579,12 @@ class TestManualFinalizeView:
         campaign = ctx.campaigns[0]
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
-        temp_char = CharacterFactory.build(id="new-manual-char", campaign_id=campaign.id)
+        temp_char = CharacterFactory.build(
+            id="new-manual-char",
+            campaign_id=campaign.id,
+            is_temporary=True,
+            user_player_id="test-user-id",
+        )
         full_sheet = CharacterFullSheetFactory.build(id="new-manual-char")
         fake_vclient.set_error(
             Routes.CHARACTER_TRAITS_BULK_ASSIGN,
@@ -557,6 +604,7 @@ class TestManualFinalizeView:
 
         with client.session_transaction() as sess:
             sess["temp_character_id"] = "new-manual-char"
+            sess["temp_character_created_at"] = time.time()
 
         csrf = get_csrf(client)
 
@@ -577,6 +625,77 @@ class TestManualFinalizeView:
         # Then traits form is re-rendered with error
         assert response.status_code == 200
         assert_shows_error(response)
+
+
+class TestManualFinalizeGuards:
+    """Tests that finalize only assigns free traits to the requester's in-progress character."""
+
+    def _post_finalize(self, client, campaign_id: str) -> TestResponse:
+        return client.post(
+            f"/campaign/{campaign_id}/characters/profile_edit/create",
+            data={"trait:trait-1": "5", "csrf_token": get_csrf(client)},
+            headers={"HX-Request": "true"},
+        )
+
+    @pytest.mark.parametrize(
+        ("is_temporary", "owner", "same_campaign"),
+        [
+            (False, "test-user-id", True),
+            (True, "someone-else", True),
+            (True, "test-user-id", False),
+        ],
+        ids=["already-permanent", "other-owner", "other-campaign"],
+    )
+    def test_refuses_character_that_is_not_the_requesters_temp_character(
+        self, client, mocker, fake_vclient, is_temporary, owner, same_campaign
+    ) -> None:
+        """Verify a stale or foreign temp_character_id cannot receive NO_COST traits."""
+        from vclient.testing import Routes
+
+        # Given a session pointing at a character that is permanent or owned by someone else
+        ctx = build_global_context(user_role="PLAYER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        character = CharacterFactory.build(
+            id="char-1",
+            campaign_id=campaign.id if same_campaign else "other-campaign",
+            is_temporary=is_temporary,
+            user_player_id=owner,
+        )
+        fake_vclient.set_response(
+            Routes.CHARACTERS_GET, model=character, params={"character_id": "char-1"}
+        )
+        assign = mocker.patch("vweb.routes.character_create.manual_views.bulk_assign_traits")
+        with client.session_transaction() as sess:
+            sess["temp_character_id"] = "char-1"
+            sess["temp_character_created_at"] = time.time()
+
+        # When the finalize form is replayed
+        response = self._post_finalize(client, campaign.id)
+
+        # Then no traits are assigned and the stale session is cleared
+        assign.assert_not_called()
+        assert "profile_edit" in response.headers.get("HX-Redirect", "")
+        with client.session_transaction() as sess:
+            assert "temp_character_id" not in sess
+
+    def test_refuses_expired_temp_session(self, client, mocker, fake_vclient) -> None:
+        """Verify a temp session older than the TTL cannot finalize."""
+        # Given a temp session created well past the TTL
+        ctx = build_global_context(user_role="PLAYER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        assign = mocker.patch("vweb.routes.character_create.manual_views.bulk_assign_traits")
+        with client.session_transaction() as sess:
+            sess["temp_character_id"] = "char-1"
+            sess["temp_character_created_at"] = time.time() - 24 * 60 * 60
+
+        # When finalizing
+        response = self._post_finalize(client, campaign.id)
+
+        # Then nothing is assigned
+        assign.assert_not_called()
+        assert "profile_edit" in response.headers.get("HX-Redirect", "")
 
 
 class TestProfileEditMode:
@@ -826,3 +945,16 @@ class TestProfileEditMode:
         assert response.status_code == 200
         assert_shows_error(response)
         char_svc.update.assert_not_called()
+
+
+def _x_data_containing(html: str, needle: str) -> str:
+    """Return the decoded x-data attribute value that mentions ``needle``, as a browser sees it."""
+    found: list[str] = []
+
+    class _Collector(HTMLParser):
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            found.extend(v for k, v in attrs if k == "x-data" and v and needle in v)
+
+    _Collector().feed(html)
+    assert found, f"no x-data attribute containing {needle!r}"
+    return found[0]

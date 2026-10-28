@@ -138,7 +138,7 @@ class TestLinkTermsExternalLink:
             result = link_terms("The Camarilla rules the city.", "html")
 
         # Then the external link is used
-        assert "href='https://example.com/camarilla'" in result
+        assert 'href="https://example.com/camarilla"' in result
         assert "link link-primary" in result
 
     def test_definition_takes_priority_over_link(self, app, set_terms) -> None:
@@ -257,6 +257,82 @@ class TestLinkTermsAutoescapeSafety:
 
         # Then the quote cannot terminate the href attribute
         assert "x' onmouseover=" not in result
+
+    def test_synonym_inside_own_link_cannot_add_attributes(self, app, set_terms) -> None:
+        """Verify a synonym that appears in the term's own link is not re-linked inside the href."""
+        # Given a link-only term whose link contains its own synonym followed by attribute text
+        term = DictionaryTermFactory.build(
+            term="Aaaa",
+            synonyms=["Qqqq"],
+            definition=None,
+            link="https://a.example/?a,Qqqq,/x-data/x-init=alert(1)//",
+        )
+        set_terms([term])
+
+        # When the filter processes text containing the term name
+        with app.test_request_context():
+            result = link_terms("See Aaaa here.", "html")
+
+        # Then the browser sees one anchor whose only attributes are href and class
+        anchors = _parse_start_tags(result, "a")
+        assert len(anchors) == 1
+        assert {name for name, _ in anchors[0]} == {"href", "class"}
+
+    def test_text_inside_existing_anchor_is_not_relinked(self, app, set_terms) -> None:
+        """Verify terms are only linked in text outside existing anchors."""
+        # Given a term with a definition and input that already links the term
+        term = DictionaryTermFactory.build(term="Celerity", definition="Speed.")
+        set_terms([term])
+
+        # When the filter processes markup containing an anchor around the term
+        with app.test_request_context():
+            result = link_terms(Markup('<a href="/x">Celerity</a> and Celerity'), "html")
+
+        # Then only the bare occurrence gains a new anchor
+        assert len(_parse_start_tags(result, "a")) == 2
+
+    def test_stored_non_http_link_is_not_rendered(self, app, set_terms) -> None:
+        """Verify a link stored by another API client is only rendered when it is http(s)."""
+        # Given a link-only term whose stored link uses a script scheme
+        term = DictionaryTermFactory.build(
+            term="Camarilla", definition=None, link="javascript:alert(1)"
+        )
+        set_terms([term])
+
+        # When the filter processes text containing the term
+        with app.test_request_context():
+            result = link_terms("The Camarilla rules.", "html")
+
+        # Then no anchor is created
+        assert _parse_start_tags(result, "a") == []
+
+    def test_term_matching_entity_text_leaves_entity_intact(self, app, set_terms) -> None:
+        """Verify a term spelled like an HTML entity name is not linked inside the entity."""
+        # Given a term named like the entity produced by escaping "&"
+        term = DictionaryTermFactory.build(term="amp", definition="Amplify.")
+        set_terms([term])
+
+        # When the filter processes text containing an ampersand
+        with app.test_request_context():
+            result = link_terms("R&D", "html")
+
+        # Then the escaped ampersand survives untouched
+        assert str(result) == "R&amp;D"
+
+
+def _parse_start_tags(html: str, tag: str) -> list[list[tuple[str, str | None]]]:
+    """Return the attribute lists of every start tag named ``tag``, as a browser parser sees them."""
+    from html.parser import HTMLParser
+
+    found: list[list[tuple[str, str | None]]] = []
+
+    class _Collector(HTMLParser):
+        def handle_starttag(self, name: str, attrs: list[tuple[str, str | None]]) -> None:
+            if name == tag:
+                found.append(attrs)
+
+    _Collector().feed(str(html))
+    return found
 
 
 class TestLinkTermsMarkdown:

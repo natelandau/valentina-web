@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from flask import session
+from vclient.models import IdentityResolution
 from vclient.testing import CampaignFactory, CompanyFactory, SystemHealthFactory, UserFactory
 
 from vweb.lib.cache.global_context import GlobalContext
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
         Character,
         Company,
         User,
+        UserLookupResult,
     )
 
 
@@ -280,3 +282,18 @@ def setup_form_options(mocker: MockerFixture, module_path: str, **overrides: obj
     }
     defaults.update(overrides)
     return mocker.patch(module_path, return_value=defaults)
+
+
+def identify_resolving(results: list[UserLookupResult]) -> dict[str, IdentityResolution]:
+    """Build identify() resolutions that confirm each lookup result's user, keyed by company.
+
+    Use when a login test should succeed: the OAuth callback binds the session to
+    the user identify() resolved, so an empty mapping now means a failed login.
+    """
+    return {
+        r.company_id: IdentityResolution(
+            resolution="matched",
+            user=UserFactory.build(id=r.user_id, role=r.role, company_id=r.company_id),
+        )
+        for r in results
+    }

@@ -13,7 +13,7 @@ from vweb.lib import cache
 from vweb.lib.api import fetch_campaign_or_404
 from vweb.lib.catalog import catalog
 from vweb.lib.guards import can_edit_character
-from vweb.lib.htmx import hx_redirect
+from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
 from vweb.routes.character_create import bp
 from vweb.routes.character_create.autogen_services import fetch_form_options
 from vweb.routes.character_create.manual_services import (
@@ -22,6 +22,7 @@ from vweb.routes.character_create.manual_services import (
     character_type_permission_error,
     clear_temp_session,
     fetch_character,
+    finalizable_temp_character,
     load_temp_character_form_data,
     mark_character_permanent,
     save_temp_character,
@@ -285,11 +286,16 @@ class ManualFinalizeView(MethodView):
             HX-Redirect on success, or re-rendered traits form on error.
         """
         campaign = fetch_campaign_or_404(campaign_id)
-        temp_char_id = session.get("temp_character_id")
-
-        if not temp_char_id:
+        try:
+            temp_character = finalizable_temp_character(campaign_id)
+        except APIError as exc:
+            logger.exception("Failed to load the character being finalized")
+            flash(str(exc), "error")
+            return hx_redirect(url_for("character_create.manual_profile", campaign_id=campaign_id))
+        if temp_character is None:
             flash("No character in progress.", "error")
             return hx_redirect(url_for("character_create.manual_profile", campaign_id=campaign_id))
+        temp_char_id = temp_character.id
 
         trait_items = build_trait_items(request.form)
 
@@ -303,20 +309,21 @@ class ManualFinalizeView(MethodView):
             logger.exception("Failed to finalize character")
             flash(str(exc), "error")
 
-            character = fetch_character(temp_char_id)
             full_sheet = cache.character_sheet.get(
-                character.id, g.requesting_user.id, include_available_traits=True
+                temp_char_id, g.requesting_user.id, include_available_traits=True
             )
             back_url = url_for(
                 "character_create.manual_profile", campaign_id=campaign_id, resume="1"
             )
 
-            return catalog.render(
-                "character_create.manual.partials.TraitsForm",
-                campaign=campaign,
-                full_sheet=full_sheet,
-                back_url=back_url,
-                errors=[str(exc)],
+            return htmx_response_with_flash(
+                catalog.render(
+                    "character_create.manual.partials.TraitsForm",
+                    campaign=campaign,
+                    full_sheet=full_sheet,
+                    back_url=back_url,
+                    errors=[str(exc)],
+                )
             )
 
         clear_temp_session()
