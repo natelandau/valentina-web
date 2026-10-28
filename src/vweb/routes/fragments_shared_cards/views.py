@@ -19,6 +19,7 @@ from vweb.lib.api import (
     get_characters_for_campaign,
 )
 from vweb.lib.catalog import catalog
+from vweb.lib.guards import is_admin, is_storyteller
 from vweb.routes.fragments_shared_cards.audit_log import (
     ENTITY_TYPES,
     get_audit_log_page,
@@ -106,8 +107,9 @@ bp.add_url_rule(
 class AuditLogCardView(MethodView):
     """Lazy audit log card with server-side Prev/Next pagination.
 
-    Trusts the caller — the parent template decides where to render the card.
-    The vclient API still enforces company-scoped authorization.
+    The audit log is fetched with the app's own API key, so this view is the only
+    authorization: admins see the whole company, storytellers only a campaign in
+    their context, and players nothing.
     """
 
     def get(self) -> str:
@@ -131,6 +133,10 @@ class AuditLogCardView(MethodView):
             "date_to",
         )
         filters = {key: request.args.get(key, "") for key in filter_keys}
+        if not is_admin():
+            if not is_storyteller() or not filters["campaign_id"]:
+                abort(403)
+            fetch_campaign_or_404(filters["campaign_id"])
         page_size = request.args.get("page_size", 10, type=int)
         offset = request.args.get("offset", 0, type=int)
         # card_id is interpolated into JS getElementById calls and DOM id attributes in the
