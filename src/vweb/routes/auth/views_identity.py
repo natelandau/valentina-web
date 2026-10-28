@@ -5,12 +5,10 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-import httpx2
 from flask import abort, flash, redirect, session, url_for
 from flask.views import MethodView
 from vclient import sync_users_service
 from vclient.exceptions import (
-    APIError,
     AuthorizationError,
     ConflictError,
     NotFoundError,
@@ -20,6 +18,7 @@ from vclient.exceptions import (
 
 from vweb.extensions import oauth
 from vweb.lib import cache
+from vweb.lib.api import API_UNAVAILABLE_ERRORS
 from vweb.lib.catalog import catalog
 from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
 
@@ -69,7 +68,7 @@ def handle_link(provider: IdentityProvider, credential: str) -> Response:
         else:
             flash(f"Could not verify your {provider.title()} login. Please try again.", "error")
         return redirect(profile_url)
-    except (httpx2.HTTPError, APIError):
+    except API_UNAVAILABLE_ERRORS:
         logger.exception("Failed to link %s identity", provider)
         flash(
             f"Connecting your {provider.title()} account failed. Please try again later.",
@@ -159,7 +158,7 @@ class UnlinkIdentityView(MethodView):
         except AuthorizationError:
             flash("You are not allowed to change these connections.", "error")
             return _current_connections_card(user_id, company_id)
-        except (httpx2.HTTPError, APIError):
+        except API_UNAVAILABLE_ERRORS:
             logger.exception("Failed to unlink %s identity", provider)
             flash(
                 f"Disconnecting your {provider.title()} account failed. Please try again later.",

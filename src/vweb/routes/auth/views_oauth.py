@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-import httpx2
 from authlib.integrations.base_client.errors import OAuthError
 from flask import current_app, flash, redirect, request, session, url_for
 from flask.views import MethodView
@@ -13,6 +12,7 @@ from vclient.exceptions import APIError, ServerError, UnprocessableEntityError
 from werkzeug.wrappers.response import Response
 
 from vweb.extensions import oauth
+from vweb.lib.api import API_UNAVAILABLE_ERRORS
 from vweb.routes.auth.apple_oauth import build_apple_client_secret
 from vweb.routes.auth.services import (
     build_companies_mapping,
@@ -45,7 +45,7 @@ def _safe_lookup(
             provider_id=provider_id,
             email=email,
         )
-    except (httpx2.HTTPError, APIError):
+    except API_UNAVAILABLE_ERRORS:
         logger.exception("%s OAuth callback failed: API unreachable", provider)
         flash(
             f"We couldn't reach the Valentina API to complete your {provider} login. "
