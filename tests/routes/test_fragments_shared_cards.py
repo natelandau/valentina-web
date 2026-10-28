@@ -16,6 +16,7 @@ from vclient.testing import (
     UserFactory,
 )
 
+from tests.helpers import build_global_context
 from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
@@ -301,6 +302,94 @@ def _set_page(mocker, items: list[AuditLog], *, has_more: bool = False) -> None:
     )
 
 
+@pytest.fixture
+def _as_admin(mock_global_context) -> None:
+    """Make the requesting user an admin so the unscoped audit log card is permitted."""
+    mock_global_context.users[0].role = "ADMIN"
+
+
+class TestAuditLogCardAuthorization:
+    """Tests for who may read the audit log card and with which scope."""
+
+    @pytest.mark.parametrize("query", ["", "?campaign_id=own-campaign"])
+    def test_player_is_forbidden(
+        self, client: FlaskClient, mocker, audit_rows: list, query: str
+    ) -> None:
+        """Verify players get no audit data, even for their own campaign."""
+        # Given a player whose context holds their own campaign
+        campaign = CampaignFactory.build(id="own-campaign")
+        context = build_global_context(user_role="PLAYER", campaign=campaign)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
+        _set_page(mocker, audit_rows)
+
+        # When the player requests the card
+        response = client.get(f"/cards/audit-log{query}")
+
+        # Then the request is refused
+        assert response.status_code == 403
+
+    def test_storyteller_without_campaign_is_forbidden(
+        self, client: FlaskClient, mocker, audit_rows: list
+    ) -> None:
+        """Verify storytellers cannot read the unscoped company audit log."""
+        # Given a storyteller
+        context = build_global_context(user_role="STORYTELLER")
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
+        _set_page(mocker, audit_rows)
+
+        # When requesting the card without a campaign scope
+        response = client.get("/cards/audit-log?user_id=someone")
+
+        # Then the request is refused
+        assert response.status_code == 403
+
+    def test_storyteller_foreign_campaign_is_not_found(
+        self, client: FlaskClient, mocker, audit_rows: list
+    ) -> None:
+        """Verify storytellers cannot scope the card to a campaign outside their context."""
+        # Given a storyteller whose context holds only their own campaign
+        campaign = CampaignFactory.build(id="own-campaign")
+        context = build_global_context(user_role="STORYTELLER", campaign=campaign)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
+        _set_page(mocker, audit_rows)
+
+        # When requesting another campaign's activity
+        response = client.get("/cards/audit-log?campaign_id=foreign-campaign")
+
+        # Then the campaign is not found
+        assert response.status_code == 404
+
+    def test_storyteller_own_campaign_is_allowed(
+        self, client: FlaskClient, mocker, audit_rows: list
+    ) -> None:
+        """Verify storytellers can read activity for a campaign in their context."""
+        # Given a storyteller whose context holds their own campaign
+        campaign = CampaignFactory.build(id="own-campaign")
+        context = build_global_context(user_role="STORYTELLER", campaign=campaign)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
+        _set_page(mocker, audit_rows)
+
+        # When requesting that campaign's activity
+        response = client.get("/cards/audit-log?campaign_id=own-campaign")
+
+        # Then the card renders
+        assert response.status_code == 200
+
+    def test_admin_unscoped_is_allowed(self, client: FlaskClient, mocker, audit_rows: list) -> None:
+        """Verify admins can read the company-wide audit log."""
+        # Given an admin
+        context = build_global_context(user_role="ADMIN")
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
+        _set_page(mocker, audit_rows)
+
+        # When requesting the card with no filters
+        response = client.get("/cards/audit-log")
+
+        # Then the card renders
+        assert response.status_code == 200
+
+
+@pytest.mark.usefixtures("_as_admin")
 class TestAuditLogCardEndpoint:
     """Tests for GET /cards/audit-log."""
 
@@ -664,6 +753,7 @@ class TestAuditLogCardEndpoint:
         assert "min-height: 55.0rem" in body
 
 
+@pytest.mark.usefixtures("_as_admin")
 class TestAuditLogFilters:
     """show_filters toggles the filter bar on the shared card."""
 

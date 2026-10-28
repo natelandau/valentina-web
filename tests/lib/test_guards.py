@@ -175,22 +175,32 @@ def test_can_grant_experience_unrestricted_setting(guard_ctx) -> None:
     assert can_grant_experience("someone-else") is True
 
 
-def test_can_grant_experience_player_to_self(guard_ctx) -> None:
-    """Verify players may grant XP to themselves under restrictive settings."""
-    # Given a restricted player
-    guard_ctx(role="PLAYER", user_id="me", permission_grant_xp="STORYTELLER")
+def test_can_grant_experience_player_setting_allows_self(guard_ctx) -> None:
+    """Verify players may grant XP to themselves when the setting is PLAYER."""
+    # Given a player and the self-grant setting
+    guard_ctx(role="PLAYER", user_id="me", permission_grant_xp="PLAYER")
 
     # When / Then
     assert can_grant_experience("me") is True
 
 
-def test_can_grant_experience_player_to_other_denied(guard_ctx) -> None:
-    """Verify players may not grant XP to other users under restrictive settings."""
-    # Given a restricted player
-    guard_ctx(role="PLAYER", user_id="me", permission_grant_xp="STORYTELLER")
+def test_can_grant_experience_player_setting_denies_other(guard_ctx) -> None:
+    """Verify players may not grant XP to other users when the setting is PLAYER."""
+    # Given a player and the self-grant setting
+    guard_ctx(role="PLAYER", user_id="me", permission_grant_xp="PLAYER")
 
     # When / Then
     assert can_grant_experience("someone-else") is False
+
+
+@pytest.mark.parametrize("target", ["me", "someone-else"])
+def test_can_grant_experience_storyteller_setting_denies_player(guard_ctx, target) -> None:
+    """Verify players may not grant XP at all when the setting is STORYTELLER."""
+    # Given a player and the storyteller-only setting
+    guard_ctx(role="PLAYER", user_id="me", permission_grant_xp="STORYTELLER")
+
+    # When / Then
+    assert can_grant_experience(target) is False
 
 
 @pytest.mark.parametrize("role", ["ADMIN", "STORYTELLER"])

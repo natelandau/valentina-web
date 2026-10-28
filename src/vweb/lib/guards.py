@@ -97,17 +97,18 @@ def can_grant_experience(target_user_id: str) -> bool:
     """Check whether the user may grant experience to ``target_user_id``.
 
     "Experience" covers both XP and cool points — both currencies run through
-    the same ``permission_grant_xp`` company setting. Privileged users and
-    companies with unrestricted granting always pass; otherwise a player may
-    only grant experience to themselves.
+    the same ``permission_grant_xp`` company setting. Privileged users always
+    pass. ``UNRESTRICTED`` lets anyone grant to anyone, ``PLAYER`` lets a player
+    grant only to themselves, and ``STORYTELLER`` denies players entirely.
     """
     if is_storyteller():
         return True
 
-    if g.global_context.company.settings.permission_grant_xp == "UNRESTRICTED":
+    setting = g.global_context.company.settings.permission_grant_xp
+    if setting == "UNRESTRICTED":
         return True
 
-    return is_self(target_user_id)
+    return setting == "PLAYER" and is_self(target_user_id)
 
 
 def can_edit_traits_free(character: Character) -> bool:
