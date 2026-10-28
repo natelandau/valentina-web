@@ -5,17 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from vclient.testing import (
-    CharacterFullSheetFactory,
-    CharacterTraitFactory,
-    CompanyFactory,
-    FullSheetTraitCategoryFactory,
-    FullSheetTraitSectionFactory,
-    FullSheetTraitSubcategoryFactory,
-)
+from vclient.testing import CompanyFactory
 
 from vweb.routes.character_trait_edit.services import (
-    find_character_trait,
     specialty_add_label,
     specialty_cost,
 )
@@ -59,17 +51,3 @@ def test_specialty_add_label(
 ) -> None:
     """Verify the add label carries the cost only when one is charged."""
     assert specialty_add_label(spend_type, _settings(enabled=enabled)) == expected
-
-
-def test_find_character_trait() -> None:
-    """Verify lookup reaches subcategory traits and misses unknown ids."""
-    top = CharacterTraitFactory.build(id="ct-top")
-    nested = CharacterTraitFactory.build(id="ct-nested")
-    sub = FullSheetTraitSubcategoryFactory.build(character_traits=[nested])
-    category = FullSheetTraitCategoryFactory.build(character_traits=[top], subcategories=[sub])
-    section = FullSheetTraitSectionFactory.build(categories=[category])
-    sheet = CharacterFullSheetFactory.build(sections=[section])
-
-    assert find_character_trait(sheet, "ct-nested") is nested
-    assert find_character_trait(sheet, "ct-top") is top
-    assert find_character_trait(sheet, "nope") is None

@@ -4,28 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
-from vclient.exceptions import (
-    APIError,
-    AuthorizationError,
-    ConflictError,
-    NotFoundError,
-    RequestValidationError,
-    ValidationError,
-)
-
 if TYPE_CHECKING:
     from vclient.constants import TraitModifyCurrency
-    from vclient.models import CharacterFullSheet, CharacterTrait, CompanySettings
-
-# NotFoundError included so a stale page acting on an already-deleted trait
-# (or missing character) surfaces a flash instead of a 500.
-TRAIT_API_ERRORS: tuple[type[APIError], ...] = (
-    AuthorizationError,
-    ConflictError,
-    NotFoundError,
-    ValidationError,
-    RequestValidationError,
-)
+    from vclient.models import CompanySettings
 
 SPECIALTY_COST: Final = 3
 SPECIALTY_NAME_MIN_LENGTH: Final = 3
@@ -78,19 +59,4 @@ def specialty_name_error(name: str) -> str | None:
             f"Specialty names must be {SPECIALTY_NAME_MIN_LENGTH} to "
             f"{SPECIALTY_NAME_MAX_LENGTH} characters."
         )
-    return None
-
-
-def find_character_trait(
-    full_sheet: CharacterFullSheet, character_trait_id: str
-) -> CharacterTrait | None:
-    """Find a character trait by id in a full sheet's categories and subcategories."""
-    for section in full_sheet.sections:
-        for category in section.categories:
-            groups = [category.character_traits]
-            groups.extend(sub.character_traits for sub in category.subcategories)
-            for group in groups:
-                for character_trait in group:
-                    if character_trait.id == character_trait_id:
-                        return character_trait
     return None
