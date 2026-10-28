@@ -129,6 +129,17 @@ uv run pytest tests/  # Run tests directly
 
 Run `duty lint` and `duty test` before opening a pull request.
 
+### Develop against a local vclient
+
+To test unreleased changes to [valentina-python-client](https://github.com/natelandau/valentina-python-client), clone it next to this repository and install it as an editable dependency:
+
+```bash
+duty vclient-local    # Install vclient from ../valentina-python-client
+duty vclient-release  # Go back to the published vclient
+```
+
+`duty vclient-local` adds a path override to `pyproject.toml` and `uv.lock`. That path exists only on your machine, so do not commit these two files while the override is on. Commit your other files as usual and leave these two unstaged. The pre-commit hook, the pre-push hook, and CI reject any dependency path outside the repository.
+
 ### Work in several worktrees
 
 You can run up to five git worktrees at the same time. Each worktree gets its own Redis database and its own port, so the dev servers do not share cached data or sessions. The numbers below assume that the main checkout uses Redis database 0 and port 8089.
