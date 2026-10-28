@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
@@ -208,6 +209,25 @@ def fake_vclient(app):
     """
     with SyncFakeVClient() as client:
         yield client
+
+
+_GIT_LOCAL_ENV_VARS = subprocess.run(
+    ["git", "rev-parse", "--local-env-vars"],  # noqa: S607
+    capture_output=True,
+    text=True,
+    check=True,
+).stdout.split()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_from_git_hook_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep git commands in tests from acting on this repository.
+
+    Git hooks export GIT_DIR, so under the pre-push hook a test's `git init <tmp>` would
+    reinitialize this repository instead, and from a worktree mark it bare.
+    """
+    for var in _GIT_LOCAL_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
 
 
 @pytest.fixture(autouse=True)
