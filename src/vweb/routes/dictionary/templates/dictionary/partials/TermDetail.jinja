@@ -165,7 +165,7 @@
       </div>
     {% endif %}
 
-    {% if term.link %}
+    {% if is_http_url(term.link) %}
       <div class="border-t border-base-300 mt-4 pt-3">
         <a href="{{ term.link }}"
            target="_blank"

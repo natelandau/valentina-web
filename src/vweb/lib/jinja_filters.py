@@ -12,8 +12,11 @@ from markdown2 import markdown
 from markupsafe import Markup, escape
 
 from vweb.lib import cache
+from vweb.lib.urls import is_http_url
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from vclient.models import DictionaryTerm
 
 
@@ -121,6 +124,29 @@ def normalize_string(value: str) -> str:
     return value.replace("'", "").replace('"', "").strip()
 
 
+_TAG_RE = re.compile(r"(<[^>]*>)")
+
+
+def _sub_in_text(pattern: re.Pattern[str], repl: Callable[[re.Match[str]], str], html: str) -> str:
+    """Apply a substitution only to text outside tags and outside existing anchors.
+
+    Earlier passes insert anchors whose attribute values hold term data; matching inside
+    them would nest a tag in an attribute and let that data escape into new attributes.
+    """
+    parts = _TAG_RE.split(html)
+    anchor_depth = 0
+    for index, part in enumerate(parts):
+        if index % 2:
+            lowered = part.lower()
+            if lowered.startswith(("<a ", "<a>")):
+                anchor_depth += 1
+            elif lowered.startswith("</a"):
+                anchor_depth = max(0, anchor_depth - 1)
+        elif anchor_depth == 0:
+            parts[index] = pattern.sub(repl, part)
+    return "".join(parts)
+
+
 def _link_term_in_text(
     value: str,
     term: DictionaryTerm,
@@ -136,20 +162,27 @@ def _link_term_in_text(
     Returns:
         str: The text with this term's occurrences converted to links.
     """
+    # `&` and `#` lookbehinds keep matches out of HTML entities such as &amp; and &#39;
     patterns = [
-        re.compile(rf"\b(?<![\w/]){re.escape(name)}\b(?![\w/]|://)", re.IGNORECASE)
+        re.compile(rf"\b(?<![\w/&#]){re.escape(name)}\b(?![\w/]|://)", re.IGNORECASE)
         for name in [term.term, *term.synonyms]
     ]
 
     # Escape the externally sourced URL once so quotes cannot break out of href.
-    escaped_link = escape(term.link) if term.link else ""
+    escaped_link = escape(term.link) if is_http_url(term.link) else ""
+    detail_url = (
+        escape(url_for("dictionary.term_detail", term_id=term.id))
+        if term.definition and link_type == "html"
+        else ""
+    )
 
     for pattern in patterns:
         if term.definition:
             if link_type == "html":
-                value = pattern.sub(
+                value = _sub_in_text(
+                    pattern,
                     lambda m: (
-                        f"<a href='{url_for('dictionary.term_detail', term_id=term.id)}' class='link link-primary link-hover'>{m.group(0)}</a>"
+                        f'<a href="{detail_url}" class="link link-primary link-hover">{m.group(0)}</a>'
                     ),
                     value,
                 )
@@ -158,11 +191,12 @@ def _link_term_in_text(
                     lambda m: f"[{m.group(0)}]({url_for('dictionary.term', term=term.term)})",
                     value,
                 )
-        elif term.link:
+        elif escaped_link:
             if link_type == "html":
-                value = pattern.sub(
+                value = _sub_in_text(
+                    pattern,
                     lambda m: (
-                        f"<a href='{escaped_link}' class='link link-primary'>{m.group(0)}</a>"
+                        f'<a href="{escaped_link}" class="link link-primary">{m.group(0)}</a>'
                     ),
                     value,
                 )

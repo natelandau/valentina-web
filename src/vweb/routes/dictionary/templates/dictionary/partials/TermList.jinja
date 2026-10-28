@@ -28,7 +28,7 @@
           {% endif %}
           <tr class="{% if term.id == active_term_id %}bg-primary/10 border-l-2 border-primary{% endif %} hover cursor-pointer">
             <td>
-              {% if term.definition is none and term.link %}
+              {% if term.definition is none and is_http_url(term.link) %}
                 <a href="{{ term.link }}"
                    target="_blank"
                    rel="noopener"

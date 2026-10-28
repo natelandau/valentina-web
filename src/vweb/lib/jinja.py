@@ -40,6 +40,7 @@ from vweb.lib.jinja_filters import (
     to_roman,
 )
 from vweb.lib.trait_rules import accepts_specialties, is_derived_trait
+from vweb.lib.urls import is_http_url
 from vweb.lib.user_display import user_display_name
 from vweb.lib.user_profile import has_custom_avatar, user_avatar_url
 
@@ -243,8 +244,11 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
     jinja_globals["can_edit_traits_free"] = can_edit_traits_free
     jinja_globals["can_edit_character"] = can_edit_character
     jinja_globals["can_edit_trackers"] = can_edit_trackers
-    jinja_globals["is_derived_trait"] = is_derived_trait
-    jinja_globals["accepts_specialties"] = accepts_specialties
+    jinja_globals.update(
+        is_derived_trait=is_derived_trait,
+        accepts_specialties=accepts_specialties,
+        is_http_url=is_http_url,
+    )
 
     jinja_globals["approved_companies"] = approved_companies
     jinja_globals["threat_badge_class"] = threat_badge_class

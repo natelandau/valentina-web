@@ -7,11 +7,12 @@ via the vclient API.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from urllib.parse import urlparse
 
 from flask import session
 from vclient import sync_dictionary_service
 from vclient.models import DictionaryTermCreate, DictionaryTermUpdate
+
+from vweb.lib.urls import is_http_url
 
 if TYPE_CHECKING:
     from vclient.models import DictionaryTerm
@@ -55,10 +56,8 @@ def validate_term(form_data: dict[str, str]) -> dict[str, str]:
         errors["term"] = f"Term name must be {TERM_MAX_LENGTH} characters or fewer"
 
     link = form_data.get("link", "").strip()
-    if link:
-        parsed = urlparse(link)
-        if not parsed.scheme or not parsed.netloc:
-            errors["link"] = "Link must be a valid URL (e.g. https://example.com)"
+    if link and not is_http_url(link):
+        errors["link"] = "Link must be a valid URL (e.g. https://example.com)"
 
     return errors
 
