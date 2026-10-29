@@ -276,6 +276,11 @@ def validate_and_submit_experience(
         errors.append("Cool Points must be a whole number")
         cp_amount = 0
 
+    if xp_amount < 0:
+        errors.append("XP cannot be negative")
+    if cp_amount < 0:
+        errors.append("Cool Points cannot be negative")
+
     if not errors and xp_amount == 0 and cp_amount == 0:
         errors.append("Enter at least one value greater than zero")
 
