@@ -5,13 +5,15 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from flask import Response, abort, g, redirect, request, session, url_for
+from flask import Response, abort, flash, g, redirect, request, session, url_for
 from loguru import logger
+from vclient.exceptions import AuthorizationError
 
 from vweb.lib import cache
 
 if TYPE_CHECKING:
     from flask import Flask
+    from vclient.models import User
     from werkzeug.wrappers.response import Response as WerkzeugResponse
 
 
@@ -139,18 +141,47 @@ def _hook_require_auth() -> Response | WerkzeugResponse | None:
     return None
 
 
+def _load_requesting_user(company_id: str, user_id: str) -> User | None:
+    """Load the global context into ``g`` and find the session user in it.
+
+    Refetch once on a miss, since a cached context can predate the user joining.
+    """
+    ctx = cache.global_context.load(company_id, user_id)
+    g.global_context = ctx
+    requesting_user = next((u for u in ctx.users if u.id == user_id), None)
+    if requesting_user is None:
+        cache.global_context.clear(company_id, user_id)
+        ctx = cache.global_context.load(company_id, user_id)
+        g.global_context = ctx
+        requesting_user = next((u for u in ctx.users if u.id == user_id), None)
+    return requesting_user
+
+
+def _redirect_refused_member(company_id: str, role: str | None) -> Response | WerkzeugResponse:
+    """Route a session user the API refuses to act for, as it does UNAPPROVED and DEACTIVATED users.
+
+    The role decides only where to send them, since it can be stale; the API's 403 or a
+    DEACTIVATED role in the loaded context is the authority on whether they may continue.
+    """
+    if role == "UNAPPROVED":
+        return _redirect_for_request(url_for("auth.pending_approval"))
+
+    logger.warning("API refused session user; signing out", company_id=company_id)
+    session.clear()
+    flash("Your account can no longer access this company. Contact an admin.", "error")
+    return _redirect_for_request(url_for("index.index"))
+
+
 def _hook_inject_global_context() -> Response | WerkzeugResponse | None:
     """Load cached global context and resolve the requesting user for template access."""
+    user_id = session.get("user_id")
+    company_id = session.get("company_id")
     if (
-        request.path.startswith(_PUBLIC_PATH_PREFIXES)
+        not user_id
+        or request.path.startswith(_PUBLIC_PATH_PREFIXES)
         or request.path == "/pending-approval"
         or request.path in _COMPANY_SELECTION_PATHS
     ):
-        return None
-
-    user_id = session.get("user_id")
-    company_id = session.get("company_id")
-    if not user_id:
         return None
     if not company_id:
         # Legacy session minted before multi-company support: authenticated but
@@ -159,19 +190,19 @@ def _hook_inject_global_context() -> Response | WerkzeugResponse | None:
         session.clear()
         return _redirect_for_request(url_for("index.index"))
 
-    ctx = cache.global_context.load(company_id, user_id)
-    g.global_context = ctx
-
-    requesting_user = next((u for u in ctx.users if u.id == user_id), None)
-    if requesting_user is None:
-        cache.global_context.clear(company_id, user_id)
-        ctx = cache.global_context.load(company_id, user_id)
-        g.global_context = ctx
-        requesting_user = next((u for u in ctx.users if u.id == user_id), None)
+    try:
+        requesting_user = _load_requesting_user(company_id, user_id)
+    except AuthorizationError:
+        session_role = session.get("companies", {}).get(company_id, {}).get("role")
+        return _redirect_refused_member(company_id, session_role)
 
     if requesting_user is None:
         session.clear()
         return _redirect_for_request(url_for("index.index"))
+
+    # A cached context can still list the user after deactivation, so the API's 403 never fires.
+    if requesting_user.role == "DEACTIVATED":
+        return _redirect_refused_member(company_id, requesting_user.role)
 
     g.requesting_user = requesting_user
     return None

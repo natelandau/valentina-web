@@ -10,6 +10,7 @@ import pytest
 from vclient.models.users import GitHubProfile
 from vclient.testing import UserFactory
 
+from tests.helpers import make_image_bytes
 from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
@@ -334,7 +335,7 @@ class TestProfileAvatar:
             "csrf_token": csrf,
             "username": "testuser",
             "email": "test@example.com",
-            "avatar": (io.BytesIO(b"fake-image-bytes"), "me.png", "image/png"),
+            "avatar": (io.BytesIO(make_image_bytes()), "me.png", "image/png"),
         }
 
         # When posting the edit form with an avatar file
@@ -385,7 +386,7 @@ class TestProfileAvatar:
             "username": "testuser",
             "email": "test@example.com",
             "remove_avatar": "on",
-            "avatar": (io.BytesIO(b"fake-image-bytes"), "me.png", "image/png"),
+            "avatar": (io.BytesIO(make_image_bytes()), "me.png", "image/png"),
         }
 
         # When posting the edit form
@@ -456,6 +457,30 @@ class TestProfileAvatar:
             "username": "testuser",
             "email": "test@example.com",
             "avatar": (io.BytesIO(big), "huge.png", "image/png"),
+        }
+
+        # When posting the edit form
+        response = client.post(
+            "/profile/test-user-id", data=data, content_type="multipart/form-data"
+        )
+
+        # Then the upload is rejected
+        assert response.status_code == 200
+        mock_profile_svc.upload_avatar.assert_not_called()
+
+    def test_avatar_over_pixel_cap_is_rejected(
+        self, client: FlaskClient, mock_profile_svc: MagicMock
+    ) -> None:
+        """Verify an avatar over 24 megapixels is not uploaded."""
+        from tests.conftest import get_csrf
+
+        # Given a 6000 x 4001 image
+        csrf = get_csrf(client)
+        data = {
+            "csrf_token": csrf,
+            "username": "testuser",
+            "email": "test@example.com",
+            "avatar": (io.BytesIO(make_image_bytes(6000, 4001)), "huge.png", "image/png"),
         }
 
         # When posting the edit form

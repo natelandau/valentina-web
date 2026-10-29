@@ -119,7 +119,11 @@ def _current_connections_card(user_id: str, company_id: str) -> str:
     The /auth/ paths skip the global-context hook, so error branches load the
     user themselves rather than reading g.requesting_user.
     """
-    ctx = cache.global_context.load(company_id, user_id)
+    try:
+        ctx = cache.global_context.load(company_id, user_id)
+    except AuthorizationError:
+        # The API refuses UNAPPROVED and DEACTIVATED members on company routes.
+        abort(403)
     user = next((u for u in ctx.users if u.id == user_id), None)
     if user is None:
         abort(404)

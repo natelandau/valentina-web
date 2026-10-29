@@ -11,6 +11,7 @@ from vclient.exceptions import ServerError, UnprocessableEntityError
 
 from vweb.extensions import csrf
 from vweb.lib.catalog import catalog
+from vweb.lib.guards import is_active_role
 from vweb.lib.jinja import approved_companies
 from vweb.routes.auth.services import identify_in_companies
 from vweb.routes.auth.views_identity import LinkIdentityView, UnlinkIdentityView
@@ -135,7 +136,7 @@ class SelectCompanyView(MethodView):
             return redirect(url_for("auth.select_company"))
 
         data = companies[company_id]
-        if data["role"] == "UNAPPROVED":
+        if not is_active_role(data["role"]):
             flash("You are not approved for that company.", "error")
             return redirect(url_for("auth.select_company"))
 

@@ -13,6 +13,7 @@ from werkzeug.wrappers.response import Response
 
 from vweb.extensions import oauth
 from vweb.lib.api import API_UNAVAILABLE_ERRORS
+from vweb.lib.guards import is_active_role
 from vweb.routes.auth.apple_oauth import build_apple_client_secret
 from vweb.routes.auth.services import (
     build_companies_mapping,
@@ -85,9 +86,11 @@ def _verify_login_results(
 
     The lookup may have matched by an unverified email, so session identity must come
     from the user the API resolved the verified credential to. Token-level failures and
-    a credential verified in no matched company both abort the login.
+    a credential verified in no matched company both abort the login, as does a user
+    deactivated in every matched company.
 
-    Returns the verified results, or a redirect Response when login must stop.
+    Returns the verified, non-deactivated results, or a redirect Response when login
+    must stop.
     """
     try:
         resolutions = identify_in_companies(
@@ -107,7 +110,13 @@ def _verify_login_results(
     if not verified:
         flash(f"Your {provider.title()} login could not be verified. Please try again.", "error")
         return redirect(url_for("index.index"))
-    return verified
+
+    # Deactivated memberships never enter the session, so no later page can select them.
+    active = [r for r in verified if r.role != "DEACTIVATED"]
+    if not active:
+        flash("Your account has been deactivated. Contact an admin to restore access.", "error")
+        return redirect(url_for("index.index"))
+    return active
 
 
 def _handle_login_result(
@@ -138,7 +147,7 @@ def _handle_login_result(
     results = verified
 
     companies = build_companies_mapping(results)
-    approved = {cid: data for cid, data in companies.items() if data["role"] != "UNAPPROVED"}
+    approved = {cid: data for cid, data in companies.items() if is_active_role(data["role"])}
 
     if len(results) == 1:
         r = results[0]

@@ -112,6 +112,60 @@ class TestSingleUnapprovedUser:
             assert sess["user_id"] == "u1"
 
 
+class TestDeactivatedMemberships:
+    """Tests for logins that match DEACTIVATED memberships."""
+
+    def test_only_deactivated_memberships_refuse_login(self, client, mocker):
+        """Verify a user deactivated in every matched company gets no session."""
+        # Given a mock Discord OAuth flow
+        _mock_discord_oauth(mocker)
+
+        # Given a single deactivated lookup result
+        result = _make_lookup_result(company_id="c1", user_id="u1", role="DEACTIVATED")
+        mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=[result])
+        mocker.patch(
+            "vweb.routes.auth.views_oauth.identify_in_companies",
+            return_value=identify_resolving([result]),
+        )
+
+        # When the callback is hit
+        response = client.get("/auth/discord/callback")
+
+        # Then the user lands on the index, unbound to the deactivated membership
+        assert response.status_code == 302
+        assert response.location == "/"
+        with client.session_transaction() as sess:
+            assert sess.get("user_id") != "u1"
+            assert "c1" not in sess.get("companies", {})
+            assert any("deactivated" in message for _, message in sess["_flashes"])
+
+    def test_deactivated_membership_is_left_out_of_the_session(self, client, mocker):
+        """Verify an active membership logs in and the deactivated one is dropped."""
+        # Given a mock Discord OAuth flow
+        _mock_discord_oauth(mocker)
+
+        # Given one active and one deactivated lookup result
+        results = [
+            _make_lookup_result(company_id="c1", user_id="u1", role="PLAYER"),
+            _make_lookup_result(company_id="c2", user_id="u2", role="DEACTIVATED"),
+        ]
+        mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=results)
+        mocker.patch(
+            "vweb.routes.auth.views_oauth.identify_in_companies",
+            return_value=identify_resolving(results),
+        )
+
+        # When the callback is hit
+        response = client.get("/auth/discord/callback")
+
+        # Then the user logs straight into the active company
+        assert response.status_code == 302
+        assert response.location == "/"
+        with client.session_transaction() as sess:
+            assert sess["company_id"] == "c1"
+            assert list(sess["companies"]) == ["c1"]
+
+
 class TestMultipleCompaniesWithApproved:
     """Tests for users with multiple companies, at least one approved."""
 

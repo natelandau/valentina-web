@@ -29,6 +29,7 @@ from vweb.lib.api import (
     get_characters_for_campaign,
     get_selectable_characters,
     resolve_characters,
+    validate_and_submit_experience,
 )
 from vweb.lib.cache.dicerolls import recent
 from vweb.lib.cache.global_context import GlobalContext
@@ -547,3 +548,52 @@ class TestResolveCharacters:
 
         # Then the result is empty
         assert result == []
+
+
+class TestValidateAndSubmitExperience:
+    """Tests for validate_and_submit_experience."""
+
+    @pytest.mark.parametrize(
+        ("form_data", "expected_error"),
+        [
+            ({"xp": "-5", "cool_points": "0"}, "XP cannot be negative"),
+            ({"xp": "0", "cool_points": "-1"}, "Cool Points cannot be negative"),
+            ({"xp": "0", "cool_points": "0"}, "Enter at least one value greater than zero"),
+        ],
+        ids=["negative-xp", "negative-cool-points", "all-zero"],
+    )
+    def test_rejects_amounts_below_one_without_calling_the_api(
+        self, app, mocker, form_data: dict, expected_error: str
+    ) -> None:
+        """Verify zero and negative amounts return an error and send nothing."""
+        # Given a mocked users service
+        users_service = mocker.patch("vclient.sync_users_service")
+
+        # When submitting the form data
+        with app.test_request_context():
+            session["company_id"] = "company-1"
+            errors = validate_and_submit_experience(
+                form_data, user_id="u1", campaign_id="c1", on_behalf_of="st1"
+            )
+
+        # Then the error is returned and the API is not called
+        assert errors == [expected_error]
+        users_service.assert_not_called()
+
+    def test_submits_only_positive_amounts(self, app, mocker) -> None:
+        """Verify a positive XP amount is sent and a zero cool point amount is skipped."""
+        # Given a mocked users service
+        users_service = mocker.patch("vclient.sync_users_service").return_value
+        mocker.patch("vweb.lib.api.cache.global_context.clear_current")
+
+        # When submitting 3 XP and no cool points
+        with app.test_request_context():
+            session["company_id"] = "company-1"
+            errors = validate_and_submit_experience(
+                {"xp": "3", "cool_points": "0"}, user_id="u1", campaign_id="c1", on_behalf_of="st1"
+            )
+
+        # Then only XP is added
+        assert errors == []
+        users_service.add_xp.assert_called_once_with("u1", "c1", amount=3)
+        users_service.add_cool_points.assert_not_called()
