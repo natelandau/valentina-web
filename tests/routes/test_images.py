@@ -10,11 +10,16 @@ import pytest
 from vclient.testing import AssetFactory, CampaignChapterFactory, CharacterFactory
 
 from tests.conftest import get_csrf
+from tests.helpers import make_image_bytes
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
 
     from pytest_mock import MockerFixture
+
+
+VALID_JPEG = make_image_bytes(image_format="JPEG")
+VALID_PNG = make_image_bytes()
 
 
 @dataclass(frozen=True)
@@ -156,7 +161,7 @@ class TestImageUpload:
             book_image_entity.images_url,
             data={
                 "csrf_token": csrf,
-                "image": (io.BytesIO(b"fakeimage"), "img.jpg", "image/jpeg"),
+                "image": (io.BytesIO(VALID_JPEG), "img.jpg", "image/jpeg"),
             },
             content_type="multipart/form-data",
         )
@@ -181,7 +186,7 @@ class TestImageUpload:
             chapter_image_entity.images_url,
             data={
                 "csrf_token": csrf,
-                "image": (io.BytesIO(b"fakeimage"), "img.jpg", "image/jpeg"),
+                "image": (io.BytesIO(VALID_JPEG), "img.jpg", "image/jpeg"),
             },
             content_type="multipart/form-data",
         )
@@ -189,7 +194,7 @@ class TestImageUpload:
         # Then upload is called with the expected kwargs and the new asset is rendered
         assert response.status_code == 200
         chapter_image_entity.service.upload_asset.assert_called_once_with(
-            "ch-1", "img.jpg", b"fakeimage", "image/jpeg"
+            "ch-1", "img.jpg", VALID_JPEG, "image/jpeg"
         )
         assert mock_asset.public_url in response.get_data(as_text=True)
 
@@ -213,6 +218,28 @@ class TestImageUpload:
         # Then upload was not called
         assert response.status_code == 200
         image_entity.service.upload_asset.assert_not_called()
+
+    def test_image_upload_rejects_over_pixel_cap(self, client, mocker, image_entity) -> None:
+        """Verify an image over 24 megapixels does not call the API."""
+        # Given a privileged user
+        mocker.patch(image_entity.guard_path, return_value=True)
+        image_entity.service.list_all_assets.return_value = []
+        csrf = get_csrf(client)
+
+        # When uploading a 6000 x 4001 image
+        response = client.post(
+            image_entity.images_url,
+            data={
+                "csrf_token": csrf,
+                "image": (io.BytesIO(make_image_bytes(6000, 4001)), "big.png", "image/png"),
+            },
+            content_type="multipart/form-data",
+        )
+
+        # Then upload was not called and the limit is explained
+        assert response.status_code == 200
+        image_entity.service.upload_asset.assert_not_called()
+        assert "max 24 megapixels" in response.get_data(as_text=True)
 
     def test_image_upload_forbidden_for_non_editor(self, client, mocker, image_entity) -> None:
         """Verify non-privileged users get 403 on upload."""
@@ -372,7 +399,7 @@ class TestCharacterImageUpload:
         csrf = get_csrf(client)
 
         # When uploading an image
-        data = {"image": (io.BytesIO(b"fake-image-data"), "photo.png", "image/png")}
+        data = {"image": (io.BytesIO(VALID_PNG), "photo.png", "image/png")}
         response = client.post(
             f"/character/{char.id}/images",
             data=data,
@@ -401,7 +428,7 @@ class TestCharacterImageUpload:
         csrf = get_csrf(client)
 
         # When a non-owner tries to upload
-        data = {"image": (io.BytesIO(b"fake-image-data"), "photo.png", "image/png")}
+        data = {"image": (io.BytesIO(VALID_PNG), "photo.png", "image/png")}
         response = client.post(
             f"/character/{char.id}/images",
             data=data,

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 from flask import session
+from PIL import Image
 from vclient.models import IdentityResolution
 from vclient.testing import CampaignFactory, CompanyFactory, SystemHealthFactory, UserFactory
 
@@ -297,3 +299,10 @@ def identify_resolving(results: list[UserLookupResult]) -> dict[str, IdentityRes
         )
         for r in results
     }
+
+
+def make_image_bytes(width: int = 1, height: int = 1, image_format: str = "PNG") -> bytes:
+    """Encode a blank image of the given size so upload validation can read its header."""
+    buffer = BytesIO()
+    Image.new("1", (width, height)).save(buffer, format=image_format)
+    return buffer.getvalue()

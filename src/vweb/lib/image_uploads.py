@@ -1,19 +1,21 @@
 """Shared validation helpers for image upload and delete handlers.
 
 Book, chapter, and character image routes run the same validation ladder
-(file presence, MIME check, size check, vclient call, flash) and the same
+(file presence, MIME check, size check, pixel check, vclient call, flash) and the same
 delete-with-flash pattern. These helpers centralize that work so each view
 only needs to handle authentication, lookups, and re-rendering.
 """
 
 from __future__ import annotations
 
+from io import BytesIO
 from typing import TYPE_CHECKING, Protocol
 
 from flask import flash
+from PIL import Image
 from vclient.exceptions import APIError
 
-from vweb.constants import ALLOWED_IMAGE_TYPES, MAX_AVATAR_SIZE, MAX_IMAGE_SIZE
+from vweb.constants import ALLOWED_IMAGE_TYPES, MAX_AVATAR_SIZE, MAX_IMAGE_PIXELS, MAX_IMAGE_SIZE
 
 if TYPE_CHECKING:
     from vclient.models import Asset
@@ -22,6 +24,28 @@ if TYPE_CHECKING:
 
 MAX_IMAGE_SIZE_MB: int = MAX_IMAGE_SIZE // (1024 * 1024)
 MAX_AVATAR_SIZE_MB: int = MAX_AVATAR_SIZE // (1024 * 1024)
+MAX_IMAGE_MEGAPIXELS: int = MAX_IMAGE_PIXELS // 1_000_000
+# Parse only the formats ALLOWED_IMAGE_TYPES admits, so a mislabeled file is refused here.
+_ALLOWED_PILLOW_FORMATS: tuple[str, ...] = ("JPEG", "PNG", "WEBP", "GIF")
+
+
+def image_dimensions_error(content: bytes) -> str | None:
+    """Check the image header against the API's pixel cap without decoding the image.
+
+    Returns a user-facing error message, or ``None`` when the image is within limits.
+    """
+    too_large = f"Image is too large (max {MAX_IMAGE_MEGAPIXELS} megapixels)."
+    try:
+        with Image.open(BytesIO(content), formats=_ALLOWED_PILLOW_FORMATS) as image:
+            width, height = image.size
+    except Image.DecompressionBombError:
+        return too_large
+    # Malformed headers surface as any of these depending on the format plugin.
+    except (OSError, ValueError, EOFError):
+        return "File is not a valid image."
+    if width * height > MAX_IMAGE_PIXELS:
+        return too_large
+    return None
 
 
 class AssetService(Protocol):
@@ -71,6 +95,9 @@ def handle_image_upload(
     content = file.read()
     if len(content) > MAX_IMAGE_SIZE:
         flash(f"Image is too large (max {MAX_IMAGE_SIZE_MB} MB).", "error")
+        return None
+    if dimensions_error := image_dimensions_error(content):
+        flash(dimensions_error, "error")
         return None
 
     try:
@@ -147,6 +174,9 @@ def handle_avatar_upload(
     content = file.read()
     if len(content) > MAX_AVATAR_SIZE:
         flash(f"Avatar is too large (max {MAX_AVATAR_SIZE_MB} MB).", "error")
+        return False
+    if dimensions_error := image_dimensions_error(content):
+        flash(dimensions_error, "error")
         return False
 
     try:

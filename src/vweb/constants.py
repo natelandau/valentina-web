@@ -26,6 +26,7 @@ CACHE_GLOBAL_CONTEXT_TIMESTAMP_TTL: Final[int] = 120
 
 MAX_IMAGE_SIZE: Final[int] = 10 * 1024 * 1024  # 10 MB
 MAX_AVATAR_SIZE: Final[int] = 5 * 1024 * 1024  # 5 MB — Valentina API avatar cap
+MAX_IMAGE_PIXELS: Final[int] = 24_000_000  # Valentina API width x height cap
 # Largest image upload plus multipart and form-field overhead
 MAX_REQUEST_BODY_BYTES: Final[int] = MAX_IMAGE_SIZE + 1024 * 1024
 ALLOWED_IMAGE_TYPES: Final[frozenset[str]] = frozenset(
