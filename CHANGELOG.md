@@ -1,3 +1,20 @@
+## v0.14.0 (2026-10-28)
+
+### Feat
+
+- **character**: add in-play trackers and health to the sheet (#65)
+- **traits**: edit ability specialties on Manage Traits
+- **character**: show ability specialties on the character sheet
+- **admin**: add a company setting to charge for specialties
+- **session**: name the dev session cookie after the port
+
+### Fix
+
+- **api**: adapt to stricter API access and upload rules (#68)
+- **security**: close audit XSS, login, and finalize gaps (#67)
+- **authz**: enforce server-side checks on audit log, XP, and notes (#66)
+- **tests**: clear git hook env vars before each test (#64)
+
 ## v0.13.0 (2026-09-04)
 
 ### Feat
