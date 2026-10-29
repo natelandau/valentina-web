@@ -17,6 +17,7 @@ from vweb.lib.guards import (
     can_grant_experience,
     can_manage_campaign,
     can_manage_npcs,
+    is_active_role,
     is_admin,
     is_approved_user,
     is_self,
@@ -105,6 +106,23 @@ def test_is_approved_user_role_matrix(guard_ctx, role, expected) -> None:
 
     # When / Then
     assert is_approved_user() is expected
+
+
+@pytest.mark.parametrize(
+    ("role", "expected"),
+    [
+        ("ADMIN", True),
+        ("STORYTELLER", True),
+        ("PLAYER", True),
+        ("UNAPPROVED", False),
+        ("DEACTIVATED", False),
+        (None, False),
+    ],
+)
+def test_is_active_role_matrix(role, expected) -> None:
+    """Verify is_active_role passes usable membership roles and rejects the rest."""
+    # When / Then
+    assert is_active_role(role) is expected
 
 
 def test_is_approved_user_logged_out(app: Flask) -> None:

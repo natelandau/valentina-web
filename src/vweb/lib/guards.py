@@ -17,7 +17,10 @@ from typing import TYPE_CHECKING
 from flask import g
 
 if TYPE_CHECKING:
+    from vclient.constants import UserRole
     from vclient.models import Character, User
+
+_ACTIVE_ROLES: frozenset[UserRole] = frozenset({"ADMIN", "STORYTELLER", "PLAYER"})
 
 
 def _current_user() -> User | None:
@@ -37,6 +40,16 @@ def is_self(user_id: str | None) -> bool:
     return user is not None and user_id is not None and user.id == user_id
 
 
+def is_active_role(role: str | None) -> bool:
+    """Check whether a company membership role can use the app.
+
+    Use for roles that come from the session's company list rather than the
+    requesting user, such as login and company selection. The API refuses
+    UNAPPROVED and DEACTIVATED users on company routes.
+    """
+    return role in _ACTIVE_ROLES
+
+
 def is_approved_user() -> bool:
     """Check whether the requesting user is logged in and has an approved, active account.
 
@@ -45,7 +58,7 @@ def is_approved_user() -> bool:
     when nobody is logged in.
     """
     user = _current_user()
-    return user is not None and user.role in ("ADMIN", "STORYTELLER", "PLAYER")
+    return user is not None and is_active_role(user.role)
 
 
 def is_admin() -> bool:

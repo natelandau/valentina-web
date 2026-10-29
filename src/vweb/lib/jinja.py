@@ -25,6 +25,7 @@ from vweb.lib.guards import (
     can_grant_experience,
     can_manage_campaign,
     can_manage_npcs,
+    is_active_role,
     is_admin,
     is_approved_user,
     is_self,
@@ -75,16 +76,16 @@ def static_url(filename: str) -> str:
 
 
 def approved_companies() -> dict[str, dict[str, str]]:
-    """Return the session's companies the user is approved in, keyed by company id.
+    """Return the session's companies the user is approved and active in, keyed by company id.
 
-    Single source for the UNAPPROVED filter shared by the header company
+    Single source for the membership filter shared by the header company
     switcher and the select-company page.
     """
     companies = session.get("companies", {})
     return {
         company_id: data
         for company_id, data in companies.items()
-        if data.get("role") != "UNAPPROVED"
+        if is_active_role(data.get("role"))
     }
 
 
@@ -233,6 +234,7 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
     jinja_globals["MAX_IMAGE_SIZE"] = MAX_IMAGE_SIZE
     jinja_globals["MAX_AVATAR_SIZE"] = MAX_AVATAR_SIZE
     jinja_globals["is_admin"] = is_admin
+    jinja_globals["is_active_role"] = is_active_role
     jinja_globals["is_approved_user"] = is_approved_user
     jinja_globals["is_storyteller"] = is_storyteller
     jinja_globals["is_self"] = is_self
