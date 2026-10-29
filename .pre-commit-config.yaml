@@ -5,7 +5,7 @@ default_stages: [pre-commit, manual]
 fail_fast: true
 repos:
   - repo: "https://github.com/commitizen-tools/commitizen"
-    rev: v4.19.2
+    rev: v4.19.3
     hooks:
       - id: commitizen
 
@@ -67,13 +67,13 @@ repos:
         stages: [commit-msg]
 
   - repo: "https://github.com/djlint/djLint"
-    rev: v1.46.4
+    rev: v1.47.1
     hooks:
       - id: djlint
         args: ["--configuration", "pyproject.toml"]
 
   - repo: "https://github.com/python-jsonschema/check-jsonschema"
-    rev: "0.38.2"
+    rev: "0.39.0"
     hooks:
       - id: check-github-workflows
         args: ["--verbose"]
