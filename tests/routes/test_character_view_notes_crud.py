@@ -158,3 +158,99 @@ class TestCharacterNotesDelete:
         )
         assert response.status_code == 200
         mock_notes_handler.delete_item.assert_called_once()
+
+
+class TestCharacterNotesApiErrors:
+    """API refusals on a CRUD form tell the user what to fix."""
+
+    def test_validation_error_shows_field_message(self, client, mock_notes_handler) -> None:
+        """Verify an API 400 shows the field message instead of a generic error."""
+        from vclient.exceptions import ValidationError
+
+        # Given the API rejects the title's length
+        mock_notes_handler.create_item.side_effect = ValidationError(
+            "bad",
+            400,
+            {
+                "detail": "Validation failed for one or more fields.",
+                "invalid_parameters": [
+                    {"field": "title", "message": "Expected `str` of length <= 50"}
+                ],
+            },
+        )
+
+        # When creating a note
+        response = client.post(
+            "/character/char-123/notes/items",
+            data={"title": "x" * 60, "content": "Body"},
+            headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)},
+        )
+
+        # Then the form shows what to fix
+        body = response.get_data(as_text=True)
+        assert response.status_code == 200
+        assert "Title must be at most 50 characters" in body
+        assert "An error occurred" not in body
+
+    def test_server_error_keeps_generic_message(self, client, mock_notes_handler) -> None:
+        """Verify a server error shows the generic message, not the API detail."""
+        from vclient.exceptions import ServerError
+
+        # Given a create that fails server-side
+        mock_notes_handler.create_item.side_effect = ServerError(
+            "boom", 500, {"detail": "db exploded"}
+        )
+
+        # When creating a note
+        response = client.post(
+            "/character/char-123/notes/items",
+            data={"title": "Title", "content": "Body"},
+            headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)},
+        )
+
+        # Then only the generic message is shown
+        body = response.get_data(as_text=True)
+        assert response.status_code == 200
+        assert "An error occurred. Please try again." in body
+        assert "db exploded" not in body
+
+    def test_delete_refusal_flashes_api_message(self, client, mock_notes_handler) -> None:
+        """Verify a refused delete tells the user why, with the flash swapped in."""
+        from vclient.exceptions import AuthorizationError
+
+        # Given the API refuses the delete
+        mock_notes_handler.delete_item.side_effect = AuthorizationError(
+            "Forbidden", 403, {"detail": "You cannot delete this note"}
+        )
+
+        # When deleting the note
+        response = client.delete(
+            "/character/char-123/notes/items/note-789",
+            headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)},
+        )
+
+        # Then the flash container carries the API's message
+        body = response.get_data(as_text=True)
+        assert response.status_code == 200
+        assert 'id="flash-messages" hx-swap-oob="true"' in body
+        assert "You cannot delete this note" in body
+
+    def test_delete_server_error_flashes_fallback(self, client, mock_notes_handler) -> None:
+        """Verify a server error on delete flashes the fallback, not the API detail."""
+        from vclient.exceptions import ServerError
+
+        # Given a delete that fails server-side
+        mock_notes_handler.delete_item.side_effect = ServerError(
+            "boom", 500, {"detail": "db exploded"}
+        )
+
+        # When deleting the note
+        response = client.delete(
+            "/character/char-123/notes/items/note-789",
+            headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)},
+        )
+
+        # Then only the fallback is shown
+        body = response.get_data(as_text=True)
+        assert "Could not delete. Please try again." in body
+        assert "db exploded" not in body

@@ -5,11 +5,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
+from pydantic import BaseModel, Field
+from pydantic import ValidationError as PydanticValidationError
+from vclient.exceptions import RequestValidationError, ValidationError
 from vclient.testing import (
     CampaignFactory,
     CharacterFactory,
     CharacterTraitFactory,
     DicerollFactory,
+    Routes,
     TraitFactory,
 )
 
@@ -377,3 +381,105 @@ class TestDiceRollQuickrollView:
         assert response.status_code == 200
         body = response.get_data(as_text=True)
         assert "select a quickroll" in body
+
+
+class _Roll(BaseModel):
+    num_dice: int = Field(le=100)
+
+
+def _post(client, path: str, data: dict[str, str]) -> str:
+    csrf = get_csrf(client)
+    response = client.post(path, data=data, headers={"HX-Request": "true", "X-CSRFToken": csrf})
+    assert response.status_code == 200
+    return response.get_data(as_text=True)
+
+
+class TestDiceRollApiErrors:
+    """API refusals show their reason, and server errors show a generic message."""
+
+    def test_custom_roll_shows_field_message(self, client, mock_diceroll_deps, mocker) -> None:
+        """Verify a 400 with invalid parameters renders the labeled field message."""
+        # Given the API rejects num_dice
+        detail = "Input should be less than or equal to 100"
+        mocker.patch(
+            "vweb.routes.diceroll.views.perform_custom_roll",
+            side_effect=ValidationError(
+                "Bad input",
+                400,
+                {
+                    "detail": "Bad input",
+                    "invalid_parameters": [{"field": "num_dice", "message": detail}],
+                },
+            ),
+        )
+
+        # When submitting a custom roll
+        body = _post(
+            client, "/roll/char-1/custom", {"dice_size": "10", "num_dice": "5", "difficulty": "6"}
+        )
+
+        # Then the field message is shown
+        assert f"Num dice: {detail}" in body
+
+    def test_trait_roll_shows_authorization_detail(
+        self, client, mock_diceroll_deps, fake_vclient
+    ) -> None:
+        """Verify a 403 renders the API's detail."""
+        # Given the API refuses the roll
+        char_trait = mock_diceroll_deps[2].character_traits[0]
+        fake_vclient.set_error(
+            Routes.DICEROLLS_CREATE,
+            status_code=403,
+            detail="Only storytellers can roll for this character.",
+        )
+
+        # When submitting a trait roll
+        body = _post(
+            client,
+            "/roll/char-1/traits",
+            {"trait_one_id": char_trait.trait.id, "difficulty": "6", "num_desperation_dice": "0"},
+        )
+
+        # Then the detail is shown
+        assert "Only storytellers can roll for this character." in body
+
+    def test_quickroll_hides_server_error_detail(
+        self, client, mock_diceroll_deps, fake_vclient
+    ) -> None:
+        """Verify a 500 renders the generic message without its detail."""
+        # Given the API fails
+        fake_vclient.set_error(Routes.DICEROLLS_QUICKROLL, status_code=500, detail="internal boom")
+
+        # When submitting a quickroll
+        body = _post(
+            client,
+            "/roll/char-1/quickroll",
+            {"quickroll_id": "qr-1", "difficulty": "6", "num_desperation_dice": "0"},
+        )
+
+        # Then only the generic message is shown
+        assert "Roll failed - please try again." in body
+        assert "internal boom" not in body
+
+    def test_quickroll_client_validation_error_never_renders_none(
+        self, client, mock_diceroll_deps, mocker
+    ) -> None:
+        """Verify a client-side validation error shows its message, not None."""
+        # Given the client rejects the request before sending it
+        with pytest.raises(PydanticValidationError) as info:
+            _Roll(num_dice=500)
+        mocker.patch(
+            "vweb.routes.diceroll.views.perform_quickroll",
+            side_effect=RequestValidationError(info.value),
+        )
+
+        # When submitting a quickroll
+        body = _post(
+            client,
+            "/roll/char-1/quickroll",
+            {"quickroll_id": "qr-1", "difficulty": "6", "num_desperation_dice": "0"},
+        )
+
+        # Then no "None" leaks into the page text
+        assert "None" not in body
+        assert "Num dice" in body

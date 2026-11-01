@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from flask import Blueprint, abort, request
 from flask.views import MethodView
+from pydantic import ValidationError as PydanticValidationError
 from vclient.exceptions import APIError
 
 from vweb.lib import cache
+from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog
 from vweb.lib.htmx import htmx_response
 from vweb.routes.dictionary.services import create_term as svc_create_term
@@ -20,9 +21,10 @@ from vweb.routes.dictionary.services import validate_term
 if TYPE_CHECKING:
     from vclient.models import DictionaryTerm
 
-logger = logging.getLogger(__name__)
 
 bp = Blueprint("dictionary", __name__)
+
+_SAVE_FAILED = "An error occurred. Please try again."
 
 
 def _mutation_success_response(term: DictionaryTerm | None) -> str:
@@ -149,11 +151,10 @@ class DictionaryCreateView(MethodView):
 
         try:
             created = svc_create_term(form_data)
-        except APIError:
-            logger.exception("Dictionary term creation failed")
+        except (APIError, PydanticValidationError) as exc:
             return catalog.render(
                 "dictionary.partials.TermForm",
-                errors={"_general": "An error occurred. Please try again."},
+                errors={"_general": api_error_message(exc, fallback=_SAVE_FAILED)},
                 form_data=form_data,
             )
 
@@ -185,12 +186,11 @@ class DictionaryUpdateView(MethodView):
 
         try:
             updated = svc_update_term(term_id, form_data)
-        except APIError:
-            logger.exception("Dictionary term update failed")
+        except (APIError, PydanticValidationError) as exc:
             return catalog.render(
                 "dictionary.partials.TermForm",
                 term=term,
-                errors={"_general": "An error occurred. Please try again."},
+                errors={"_general": api_error_message(exc, fallback=_SAVE_FAILED)},
                 form_data=form_data,
             )
 
@@ -214,12 +214,15 @@ class DictionaryDeleteView(MethodView):
 
         try:
             svc_delete_term(term_id)
-        except APIError:
-            logger.exception("Dictionary term deletion failed")
+        except APIError as exc:
             return catalog.render(
                 "dictionary.partials.TermDetail",
                 term=term,
-                errors={"_general": "Failed to delete. Please try again."},
+                errors={
+                    "_general": api_error_message(
+                        exc, fallback="Failed to delete. Please try again."
+                    )
+                },
             )
 
         return _mutation_success_response(None)

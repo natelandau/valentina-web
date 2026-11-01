@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 from vweb.lib import cache
 from vweb.lib.api import fetch_campaign_or_404
+from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog
 from vweb.lib.guards import is_storyteller
 from vweb.lib.htmx import hx_redirect
@@ -152,7 +153,9 @@ class SingleAutogenFormView(MethodView):
             return catalog.render(
                 "character_create.partials.SingleAutogenForm",
                 campaign=campaign,
-                errors=[str(exc)],
+                errors=[
+                    api_error_message(exc, fallback="Failed to create character. Please try again.")
+                ],
                 form_data=form_data,
                 **options,
             )

@@ -10,6 +10,7 @@ from vclient import sync_character_traits_service
 
 from vweb.lib import cache
 from vweb.lib.api import get_character_and_campaign
+from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog
 from vweb.lib.character_profile import TRAIT_API_ERRORS, find_character_trait
 from vweb.lib.guards import can_edit_character, can_edit_traits_free
@@ -141,7 +142,7 @@ class SpecialtiesView(_SpecialtyBaseView):
         try:
             self._service().add_specialty(character_trait_id, name, currency=self.spend_type)
         except TRAIT_API_ERRORS as error:
-            flash(error.detail or "Failed to update specialty", "error")
+            flash(api_error_message(error, fallback="Failed to update specialty"), "error")
             return hx_redirect(self.form_url)
 
         message = f"Added {name} to {self._ability_name}."
@@ -173,7 +174,7 @@ class SpecialtyView(_SpecialtyBaseView):
         try:
             self._service().update_specialty(character_trait_id, specialty_id, name)
         except TRAIT_API_ERRORS as error:
-            flash(error.detail or "Failed to update specialty", "error")
+            flash(api_error_message(error, fallback="Failed to update specialty"), "error")
             return hx_redirect(self.form_url)
 
         return self._finish(f"Renamed {old_name or 'a specialty'} to {name}.")
@@ -188,7 +189,7 @@ class SpecialtyView(_SpecialtyBaseView):
         try:
             self._service().delete_specialty(character_trait_id, specialty_id)
         except TRAIT_API_ERRORS as error:
-            flash(error.detail or "Failed to update specialty", "error")
+            flash(api_error_message(error, fallback="Failed to update specialty"), "error")
             return hx_redirect(self.form_url)
 
         return self._finish(f"Removed {old_name or 'a specialty'} from {self._ability_name}.")

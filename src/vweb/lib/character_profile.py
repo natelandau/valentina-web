@@ -4,29 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from vclient.exceptions import (
-    APIError,
-    AuthorizationError,
-    ConflictError,
-    NotFoundError,
-    RequestValidationError,
-    ValidationError,
-)
+from vweb.lib.api_errors import USER_FACING_API_ERRORS
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from vclient.models import CharacterFullSheet, CharacterTrait
 
-# NotFoundError included so a stale page acting on an already-deleted trait
-# (or missing character) surfaces a flash instead of a 500.
-TRAIT_API_ERRORS: tuple[type[APIError], ...] = (
-    AuthorizationError,
-    ConflictError,
-    NotFoundError,
-    ValidationError,
-    RequestValidationError,
-)
+TRAIT_API_ERRORS = USER_FACING_API_ERRORS
 
 
 def iter_character_traits(full_sheet: CharacterFullSheet) -> Iterator[CharacterTrait]:

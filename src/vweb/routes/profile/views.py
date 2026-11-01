@@ -21,10 +21,11 @@ from vclient.models.users import UserUpdate
 
 from vweb.lib import cache
 from vweb.lib.api import get_campaign_name, validate_and_submit_experience
+from vweb.lib.api_errors import USER_FACING_API_ERRORS, api_error_message
 from vweb.lib.catalog import catalog
 from vweb.lib.crud.routing import register_crud_table_routes
 from vweb.lib.guards import can_grant_experience, is_self
-from vweb.lib.htmx import hx_redirect
+from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
 from vweb.lib.image_uploads import handle_avatar_delete, handle_avatar_upload
 from vweb.routes.profile.views_quickrolls import QuickrollsTableView
 
@@ -74,16 +75,7 @@ class ProfileView(MethodView):
             errors.append("Email must be a valid email address")
 
         if errors:
-            ctx = g.global_context
-            user = next((u for u in ctx.users if u.id == user_id), None)
-            if user is None:
-                abort(404)
-            return catalog.render(
-                "profile.partials.ProfileEditForm",
-                user=user,
-                form_data=form_data,
-                errors=errors,
-            )
+            return _render_edit_form(user_id, form_data=form_data, errors=errors)
 
         svc = sync_users_service(on_behalf_of=session["user_id"], company_id=session["company_id"])
 
@@ -92,21 +84,45 @@ class ProfileView(MethodView):
         # off file presence (not the upload result) means a rejected file never
         # also triggers a delete.
         avatar_file = request.files.get("avatar")
+        avatar_changed = False
         if avatar_file is not None and avatar_file.filename:
-            handle_avatar_upload(svc=svc, user_id=user_id, file=avatar_file)
+            avatar_changed = handle_avatar_upload(svc=svc, user_id=user_id, file=avatar_file)
         elif form_data.get("remove_avatar"):
-            handle_avatar_delete(svc=svc, user_id=user_id)
+            avatar_changed = handle_avatar_delete(svc=svc, user_id=user_id)
 
-        update_request = UserUpdate(
-            name_first=form_data.get("name_first", "").strip() or None,
-            name_last=form_data.get("name_last", "").strip() or None,
-            username=form_data["username"].strip(),
-            email=form_data["email"].strip(),
-        )
-        svc.update(user_id, request=update_request)
+        try:
+            update_request = UserUpdate(
+                name_first=form_data.get("name_first", "").strip() or None,
+                name_last=form_data.get("name_last", "").strip() or None,
+                username=form_data["username"].strip(),
+                email=form_data["email"].strip(),
+            )
+            svc.update(user_id, request=update_request)
+        except USER_FACING_API_ERRORS as exc:
+            message = api_error_message(
+                exc, fallback="Could not save your profile. Please try again."
+            )
+            if avatar_changed:
+                cache.global_context.clear_current()
+            return htmx_response_with_flash(
+                _render_edit_form(user_id, form_data=form_data, errors=[message])
+            )
         cache.global_context.clear_current()
 
         return hx_redirect(url_for("profile.profile", user_id=user_id))
+
+
+def _render_edit_form(user_id: str, *, form_data: dict[str, str], errors: list[str]) -> str:
+    """Re-render the profile edit form with the submitted values and error messages."""
+    user = next((u for u in g.global_context.users if u.id == user_id), None)
+    if user is None:
+        abort(404)
+    return catalog.render(
+        "profile.partials.ProfileEditForm",
+        user=user,
+        form_data=form_data,
+        errors=errors,
+    )
 
 
 def _build_experience_rows(user_id: str) -> tuple[list[dict], int, int]:

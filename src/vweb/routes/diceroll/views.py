@@ -8,10 +8,11 @@ from urllib.parse import urlparse
 from flask import Blueprint, abort, make_response, request, url_for
 from flask.views import MethodView
 from vclient.constants import DiceSize
-from vclient.exceptions import APIError, ValidationError
+from vclient.exceptions import APIError
 
 from vweb.lib import cache
 from vweb.lib.api import get_character_and_campaign
+from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog
 from vweb.routes.diceroll.services import (
     get_character_traits,
@@ -141,10 +142,10 @@ class DiceRollCustomView(MethodView):
                 difficulty=difficulty,
                 comment=comment,
             )
-        except APIError:
+        except APIError as e:
             return catalog.render(
                 "diceroll.partials.DiceRollResults",
-                error="Roll failed - please try again.",
+                error=api_error_message(e, fallback="Roll failed - please try again."),
             )
 
         return catalog.render(
@@ -207,10 +208,10 @@ class DiceRollTraitsView(MethodView):
                 "diceroll.partials.DiceRollResults",
                 error=str(e),
             )
-        except APIError:
+        except APIError as e:
             return catalog.render(
                 "diceroll.partials.DiceRollResults",
-                error="Roll failed - please try again.",
+                error=api_error_message(e, fallback="Roll failed - please try again."),
             )
 
         return catalog.render(
@@ -262,15 +263,10 @@ class DiceRollQuickrollView(MethodView):
                 num_desperation_dice=num_desperation_dice,
                 comment=comment,
             )
-        except ValidationError as e:
-            return catalog.render(
-                "diceroll.partials.DiceRollResults",
-                error=f"Roll failed - please try again. {e.detail}",
-            )
         except APIError as e:
             return catalog.render(
                 "diceroll.partials.DiceRollResults",
-                error=f"Roll failed - please try again. {e.detail}",
+                error=api_error_message(e, fallback="Roll failed - please try again."),
             )
 
         return catalog.render(

@@ -236,7 +236,9 @@ def test_can_edit_traits_free_unrestricted_setting(guard_ctx) -> None:
     """Verify any user edits traits for free when the setting is UNRESTRICTED."""
     # Given a player and unrestricted setting
     guard_ctx(role="PLAYER", permission_free_trait_changes="UNRESTRICTED")
-    character = CharacterFactory.build(date_created=datetime.now(UTC) - timedelta(days=30))
+    character = CharacterFactory.build(
+        type="PLAYER", date_created=datetime.now(UTC) - timedelta(days=30)
+    )
 
     # When / Then
     assert can_edit_traits_free(character) is True
@@ -246,7 +248,9 @@ def test_can_edit_traits_free_within_24h_fresh_character(guard_ctx) -> None:
     """Verify WITHIN_24_HOURS allows free edits for a character under a day old."""
     # Given a player and a freshly-created character
     guard_ctx(role="PLAYER", permission_free_trait_changes="WITHIN_24_HOURS")
-    character = CharacterFactory.build(date_created=datetime.now(UTC) - timedelta(hours=1))
+    character = CharacterFactory.build(
+        type="PLAYER", date_created=datetime.now(UTC) - timedelta(hours=1)
+    )
 
     # When / Then
     assert can_edit_traits_free(character) is True
@@ -256,7 +260,9 @@ def test_can_edit_traits_free_within_24h_old_character(guard_ctx) -> None:
     """Verify WITHIN_24_HOURS denies free edits for a character older than a day."""
     # Given a player and an old character
     guard_ctx(role="PLAYER", permission_free_trait_changes="WITHIN_24_HOURS")
-    character = CharacterFactory.build(date_created=datetime.now(UTC) - timedelta(hours=25))
+    character = CharacterFactory.build(
+        type="PLAYER", date_created=datetime.now(UTC) - timedelta(hours=25)
+    )
 
     # When / Then
     assert can_edit_traits_free(character) is False
@@ -266,10 +272,23 @@ def test_can_edit_traits_free_restricted_setting(guard_ctx) -> None:
     """Verify a restrictive setting denies free trait edits for players."""
     # Given a player and a storyteller-only setting
     guard_ctx(role="PLAYER", permission_free_trait_changes="STORYTELLER")
-    character = CharacterFactory.build(date_created=datetime.now(UTC))
+    character = CharacterFactory.build(type="PLAYER", date_created=datetime.now(UTC))
 
     # When / Then
     assert can_edit_traits_free(character) is False
+
+
+@pytest.mark.parametrize("character_type", ["NPC", "STORYTELLER"])
+def test_can_edit_traits_free_non_player_ignores_setting(guard_ctx, character_type) -> None:
+    """Verify the free-change setting does not apply to non-player characters."""
+    # Given a player, the strictest setting, and an old non-player character
+    guard_ctx(role="PLAYER", permission_free_trait_changes="STORYTELLER")
+    character = CharacterFactory.build(
+        type=character_type, date_created=datetime.now(UTC) - timedelta(days=2)
+    )
+
+    # When / Then
+    assert can_edit_traits_free(character) is True
 
 
 @pytest.mark.parametrize("role", ["ADMIN", "STORYTELLER"])

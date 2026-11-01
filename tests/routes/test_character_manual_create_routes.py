@@ -622,9 +622,42 @@ class TestManualFinalizeView:
             headers={"HX-Request": "true"},
         )
 
-        # Then traits form is re-rendered with error
+        # Then traits form is re-rendered with the fallback, not the API's internals
         assert response.status_code == 200
         assert_shows_error(response)
+        body = response.get_data(as_text=True)
+        assert "Failed to create character. Please try again." in body
+        assert "Error 500" not in body
+
+
+class TestManualFinalizeLoadError:
+    """Tests for a failure loading the character being finalized."""
+
+    def test_server_error_flashes_fallback(self, client, mocker) -> None:
+        """Verify a server error loading the character flashes the fallback, not the detail."""
+        from vclient.exceptions import ServerError
+
+        # Given loading the in-progress character fails server-side
+        ctx = build_global_context(user_role="PLAYER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        mocker.patch(
+            "vweb.routes.character_create.manual_views.finalizable_temp_character",
+            side_effect=ServerError("boom", 500, {"detail": "db exploded"}),
+        )
+
+        # When finalizing
+        response = client.post(
+            f"/campaign/{campaign.id}/characters/profile_edit/create",
+            data={"trait:trait-1": "3", "csrf_token": get_csrf(client)},
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the fallback is flashed and the user is sent back to the profile step
+        assert "profile_edit" in response.headers.get("HX-Redirect", "")
+        with client.session_transaction() as sess:
+            flashes = list(sess.get("_flashes", []))
+        assert flashes == [("error", "Could not load the character in progress. Please try again.")]
 
 
 class TestManualFinalizeGuards:
@@ -866,6 +899,40 @@ class TestProfileEditMode:
         assert response.status_code == 200
         body = response.get_data(as_text=True)
         assert "alert-error" in body
+
+    def test_edit_load_server_error_shows_fallback(self, client, mocker, fake_vclient) -> None:
+        """Verify a server error loading the character shows the fallback, not the detail."""
+        from vclient.testing import Routes
+
+        # Given loading the character fails server-side
+        ctx = build_global_context(user_role="PLAYER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        _mock_form_options(mocker)
+        fake_vclient.set_error(
+            Routes.CHARACTERS_GET,
+            status_code=500,
+            detail="db exploded",
+            params={"character_id": "char-123"},
+        )
+
+        # When submitting the edit form
+        response = client.post(
+            f"/campaign/{campaign.id}/characters/profile_edit?character_id=char-123",
+            data={
+                "name_first": "Updated",
+                "name_last": "Name",
+                "game_version": "V5",
+                "character_class": "MORTAL",
+                "csrf_token": get_csrf(client),
+            },
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the fallback is shown and the detail is not
+        body = response.get_data(as_text=True)
+        assert "Failed to load character. Please try again." in body
+        assert "db exploded" not in body
 
     def test_edit_denied_for_non_editor(self, client, mocker) -> None:
         """Verify a player cannot edit a character they do not own."""

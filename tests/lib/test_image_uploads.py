@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import io
+from unittest.mock import MagicMock
+
 import pytest
+from flask import get_flashed_messages
+from vclient.exceptions import APIError
+from werkzeug.datastructures import FileStorage
 
 from tests.helpers import make_image_bytes
-from vweb.lib.image_uploads import image_dimensions_error
+from vweb.lib.image_uploads import handle_image_upload, image_dimensions_error
 
 
 class TestImageDimensionsError:
@@ -53,3 +59,22 @@ class TestImageDimensionsError:
 
         # Then the invalid-image message is returned
         assert result == "File is not a valid image."
+
+
+def test_413_from_api_flashes_upload_limit(app) -> None:
+    """Verify a 413 from the API flashes the upload size limit instead of a generic failure."""
+    # Given an upload service whose API call is rejected as too large
+    svc = MagicMock()
+    svc.upload_asset.side_effect = APIError("Request body too large", 413, {})
+    file = FileStorage(
+        stream=io.BytesIO(make_image_bytes()), filename="a.png", content_type="image/png"
+    )
+
+    # When the image is uploaded
+    with app.test_request_context():
+        result = handle_image_upload(svc=svc, parent_id="p1", file=file)
+        messages = get_flashed_messages(category_filter=["error"])
+
+    # Then nothing is returned and the flash names the limit
+    assert result is None
+    assert messages == ["Upload is too large (max 4 MB)."]

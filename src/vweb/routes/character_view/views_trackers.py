@@ -9,6 +9,7 @@ from flask.views import MethodView
 
 from vweb.lib import cache
 from vweb.lib.api import API_UNAVAILABLE_ERRORS, get_character_and_campaign
+from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog
 from vweb.lib.character_profile import TRAIT_API_ERRORS, find_character_trait
 from vweb.lib.guards import can_edit_trackers
@@ -95,7 +96,7 @@ def _store_health(character_id: str, health: Health) -> None:
 
 
 def _recover[T](
-    detail: str | None,
+    message: str,
     *,
     refetch: Callable[[], T],
     store: Callable[[T], None],
@@ -105,7 +106,7 @@ def _recover[T](
     """Flash the API's rejection and redraw the current state so the page matches the server.
 
     Args:
-        detail: The API's explanation of the rejection, if any.
+        message: The user-facing explanation of the rejection.
         refetch: Read the current state from the API.
         store: Write the refetched state into the cached sheet.
         render: Render the state as the swapped-in partial.
@@ -114,7 +115,7 @@ def _recover[T](
     Returns:
         The redrawn partial with the flash, or only the flash when there is nothing to draw.
     """
-    flash(detail or "Could not update", "error")
+    flash(message, "error")
     state: T | None
     try:
         state = refetch()
@@ -158,7 +159,7 @@ class TraitTrackerView(MethodView):
             )
         except TRAIT_API_ERRORS as error:
             return _recover(
-                error.detail,
+                api_error_message(error, fallback="Could not update"),
                 refetch=lambda: fetch_trait_tracker(character_id, character_trait_id, **_api_ids()),
                 store=lambda fresh: _store_tracker(character_id, character_trait_id, fresh),
                 render=lambda fresh: _render_tracker(character, character_trait, fresh),
@@ -187,7 +188,7 @@ class HealthView(MethodView):
             health = update_health(character_id, tracker_request, **_api_ids())
         except TRAIT_API_ERRORS as error:
             return _recover(
-                error.detail,
+                api_error_message(error, fallback="Could not update"),
                 refetch=lambda: fetch_health(character_id, **_api_ids()),
                 store=lambda fresh: _store_health(character_id, fresh),
                 render=lambda fresh: _render_health(character, fresh),
