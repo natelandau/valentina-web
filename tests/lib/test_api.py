@@ -5,8 +5,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+import httpx2
 import pytest
 from flask import g, session
+from vclient.exceptions import ServerError, ValidationError
 from vclient.testing import (
     CampaignBookFactory,
     CampaignChapterFactory,
@@ -36,6 +38,15 @@ from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
     from vclient.models import Character
+
+
+_COOL_POINTS_UNCONFIRMED = (
+    "Could not confirm the cool point grant. Check the user's cool points before submitting again."
+)
+_COOL_POINTS_UNCONFIRMED_AFTER_XP = (
+    "XP was granted, but the cool point grant could not be confirmed. "
+    "Check the user's cool points before submitting again."
+)
 
 
 def _build_ctx(campaigns: list) -> GlobalContext:
@@ -597,3 +608,212 @@ class TestValidateAndSubmitExperience:
         assert errors == []
         users_service.add_xp.assert_called_once_with("u1", "c1", amount=3)
         users_service.add_cool_points.assert_not_called()
+
+    def test_refused_xp_returns_field_error_and_skips_cool_points(self, app, mocker) -> None:
+        """Verify an API field error on XP is returned and cool points are not sent."""
+        # Given an XP grant the API refuses
+        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service.add_xp.side_effect = ValidationError(
+            "bad",
+            400,
+            {
+                "invalid_parameters": [
+                    {"field": "amount", "message": "Input should be less than or equal to 10000"}
+                ]
+            },
+        )
+
+        # When submitting both amounts
+        with app.test_request_context():
+            session["company_id"] = "company-1"
+            errors = validate_and_submit_experience(
+                {"xp": "99999", "cool_points": "1"},
+                user_id="u1",
+                campaign_id="c1",
+                on_behalf_of="st1",
+            )
+
+        # Then the field error is returned and cool points are not granted
+        assert errors == ["XP: Input should be less than or equal to 10000"]
+        users_service.add_cool_points.assert_not_called()
+
+    def test_refused_cool_points_after_xp_reports_partial_grant(self, app, mocker) -> None:
+        """Verify a cool point failure after XP succeeds resets XP and clears the cache."""
+        # Given XP that succeeds and cool points the API refuses
+        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service.add_cool_points.side_effect = ValidationError(
+            "bad",
+            400,
+            {"invalid_parameters": [{"field": "amount", "message": "Too many"}]},
+        )
+        clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
+        form_data = {"xp": "5", "cool_points": "99999"}
+
+        # When submitting both amounts
+        with app.test_request_context():
+            session["company_id"] = "company-1"
+            errors = validate_and_submit_experience(
+                form_data, user_id="u1", campaign_id="c1", on_behalf_of="st1"
+            )
+
+        # Then the partial grant is reported, XP is reset, and the cache is cleared
+        assert errors == ["XP was granted, but cool points were not. Cool points: Too many"]
+        assert form_data["xp"] == "0"
+        clear.assert_called_once()
+
+    def test_refused_xp_bound_reads_as_xp_sentence(self, app, mocker) -> None:
+        """Verify an API bound on the XP amount names XP instead of the amount field."""
+        # Given an XP grant the API refuses with its constraint text
+        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service.add_xp.side_effect = ValidationError(
+            "bad",
+            400,
+            {
+                "detail": "Validation failed for one or more fields.",
+                "invalid_parameters": [{"field": "amount", "message": "Expected `int` <= 10000"}],
+            },
+        )
+
+        # When submitting XP
+        with app.test_request_context():
+            session["company_id"] = "company-1"
+            errors = validate_and_submit_experience(
+                {"xp": "99999", "cool_points": "0"},
+                user_id="u1",
+                campaign_id="c1",
+                on_behalf_of="st1",
+            )
+
+        # Then the message names XP and the bound from the API
+        assert errors == ["XP must be at most 10000"]
+
+    def test_unreachable_api_on_cool_points_after_xp_reports_partial_grant(
+        self, app, mocker
+    ) -> None:
+        """Verify a network failure on cool points after XP succeeds is reported, not raised."""
+        # Given XP that succeeds and a cool point call that cannot reach the API
+        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service.add_cool_points.side_effect = httpx2.ConnectError("down")
+        clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
+        form_data = {"xp": "5", "cool_points": "2"}
+
+        # When submitting both amounts
+        with app.test_request_context():
+            session["company_id"] = "company-1"
+            errors = validate_and_submit_experience(
+                form_data, user_id="u1", campaign_id="c1", on_behalf_of="st1"
+            )
+
+        # Then the unknown outcome is reported and XP is reset so a retry cannot grant it twice
+        assert errors == [_COOL_POINTS_UNCONFIRMED_AFTER_XP]
+        assert form_data["xp"] == "0"
+        clear.assert_called_once()
+
+    def test_unreachable_api_on_cool_points_alone_reports_unknown_outcome(
+        self, app, mocker
+    ) -> None:
+        """Verify a network failure on cool points says the outcome is unknown."""
+        # Given a cool point call that cannot reach the API and no XP requested
+        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service.add_cool_points.side_effect = httpx2.ConnectError("down")
+        clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
+
+        # When submitting only cool points
+        with app.test_request_context():
+            session["company_id"] = "company-1"
+            errors = validate_and_submit_experience(
+                {"xp": "0", "cool_points": "2"}, user_id="u1", campaign_id="c1", on_behalf_of="st1"
+            )
+
+        # Then the user is told to check before resubmitting
+        assert errors == [_COOL_POINTS_UNCONFIRMED]
+        clear.assert_called_once()
+
+    def test_unreachable_api_on_xp_reports_unknown_outcome(self, app, mocker) -> None:
+        """Verify a network failure on XP is reported, not raised, and skips cool points."""
+        # Given an XP call that cannot reach the API
+        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service.add_xp.side_effect = httpx2.ReadTimeout("slow")
+        clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
+        form_data = {"xp": "5", "cool_points": "2"}
+
+        # When submitting both amounts
+        with app.test_request_context():
+            session["company_id"] = "company-1"
+            errors = validate_and_submit_experience(
+                form_data, user_id="u1", campaign_id="c1", on_behalf_of="st1"
+            )
+
+        # Then the user is told to check XP and cool points are not attempted
+        assert errors == [
+            "Could not confirm the XP grant. Check the user's XP before submitting again."
+        ]
+        users_service.add_cool_points.assert_not_called()
+        clear.assert_called_once()
+        assert form_data["xp"] == "0"
+
+    def test_server_error_on_xp_reports_unknown_outcome(self, app, mocker) -> None:
+        """Verify a 500 on XP is treated as an unknown outcome without the API detail."""
+        # Given an XP grant that fails server-side, possibly after the grant was applied
+        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service.add_xp.side_effect = ServerError("boom", 500, {"detail": "db exploded"})
+        clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
+        form_data = {"xp": "3", "cool_points": "0"}
+
+        # When submitting XP
+        with app.test_request_context():
+            session["company_id"] = "company-1"
+            errors = validate_and_submit_experience(
+                form_data, user_id="u1", campaign_id="c1", on_behalf_of="st1"
+            )
+
+        # Then the user is told to check XP, and XP is reset so a retry cannot grant it twice
+        assert errors == [
+            "Could not confirm the XP grant. Check the user's XP before submitting again."
+        ]
+        assert form_data["xp"] == "0"
+        clear.assert_called_once()
+
+    def test_server_error_on_cool_points_after_xp_reports_unknown_outcome(
+        self, app, mocker
+    ) -> None:
+        """Verify a 500 on cool points after XP succeeds is treated as an unknown outcome."""
+        # Given XP that succeeds and a cool point grant that fails server-side
+        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service.add_cool_points.side_effect = ServerError("boom", 502, {})
+        mocker.patch("vweb.lib.api.cache.global_context.clear_current")
+        form_data = {"xp": "5", "cool_points": "2"}
+
+        # When submitting both amounts
+        with app.test_request_context():
+            session["company_id"] = "company-1"
+            errors = validate_and_submit_experience(
+                form_data, user_id="u1", campaign_id="c1", on_behalf_of="st1"
+            )
+
+        # Then the user is told to check cool points and XP is reset
+        assert errors == [_COOL_POINTS_UNCONFIRMED_AFTER_XP]
+        assert form_data["xp"] == "0"
+
+    def test_refused_cool_points_alone_returns_field_error(self, app, mocker) -> None:
+        """Verify a cool point refusal with no XP returns the field message and keeps the cache."""
+        # Given cool points the API refuses and no XP requested
+        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service.add_cool_points.side_effect = ValidationError(
+            "bad",
+            400,
+            {"invalid_parameters": [{"field": "amount", "message": "Too many"}]},
+        )
+        clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
+
+        # When submitting only cool points
+        with app.test_request_context():
+            session["company_id"] = "company-1"
+            errors = validate_and_submit_experience(
+                {"xp": "0", "cool_points": "5"}, user_id="u1", campaign_id="c1", on_behalf_of="st1"
+            )
+
+        # Then the field message is returned and nothing else happens
+        assert errors == ["Cool points: Too many"]
+        users_service.add_xp.assert_not_called()
+        clear.assert_not_called()
