@@ -56,6 +56,7 @@ Character routes split into `character_view`, `character_trait_edit` (spend type
 - **Data access:** `lib/api.get_character_and_campaign(character_id)` (reads `g.global_context`, no API call). Campaigns via `g.global_context.campaigns`. Requesting user via `g.requesting_user`.
 - **Permission guards (`lib/guards.py`):** `is_admin`, `is_storyteller`, `is_self`, `can_manage_campaign`, `can_grant_experience`, `can_edit_traits_free`, `can_edit_character`, `can_edit_trackers`, etc. **Never inline `g.requesting_user.role in (...)` or ownership checks — always call a guard** (Python and templates). Don't pass a guard result as a prop if the child already has the parent object in scope. New check? Add to `lib/guards.py`, register in `lib/jinja.py`'s `jinja_globals`, test in `tests/lib/test_guards.py`.
 - **Trait rules (`lib/trait_rules.py`):** `is_derived_trait` (V5 Willpower is read-only) and `accepts_specialties` (abilities at 1+ dots). Registered as Jinja globals in `lib/jinja.py`. Call these instead of comparing trait names or sections inline.
+- **API errors (`lib/api_errors.py`):** when a vclient call fails, show `api_error_message(error, fallback="...")` (or `api_field_errors(...)` for forms with per-field errors), never a fixed "Failed to ..." string or the raw `detail`. It shows the API's reason for errors a user can fix and the fallback for server errors. Catch `USER_FACING_API_ERRORS` where only user-fixable errors should be handled.
 
 ### Caching
 
