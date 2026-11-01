@@ -11,6 +11,7 @@ from vclient.models.users import GitHubProfile
 from vclient.testing import UserFactory
 
 from tests.helpers import make_image_bytes
+from vweb.constants import MAX_AVATAR_SIZE, MAX_AVATAR_SIZE_MB
 from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
@@ -181,6 +182,18 @@ class TestProfileEdit:
         assert "multipart/form-data" in body
         assert 'name="avatar"' in body
         assert "file-input" in body
+
+    @pytest.mark.usefixtures("_mock_profile_api")
+    def test_edit_form_checks_avatar_size_client_side(self, client: FlaskClient) -> None:
+        """Verify the avatar max size is rendered into the Alpine data that guards the input."""
+        # When requesting the edit form fragment
+        response = client.get("/profile/test-user-id/edit", headers={"HX-Request": "true"})
+
+        # Then the Alpine scope carries the limit and the input checks it on change
+        body = response.get_data(as_text=True)
+        assert f"maxSize: {MAX_AVATAR_SIZE}" in body
+        assert f"maxSizeMb: {MAX_AVATAR_SIZE_MB}" in body
+        assert "files[0]?.size > maxSize" in body
 
 
 class TestProfilePost:
@@ -446,12 +459,12 @@ class TestProfileAvatar:
     def test_oversized_avatar_is_rejected(
         self, client: FlaskClient, mock_profile_svc: MagicMock
     ) -> None:
-        """Verify a file over 5 MB is not uploaded."""
+        """Verify a file over the avatar size limit is not uploaded."""
         from tests.conftest import get_csrf
 
-        # Given a 5 MB + 1 byte image
+        # Given an image one byte over the limit
         csrf = get_csrf(client)
-        big = b"x" * (5 * 1024 * 1024 + 1)
+        big = b"x" * (MAX_AVATAR_SIZE + 1)
         data = {
             "csrf_token": csrf,
             "username": "testuser",

@@ -10,7 +10,14 @@ from flask import g, session, url_for
 
 import vweb
 from vweb.config import get_settings
-from vweb.constants import MAX_AVATAR_SIZE, MAX_IMAGE_SIZE, STATIC_PATH, TEMPLATES_PATH
+from vweb.constants import (
+    MAX_AVATAR_SIZE,
+    MAX_AVATAR_SIZE_MB,
+    MAX_IMAGE_SIZE,
+    MAX_IMAGE_SIZE_MB,
+    STATIC_PATH,
+    TEMPLATES_PATH,
+)
 from vweb.lib import cache
 from vweb.lib.api import (
     get_active_campaign,
@@ -231,8 +238,12 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
     jinja_globals["get_options"] = cache.options.get
     jinja_globals["tracker_actions_for"] = cache.options.tracker_actions_for
     jinja_globals["get_system_health"] = cache.system_status.get
-    jinja_globals["MAX_IMAGE_SIZE"] = MAX_IMAGE_SIZE
-    jinja_globals["MAX_AVATAR_SIZE"] = MAX_AVATAR_SIZE
+    jinja_globals.update(
+        MAX_IMAGE_SIZE=MAX_IMAGE_SIZE,
+        MAX_AVATAR_SIZE=MAX_AVATAR_SIZE,
+        MAX_IMAGE_SIZE_MB=MAX_IMAGE_SIZE_MB,
+        MAX_AVATAR_SIZE_MB=MAX_AVATAR_SIZE_MB,
+    )
     jinja_globals["is_admin"] = is_admin
     jinja_globals["is_active_role"] = is_active_role
     jinja_globals["is_approved_user"] = is_approved_user

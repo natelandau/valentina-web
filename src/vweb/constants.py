@@ -24,8 +24,11 @@ CACHE_AUDIT_LOG_TTL: Final[int] = 60
 # How long before the company resources_modified_at stamp is re-validated against the API.
 CACHE_GLOBAL_CONTEXT_TIMESTAMP_TTL: Final[int] = 120
 
-MAX_IMAGE_SIZE: Final[int] = 10 * 1024 * 1024  # 10 MB
-MAX_AVATAR_SIZE: Final[int] = 5 * 1024 * 1024  # 5 MB — Valentina API avatar cap
+# Keep an upload plus multipart overhead under the API's 5 MB request body limit
+MAX_IMAGE_SIZE: Final[int] = 4 * 1024 * 1024
+MAX_AVATAR_SIZE: Final[int] = 4 * 1024 * 1024
+MAX_IMAGE_SIZE_MB: Final[int] = MAX_IMAGE_SIZE // (1024 * 1024)
+MAX_AVATAR_SIZE_MB: Final[int] = MAX_AVATAR_SIZE // (1024 * 1024)
 MAX_IMAGE_PIXELS: Final[int] = 24_000_000  # Valentina API width x height cap
 # Largest image upload plus multipart and form-field overhead
 MAX_REQUEST_BODY_BYTES: Final[int] = MAX_IMAGE_SIZE + 1024 * 1024

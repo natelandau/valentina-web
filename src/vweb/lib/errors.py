@@ -9,7 +9,7 @@ from flask_wtf.csrf import CSRFError
 from loguru import logger
 from werkzeug.exceptions import HTTPException
 
-from vweb.constants import MAX_IMAGE_SIZE
+from vweb.constants import MAX_IMAGE_SIZE_MB
 from vweb.lib.catalog import catalog
 from vweb.lib.htmx import htmx_flash_only
 
@@ -65,7 +65,7 @@ def register_error_handlers(app: Flask) -> None:
     def payload_too_large(error: HTTPException) -> Response | tuple[str, int]:  # noqa: ARG001
         # htmx discards 4xx responses, so an oversized HTMX upload needs a 200 flash to
         # give the user any feedback at all
-        message = f"Upload is too large (max {MAX_IMAGE_SIZE // (1024 * 1024)} MB)."
+        message = f"Upload is too large (max {MAX_IMAGE_SIZE_MB} MB)."
         if request.headers.get("HX-Request"):
             flash(message, "error")
             return htmx_flash_only()

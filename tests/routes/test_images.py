@@ -11,6 +11,7 @@ from vclient.testing import AssetFactory, CampaignChapterFactory, CharacterFacto
 
 from tests.conftest import get_csrf
 from tests.helpers import make_image_bytes
+from vweb.constants import MAX_IMAGE_SIZE
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
@@ -485,7 +486,7 @@ class TestCharacterImageUpload:
         mock_svc.upload_asset.assert_not_called()
 
     def test_oversized_file_flashes_error(self, client, mocker, mock_character_lookup) -> None:
-        """Verify uploading a file over 10MB flashes an error."""
+        """Verify uploading a file over the size limit flashes an error."""
         # Given a mocked character service
         char, _ = mock_character_lookup
         mock_svc = mocker.patch(
@@ -495,7 +496,7 @@ class TestCharacterImageUpload:
         csrf = get_csrf(client)
 
         # When uploading an oversized file
-        big_data = b"x" * (10 * 1024 * 1024 + 1)
+        big_data = b"x" * (MAX_IMAGE_SIZE + 1)
         data = {"image": (io.BytesIO(big_data), "huge.png", "image/png")}
         response = client.post(
             f"/character/{char.id}/images",

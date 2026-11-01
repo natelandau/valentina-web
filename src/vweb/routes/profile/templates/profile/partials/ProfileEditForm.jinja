@@ -26,7 +26,7 @@
       {% set resolved_avatar = user_avatar_url(user) %}
       <fieldset class="fieldset"
                 data-avatar="{{ resolved_avatar or '' }}"
-                x-data="{ preview: $el.dataset.avatar }">
+                x-data="{ preview: $el.dataset.avatar, maxSize: {{ MAX_AVATAR_SIZE }}, maxSizeMb: {{ MAX_AVATAR_SIZE_MB }} }">
         <legend class="fieldset-legend">Avatar</legend>
         <div class="flex items-center gap-5">
           <button type="button"
@@ -53,8 +53,8 @@
                    x-ref="avatarInput"
                    accept="image/png,image/jpeg,image/webp,image/gif"
                    class="file-input file-input-sm file-input-ghost w-full max-w-xs"
-                   @change="preview = $event.target.files.length ? URL.createObjectURL($event.target.files[0]) : preview" />
-            <span class="text-xs opacity-60">PNG, JPEG, WebP or GIF &middot; max {{ MAX_AVATAR_SIZE // (1024 * 1024) }} MB</span>
+                   @change="if ($event.target.files[0]?.size > maxSize) { alert('File is too large. Maximum size is ' + maxSizeMb + ' MB.'); $event.target.value = ''; return; } preview = $event.target.files.length ? URL.createObjectURL($event.target.files[0]) : preview" />
+            <span class="text-xs opacity-60">PNG, JPEG, WebP or GIF &middot; max {{ MAX_AVATAR_SIZE_MB }} MB</span>
             {% if has_custom_avatar(user) %}
               <label class="label w-fit cursor-pointer gap-2 text-xs opacity-80 transition-opacity hover:opacity-100">
                 <input type="checkbox" name="remove_avatar" class="checkbox checkbox-xs checkbox-error" />

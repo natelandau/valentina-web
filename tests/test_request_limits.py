@@ -5,13 +5,22 @@ from __future__ import annotations
 import io
 
 from tests.conftest import get_csrf
-from vweb.constants import MAX_IMAGE_SIZE, MAX_REQUEST_BODY_BYTES
+from vweb.constants import MAX_AVATAR_SIZE, MAX_IMAGE_SIZE, MAX_REQUEST_BODY_BYTES
+
+API_BODY_LIMIT_BYTES = 5_242_880
+MULTIPART_OVERHEAD_BYTES = 1024 * 1024
 
 
 def test_cap_leaves_room_for_the_largest_upload(app) -> None:
     """Verify the body cap is set and still admits a maximum-size image upload."""
     assert app.config["MAX_CONTENT_LENGTH"] == MAX_REQUEST_BODY_BYTES
     assert MAX_REQUEST_BODY_BYTES > MAX_IMAGE_SIZE
+
+
+def test_upload_limits_fit_the_api_body_limit() -> None:
+    """Verify an upload plus multipart overhead stays under the API's request body limit."""
+    assert MAX_IMAGE_SIZE + MULTIPART_OVERHEAD_BYTES <= API_BODY_LIMIT_BYTES
+    assert MAX_AVATAR_SIZE + MULTIPART_OVERHEAD_BYTES <= API_BODY_LIMIT_BYTES
 
 
 def test_oversized_body_is_rejected_with_413(client) -> None:
