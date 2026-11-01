@@ -3,10 +3,19 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from unittest.mock import MagicMock
 
-from vclient.exceptions import ConflictError, ValidationError
+import pytest
+from pydantic import BaseModel
+from pydantic import ValidationError as PydanticValidationError
+from vclient.exceptions import (
+    AuthorizationError,
+    ConflictError,
+    NotFoundError,
+    RequestValidationError,
+    ValidationError,
+)
 from vclient.models import CharacterTraitSpecialty
 from vclient.testing import (
     CharacterFactory,
@@ -23,6 +32,10 @@ from tests.helpers import build_global_context
 
 if TYPE_CHECKING:
     from vclient.models import Character, CharacterFullSheet
+
+
+class _Currency(BaseModel):
+    currency: Literal["NO_COST", "XP"]
 
 
 def _one_trait_sheet(character: Character) -> CharacterFullSheet:
@@ -445,6 +458,47 @@ class TestTraitDeletePost:
         # Then the failure message is flashed
         assert any("Failed to delete trait" in m for m in self._flashes(client))
 
+    def test_delete_forbidden_flashes_api_detail(self, client, mocker) -> None:
+        """Verify a 403 on free delete flashes the API's own reason."""
+        # Given the API refuses the free delete
+        character, traits_svc = self._setup(mocker)
+        traits_svc.delete.side_effect = AuthorizationError(
+            "Forbidden",
+            status_code=403,
+            response_data={"detail": "Free trait changes are restricted"},
+        )
+        csrf = get_csrf(client)
+
+        # When posting the DELETE sentinel
+        client.post(
+            f"/character/{character.id}/traits/NO_COST",
+            data={"ct-1": "DELETE", "csrf_token": csrf},
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the flash carries the API detail
+        assert any("Free trait changes are restricted" in m for m in self._flashes(client))
+
+    def test_delete_request_validation_error_flashes_readable_text(self, client, mocker) -> None:
+        """Verify a client-side validation failure on delete flashes its message."""
+        # Given the client rejects the request before it is sent
+        character, traits_svc = self._setup(mocker)
+        with pytest.raises(PydanticValidationError) as info:
+            _Currency(currency="BOGUS")
+        traits_svc.delete.side_effect = RequestValidationError(info.value)
+        csrf = get_csrf(client)
+
+        # When posting the DELETE sentinel
+        client.post(
+            f"/character/{character.id}/traits/NO_COST",
+            data={"ct-1": "DELETE", "csrf_token": csrf},
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the flash names the failing field instead of only the generic failure
+        flashes = self._flashes(client)
+        assert any("Currency" in m for m in flashes)
+
 
 class TestChangeValuePost:
     """POST of a value change on the free-edit form."""
@@ -499,6 +553,29 @@ class TestChangeValuePost:
         with client.session_transaction() as sess:
             flashes = [message for _, message in sess.get("_flashes", [])]
         assert any("changed by another request" in m for m in flashes)
+
+    def test_change_value_on_missing_trait_flashes_and_redirects(self, client, mocker) -> None:
+        """Verify a trait deleted elsewhere flashes the API detail instead of failing."""
+        # Given a trait the API no longer has
+        character, traits_svc = self._setup(mocker)
+        traits_svc.get_value_options.side_effect = NotFoundError(
+            "Not found", status_code=404, response_data={"detail": "Trait not found"}
+        )
+        csrf = get_csrf(client)
+
+        # When changing its value
+        response = client.post(
+            f"/character/{character.id}/traits/NO_COST",
+            data={"ct-1": "2", "csrf_token": csrf},
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the form reloads with the API's message
+        assert response.headers.get("HX-Redirect") == f"/character/{character.id}/traits/NO_COST"
+        with client.session_transaction() as sess:
+            flashes = list(sess.get("_flashes", []))
+        assert ("error", "Trait not found") in flashes
+        traits_svc.change_value.assert_not_called()
 
     def test_change_value_clears_sheet_cache(self, client, mocker) -> None:
         """Verify a value change drops the cached sheet so derived traits reload."""

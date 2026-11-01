@@ -15,15 +15,21 @@ from flask import flash
 from PIL import Image
 from vclient.exceptions import APIError
 
-from vweb.constants import ALLOWED_IMAGE_TYPES, MAX_AVATAR_SIZE, MAX_IMAGE_PIXELS, MAX_IMAGE_SIZE
+from vweb.constants import (
+    ALLOWED_IMAGE_TYPES,
+    MAX_AVATAR_SIZE,
+    MAX_AVATAR_SIZE_MB,
+    MAX_IMAGE_PIXELS,
+    MAX_IMAGE_SIZE,
+    MAX_IMAGE_SIZE_MB,
+)
+from vweb.lib.api_errors import api_error_message
 
 if TYPE_CHECKING:
     from vclient.models import Asset
     from werkzeug.datastructures import FileStorage
 
 
-MAX_IMAGE_SIZE_MB: int = MAX_IMAGE_SIZE // (1024 * 1024)
-MAX_AVATAR_SIZE_MB: int = MAX_AVATAR_SIZE // (1024 * 1024)
 MAX_IMAGE_MEGAPIXELS: int = MAX_IMAGE_PIXELS // 1_000_000
 # Parse only the formats ALLOWED_IMAGE_TYPES admits, so a mislabeled file is refused here.
 _ALLOWED_PILLOW_FORMATS: tuple[str, ...] = ("JPEG", "PNG", "WEBP", "GIF")
@@ -102,8 +108,8 @@ def handle_image_upload(
 
     try:
         asset = svc.upload_asset(parent_id, file.filename, content, file.content_type)
-    except APIError:
-        flash("Failed to upload image. Please try again.", "error")
+    except APIError as e:
+        flash(api_error_message(e, fallback="Failed to upload image. Please try again."), "error")
         return None
 
     flash("Image uploaded successfully.", "success")
@@ -135,8 +141,8 @@ def handle_image_delete(
     """Delete an image asset via ``svc.delete_asset`` and flash the outcome."""
     try:
         svc.delete_asset(parent_id, asset_id)
-    except APIError:
-        flash("Failed to delete image. Please try again.", "error")
+    except APIError as e:
+        flash(api_error_message(e, fallback="Failed to delete image. Please try again."), "error")
         return
 
     flash("Image deleted.", "success")
@@ -181,8 +187,8 @@ def handle_avatar_upload(
 
     try:
         svc.upload_avatar(user_id, file.filename, content, file.content_type)
-    except APIError:
-        flash("Failed to upload avatar. Please try again.", "error")
+    except APIError as e:
+        flash(api_error_message(e, fallback="Failed to upload avatar. Please try again."), "error")
         return False
 
     flash("Avatar updated.", "success")
@@ -196,8 +202,8 @@ def handle_avatar_delete(*, svc: AvatarService, user_id: str) -> bool:
     """
     try:
         svc.delete_avatar(user_id)
-    except APIError:
-        flash("Failed to remove avatar. Please try again.", "error")
+    except APIError as e:
+        flash(api_error_message(e, fallback="Failed to remove avatar. Please try again."), "error")
         return False
 
     flash("Avatar removed.", "success")

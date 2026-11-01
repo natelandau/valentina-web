@@ -11,10 +11,11 @@ from flask.views import MethodView
 if TYPE_CHECKING:
     from werkzeug.wrappers.response import Response
 
-from vclient.exceptions import APIError
+from vclient.exceptions import APIError, ValidationError
 
 from vweb.lib import cache
 from vweb.lib.api import fetch_campaign_or_404
+from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog
 from vweb.lib.htmx import hx_redirect
 from vweb.routes.character_create import bp
@@ -104,6 +105,16 @@ class MultiAutogenFinalizeView(MethodView):
                 session_id=session_id,
                 selected_character_id=selected_character_id,
             )
+        except ValidationError as exc:
+            if any(p.get("field") == "session_id" for p in exc.invalid_parameters):
+                logger.info("Chargen session %s expired or not owned by user", session_id)
+                message = "This character generation session expired. Please start a new one."
+            else:
+                message = api_error_message(
+                    exc, fallback="Failed to finalize character. Please try again."
+                )
+            flash(message, "error")
+            return hx_redirect(url_for("character_create.selection_page", campaign_id=campaign_id))
         except APIError:
             logger.exception("Failed to finalize chargen session")
             flash("Failed to finalize character. Please try again.", "error")

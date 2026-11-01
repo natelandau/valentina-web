@@ -9,9 +9,10 @@ from typing import TYPE_CHECKING, cast
 from flask import session
 from pydantic import ValidationError as PydanticValidationError
 from vclient import sync_character_traits_service, sync_characters_service
-from vclient.exceptions import APIError, NotFoundError, ValidationError
+from vclient.exceptions import APIError, NotFoundError
 from vclient.models import CharacterCreate, CharacterTraitAdd, CharacterUpdate
 
+from vweb.lib.api_errors import api_field_errors
 from vweb.lib.guards import can_manage_npcs, is_self, is_storyteller
 from vweb.routes.character_create.profile_form import build_class_attrs, character_to_form_data
 
@@ -28,22 +29,22 @@ _TRAIT_PREFIX: str = "trait:"
 _SESSION_TTL_SECONDS: int = 30 * 60  # 30 minutes
 
 
-def _map_pydantic_errors(exc: PydanticValidationError) -> dict[str, str]:
-    """Convert a PydanticValidationError into a template-friendly error dict.
+# Fields ProfileForm.jinja shows a message beside; errors on any other field go to the banner.
+_INLINE_ERROR_FIELDS: frozenset[str] = frozenset(
+    {
+        "name_first",
+        "name_last",
+        "game_version",
+        "character_class",
+        "character_type",
+        "vampire_clan_id",
+        "werewolf_tribe_id",
+        "creed",
+    }
+)
 
-    Profile fields are already checked by validate_profile before the payload is
-    built, so a pydantic error here means a value the form cannot surface inline
-    (e.g. a crafted "type"). Collect all messages under "_general" so the user
-    always receives visible feedback.
-
-    Args:
-        exc: The validation error raised by a CharacterCreate or CharacterUpdate call.
-
-    Returns:
-        Dict with a single "_general" key mapping to the combined error messages.
-    """
-    messages = [err["msg"] for err in exc.errors()]
-    return {"_general": "; ".join(messages)}
+# The payloads send the form's character_type as the API's type.
+_FORM_FIELD_ALIASES: dict[str, str] = {"type": "character_type"}
 
 
 def character_type_permission_error(char_type: str) -> str | None:
@@ -239,19 +240,13 @@ def update_character_profile(character_id: str, form_data: dict[str, str]) -> di
     )
     try:
         svc.update(character_id, _build_update_payload(form_data))
-    except PydanticValidationError as exc:
-        errors: dict[str, str] = {}
-        for err in exc.errors():
-            field_name = str(err["loc"][0]) if err["loc"] else "unknown"
-            errors[field_name] = err["msg"]
-        return errors
-    except ValidationError as exc:
-        errors = {p["field"]: p["message"] for p in exc.invalid_parameters}
-        if exc.detail:
-            errors["_general"] = exc.detail
-        return errors
-    except APIError as exc:
-        return {"_general": exc.detail or exc.message or "Failed to update profile"}
+    except (PydanticValidationError, APIError) as exc:
+        return api_field_errors(
+            exc,
+            fallback="Failed to update profile",
+            inline_fields=_INLINE_ERROR_FIELDS,
+            aliases=_FORM_FIELD_ALIASES,
+        )
     return {}
 
 
@@ -281,16 +276,14 @@ def save_temp_character(campaign_id: str, form_data: dict[str, str]) -> dict[str
             new_char = svc.create(_build_create_payload(campaign_id, form_data))
             session["temp_character_id"] = new_char.id
             session["temp_character_created_at"] = time.time()
-    except PydanticValidationError as exc:
-        return _map_pydantic_errors(exc)
-    except ValidationError as exc:
-        errors = {p["field"]: p["message"] for p in exc.invalid_parameters}
-        if exc.detail:
-            errors["_general"] = exc.detail
-        return errors
-    except APIError as exc:
-        logger.exception("Failed to save temporary character")
-        return {"_general": exc.detail or exc.message or "Failed to save profile"}
+    except (PydanticValidationError, APIError) as exc:
+        # The helper logs only errors it cannot explain to the user.
+        return api_field_errors(
+            exc,
+            fallback="Failed to save profile",
+            inline_fields=_INLINE_ERROR_FIELDS,
+            aliases=_FORM_FIELD_ALIASES,
+        )
     return {}
 
 

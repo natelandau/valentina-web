@@ -1,8 +1,9 @@
 """Tests for character creation routes."""
 
+import logging
 from datetime import UTC, datetime, timedelta
 
-from vclient.exceptions import APIError
+from vclient.exceptions import APIError, ServerError, ValidationError
 from vclient.testing import (
     CharacterConceptFactory,
     CharacterFactory,
@@ -174,6 +175,44 @@ class TestSingleAutogenSubmit:
         assert response.status_code == 200
         assert_shows_error(response)
 
+    def test_server_error_shows_fallback_not_detail(self, client, mocker) -> None:
+        """Verify a server error re-renders the form without the API's internals."""
+        # Given a privileged user and a generation call that fails server-side
+        ctx = build_global_context(user_role="STORYTELLER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        mocker.patch(
+            "vweb.routes.character_create.picker_views.fetch_form_options",
+            return_value={
+                "character_types": ["PLAYER"],
+                "character_classes": [],
+                "experience_levels": [],
+                "skill_focuses": [],
+                "concepts": [],
+                "vampire_clans": [],
+                "werewolf_tribes": [],
+                "werewolf_auspices": [],
+            },
+        )
+        mocker.patch(
+            "vweb.routes.character_create.picker_views.generate_single",
+            side_effect=ServerError("boom", 500, {"detail": "db exploded"}),
+        )
+        csrf = get_csrf(client)
+
+        # When submitting the form
+        response = client.post(
+            f"/campaign/{campaign.id}/characters/new/single-autogen",
+            data={"character_type": "PLAYER", "csrf_token": csrf},
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the fallback is shown and the detail is not
+        body = response.get_data(as_text=True)
+        assert "Failed to create character. Please try again." in body
+        assert "db exploded" not in body
+        assert "boom" not in body
+
     def test_returns_403_for_non_privileged(self, client, mocker) -> None:
         """Verify PLAYER cannot submit single autogen."""
         # Given a PLAYER user
@@ -317,6 +356,97 @@ class TestMultiAutogenFinalizeView:
         # Then user is redirected to the selection page
         assert response.status_code == 200
         assert f"/campaign/{campaign.id}/characters/new" in response.headers.get("HX-Redirect", "")
+
+    def _post_finalize(self, client, mocker, error: Exception) -> tuple:
+        ctx = build_global_context(user_role="PLAYER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        mocker.patch(
+            "vweb.routes.character_create.autogen_views.finalize_session",
+            side_effect=error,
+        )
+        csrf = get_csrf(client)
+        response = client.post(
+            f"/campaign/{campaign.id}/characters/new/multi-autogen/finalize",
+            data={
+                "session_id": "sess-1",
+                "selected_character_id": "char-1",
+                "csrf_token": csrf,
+            },
+            headers={"HX-Request": "true"},
+        )
+        with client.session_transaction() as sess:
+            flashes = list(sess.get("_flashes", []))
+        return campaign, response, flashes
+
+    def test_expired_session_logs_at_info(self, client, mocker, caplog) -> None:
+        """Verify an expired session is an expected event, logged below warning."""
+        # Given the API rejects the session id
+        error = ValidationError(
+            "bad",
+            400,
+            {"invalid_parameters": [{"field": "session_id", "message": "Session expired"}]},
+        )
+
+        # When finalizing
+        with caplog.at_level(logging.INFO, logger="vweb.routes.character_create.autogen_views"):
+            self._post_finalize(client, mocker, error)
+
+        # Then the expiry is logged at info only
+        levels = [r.levelno for r in caplog.records if r.name.endswith("autogen_views")]
+        assert levels == [logging.INFO]
+
+    def test_expired_session_flashes_expired_message(self, client, mocker) -> None:
+        """Verify an expired session explains itself and redirects to selection."""
+        # Given the API rejects the session id
+        error = ValidationError(
+            "bad",
+            400,
+            {
+                "invalid_parameters": [
+                    {"field": "session_id", "message": "Session not found or expired"}
+                ]
+            },
+        )
+
+        # When finalizing
+        campaign, response, flashes = self._post_finalize(client, mocker, error)
+
+        # Then the user is redirected with the expired message
+        assert f"/campaign/{campaign.id}/characters/new" in response.headers.get("HX-Redirect", "")
+        assert (
+            "error",
+            "This character generation session expired. Please start a new one.",
+        ) in flashes
+
+    def test_other_validation_error_flashes_field_message(self, client, mocker) -> None:
+        """Verify a validation error on another field is not shown as an expired session."""
+        # Given the API rejects the selected character, not the session
+        error = ValidationError(
+            "bad",
+            400,
+            {
+                "invalid_parameters": [
+                    {"field": "selected_character_id", "message": "Not in session"}
+                ]
+            },
+        )
+
+        # When finalizing
+        _, _, flashes = self._post_finalize(client, mocker, error)
+
+        # Then the field message is flashed instead of the expired text
+        assert ("error", "Selected character id: Not in session") in flashes
+        assert all("expired" not in message for _, message in flashes)
+
+    def test_server_error_keeps_generic_message(self, client, mocker) -> None:
+        """Verify a server error shows the generic failure message."""
+        # When finalizing hits a server error
+        _, response, flashes = self._post_finalize(client, mocker, ServerError("boom", 500))
+
+        # Then the generic message is flashed
+        assert response.status_code == 200
+        assert ("error", "Failed to finalize character. Please try again.") in flashes
 
 
 class TestAddCharacterButtonIntegration:

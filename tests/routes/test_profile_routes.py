@@ -233,6 +233,119 @@ class TestProfilePost:
         assert update_req.name_first == "Updated"
         assert update_req.name_last == "Name"
 
+    def test_post_conflict_rerenders_form_with_api_message(
+        self, client: FlaskClient, mock_profile_svc: MagicMock
+    ) -> None:
+        """Verify a taken username re-renders the form with the API's message."""
+        from vclient.exceptions import ConflictError
+
+        from tests.conftest import get_csrf
+
+        # Given the API refuses the username as taken
+        mock_profile_svc.update.side_effect = ConflictError(
+            "Conflict", 409, {"detail": "Username is already in use"}
+        )
+        csrf = get_csrf(client)
+
+        # When submitting the profile form
+        response = client.post(
+            "/profile/test-user-id",
+            data={
+                "csrf_token": csrf,
+                "username": "taken",
+                "email": "updated@example.com",
+            },
+        )
+
+        # Then the form is shown again with the API's message
+        assert response.status_code == 200
+        assert "HX-Redirect" not in response.headers
+        assert "Username is already in use" in response.get_data(as_text=True)
+
+    def test_post_conflict_after_avatar_change_swaps_flash_and_clears_cache(
+        self, client: FlaskClient, mock_profile_svc: MagicMock, mocker
+    ) -> None:
+        """Verify a refused update still shows the avatar flash now and drops the stale context."""
+        from vclient.exceptions import ConflictError
+
+        from tests.conftest import get_csrf
+
+        # Given an avatar removal that succeeds and an update the API refuses
+        mock_profile_svc.update.side_effect = ConflictError(
+            "Conflict", 409, {"detail": "Username is already in use"}
+        )
+        csrf = get_csrf(client)
+        clear = mocker.patch("vweb.routes.profile.views.cache.global_context.clear_current")
+
+        # When submitting the form with the avatar removal
+        response = client.post(
+            "/profile/test-user-id",
+            data={
+                "csrf_token": csrf,
+                "username": "taken",
+                "email": "updated@example.com",
+                "remove_avatar": "1",
+            },
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the avatar flash is swapped in with the form and the context is cleared
+        body = response.get_data(as_text=True)
+        assert 'id="flash-messages" hx-swap-oob="true"' in body
+        assert "Avatar removed." in body
+        assert "Username is already in use" in body
+        clear.assert_called_once()
+
+    def test_post_conflict_without_avatar_change_keeps_cache(
+        self, client: FlaskClient, mock_profile_svc: MagicMock, mocker
+    ) -> None:
+        """Verify a refused update with no avatar change leaves the cached context alone."""
+        from vclient.exceptions import ConflictError
+
+        from tests.conftest import get_csrf
+
+        # Given an update the API refuses and no avatar change
+        mock_profile_svc.update.side_effect = ConflictError(
+            "Conflict", 409, {"detail": "Username is already in use"}
+        )
+        csrf = get_csrf(client)
+        clear = mocker.patch("vweb.routes.profile.views.cache.global_context.clear_current")
+
+        # When submitting the form
+        client.post(
+            "/profile/test-user-id",
+            data={"csrf_token": csrf, "username": "taken", "email": "updated@example.com"},
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the cache is not cleared
+        clear.assert_not_called()
+
+    def test_post_short_first_name_rerenders_form_with_message(
+        self, client: FlaskClient, mock_profile_svc: MagicMock
+    ) -> None:
+        """Verify a first name the request model refuses re-renders the form instead of a 500."""
+        from tests.conftest import get_csrf
+
+        # Given a first name shorter than the request model allows
+        csrf = get_csrf(client)
+
+        # When submitting the profile form
+        response = client.post(
+            "/profile/test-user-id",
+            data={
+                "csrf_token": csrf,
+                "name_first": "Al",
+                "username": "updated",
+                "email": "updated@example.com",
+            },
+        )
+
+        # Then the form is shown again with the field message and no update is sent
+        assert response.status_code == 200
+        assert "Name first" in response.get_data(as_text=True)
+        mock_profile_svc.update.assert_not_called()
+
     @pytest.mark.usefixtures("_mock_profile_api")
     def test_post_other_profile_returns_403(self, client: FlaskClient) -> None:
         """Verify 403 when trying to POST to another user's profile."""

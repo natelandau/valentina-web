@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from flask import flash, g, request, session, url_for
@@ -11,6 +10,7 @@ from vclient.exceptions import APIError
 
 from vweb.lib import cache
 from vweb.lib.api import fetch_campaign_or_404
+from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog
 from vweb.lib.guards import can_edit_character
 from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
@@ -33,8 +33,6 @@ from vweb.routes.character_create.profile_form import character_to_form_data, va
 if TYPE_CHECKING:
     from vclient.models import Campaign
     from werkzeug.wrappers.response import Response
-
-logger = logging.getLogger(__name__)
 
 
 class ManualProfileView(MethodView):
@@ -153,7 +151,11 @@ class ManualProfileView(MethodView):
         try:
             character = fetch_character(character_id)
         except APIError as exc:
-            errors = {"_general": exc.detail or exc.message or "Failed to load character"}
+            errors = {
+                "_general": api_error_message(
+                    exc, fallback="Failed to load character. Please try again."
+                )
+            }
             return self._render_edit_form(campaign, character_id, form_data, errors)
         if not can_edit_character(character):
             flash("You are not authorized to edit this character", "error")
@@ -289,8 +291,12 @@ class ManualFinalizeView(MethodView):
         try:
             temp_character = finalizable_temp_character(campaign_id)
         except APIError as exc:
-            logger.exception("Failed to load the character being finalized")
-            flash(str(exc), "error")
+            flash(
+                api_error_message(
+                    exc, fallback="Could not load the character in progress. Please try again."
+                ),
+                "error",
+            )
             return hx_redirect(url_for("character_create.manual_profile", campaign_id=campaign_id))
         if temp_character is None:
             flash("No character in progress.", "error")
@@ -306,8 +312,10 @@ class ManualFinalizeView(MethodView):
 
             mark_character_permanent(temp_char_id)
         except APIError as exc:
-            logger.exception("Failed to finalize character")
-            flash(str(exc), "error")
+            message = api_error_message(
+                exc, fallback="Failed to create character. Please try again."
+            )
+            flash(message, "error")
 
             full_sheet = cache.character_sheet.get(
                 temp_char_id, g.requesting_user.id, include_available_traits=True
@@ -322,7 +330,7 @@ class ManualFinalizeView(MethodView):
                     campaign=campaign,
                     full_sheet=full_sheet,
                     back_url=back_url,
-                    errors=[str(exc)],
+                    errors=[message],
                 )
             )
 

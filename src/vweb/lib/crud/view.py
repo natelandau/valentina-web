@@ -5,13 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
-from flask import abort, request
+from flask import abort, flash, request
 from flask.views import MethodView
-from loguru import logger
+from pydantic import ValidationError as PydanticValidationError
 from vclient.exceptions import APIError
 
 from vweb.lib import cache
+from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog
+from vweb.lib.htmx import htmx_response_with_flash
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -272,14 +274,11 @@ class CrudTableView(MethodView):
                 handler.update_item(item_id, form_data)
             else:
                 handler.create_item(form_data)
-        except APIError:
-            logger.exception("CRUD operation failed")
+        except (APIError, PydanticValidationError) as exc:
+            # The form lists every message without field markers, so labeled text reads best.
+            message = api_error_message(exc, fallback="An error occurred. Please try again.")
             item = handler.get_item(item_id) if item_id else None
-            return self._render_form(
-                item=item,
-                errors={"_general": "An error occurred. Please try again."},
-                form_data=form_data,
-            )
+            return self._render_form(item=item, errors={"_general": message}, form_data=form_data)
 
         cache.global_context.clear_current()
         return self._render_refetch()
@@ -295,8 +294,10 @@ class CrudTableView(MethodView):
 
         try:
             handler.delete_item(item_id)
-        except APIError:
-            logger.exception("Delete operation failed")
+        except APIError as exc:
+            flash(api_error_message(exc, fallback="Could not delete. Please try again."), "error")
+            cache.global_context.clear_current()
+            return htmx_response_with_flash(self._render_refetch())
 
         cache.global_context.clear_current()
         return self._render_refetch()

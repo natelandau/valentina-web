@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from vclient.exceptions import APIError
+from vclient.exceptions import APIError, AuthorizationError, ConflictError, ServerError
 from vclient.testing import DictionaryTermFactory
 
 from tests.conftest import get_csrf
@@ -449,6 +449,88 @@ class TestDictionaryUpdate:
         # Then the form is re-rendered with an error message
         assert response.status_code == 200
         assert b"error" in response.data.lower()
+
+
+class TestDictionaryApiRefusals:
+    """API refusals on dictionary changes tell the user what happened."""
+
+    def test_create_conflict_shows_api_message(
+        self, client: FlaskClient, mock_dict_cache: dict, mocker: MockerFixture
+    ) -> None:
+        """Verify a duplicate term shows the API's message."""
+        # Given the API refuses a duplicate term
+        mocker.patch(
+            "vweb.routes.dictionary.views.svc_create_term",
+            side_effect=ConflictError("Conflict", 409, {"detail": "Term already exists"}),
+        )
+        mock_dict_cache["terms"].return_value = []
+
+        # When creating the term
+        response = client.post(
+            "/dictionary/term",
+            data={
+                "term": "Auspex",
+                "definition": "",
+                "link": "",
+                "synonyms": "",
+                "csrf_token": get_csrf(client),
+            },
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the API's message is shown instead of the generic one
+        body = response.get_data(as_text=True)
+        assert "Term already exists" in body
+        assert "An error occurred" not in body
+
+    def test_update_server_error_hides_detail(
+        self, client: FlaskClient, mock_dict_cache: dict, mocker: MockerFixture
+    ) -> None:
+        """Verify a server error shows the generic message, not the API detail."""
+        # Given an update that fails server-side
+        mock_dict_cache["term"].return_value = DictionaryTermFactory.build(id="t1", term="Auspex")
+        mocker.patch(
+            "vweb.routes.dictionary.views.svc_update_term",
+            side_effect=ServerError("boom", 500, {"detail": "db exploded"}),
+        )
+
+        # When updating the term
+        response = client.post(
+            "/dictionary/term/t1",
+            data={
+                "term": "Auspex",
+                "definition": "",
+                "link": "",
+                "synonyms": "",
+                "csrf_token": get_csrf(client),
+            },
+            headers={"HX-Request": "true"},
+        )
+
+        # Then only the generic message is shown
+        body = response.get_data(as_text=True)
+        assert "An error occurred. Please try again." in body
+        assert "db exploded" not in body
+
+    def test_delete_refusal_shows_api_message(
+        self, client: FlaskClient, mock_dict_cache: dict, mocker: MockerFixture
+    ) -> None:
+        """Verify a refused delete shows the API's message."""
+        # Given the API refuses the delete
+        mock_dict_cache["term"].return_value = DictionaryTermFactory.build(id="t1")
+        mocker.patch(
+            "vweb.routes.dictionary.views.svc_delete_term",
+            side_effect=AuthorizationError("Forbidden", 403, {"detail": "Not your term"}),
+        )
+
+        # When deleting
+        response = client.delete(
+            "/dictionary/term/t1",
+            headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)},
+        )
+
+        # Then the API's message is shown
+        assert "Not your term" in response.get_data(as_text=True)
 
 
 class TestDictionaryDelete:

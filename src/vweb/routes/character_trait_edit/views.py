@@ -21,6 +21,7 @@ from vclient.models import TraitCreate
 
 from vweb.lib import cache
 from vweb.lib.api import get_character_and_campaign
+from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog
 from vweb.lib.character_profile import TRAIT_API_ERRORS, find_character_trait
 from vweb.lib.guards import can_edit_character, can_edit_traits_free
@@ -65,7 +66,11 @@ class CharacterTraitsView(MethodView):
         Returns:
             An HX-Redirect response.
         """
-        value_options = svc.get_value_options(trait_id)
+        try:
+            value_options = svc.get_value_options(trait_id)
+        except TRAIT_API_ERRORS as error:
+            flash(api_error_message(error, fallback="Failed to update trait"), "error")
+            return hx_redirect(get_method_url)
         if value not in value_options.options:
             flash(
                 f"You don't have the ability to set {value_options.name.strip().title()} to {value}",
@@ -94,7 +99,7 @@ class CharacterTraitsView(MethodView):
         try:
             svc.change_value(trait_id, int(value), currency=self.spend_type)
         except TRAIT_API_ERRORS as error:
-            flash(error.detail or "Failed to update trait", "error")
+            flash(api_error_message(error, fallback="Failed to update trait"), "error")
             return hx_redirect(get_method_url)
 
         msg = f"Updated {value_options.name.strip().title()} to {value}."
@@ -133,7 +138,7 @@ class CharacterTraitsView(MethodView):
                 point_change = value_options.options["DELETE"].point_change
             svc.delete(trait_id, currency=self.spend_type)
         except TRAIT_API_ERRORS as error:
-            flash(error.detail or "Failed to delete trait", "error")
+            flash(api_error_message(error, fallback="Failed to delete trait"), "error")
             return hx_redirect(get_method_url)
 
         msg = "Trait deleted."
@@ -289,7 +294,7 @@ class CharacterTraitsView(MethodView):
                         trait_id=new_trait_id, value=trait.min_value, currency=self.spend_type
                     )
                 except TRAIT_API_ERRORS as error:
-                    flash(error.detail or "Failed to assign trait", "error")
+                    flash(api_error_message(error, fallback="Failed to assign trait"), "error")
                     return hx_redirect(get_method_url)
 
                 flash(f"Assigned {trait.name}", "success")
@@ -312,7 +317,9 @@ class CharacterTraitsView(MethodView):
                 try:
                     created = api_svc.create(custom_trait)
                 except TRAIT_API_ERRORS as error:
-                    flash(error.detail or "Failed to create custom trait", "error")
+                    flash(
+                        api_error_message(error, fallback="Failed to create custom trait"), "error"
+                    )
                     return hx_redirect(get_method_url)
 
                 flash(
