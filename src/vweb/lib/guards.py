@@ -127,11 +127,14 @@ def can_grant_experience(target_user_id: str) -> bool:
 def can_edit_traits_free(character: Character) -> bool:
     """Check whether the user may change traits without spending XP.
 
-    Privileged users always qualify. Otherwise the company setting decides:
-    ``UNRESTRICTED`` allows anyone, and ``WITHIN_24_HOURS`` allows free edits
-    only while the character is less than a day old.
+    Privileged users always qualify. The API applies the company setting only
+    to player characters, so NPC and storyteller characters always qualify here;
+    whether the user may edit the character at all is ``can_edit_character``'s
+    job. For player characters the setting decides: ``UNRESTRICTED`` allows
+    anyone, and ``WITHIN_24_HOURS`` allows free edits only while the character
+    is less than a day old.
     """
-    if is_storyteller():
+    if is_storyteller() or character.type != "PLAYER":
         return True
 
     setting = g.global_context.company.settings.permission_free_trait_changes

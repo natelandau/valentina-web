@@ -86,6 +86,25 @@ class TestCharacterTraitsViewPermissions:
         assert response.headers.get("HX-Redirect") == f"/character/{npc.id}"
         traits_svc.assert_not_called()
 
+    def test_get_free_edit_npc_denied_for_restricted_player(self, client, mocker) -> None:
+        """Verify the free-edit page still refuses a player who cannot manage NPCs."""
+        # Given a PLAYER, an NPC, and the default storyteller-only NPC and free-edit settings
+        ctx = build_global_context(user_role="PLAYER")
+        npc = CharacterFactory.build(
+            id="npc-1", campaign_id=ctx.campaigns[0].id, type="NPC", user_player_id=None
+        )
+        ctx.characters = [npc]
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+
+        # When opening the free-edit page for the NPC
+        response = client.get(f"/character/{npc.id}/traits/NO_COST")
+
+        # Then the user is sent to the character view with the character-level refusal
+        assert response.status_code == 302
+        with client.session_transaction() as sess:
+            flashes = [message for _, message in sess.get("_flashes", [])]
+        assert flashes == ["You are not authorized to update this character"]
+
     def test_post_no_cost_denied_without_free_trait_permission(self, client, mocker) -> None:
         """Verify a player without free-trait permission cannot delete via the free-edit POST."""
         # Given a PLAYER who owns their character but the company restricts free edits
