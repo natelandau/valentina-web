@@ -29,7 +29,7 @@ def _field_error() -> ValidationError:
             "detail": "Validation failed for one or more fields.",
             "invalid_parameters": [
                 {"field": "name_first", "message": "Name already taken"},
-                {"field": "age", "message": "Expected `int` >= 0"},
+                {"field": "age", "message": "Must be at least 0."},
             ],
         },
     )
@@ -71,7 +71,7 @@ class TestUnrenderedFieldErrors:
         # Then the name error is inline and the age error is in the banner
         assert errors == {
             "name_first": "Name already taken",
-            "_general": "Validation failed for one or more fields. Age must be at least 0",
+            "_general": "Validation failed for one or more fields. Age: Must be at least 0.",
         }
 
     def test_update_folds_unrendered_field_into_general(self, app, characters_service) -> None:
@@ -83,7 +83,7 @@ class TestUnrenderedFieldErrors:
         errors = _update(app)
 
         # Then the age error is in the banner
-        assert errors["_general"].endswith("Age must be at least 0")
+        assert errors["_general"].endswith("Age: Must be at least 0.")
         assert "age" not in errors
 
 

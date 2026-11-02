@@ -670,7 +670,7 @@ class TestValidateAndSubmitExperience:
             400,
             {
                 "detail": "Validation failed for one or more fields.",
-                "invalid_parameters": [{"field": "amount", "message": "Expected `int` <= 10000"}],
+                "invalid_parameters": [{"field": "amount", "message": "Must be at most 10000."}],
             },
         )
 
@@ -685,7 +685,7 @@ class TestValidateAndSubmitExperience:
             )
 
         # Then the message names XP and the bound from the API
-        assert errors == ["XP must be at most 10000"]
+        assert errors == ["XP: Must be at most 10000."]
 
     def test_unreachable_api_on_cool_points_after_xp_reports_partial_grant(
         self, app, mocker
