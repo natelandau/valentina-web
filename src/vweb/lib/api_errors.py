@@ -44,20 +44,7 @@ USER_FACING_API_ERRORS: tuple[type[Exception], ...] = (
 _PAYLOAD_FIELDS = frozenset({"body", ""})
 _HTTP_PAYLOAD_TOO_LARGE = 413
 _GENERAL = "_general"
-
-# The API's msgspec constraint messages, rewritten as fragments that follow a field label.
-# The bound comes from the API's own message, so no limit is copied here.
-_CONSTRAINT_REWRITES: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"^Expected `(?:int|float)` <= (-?[\d.]+)$"), "must be at most {}"),
-    (re.compile(r"^Expected `(?:int|float)` >= (-?[\d.]+)$"), "must be at least {}"),
-    (re.compile(r"^Expected `(?:int|float)` < (-?[\d.]+)$"), "must be less than {}"),
-    (re.compile(r"^Expected `(?:int|float)` > (-?[\d.]+)$"), "must be greater than {}"),
-    (re.compile(r"^Expected `str` of length <= (\d+)$"), "must be at most {} characters"),
-    (re.compile(r"^Expected `str` of length >= (\d+)$"), "must be at least {} characters"),
-    (re.compile(r"^Expected `array` of length <= (\d+)$"), "must have at most {} items"),
-    (re.compile(r"^Expected `array` of length >= (\d+)$"), "must have at least {} items"),
-)
-_FRAGMENT_PREFIX = "must "
+_PATH_SEGMENT = re.compile(r"[.\[\]]+")
 
 
 class _Entry(NamedTuple):
@@ -68,28 +55,19 @@ class _Entry(NamedTuple):
     message: str
 
 
-def _clean(message: object) -> str:
-    text = str(message or "").strip()
-    for pattern, template in _CONSTRAINT_REWRITES:
-        if match := pattern.match(text):
-            return template.format(match.group(1))
-    return text.replace("`", "")
-
-
-def _is_fragment(message: str) -> bool:
-    return message.startswith(_FRAGMENT_PREFIX)
-
-
-def _sentence(message: str) -> str:
-    return message[:1].upper() + message[1:] if _is_fragment(message) else message
+def _text(message: object) -> str:
+    return str(message or "").strip()
 
 
 def _detail(error: APIError) -> str:
-    return _clean(error.detail)
+    return _text(error.detail)
 
 
 def _label(field: str) -> str:
-    text = field.replace("_", " ")
+    # A nested path such as "[0].trait_id" or "tags[2]" reads best as its innermost
+    # named field; list indexes name no field.
+    names = [part for part in _PATH_SEGMENT.split(field) if part and not part.isdigit()]
+    text = names[-1].replace("_", " ") if names else ""
     return text[:1].upper() + text[1:]
 
 
@@ -100,7 +78,7 @@ def _field_entries(error: Exception) -> list[_Entry]:
         entries = []
         for param in error.invalid_parameters:
             field = str(param.get("field") or "")
-            entries.append(_Entry(field, field, _clean(param.get("message"))))
+            entries.append(_Entry(field, field, _text(param.get("message"))))
     else:
         details: Iterable[Any] = (
             error.errors if isinstance(error, RequestValidationError) else error.errors()  # ty:ignore[unresolved-attribute]
@@ -109,7 +87,7 @@ def _field_entries(error: Exception) -> list[_Entry]:
         for d in details:
             loc = [str(part) for part in d.get("loc") or () if isinstance(part, str)]
             # Pydantic prefixes validator failures with "Value error, ", which is noise to users.
-            message = _clean(d.get("msg")).removeprefix("Value error, ").strip()
+            message = _text(d.get("msg")).removeprefix("Value error, ").strip()
             # Forms submit top-level fields, so a nested error belongs to its outer field,
             # while the innermost name reads best in a label.
             entries.append(_Entry(loc[0] if loc else "", loc[-1] if loc else "", message))
@@ -121,16 +99,14 @@ def _format_entry(
 ) -> str:
     """Join a field message to its label.
 
-    The label is dropped for a request-body message and for a full sentence that repeats
-    the error's detail, since the API already wrote that sentence for users. A fragment
-    such as "must be at most 5" always keeps its label so it still names the field.
+    The label is dropped for a request-body message and for a message that repeats the
+    error's detail, since the API already wrote that sentence for users.
     """
     message = entry.message
-    if entry.key in _PAYLOAD_FIELDS or (message == detail and not _is_fragment(message)):
-        return _sentence(message)
+    if entry.key in _PAYLOAD_FIELDS or message == detail:
+        return message
     label = (labels or {}).get(entry.key) or _label(entry.name)
-    separator = " " if _is_fragment(message) else ": "
-    return f"{label}{separator}{message}"
+    return f"{label}: {message}" if label else message
 
 
 def _rate_limit_message(error: RateLimitError) -> str | None:
@@ -157,11 +133,11 @@ def api_error_messages(error: Exception, *, labels: Mapping[str, str] | None = N
             _format_entry(entry, detail=detail, labels=labels) for entry in _field_entries(error)
         ]
         if not messages and detail:
-            return [_sentence(detail)]
+            return [detail]
         return messages
     if isinstance(error, (AuthorizationError, ConflictError, NotFoundError)):
         detail = _detail(error)
-        return [_sentence(detail)] if detail else []
+        return [detail] if detail else []
     if isinstance(error, RateLimitError):
         message = _rate_limit_message(error)
         return [message] if message else []
@@ -228,16 +204,16 @@ def api_field_errors(
     for entry in entries:
         key = (aliases or {}).get(entry.key, entry.key)
         if key in _PAYLOAD_FIELDS:
-            body_message = body_message or _sentence(entry.message)
+            body_message = body_message or entry.message
         elif inline_fields is None or key in inline_fields:
-            errors.setdefault(key or "unknown", _sentence(entry.message))
+            errors.setdefault(key, entry.message)
         else:
             folded.append(_format_entry(entry, detail=detail))
 
     # A detail outranks a body-level message, and one that repeats a field message would
     # show the same text twice.
     if detail and all(entry.message != detail for entry in entries):
-        general = [_sentence(detail), *folded]
+        general = [detail, *folded]
     elif body_message:
         general = [body_message, *folded]
     else:

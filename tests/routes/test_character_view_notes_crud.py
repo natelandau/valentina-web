@@ -174,7 +174,7 @@ class TestCharacterNotesApiErrors:
             {
                 "detail": "Validation failed for one or more fields.",
                 "invalid_parameters": [
-                    {"field": "title", "message": "Expected `str` of length <= 50"}
+                    {"field": "title", "message": "Must be at most 50 characters."}
                 ],
             },
         )
@@ -189,7 +189,7 @@ class TestCharacterNotesApiErrors:
         # Then the form shows what to fix
         body = response.get_data(as_text=True)
         assert response.status_code == 200
-        assert "Title must be at most 50 characters" in body
+        assert "<li>Title: Must be at most 50 characters.</li>" in body
         assert "An error occurred" not in body
 
     def test_server_error_keeps_generic_message(self, client, mock_notes_handler) -> None:

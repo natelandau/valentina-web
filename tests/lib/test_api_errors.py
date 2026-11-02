@@ -253,58 +253,74 @@ def test_field_errors_skip_general_when_detail_repeats_field_message():
     assert api_field_errors(error, fallback="Oops") == {"value": message}
 
 
+def test_api_sentence_follows_label():
+    """The API's sentence is shown as-is after the field label."""
+    error = _validation_error(
+        [{"field": "num_dice", "message": "Must be at most 100."}],
+        detail="Validation failed for one or more fields.",
+    )
+
+    assert api_error_messages(error) == ["Num dice: Must be at most 100."]
+
+
+def test_api_sentence_inline_is_unchanged():
+    """An inline field message is the API's sentence, unchanged."""
+    error = _validation_error(
+        [{"field": "age", "message": "Must be at least 0."}], detail="Validation failed."
+    )
+
+    assert api_field_errors(error, fallback="Oops")["age"] == "Must be at least 0."
+
+
+def test_required_field_message_follows_label():
+    """A missing field reads as the label plus the API's sentence."""
+    error = _validation_error(
+        [{"field": "name", "message": "This field is required."}],
+        detail="Validation failed for one or more fields.",
+    )
+
+    assert api_error_messages(error) == ["Name: This field is required."]
+
+
+def test_nested_path_labels_last_segment():
+    """A nested or indexed field path is labeled by its last segment."""
+    error = _validation_error(
+        [{"field": "[0].trait_id", "message": "Must be a valid ID."}],
+        detail="Validation failed for one or more fields.",
+    )
+
+    assert api_error_messages(error) == ["Trait id: Must be a valid ID."]
+
+
 @pytest.mark.parametrize(
-    ("raw", "expected"),
+    ("field", "expected"),
     [
-        ("Expected `int` <= 100", "Num dice must be at most 100"),
-        ("Expected `int` >= 1", "Num dice must be at least 1"),
-        ("Expected `str` of length <= 50", "Num dice must be at most 50 characters"),
-        ("Expected `str` of length >= 3", "Num dice must be at least 3 characters"),
-        ("Expected `float`, got `str`", "Num dice: Expected float, got str"),
+        ("tags[2]", "Tags: Must be text."),
+        ("traits[2].value", "Value: Must be text."),
+        ("metadata.x", "X: Must be text."),
+        ("a.", "A: Must be text."),
+        ("[0]", "Must be text."),
     ],
 )
-def test_validator_text_is_rewritten(raw, expected):
-    """Msgspec constraint text reads as a sentence joined to the field label."""
+def test_index_terminated_path_keeps_a_label(field, expected):
+    """A path ending in an index or a dot labels by its last named segment, or drops the label."""
     error = _validation_error(
-        [{"field": "num_dice", "message": raw}], detail="Validation failed for one or more fields."
+        [{"field": field, "message": "Must be text."}],
+        detail="Validation failed for one or more fields.",
     )
 
     assert api_error_messages(error) == [expected]
 
 
-def test_rewritten_message_without_label_is_capitalized():
-    """A rewritten message on the request body starts with a capital letter."""
-    error = _validation_error([{"field": "body", "message": "Expected `int` <= 5"}])
-
-    assert api_error_messages(error) == ["Must be at most 5"]
-
-
-def test_rewritten_message_equal_to_detail_keeps_label():
-    """A constraint fragment keeps its label even when it repeats the detail."""
-    raw = "Expected `int` <= 100"
-    error = _validation_error([{"field": "num_dice", "message": raw}], detail=raw)
-
-    assert api_error_messages(error) == ["Num dice must be at most 100"]
-
-
-def test_rewritten_inline_field_error_is_capitalized():
-    """An inline field message reads as a sentence."""
-    error = _validation_error(
-        [{"field": "age", "message": "Expected `int` >= 0"}], detail="Validation failed."
-    )
-
-    assert api_field_errors(error, fallback="Oops")["age"] == "Must be at least 0"
-
-
 def test_labels_replace_the_field_label():
     """A caller-supplied label replaces the field's name."""
     error = _validation_error(
-        [{"field": "amount", "message": "Expected `int` <= 10000"}], detail="Validation failed."
+        [{"field": "amount", "message": "Must be at most 10000."}], detail="Validation failed."
     )
 
     assert (
         api_error_message(error, fallback="Oops", labels={"amount": "XP"})
-        == "XP must be at most 10000"
+        == "XP: Must be at most 10000."
     )
 
 
@@ -313,14 +329,14 @@ def test_field_errors_fold_unrendered_fields_into_general():
     error = _validation_error(
         [
             {"field": "name_first", "message": "Too short"},
-            {"field": "age", "message": "Expected `int` >= 0"},
+            {"field": "age", "message": "Must be at least 0."},
         ],
         detail="Validation failed for one or more fields.",
     )
 
     assert api_field_errors(error, fallback="Oops", inline_fields={"name_first"}) == {
         "name_first": "Too short",
-        "_general": "Validation failed for one or more fields. Age must be at least 0",
+        "_general": "Validation failed for one or more fields. Age: Must be at least 0.",
     }
 
 
@@ -388,13 +404,13 @@ def test_field_errors_keep_body_message_beside_folded_fields():
     error = _validation_error(
         [
             {"field": "body", "message": "One or more fields did not pass validation."},
-            {"field": "age", "message": "Expected `int` >= 0"},
+            {"field": "age", "message": "Must be at least 0."},
         ],
         detail=" ",
     )
 
     assert api_field_errors(error, fallback="Oops", inline_fields={"name_first"}) == {
-        "_general": "One or more fields did not pass validation. Age must be at least 0"
+        "_general": "One or more fields did not pass validation. Age: Must be at least 0."
     }
 
 
