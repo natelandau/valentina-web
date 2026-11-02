@@ -151,7 +151,7 @@ You can run up to five git worktrees at the same time. Each worktree gets its ow
     duty worktree branch=my-feature
     ```
 
-    This command creates `.worktrees/my-feature` on the new branch `my-feature`. It copies `.env.secret` and `CLAUDE.local.md` into the worktree, then gives the worktree a Redis database (1 to 5) and a port (8090 to 8094). It also installs the Python and npm dependencies.
+    This command creates `.worktrees/my-feature` on the new branch `my-feature`. It copies `.env.secret` into the worktree and links `CLAUDE.local.md` to the main checkout's file, then gives the worktree a Redis database (1 to 5) and a port (8090 to 8094). It also installs the Python and npm dependencies.
 
 3. Start the worktree:
 

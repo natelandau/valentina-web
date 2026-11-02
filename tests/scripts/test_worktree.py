@@ -12,8 +12,8 @@ from scripts.worktree import (
     KEY_REDIS_URL,
     Checkouts,
     MainSettings,
+    add_local_files,
     choose_slot,
-    copy_local_files,
     create,
     dev_redis_error,
     free_slots,
@@ -137,7 +137,7 @@ def test_teardown_flushes_the_removed_worktrees_slot(
     redis.return_value.flush.assert_called_once_with(2)
 
 
-def test_copy_local_files_keeps_file_permissions(tmp_path: Path) -> None:
+def test_add_local_files_keeps_file_permissions(tmp_path: Path) -> None:
     """Verify the copied env file keeps main's restrictive mode."""
     # Given a main env file readable only by its owner, and a worktree that ignores it
     main = tmp_path / "main"
@@ -149,10 +149,34 @@ def test_copy_local_files_keeps_file_permissions(tmp_path: Path) -> None:
     (target / ".gitignore").write_text(f"{ENV_FILE}\n", encoding="utf-8")
 
     # When copying
-    copy_local_files(main, target)
+    add_local_files(main, target)
 
     # Then the copy keeps the mode
     assert (target / ENV_FILE).stat().st_mode & 0o777 == 0o600
+
+
+def test_add_local_files_links_local_instructions_to_mains_target(tmp_path: Path) -> None:
+    """Verify the worktree links to the file main links to, replacing any copy there."""
+    # Given main's CLAUDE.local.md linked to a file elsewhere, and a worktree holding a stale copy
+    shared = tmp_path / "vault" / "CLAUDE.local.md"
+    shared.parent.mkdir()
+    shared.write_text("shared\n", encoding="utf-8")
+    main = tmp_path / "main"
+    main.mkdir()
+    (main / "CLAUDE.local.md").symlink_to(shared)
+    target = tmp_path / "wt"
+    target.mkdir()
+    subprocess.run(["git", "init", "-q", str(target)], check=True)  # noqa: S603, S607
+    (target / ".gitignore").write_text("CLAUDE.local.md\n", encoding="utf-8")
+    (target / "CLAUDE.local.md").write_text("stale\n", encoding="utf-8")
+
+    # When adding the local files
+    add_local_files(main, target)
+
+    # Then the worktree's file is a link straight to the shared file
+    linked = target / "CLAUDE.local.md"
+    assert linked.is_symlink()
+    assert linked.readlink() == shared.resolve()
 
 
 def test_rewrite_env_rewrites_exported_keys(tmp_path: Path) -> None:

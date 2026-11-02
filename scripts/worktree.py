@@ -29,8 +29,11 @@ from rich.console import Console
 console = Console()
 
 ENV_FILE = ".env.secret"
-# Local files a worktree needs that git does not carry: they are ignored in every checkout
-COPIED_FILES = (ENV_FILE, "CLAUDE.local.md")
+# Local files a worktree needs that git does not carry: they are ignored in every checkout.
+# The env file is copied because each worktree rewrites its port and Redis database.
+COPIED_FILES = (ENV_FILE,)
+# Linked, not copied, so an edit in any worktree lands in the one shared file
+LINKED_FILES = ("CLAUDE.local.md",)
 COMPOSE_FILE = "compose-db.yml"
 # Each slot needs its own OAuth callback URL registered with every provider
 MAX_WORKTREES = 5
@@ -338,14 +341,17 @@ def require_dev_redis(main: MainSettings) -> None:
         sys.exit(message)
 
 
-def copy_local_files(main: Path, worktree: Path) -> None:
-    """Copy the main checkout's env and local instruction files into a worktree, replacing any there.
+def add_local_files(main: Path, worktree: Path) -> None:
+    """Give a worktree the main checkout's env file and local instructions, replacing any there.
+
+    Copy the env file and link the local instruction file, so instructions edited from any
+    checkout stay in one place.
 
     Args:
         main (Path): The main checkout.
-        worktree (Path): The worktree to copy into.
+        worktree (Path): The worktree to add the files to.
     """
-    for name in COPIED_FILES:
+    for name in (*COPIED_FILES, *LINKED_FILES):
         source = main / name
         if not source.exists():
             continue
@@ -358,13 +364,20 @@ def copy_local_files(main: Path, worktree: Path) -> None:
         if ignored.returncode:
             console.print(f"[yellow]skipped {name}: this branch does not ignore it[/yellow]")
             continue
-        # copy2 keeps the mode, so a private env file stays private
-        shutil.copy2(source, worktree / name)
-        console.print(f"copied {name}")
+        target = worktree / name
+        if name in LINKED_FILES:
+            target.unlink(missing_ok=True)
+            # Resolve main's own link so the worktree points at the real file, not a chain
+            target.symlink_to(source.resolve())
+            console.print(f"linked {name}")
+        else:
+            # copy2 keeps the mode, so a private env file stays private
+            shutil.copy2(source, target)
+            console.print(f"copied {name}")
 
 
 def create(cwd: Path, branch: str) -> Path:
-    """Create `.worktrees/<branch>` on a new branch and copy in the main checkout's local files.
+    """Create `.worktrees/<branch>` on a new branch and add the main checkout's local files.
 
     Refuses before touching git when the dev Redis is not configured or every slot is taken,
     so a refused worktree leaves nothing behind.
@@ -383,7 +396,7 @@ def create(cwd: Path, branch: str) -> Path:
     path = checkouts.main / ".worktrees" / branch
     _git(checkouts.main, "worktree", "add", str(path), "-b", branch)
     console.print(f"created worktree {path} on branch {branch}")
-    copy_local_files(checkouts.main, path)
+    add_local_files(checkouts.main, path)
     return path
 
 
