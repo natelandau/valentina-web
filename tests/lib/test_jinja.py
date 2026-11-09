@@ -7,7 +7,7 @@ from flask import flash
 from vclient.testing import CampaignBookFactory, CampaignFactory
 
 import vweb
-from vweb.lib.jinja import build_fragment_url, threat_badge_class
+from vweb.lib.jinja import build_fragment_url, dice_notation, threat_badge_class
 
 
 class TestCatalogAutoescape:
@@ -127,3 +127,12 @@ def test_threat_badge_class_thresholds(value, expected) -> None:
     """Verify the danger/desperation severity-to-badge-color mapping."""
     # Given a threat level, when mapping it, then the shared thresholds apply
     assert threat_badge_class(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("modifier", "expected"),
+    [(0, "5d10"), (1, "5d10 +1"), (-2, "5d10 -2")],
+)
+def test_dice_notation(modifier, expected) -> None:
+    """Verify the modifier is appended with its sign only when non-zero."""
+    assert dice_notation(num_dice=5, dice_size=10, dice_modifier=modifier) == expected

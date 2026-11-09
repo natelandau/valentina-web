@@ -113,6 +113,12 @@ def threat_badge_class(value: int) -> str:
     return "badge-neutral"
 
 
+def dice_notation(num_dice: int, dice_size: int, dice_modifier: int = 0) -> str:
+    """Format a dice pool such as "5d10", with a signed modifier suffix when non-zero."""
+    notation = f"{num_dice}d{dice_size}"
+    return f"{notation} {dice_modifier:+d}" if dice_modifier else notation
+
+
 # Labels shared by the CharacterTypeBadge chips and the character list filters.
 CHARACTER_TYPE_LABELS: dict[str, str] = {
     "PLAYER": "Player Character",
@@ -265,6 +271,7 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
 
     jinja_globals["approved_companies"] = approved_companies
     jinja_globals["threat_badge_class"] = threat_badge_class
+    jinja_globals["dice_notation"] = dice_notation
 
     def _is_authenticated() -> bool:
         """Report whether a logged-in user backs this request.

@@ -72,6 +72,9 @@
     {# ── Humanized result ── #}
     <p class="text-lg font-semibold text-base-content/80">{{ r.total_result_humanized }}</p>
 
+    {# ── Dice pool ── #}
+    <p class="text-xs font-mono text-base-content/60" data-testid="dice-pool">{{ dice_notation(num_dice=diceroll.num_dice, dice_size=diceroll.dice_size, dice_modifier=diceroll.dice_modifier) }}</p>
+
     {# ── Divider ── #}
     <div class="w-16 border-t border-base-content/15"></div>
 
