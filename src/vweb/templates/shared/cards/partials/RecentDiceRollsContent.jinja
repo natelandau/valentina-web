@@ -44,7 +44,7 @@
                 <div class="flex items-center gap-2 text-xs opacity-60 mt-1">
                   <span>{{ roll.date_created | humanize_date }}</span>
                   <span>·</span>
-                  <span class="font-mono">{{ roll.num_dice }}d{{ roll.dice_size }}</span>
+                  <span class="font-mono">{{ dice_notation(num_dice=roll.num_dice, dice_size=roll.dice_size, dice_modifier=roll.dice_modifier) }}</span>
                 </div>
                 {% if roll.comment %}
                   <p class="text-xs italic opacity-60 mt-1 line-clamp-2 break-words">{{ roll.comment }}</p>

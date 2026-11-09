@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
@@ -17,6 +18,7 @@ from vclient.testing import (
 )
 
 from tests.helpers import build_global_context
+from vweb.lib.cache.dicerolls import DiceRollDisplay
 from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
@@ -191,6 +193,38 @@ class TestDiceRollsCardEndpoint:
 
         # Then the empty message is in the response
         assert b"Nothing here" in response.data
+
+    @pytest.mark.parametrize(
+        ("modifier", "expected"),
+        [(1, "5d10 +1"), (-2, "5d10 -2"), (0, "5d10")],
+    )
+    def test_dice_modifier_is_shown_in_notation(
+        self, client: FlaskClient, mock_rolls: MagicMock, modifier: int, expected: str
+    ) -> None:
+        """Verify the signed modifier follows the dice notation only when non-zero."""
+        # Given a roll with a dice modifier
+        mock_rolls.return_value = [
+            DiceRollDisplay(
+                id="r1",
+                character_id="c1",
+                character_name="Alice",
+                num_dice=5,
+                dice_size=10,
+                trait_names=[],
+                result_type="SUCCESS",
+                result_humanized="3 successes",
+                date_created=datetime.now(UTC),
+                comment=None,
+                dice_modifier=modifier,
+            )
+        ]
+
+        # When rendering the card
+        response = client.get("/cards/dice-rolls?campaign_id=c1")
+
+        # Then the notation carries the signed modifier, or none for zero
+        body = response.get_data(as_text=True)
+        assert f'<span class="font-mono">{expected}</span>' in body
 
     def test_title_flows_through(self, client: FlaskClient, mock_rolls: MagicMock) -> None:
         """Verify the title query arg appears in the rendered HTML."""

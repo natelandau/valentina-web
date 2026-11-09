@@ -13,6 +13,7 @@ from vclient.testing import (
     CharacterFactory,
     CharacterTraitFactory,
     DicerollFactory,
+    QuickrollFactory,
     Routes,
     TraitFactory,
 )
@@ -49,8 +50,9 @@ def mock_roll_context():
             CharacterTraitFactory.build(value=3, trait=TraitFactory.build(name="Strength")),
             CharacterTraitFactory.build(value=2, trait=TraitFactory.build(name="Brawl")),
         ],
-        quickrolls=[],
+        quickrolls=[QuickrollFactory.build(id="qr-1", name="Punch", trait_ids=[])],
         campaign_desperation=2,
+        quickroll_pools={"qr-1": 0},
     )
 
 
@@ -92,6 +94,31 @@ class TestDiceRollContentView:
         assert f"/roll/{char.id}/custom" in body
         assert "<!DOCTYPE html>" not in body
         assert "HX-Request" in (response.headers.get("Vary") or "")
+
+    def test_modal_has_modifier_input_on_traits_and_quickroll_only(
+        self, client: FlaskClient, mock_diceroll_deps
+    ) -> None:
+        """Verify the modifier field is posted by the traits and quickroll forms only."""
+        # Given a character with one quickroll
+        char, _, _ = mock_diceroll_deps
+
+        # When requesting the roll modal content
+        body = client.get(f"/roll/{char.id}", headers={"HX-Request": "true"}).get_data(as_text=True)
+
+        # Then the traits and quickroll forms each carry it, and the custom form does not
+        assert body.count('name="dice_modifier"') == 2
+        custom_form = body.split(f"/roll/{char.id}/custom")[1].split("</form>")[0]
+        assert "dice_modifier" not in custom_form
+
+        # And the quickroll pools JSON is attribute-escaped, not raw, inside x-data
+        assert "quickrollPools: {&#34;qr-1&#34;: 0}" in body
+        assert '"qr-1":' not in body
+        assert ":disabled=traitsBlocked" in body
+        assert ":disabled=quickrollBlocked" in body
+
+        # And each modifier form cancels its own request when the pool is invalid
+        assert "traitsInvalid ? $event.preventDefault()" in body
+        assert "quickrollInvalid ? $event.preventDefault()" in body
 
     def test_returns_full_page_on_direct_navigation(
         self, client: FlaskClient, mock_diceroll_deps
@@ -257,6 +284,31 @@ class TestDiceRollCustomView:
         assert response.status_code == 200
         body = response.get_data(as_text=True)
         assert "3 successes" in body
+
+    @pytest.mark.parametrize(
+        ("modifier", "expected"), [(1, "5d10 +1"), (-2, "5d10 -2"), (0, "5d10")]
+    )
+    def test_results_show_pool_line_with_modifier(
+        self, client, mock_diceroll_deps, mocker, modifier: int, expected: str
+    ) -> None:
+        """Verify the results show the pool with its signed modifier, none when zero."""
+        # Given a roll with a dice modifier
+        mock_roll = DicerollFactory.build(
+            num_dice=5, dice_size=10, dice_modifier=modifier, result=make_dice_roll_result()
+        )
+        mocker.patch("vweb.routes.diceroll.views.perform_custom_roll", return_value=mock_roll)
+        csrf = get_csrf(client)
+
+        # When submitting a custom roll
+        response = client.post(
+            "/roll/char-1/custom",
+            data={"dice_size": "10", "num_dice": "5", "difficulty": "6"},
+            headers={"HX-Request": "true", "X-CSRFToken": csrf},
+        )
+
+        # Then the pool line shows the notation
+        body = response.get_data(as_text=True)
+        assert f'data-testid="dice-pool">{expected}</p>' in body
 
     def test_returns_error_on_invalid_input(self, client, mock_diceroll_deps) -> None:
         """Verify custom roll returns error for non-numeric input."""
@@ -483,3 +535,54 @@ class TestDiceRollApiErrors:
         # Then no "None" leaks into the page text
         assert "None" not in body
         assert "Num dice" in body
+
+
+class TestDiceModifierForm:
+    """The views parse dice_modifier and pass it to the services."""
+
+    @pytest.mark.parametrize(
+        ("path", "target", "base"),
+        [
+            ("/roll/char-1/traits", "perform_trait_roll", {"trait_one_id": "trait-str"}),
+            ("/roll/char-1/quickroll", "perform_quickroll", {"quickroll_id": "qr-1"}),
+        ],
+    )
+    @pytest.mark.parametrize(
+        ("field", "expected"),
+        [
+            ({"dice_modifier": "2"}, 2),
+            ({}, 0),
+            ({"dice_modifier": ""}, 0),
+            ({"dice_modifier": "-3"}, -3),
+        ],
+    )
+    def test_modifier_is_passed(
+        self, client, mock_diceroll_deps, mocker, *, path, target, base, field, expected
+    ) -> None:
+        """Verify the parsed modifier, defaulting to 0, reaches the service."""
+        mock = mocker.patch(
+            f"vweb.routes.diceroll.views.{target}",
+            return_value=DicerollFactory.build(result=make_dice_roll_result()),
+        )
+
+        _post(client, path, {**base, "difficulty": "6", **field})
+
+        assert mock.call_args.kwargs["dice_modifier"] == expected
+
+    @pytest.mark.parametrize(
+        ("path", "target", "base"),
+        [
+            ("/roll/char-1/traits", "perform_trait_roll", {"trait_one_id": "trait-str"}),
+            ("/roll/char-1/quickroll", "perform_quickroll", {"quickroll_id": "qr-1"}),
+        ],
+    )
+    def test_non_integer_modifier_is_invalid_input(
+        self, client, mock_diceroll_deps, mocker, path, target, base
+    ) -> None:
+        """Verify a non-numeric modifier renders the existing invalid input error."""
+        mock = mocker.patch(f"vweb.routes.diceroll.views.{target}")
+
+        body = _post(client, path, {**base, "difficulty": "6", "dice_modifier": "abc"})
+
+        assert "Invalid input" in body
+        mock.assert_not_called()

@@ -1,0 +1,25 @@
+{#def
+    label,
+    model,
+    name,
+    min,
+    max,
+    initial = "",
+    suffix = "",
+#}
+{# model, min, and max are Alpine expressions evaluated in the parent x-data scope. #}
+<fieldset class="fieldset flex-1">
+  <legend class="fieldset-legend">{{ label }}</legend>
+  <div class="flex items-center gap-2">
+    <button type="button"
+            class="btn btn-soft btn-square"
+            @click="{{ model }} = Math.max({{ min }}, {{ model }} - 1)">-</button>
+    <span class="font-semibold text-lg min-w-[2rem] text-center"
+          x-text="{{ model }}">{{ initial }}</span>
+    <button type="button"
+            class="btn btn-soft btn-square"
+            @click="{{ model }} = Math.min({{ max }}, {{ model }} + 1)">+</button>
+    {% if suffix %}<span class="text-xs text-base-content/50">{{ suffix }}</span>{% endif %}
+  </div>
+  <input type="hidden" name="{{ name }}" :value="{{ model }}" />
+</fieldset>

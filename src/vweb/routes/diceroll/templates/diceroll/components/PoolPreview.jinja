@@ -1,0 +1,19 @@
+{#def
+    base,
+    modifier,
+    total,
+    max_pool,
+#}
+{# base, modifier, and total are Alpine expressions evaluated in the parent x-data scope. #}
+<div class="text-base-content/70 px-1">
+  Pool: <span class="font-semibold text-base-content" x-text="{{ base }}">0</span>
+  <span x-text="{{ modifier }} < 0 ? '-' : '+'">+</span>
+  <span x-text="Math.abs({{ modifier }})">0</span>
+  = <span class="font-semibold text-base-content" x-text="{{ total }}">0</span> dice
+</div>
+<p x-show="{{ total }} < 0" x-cloak class="text-error text-sm px-1">
+  The modifier cannot take the pool below 0
+</p>
+<p x-show="{{ total }} > {{ max_pool }}" x-cloak class="text-error text-sm px-1">
+  The pool cannot exceed {{ max_pool }} dice
+</p>

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from flask import g, session
@@ -24,6 +24,7 @@ class RollContext:
     character_traits: list[CharacterTrait]
     quickrolls: list[Quickroll]
     campaign_desperation: int = 0
+    quickroll_pools: dict[str, int] = field(default_factory=dict)
 
 
 def get_character_traits(*, character: Character) -> list[CharacterTrait]:
@@ -55,7 +56,7 @@ def get_roll_context(*, character: Character, campaign: Campaign) -> RollContext
         campaign: The campaign the character belongs to, used for desperation level.
 
     Returns:
-        A RollContext containing traits, quickrolls, and desperation.
+        A RollContext containing traits, quickrolls, desperation, and each quickroll's base pool.
     """
     user_id = g.requesting_user.id
 
@@ -64,10 +65,17 @@ def get_roll_context(*, character: Character, campaign: Campaign) -> RollContext
         on_behalf_of=user_id, company_id=session["company_id"]
     ).list_all_quickrolls(user_id)
 
+    values_by_trait_id = {ct.trait.id: ct.value for ct in traits}
+    quickroll_pools = {
+        qr.id: sum(values_by_trait_id.get(trait_id, 0) for trait_id in qr.trait_ids)
+        for qr in quickrolls
+    }
+
     return RollContext(
         character_traits=traits,
         quickrolls=quickrolls,
         campaign_desperation=campaign.desperation,
+        quickroll_pools=quickroll_pools,
     )
 
 
@@ -122,6 +130,7 @@ def perform_trait_roll(  # noqa: PLR0913
     trait_two_id: str | None = None,
     difficulty: int,
     num_desperation_dice: int = 0,
+    dice_modifier: int = 0,
     comment: str | None = None,
 ) -> Diceroll:
     """Execute a trait-based dice roll, computing the pool server-side from character traits.
@@ -138,6 +147,7 @@ def perform_trait_roll(  # noqa: PLR0913
         trait_two_id: The ID of the secondary trait, if any.
         difficulty: The target number to beat on each die.
         num_desperation_dice: Number of additional desperation dice to add to the pool.
+        dice_modifier: Dice added to (positive) or removed from (negative) the pool.
         comment: Optional narrative context for the roll.
 
     Returns:
@@ -174,6 +184,7 @@ def perform_trait_roll(  # noqa: PLR0913
         num_dice=pool,
         difficulty=difficulty,
         num_desperation_dice=num_desperation_dice,
+        dice_modifier=dice_modifier,
         comment=comment,
         character_id=character.id,
         campaign_id=campaign.id,
@@ -190,6 +201,7 @@ def perform_quickroll(
     quickroll_id: str,
     difficulty: int,
     num_desperation_dice: int = 0,
+    dice_modifier: int = 0,
     comment: str | None = None,
 ) -> Diceroll:
     """Execute a dice roll using a saved quickroll template.
@@ -202,6 +214,7 @@ def perform_quickroll(
         quickroll_id: The ID of the quickroll template to use.
         difficulty: The target number to beat on each die.
         num_desperation_dice: Number of additional desperation dice to add to the pool.
+        dice_modifier: Dice added to (positive) or removed from (negative) the pool.
         comment: Optional narrative context for the roll.
 
     Returns:
@@ -216,5 +229,6 @@ def perform_quickroll(
         character_id=character.id,
         difficulty=difficulty,
         num_desperation_dice=num_desperation_dice,
+        dice_modifier=dice_modifier,
         comment=comment,
     )

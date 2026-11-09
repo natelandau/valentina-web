@@ -57,6 +57,7 @@ class DiceRollDisplay:
     result_humanized: str | None
     date_created: datetime
     comment: str | None
+    dice_modifier: int = 0
 
 
 def recent(
@@ -150,6 +151,7 @@ def _fetch(
                 result_humanized=roll.result.total_result_humanized if roll.result else None,
                 date_created=roll.date_created,
                 comment=roll.comment,
+                dice_modifier=roll.dice_modifier,
             )
         )
     return displays
