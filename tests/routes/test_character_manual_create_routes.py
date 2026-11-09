@@ -491,11 +491,18 @@ class TestManualTraitsView:
 class TestManualFinalizeView:
     """Tests for POST /campaign/<id>/characters/profile_edit/create."""
 
-    def test_creates_character_and_redirects(self, client, mocker, fake_vclient) -> None:
-        """Verify successful creation redirects to the character sheet."""
+    @pytest.mark.parametrize(
+        ("character_type", "player_id"),
+        [("PLAYER", "test-user-id"), ("NPC", None), ("STORYTELLER", None)],
+    )
+    def test_creates_character_and_redirects(
+        self, client, mocker, fake_vclient, character_type: str, player_id: str | None
+    ) -> None:
+        """Verify successful creation redirects to the character sheet, with or without a player."""
         from vclient.testing import BulkAssignTraitResponseFactory, Routes
 
-        # Given a campaign and a temp character in session
+        # Given a campaign and a temp character the requester created, which has no player
+        # when it is an NPC or storyteller character
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
@@ -504,7 +511,9 @@ class TestManualFinalizeView:
             id="new-manual-char",
             campaign_id=campaign.id,
             is_temporary=True,
-            user_player_id="test-user-id",
+            type=character_type,
+            user_player_id=player_id,
+            user_creator_id="test-user-id",
         )
         fake_vclient.set_response(
             Routes.CHARACTERS_GET,
@@ -584,6 +593,7 @@ class TestManualFinalizeView:
             campaign_id=campaign.id,
             is_temporary=True,
             user_player_id="test-user-id",
+            user_creator_id="test-user-id",
         )
         full_sheet = CharacterFullSheetFactory.build(id="new-manual-char")
         fake_vclient.set_error(
@@ -677,7 +687,7 @@ class TestManualFinalizeGuards:
             (True, "someone-else", True),
             (True, "test-user-id", False),
         ],
-        ids=["already-permanent", "other-owner", "other-campaign"],
+        ids=["already-permanent", "other-creator", "other-campaign"],
     )
     def test_refuses_character_that_is_not_the_requesters_temp_character(
         self, client, mocker, fake_vclient, is_temporary, owner, same_campaign
@@ -685,7 +695,7 @@ class TestManualFinalizeGuards:
         """Verify a stale or foreign temp_character_id cannot receive NO_COST traits."""
         from vclient.testing import Routes
 
-        # Given a session pointing at a character that is permanent or owned by someone else
+        # Given a session pointing at a character that is permanent or created by someone else
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
@@ -693,7 +703,7 @@ class TestManualFinalizeGuards:
             id="char-1",
             campaign_id=campaign.id if same_campaign else "other-campaign",
             is_temporary=is_temporary,
-            user_player_id=owner,
+            user_creator_id=owner,
         )
         fake_vclient.set_response(
             Routes.CHARACTERS_GET, model=character, params={"character_id": "char-1"}

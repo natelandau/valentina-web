@@ -95,9 +95,10 @@ def finalizable_temp_character(campaign_id: str) -> Character | None:
     """Return the session's temporary character when it may still be finalized, else None.
 
     Finalizing assigns traits at NO_COST, so the session pointer alone is not trusted:
-    the character must still be temporary, belong to the requester and to the campaign
-    being finalized in, and be within the temp-session TTL. Any failed check clears the
-    stale session data.
+    the character must still be temporary, have been created by the requester, belong to
+    the campaign being finalized in, and be within the temp-session TTL. The check uses the
+    creator, not the player, because NPC and storyteller characters have no player. Any
+    failed check clears the stale session data.
 
     Args:
         campaign_id: The campaign the finalize request targets.
@@ -115,7 +116,7 @@ def finalizable_temp_character(campaign_id: str) -> Character | None:
     if (
         not character.is_temporary
         or character.campaign_id != campaign_id
-        or not is_self(character.user_player_id)
+        or not is_self(character.user_creator_id)
     ):
         clear_temp_session()
         return None

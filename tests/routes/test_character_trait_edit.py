@@ -180,6 +180,13 @@ class TestCustomTraitCreation:
             "vweb.routes.character_trait_edit.views.sync_character_traits_service",
             return_value=traits_svc,
         )
+        self.blueprint_traits = mocker.patch(
+            "vweb.routes.character_trait_edit.views.cache.blueprint.traits", return_value={}
+        )
+        self.sheet_get = mocker.patch(
+            "vweb.routes.character_trait_edit.views.cache.character_sheet.get",
+            return_value=CharacterFullSheetFactory.build(character=character, sections=[]),
+        )
         return character, traits_svc
 
     def _flashes(self, client) -> list[str]:
@@ -206,6 +213,8 @@ class TestCustomTraitCreation:
         assert sent.currency == "XP"
         assert sent.name == "Street Smarts"
         assert sent.category_id == "skills"
+        # And the sheet is not fetched when no standard trait shares the name
+        self.sheet_get.assert_not_called()
         # And the flash reports the amount spent and the remaining balance
         assert any("You spent 1 xp, 4 remaining" in m for m in self._flashes(client))
 
@@ -315,6 +324,86 @@ class TestCustomTraitCreation:
         # Then a warning is flashed and no trait is created
         assert any("Trait name is required" in m for m in self._flashes(client))
         traits_svc.create.assert_not_called()
+
+    def test_custom_name_matching_standard_trait_assigns_it(self, client, mocker) -> None:
+        """Verify a typed name matching a standard trait in the category assigns that trait."""
+        # Given a standard trait in the category that the character's dropdown leaves out
+        character, traits_svc = self._setup(client, mocker)
+        standard = TraitFactory.build(
+            id="ling-v4",
+            name="Linguistics",
+            category_id="skills",
+            custom_for_character_id=None,
+            game_versions=["V4"],
+            min_value=0,
+        )
+        self.blueprint_traits.return_value = {standard.id: standard}
+        csrf = get_csrf(client)
+
+        # When typing that name in the custom box
+        response = client.post(
+            f"/character/{character.id}/traits/XP",
+            data={"CUSTOM_skills": "linguistics"},
+            headers={"HX-Request": "true", "X-CSRFToken": csrf},
+        )
+
+        # Then the standard trait is assigned instead of creating a custom one
+        assert response.headers.get("HX-Redirect") == f"/character/{character.id}/traits/XP"
+        traits_svc.assign.assert_called_once_with(trait_id="ling-v4", value=0, currency="XP")
+        traits_svc.create.assert_not_called()
+        assert any("Assigned Linguistics" in m for m in self._flashes(client))
+
+    def test_custom_name_matching_other_category_assigns_it(self, client, mocker) -> None:
+        """Verify a name matching a trait in another category assigns that trait."""
+        # Given a same-named standard trait in a different category
+        character, traits_svc = self._setup(client, mocker)
+        merit = TraitFactory.build(
+            id="merit-1", name="Street Smarts", category_id="merits", custom_for_character_id=None
+        )
+        self.blueprint_traits.return_value = {merit.id: merit}
+        csrf = get_csrf(client)
+
+        # When typing that name in the skills box
+        client.post(
+            f"/character/{character.id}/traits/XP",
+            data={"CUSTOM_skills": "street smarts"},
+            headers={"HX-Request": "true", "X-CSRFToken": csrf},
+        )
+
+        # Then the existing trait is assigned and no custom trait is created
+        traits_svc.assign.assert_called_once()
+        assert traits_svc.assign.call_args.kwargs["trait_id"] == "merit-1"
+        traits_svc.create.assert_not_called()
+
+    def test_custom_name_already_on_character_does_not_assign(self, client, mocker) -> None:
+        """Verify a name already on the sheet goes to create instead of assigning a duplicate."""
+        # Given a character that already has Linguistics, and another same-named standard trait
+        character, traits_svc = self._setup(client, mocker)
+        owned = CharacterTraitFactory.build(trait=TraitFactory.build(name="Linguistics"))
+        category = FullSheetTraitCategoryFactory.build(
+            character_traits=[owned], subcategories=[], available_traits=[]
+        )
+        section = FullSheetTraitSectionFactory.build(categories=[category])
+        self.sheet_get.return_value = CharacterFullSheetFactory.build(
+            character=character, sections=[section]
+        )
+        other = TraitFactory.build(
+            id="ling-other", name="Linguistics", category_id="skills", custom_for_character_id=None
+        )
+        self.blueprint_traits.return_value = {other.id: other}
+        traits_svc.create.side_effect = ConflictError("Trait named 'Linguistics' already exists")
+        csrf = get_csrf(client)
+
+        # When typing that name in the custom box
+        client.post(
+            f"/character/{character.id}/traits/XP",
+            data={"CUSTOM_skills": "linguistics"},
+            headers={"HX-Request": "true", "X-CSRFToken": csrf},
+        )
+
+        # Then no second trait is assigned and the create conflict is shown
+        traits_svc.assign.assert_not_called()
+        traits_svc.create.assert_called_once()
 
 
 class TestTraitDeleteRendering:
