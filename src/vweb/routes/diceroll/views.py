@@ -181,6 +181,7 @@ class DiceRollTraitsView(MethodView):
         try:
             difficulty = int(request.form.get("difficulty", "6"))
             num_desperation_dice = int(request.form.get("num_desperation_dice", "0"))
+            dice_modifier = int(request.form.get("dice_modifier") or "0")
         except ValueError:
             return catalog.render(
                 "diceroll.partials.DiceRollResults",
@@ -201,6 +202,7 @@ class DiceRollTraitsView(MethodView):
                 trait_two_id=trait_two_id,
                 difficulty=difficulty,
                 num_desperation_dice=num_desperation_dice,
+                dice_modifier=dice_modifier,
                 comment=comment,
             )
         except ValueError as e:
@@ -247,6 +249,7 @@ class DiceRollQuickrollView(MethodView):
         try:
             difficulty = int(request.form.get("difficulty", "6"))
             num_desperation_dice = int(request.form.get("num_desperation_dice", "0"))
+            dice_modifier = int(request.form.get("dice_modifier") or "0")
         except ValueError:
             return catalog.render(
                 "diceroll.partials.DiceRollResults",
@@ -261,6 +264,7 @@ class DiceRollQuickrollView(MethodView):
                 quickroll_id=quickroll_id,
                 difficulty=difficulty,
                 num_desperation_dice=num_desperation_dice,
+                dice_modifier=dice_modifier,
                 comment=comment,
             )
         except APIError as e:

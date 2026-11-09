@@ -93,6 +93,32 @@ class TestGetRollContext:
         assert result.quickrolls == quickrolls
         assert result.campaign_desperation == 3
 
+    def test_roll_context_quickroll_pools(self, app: Flask, fake_vclient) -> None:
+        """Verify quickroll pools sum the character's trait values, counting missing as 0."""
+        from flask import g
+
+        from vweb.routes.diceroll.services import get_roll_context
+
+        # Given a quickroll with trait A (value 3) and trait B (the character lacks it)
+        character = CharacterFactory.build()
+        campaign = CampaignFactory.build()
+        user = UserFactory.build(id="test-user-id")
+        trait_a = TraitFactory.build(id="trait-a")
+        char_trait = CharacterTraitFactory.build(trait=trait_a, value=3)
+        quickroll = QuickrollFactory.build(id="qr-1", trait_ids=["trait-a", "trait-b"])
+
+        fake_vclient.set_response(Routes.CHARACTER_TRAITS_LIST, items=[char_trait])
+        fake_vclient.set_response(Routes.USERS_QUICKROLLS_LIST, items=[quickroll])
+
+        # When get_roll_context is called
+        with app.test_request_context("/"):
+            seed_session()
+            g.requesting_user = user
+            result = get_roll_context(character=character, campaign=campaign)
+
+        # Then the pool is 3
+        assert result.quickroll_pools == {"qr-1": 3}
+
     def test_desperation_zero_when_zero(self, app: Flask, fake_vclient) -> None:
         """Verify get_roll_context passes through zero desperation correctly."""
         from flask import g
@@ -469,6 +495,83 @@ class TestPerformQuickroll:
             character_id=character.id,
             difficulty=7,
             num_desperation_dice=1,
+            dice_modifier=0,
             comment="boss fight",
         )
         assert result.id == diceroll.id
+
+
+class TestDiceModifier:
+    """The dice modifier is forwarded to the API unchanged."""
+
+    def test_trait_roll_with_dice_modifier(self, app: Flask, fake_vclient, mocker) -> None:
+        """Verify perform_trait_roll sends the modifier and the unmodified pool."""
+        from flask import g, session
+
+        from vweb.routes.diceroll.services import perform_trait_roll
+
+        # Given two traits and a modifier
+        trait_one = TraitFactory.build(id="trait-one")
+        trait_two = TraitFactory.build(id="trait-two")
+        char_traits = [
+            CharacterTraitFactory.build(value=3, trait=trait_one),
+            CharacterTraitFactory.build(value=2, trait=trait_two),
+        ]
+        mock_svc = mocker.MagicMock()
+        mock_svc.create.return_value = DicerollFactory.build(result=make_dice_roll_result())
+        mocker.patch("vweb.routes.diceroll.services.sync_dicerolls_service", return_value=mock_svc)
+
+        # When rolling with dice_modifier=1
+        with app.test_request_context("/"):
+            session["company_id"] = "test-company-id"
+            g.requesting_user = UserFactory.build(id="test-user-id")
+            perform_trait_roll(
+                character=CharacterFactory.build(),
+                campaign=CampaignFactory.build(),
+                character_traits=char_traits,
+                trait_one_id="trait-one",
+                trait_two_id="trait-two",
+                difficulty=6,
+                dice_modifier=1,
+            )
+
+        # Then num_dice is the base pool and the modifier is sent separately
+        request_arg = mock_svc.create.call_args.args[0]
+        assert request_arg.num_dice == 5
+        assert request_arg.dice_modifier == 1
+
+    def test_quickroll_with_dice_modifier(self, app: Flask, fake_vclient, mocker) -> None:
+        """Verify perform_quickroll forwards dice_modifier."""
+        from flask import g, session
+
+        from vweb.routes.diceroll.services import perform_quickroll
+
+        # Given a quickroll
+        character = CharacterFactory.build()
+        quickroll = QuickrollFactory.build()
+        mock_svc = mocker.MagicMock()
+        mock_svc.create_from_quickroll.return_value = DicerollFactory.build(
+            result=make_dice_roll_result()
+        )
+        mocker.patch("vweb.routes.diceroll.services.sync_dicerolls_service", return_value=mock_svc)
+
+        # When rolling with dice_modifier=-2
+        with app.test_request_context("/"):
+            session["company_id"] = "test-company-id"
+            g.requesting_user = UserFactory.build(id="test-user-id")
+            perform_quickroll(
+                character=character,
+                quickroll_id=quickroll.id,
+                difficulty=6,
+                dice_modifier=-2,
+            )
+
+        # Then the kwarg reaches the client
+        mock_svc.create_from_quickroll.assert_called_once_with(
+            quickroll_id=quickroll.id,
+            character_id=character.id,
+            difficulty=6,
+            num_desperation_dice=0,
+            dice_modifier=-2,
+            comment=None,
+        )

@@ -3,7 +3,9 @@
     campaign,
     roll_context,
 #}
-<div x-data="{ tab: 'traits', customNumDice: 1, customDifficulty: 6, traitsDifficulty: 6, traitsDesperation: 0, quickrollDifficulty: 6, quickrollDesperation: 0, traitOneValue: 0, traitTwoValue: 0, maxDesp: {{ roll_context.campaign_desperation }}, }"
+{# Mirrors the API's maximum dice pool. #}
+{% set max_pool = 100 %}
+<div x-data="{ tab: 'traits', customNumDice: 1, customDifficulty: 6, traitsDifficulty: 6, traitsDesperation: 0, quickrollDifficulty: 6, quickrollDesperation: 0, traitOneValue: 0, traitTwoValue: 0, maxDesp: {{ roll_context.campaign_desperation }}, traitsModifier: 0, quickrollModifier: 0, quickrollBase: 0, quickrollPools: {{ roll_context.quickroll_pools | tojson | forceescape }}, get traitsTotal() { return this.traitOneValue + this.traitTwoValue + this.traitsModifier }, get quickrollTotal() { return this.quickrollBase + this.quickrollModifier }, get traitsInvalid() { return this.traitsTotal < 0 || this.traitsTotal > {{ max_pool }} }, get quickrollInvalid() { return this.quickrollTotal < 0 || this.quickrollTotal > {{ max_pool }} }, rolling: false, get traitsBlocked() { return this.traitsInvalid || this.rolling }, get quickrollBlocked() { return this.quickrollInvalid || this.rolling }, }"
      class="flex flex-col md:flex-row gap-6 p-4">
 
   {# Left panel: tabbed forms #}
@@ -28,7 +30,8 @@
           hx-post="/roll/{{ character.id }}/traits"
           hx-target="#roll-results"
           hx-swap="innerHTML"
-          hx-disabled-elt="find button[type='submit']"
+          @htmx:before-request="traitsInvalid ? $event.preventDefault() : (rolling = true)"
+          @htmx:after-request="rolling = false"
           class="space-y-3">
 
       <div class="flex gap-3">
@@ -62,45 +65,34 @@
         </fieldset>
       </div>
 
-      <div class="text-base-content/70 px-1">
-        Pool: <span class="font-semibold text-base-content"
-       x-text="traitOneValue + traitTwoValue">0</span> dice
-      </div>
+      <diceroll.components.PoolPreview base="traitOneValue + traitTwoValue"
+                                       modifier="traitsModifier"
+                                       total="traitsTotal"
+                                       max_pool={{ max_pool }} />
 
-      <div class="flex gap-3">
-        <fieldset class="fieldset flex-1">
-          <legend class="fieldset-legend">Difficulty</legend>
-          <div class="flex items-center gap-2">
-            <button type="button"
-                    class="btn btn-soft btn-square"
-                    @click="traitsDifficulty = Math.max(1, traitsDifficulty - 1)">-</button>
-            <span class="font-semibold text-lg min-w-[2rem] text-center"
-                  x-text="traitsDifficulty">6</span>
-            <button type="button"
-                    class="btn btn-soft btn-square"
-                    @click="traitsDifficulty = Math.min(10, traitsDifficulty + 1)">+</button>
-          </div>
-          <input type="hidden" name="difficulty" :value="traitsDifficulty" />
-        </fieldset>
+      <div class="flex flex-wrap gap-3">
+        <diceroll.components.Stepper label="Difficulty"
+                                     model="traitsDifficulty"
+                                     name="difficulty"
+                                     min="1"
+                                     max="10"
+                                     initial="6" />
+
+        <diceroll.components.Stepper label="Dice Modifier"
+                                     model="traitsModifier"
+                                     name="dice_modifier"
+                                     min={{ -max_pool }}
+                                     max={{ max_pool }}
+                                     initial="0" />
 
         {% if roll_context.campaign_desperation > 0 %}
-          <fieldset class="fieldset flex-1">
-            <legend class="fieldset-legend">Desperation Dice</legend>
-            <div class="flex items-center gap-2">
-              <button type="button"
-                      class="btn btn-soft btn-square"
-                      @click="traitsDesperation = Math.max(0, traitsDesperation - 1)">-</button>
-              <span class="font-semibold text-lg min-w-[2rem] text-center"
-                    x-text="traitsDesperation">0</span>
-              <button type="button"
-                      class="btn btn-soft btn-square"
-                      @click="traitsDesperation = Math.min(maxDesp, traitsDesperation + 1)">
-                +
-              </button>
-              <span class="text-xs text-base-content/50">/ {{ roll_context.campaign_desperation }}</span>
-            </div>
-            <input type="hidden" name="num_desperation_dice" :value="traitsDesperation" />
-          </fieldset>
+          <diceroll.components.Stepper label="Desperation Dice"
+                                       model="traitsDesperation"
+                                       name="num_desperation_dice"
+                                       min="0"
+                                       max="maxDesp"
+                                       initial="0"
+                                       suffix={{ "/ " ~ roll_context.campaign_desperation }} />
         {% endif %}
       </div>
 
@@ -112,7 +104,9 @@
                class="input input-sm input-bordered w-full" />
       </fieldset>
 
-      <shared.CommonButton variant="submit" extra_class="w-full mt-1">
+      <shared.CommonButton variant="submit"
+                           extra_class="w-full mt-1"
+                           extra_attrs=":disabled=traitsBlocked">
       <span class="loading loading-spinner htmx-indicator"></span>
       Roll
       </shared.CommonButton>
@@ -124,12 +118,16 @@
         <form hx-post="/roll/{{ character.id }}/quickroll"
               hx-target="#roll-results"
               hx-swap="innerHTML"
-              hx-disabled-elt="find button[type='submit']"
+              @htmx:before-request="quickrollInvalid ? $event.preventDefault() : (rolling = true)"
+              @htmx:after-request="rolling = false"
               class="space-y-3">
 
           <fieldset class="fieldset">
             <legend class="fieldset-legend">Quickroll</legend>
-            <select name="quickroll_id" required class="select select-bordered w-full">
+            <select name="quickroll_id"
+                    required
+                    class="select select-bordered w-full"
+                    @change="quickrollBase = quickrollPools[$event.target.value] || 0">
               <option value="">-- Select --</option>
               {% for qr in roll_context.quickrolls | sort(attribute='name') %}
                 <option value="{{ qr.id }}">{{ qr.name }}</option>
@@ -137,48 +135,34 @@
             </select>
           </fieldset>
 
-          <div class="flex gap-3">
-            <fieldset class="fieldset flex-1">
-              <legend class="fieldset-legend">Difficulty</legend>
-              <div class="flex items-center gap-2">
-                <button type="button"
-                        class="btn btn-soft btn-square"
-                        @click="quickrollDifficulty = Math.max(1, quickrollDifficulty - 1)">
-                  -
-                </button>
-                <span class="font-semibold text-lg min-w-[2rem] text-center"
-                      x-text="quickrollDifficulty">6</span>
-                <button type="button"
-                        class="btn btn-soft btn-square"
-                        @click="quickrollDifficulty = Math.min(10, quickrollDifficulty + 1)">
-                  +
-                </button>
-              </div>
-              <input type="hidden" name="difficulty" :value="quickrollDifficulty" />
-            </fieldset>
+          <diceroll.components.PoolPreview base="quickrollBase"
+                                           modifier="quickrollModifier"
+                                           total="quickrollTotal"
+                                           max_pool={{ max_pool }} />
+
+          <div class="flex flex-wrap gap-3">
+            <diceroll.components.Stepper label="Difficulty"
+                                         model="quickrollDifficulty"
+                                         name="difficulty"
+                                         min="1"
+                                         max="10"
+                                         initial="6" />
+
+            <diceroll.components.Stepper label="Dice Modifier"
+                                         model="quickrollModifier"
+                                         name="dice_modifier"
+                                         min={{ -max_pool }}
+                                         max={{ max_pool }}
+                                         initial="0" />
 
             {% if roll_context.campaign_desperation > 0 %}
-              <fieldset class="fieldset flex-1">
-                <legend class="fieldset-legend">Desperation Dice</legend>
-                <div class="flex items-center gap-2">
-                  <button type="button"
-                          class="btn btn-soft btn-square"
-                          @click="quickrollDesperation = Math.max(0, quickrollDesperation - 1)">
-                    -
-                  </button>
-                  <span class="font-semibold text-lg min-w-[2rem] text-center"
-                        x-text="quickrollDesperation">0</span>
-                  <button type="button"
-                          class="btn btn-soft btn-square"
-                          @click="quickrollDesperation = Math.min(maxDesp, quickrollDesperation + 1)">
-                    +
-                  </button>
-                  <span class="text-xs text-base-content/50">/ {{ roll_context.campaign_desperation }}</span>
-                </div>
-                <input type="hidden"
-                       name="num_desperation_dice"
-                       :value="quickrollDesperation" />
-              </fieldset>
+              <diceroll.components.Stepper label="Desperation Dice"
+                                           model="quickrollDesperation"
+                                           name="num_desperation_dice"
+                                           min="0"
+                                           max="maxDesp"
+                                           initial="0"
+                                           suffix={{ "/ " ~ roll_context.campaign_desperation }} />
             {% endif %}
           </div>
 
@@ -190,7 +174,9 @@
                    class="input input-sm input-bordered w-full" />
           </fieldset>
 
-          <shared.CommonButton variant="submit" extra_class="w-full mt-1">
+          <shared.CommonButton variant="submit"
+                               extra_class="w-full mt-1"
+                               extra_attrs=":disabled=quickrollBlocked">
           <span class="loading loading-spinner htmx-indicator"></span>
           Roll
           </shared.CommonButton>
@@ -225,35 +211,19 @@
       </fieldset>
 
       <div class="flex gap-3">
-        <fieldset class="fieldset flex-1">
-          <legend class="fieldset-legend"># Dice</legend>
-          <div class="flex items-center gap-2">
-            <button type="button"
-                    class="btn btn-soft btn-square"
-                    @click="customNumDice = Math.max(1, customNumDice - 1)">-</button>
-            <span class="font-semibold text-lg min-w-[2rem] text-center"
-                  x-text="customNumDice">1</span>
-            <button type="button"
-                    class="btn btn-soft btn-square"
-                    @click="customNumDice = Math.min(30, customNumDice + 1)">+</button>
-          </div>
-          <input type="hidden" name="num_dice" :value="customNumDice" />
-        </fieldset>
+        <diceroll.components.Stepper label="# Dice"
+                                     model="customNumDice"
+                                     name="num_dice"
+                                     min="1"
+                                     max="30"
+                                     initial="1" />
 
-        <fieldset class="fieldset flex-1">
-          <legend class="fieldset-legend">Difficulty</legend>
-          <div class="flex items-center gap-2">
-            <button type="button"
-                    class="btn btn-soft btn-square"
-                    @click="customDifficulty = Math.max(1, customDifficulty - 1)">-</button>
-            <span class="font-semibold text-lg min-w-[2rem] text-center"
-                  x-text="customDifficulty">6</span>
-            <button type="button"
-                    class="btn btn-soft btn-square"
-                    @click="customDifficulty = Math.min(10, customDifficulty + 1)">+</button>
-          </div>
-          <input type="hidden" name="difficulty" :value="customDifficulty" />
-        </fieldset>
+        <diceroll.components.Stepper label="Difficulty"
+                                     model="customDifficulty"
+                                     name="difficulty"
+                                     min="1"
+                                     max="10"
+                                     initial="6" />
       </div>
 
       <fieldset class="fieldset">
