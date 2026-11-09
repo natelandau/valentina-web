@@ -26,13 +26,18 @@ from vweb.lib.catalog import catalog
 from vweb.lib.character_profile import TRAIT_API_ERRORS, find_character_trait
 from vweb.lib.guards import can_edit_character, can_edit_traits_free
 from vweb.lib.htmx import hx_redirect
-from vweb.routes.character_trait_edit.services import humanize_spend_type
+from vweb.routes.character_trait_edit.services import (
+    find_standard_trait_by_name,
+    has_trait_named,
+    humanize_spend_type,
+)
 from vweb.routes.character_trait_edit.views_specialties import SpecialtiesView, SpecialtyView
 
 bp = Blueprint("character_trait_edit", __name__)
 
 if TYPE_CHECKING:
     from vclient._sync.services import SyncCharacterTraitsService
+    from vclient.models import Trait
     from werkzeug.wrappers.response import Response
 
 
@@ -147,6 +152,36 @@ class CharacterTraitsView(MethodView):
         if had_specialties:
             msg += " Its specialties were removed."
         flash(msg, "success")
+        return hx_redirect(get_method_url)
+
+    def _assign_trait(
+        self,
+        svc: SyncCharacterTraitsService,
+        *,
+        trait: Trait,
+        character_id: str,
+        get_method_url: str,
+    ) -> Response:
+        """Attach a standard trait to the character at its minimum value.
+
+        Args:
+            svc: The character traits service.
+            trait: The blueprint trait to attach.
+            character_id: The character's ID, used to invalidate its cached sheet.
+            get_method_url: The URL to redirect to.
+
+        Returns:
+            An HX-Redirect response.
+        """
+        try:
+            svc.assign(trait_id=trait.id, value=trait.min_value, currency=self.spend_type)
+        except TRAIT_API_ERRORS as error:
+            flash(api_error_message(error, fallback="Failed to assign trait"), "error")
+            return hx_redirect(get_method_url)
+
+        flash(f"Assigned {trait.name}", "success")
+        cache.character_sheet.clear(character_id)
+        cache.global_context.clear_current()
         return hx_redirect(get_method_url)
 
     def _spend_summary(
@@ -283,35 +318,48 @@ class CharacterTraitsView(MethodView):
                 return result
 
             if trait_id.startswith("ADD_UNASSIGNED"):
-                new_trait_id = value
-
-                trait = cache.blueprint.trait(new_trait_id)
+                trait = cache.blueprint.trait(value)
                 if trait is None:
                     flash("Trait not found", "error")
                     return hx_redirect(get_method_url)
-                try:
-                    api_svc.assign(
-                        trait_id=new_trait_id, value=trait.min_value, currency=self.spend_type
-                    )
-                except TRAIT_API_ERRORS as error:
-                    flash(api_error_message(error, fallback="Failed to assign trait"), "error")
-                    return hx_redirect(get_method_url)
-
-                flash(f"Assigned {trait.name}", "success")
-                cache.character_sheet.clear(character.id)
-                cache.global_context.clear_current()
-                return hx_redirect(get_method_url)
+                return self._assign_trait(
+                    svc=api_svc,
+                    trait=trait,
+                    character_id=character.id,
+                    get_method_url=get_method_url,
+                )
 
             if trait_id.startswith("CUSTOM_"):
                 new_trait_name = value.strip().title()
                 if not new_trait_name:
                     flash("Trait name is required", "warning")
                     return hx_redirect(get_method_url)
+                # maxsplit=1: the field is "CUSTOM_<category_id>" and ids may contain "_"
+                category_id = trait_id.split("_", 1)[1]
+                standard_trait = find_standard_trait_by_name(
+                    cache.blueprint.traits().values(),
+                    name=new_trait_name,
+                    category_id=category_id,
+                    character=character,
+                )
+                # A name already on the sheet falls through to create, which reports the
+                # conflict; assigning a same-named trait from elsewhere would duplicate it.
+                if standard_trait is not None and not has_trait_named(
+                    cache.character_sheet.get(
+                        character.id, requesting_user.id, include_available_traits=True
+                    ),
+                    new_trait_name,
+                ):
+                    return self._assign_trait(
+                        svc=api_svc,
+                        trait=standard_trait,
+                        character_id=character.id,
+                        get_method_url=get_method_url,
+                    )
                 custom_trait = TraitCreate(
                     name=new_trait_name,
                     show_when_zero=True,
-                    # maxsplit=1: the field is "CUSTOM_<category_id>" and ids may contain "_"
-                    category_id=trait_id.split("_", 1)[1],
+                    category_id=category_id,
                     currency=self.spend_type,
                 )
                 try:
