@@ -1,3 +1,14 @@
+## v0.15.0 (2026-11-08)
+
+### Feat
+
+- **diceroll**: add a dice modifier to the roll modal (#71)
+- **errors**: show users why the API refused a change (#69)
+
+### Refactor
+
+- **errors**: show the API's validation messages as-is (#70)
+
 ## v0.14.0 (2026-10-28)
 
 ### Feat
