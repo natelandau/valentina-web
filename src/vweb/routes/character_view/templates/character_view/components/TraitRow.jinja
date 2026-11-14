@@ -15,7 +15,7 @@
       <character_view.components.TermTooltip name={{ character_trait.trait.name }} dictionary_terms={{ dictionary_terms }} />
     {% endif %}
     {% if character_trait.specialties %}
-      <div class="trait-specialties {% if indent %}pl-4 {% endif %}text-sm text-base-content/60 font-normal">{{ character_trait.specialties | map(attribute="name") | join(", ") }}</div>
+      <shared.traits.SpecialtyList character={{ character }} character_trait={{ character_trait }} extra_class={{ "pl-4" if indent else "" }} />
     {% endif %}
   </td>
   {% if not character_trait.tracker %}

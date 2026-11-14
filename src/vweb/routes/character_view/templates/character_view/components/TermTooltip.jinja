@@ -4,7 +4,8 @@
     extra_class: str = "",
 #}
 
-{% set has_term = False %}
+{#- A namespace survives the loop; a plain {% set %} inside it would not, leaving the div open. -#}
+{% set ns = namespace(has_term=False) %}
 
 {% for term in dictionary_terms if term.term | lower == name | lower or name | lower in term.synonyms %}
   <div class="tooltip tooltip-neutral">
@@ -12,10 +13,10 @@
       {{ term.definition.split("\n#")[0] | from_markdown }}
     </div>
 
-    {% set has_term = True %}
+    {% set ns.has_term = True %}
 
     {% break %}
   {% endfor %}
 
   {{ name | title }}
-  {% if has_term %}</div>{% endif %}
+  {% if ns.has_term %}</div>{% endif %}

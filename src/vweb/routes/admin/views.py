@@ -104,6 +104,7 @@ def _build_update(form: dict[str, Any]) -> CompanyUpdate:
             "custom_flaw_xp_cost",
             "Custom Flaw XP Cost",
         ),
+        "specialty_rules": _empty_to_none(form.get("specialty_rules")),
     }
     return CompanyUpdate(
         name=form.get("name", "").strip(),

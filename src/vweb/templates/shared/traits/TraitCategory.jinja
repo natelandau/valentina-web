@@ -8,12 +8,12 @@
 #}
 {# HTMX-driven variant for live character sheets; Alpine sibling: routes/character_create/templates/character_create/manual/components/TraitCategory.jinja #}
 {% macro specialty_controls(trait) %}
-  {%- if spend_type and accepts_specialties(trait) -%}
+  {%- if spend_type and character_trait_accepts_specialties(trait, character) -%}
     {%- set specialties_url = url_for("character_trait_edit.specialties_" ~ spend_type, character_id=character.id, character_trait_id=trait.id) -%}
     {# djlint:off #}
     <div class="flex items-center gap-1">
       {% if trait.specialties %}
-        <span class="text-sm text-base-content/60 font-normal">{{ trait.specialties | map(attribute="name") | join(", ") }}</span>
+        <shared.traits.SpecialtyList character={{ character }} character_trait={{ trait }} inline={{ true }} />
         <button type="button" class="btn btn-ghost btn-xs btn-square"
                 aria-label="Edit {{ trait.trait.name.strip().title() }} specialties"
                 hx-get="{{ specialties_url }}"

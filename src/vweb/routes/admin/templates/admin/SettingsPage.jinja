@@ -17,6 +17,7 @@
   {%- set perm_free_trait_val = field_val("permission_free_trait_changes", (s.permission_free_trait_changes if s and s.permission_free_trait_changes else "")) -%}
   {%- set perm_recoup_xp_val = field_val("permission_recoup_xp", (s.permission_recoup_xp if s and s.permission_recoup_xp else "")) -%}
   {%- set flaw_cost_val = field_val("custom_flaw_xp_cost", (s.custom_flaw_xp_cost if s and s.custom_flaw_xp_cost is not none else "")) -%}
+  {%- set specialty_rules_val = field_val("specialty_rules", (s.specialty_rules if s and s.specialty_rules else "FLAT")) -%}
   {#- An unchecked box is absent from the submitted form, so presence decides on re-render. -#}
   {%- set specialty_cost_on = ("specialty_xp_cost_enabled" in form_values) if form_values is not none else (s.specialty_xp_cost_enabled if s else false) -%}
 
@@ -327,6 +328,28 @@
             </p>
             {% if errors.get("custom_flaw_xp_cost") %}
               <p class="label text-error">{{ errors["custom_flaw_xp_cost"] }}</p>
+            {% endif %}
+          </fieldset>
+
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Specialty rules</legend>
+            <select name="specialty_rules" class="select w-full">
+              <option value="FLAT" {% if specialty_rules_val == "FLAT" %}selected{% endif %}>
+                Flat
+              </option>
+              <option value="THRESHOLD" {% if specialty_rules_val == "THRESHOLD" %}selected{% endif %}>
+                Threshold
+              </option>
+            </select>
+            <p class="label">
+              Which traits can take specialties, and what they cost when charging is on.
+              <br>
+              &nbsp;&nbsp;- Flat: any ability with a dot; each specialty costs 3
+              <br>
+              &nbsp;&nbsp;- Threshold: attributes and abilities at 4 dots (abilities favored by the character's concept at 3); the first is free, each one after costs the trait's rating
+            </p>
+            {% if errors.get("specialty_rules") %}
+              <p class="label text-error">{{ errors["specialty_rules"] }}</p>
             {% endif %}
           </fieldset>
         </div>

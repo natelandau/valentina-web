@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from vweb.api_client.testing import CharacterTraitFactory, TraitFactory
-from vweb.lib.trait_rules import accepts_specialties, is_derived_trait
+from vweb.lib.trait_rules import accepts_specialties, is_derived_trait, specialty_threshold
 
 if TYPE_CHECKING:
     from vweb.api_client.models import CharacterTrait
@@ -67,3 +67,50 @@ def test_attribute_does_not() -> None:
 def test_missing_section_name_does_not() -> None:
     """Verify a trait without a section name does not."""
     assert accepts_specialties(_ability(None, 3)) is False
+
+
+def _named(section_name: str, name: str, value: int) -> CharacterTrait:
+    trait = TraitFactory.build(sheet_section_name=section_name, name=name)
+    return CharacterTraitFactory.build(trait=trait, value=value)
+
+
+@pytest.mark.parametrize(
+    ("section", "name", "value", "favored", "expected"),
+    [
+        ("Abilities", "Firearms", 3, [], False),
+        ("Abilities", "Firearms", 4, [], True),
+        ("Abilities", "Medicine", 3, ["Medicine"], True),
+        ("Abilities", "medicine", 3, ["MEDICINE"], True),
+        ("Attributes", "Strength", 4, [], True),
+        ("Attributes", "Strength", 3, ["Strength"], False),
+        ("Other", "Courage", 5, [], False),
+    ],
+)
+def test_threshold_rules_accept_specialties(
+    section: str, name: str, value: int, favored: list[str], *, expected: bool
+) -> None:
+    """Verify THRESHOLD rules: 4 dots, 3 for favored abilities, attributes and abilities only."""
+    trait = _named(section, name, value)
+    assert accepts_specialties(trait, rules="THRESHOLD", favored_ability_names=favored) is expected
+
+
+@pytest.mark.parametrize(
+    ("section", "name", "favored", "expected"),
+    [
+        ("Abilities", "Medicine", ["Medicine"], 3),
+        ("Abilities", "Firearms", ["Medicine"], 4),
+        ("Attributes", "Strength", ["Strength"], 4),
+    ],
+)
+def test_threshold_rules_specialty_threshold(
+    section: str, name: str, favored: list[str], expected: int
+) -> None:
+    """Verify the threshold a trait needs under THRESHOLD rules."""
+    trait = _named(section, name, 1)
+    assert specialty_threshold(trait, rules="THRESHOLD", favored_ability_names=favored) == expected
+
+
+def test_flat_rules_threshold_is_one() -> None:
+    """Verify FLAT rules need only one dot, whatever the concept favors."""
+    trait = _named("Abilities", "Medicine", 1)
+    assert specialty_threshold(trait, favored_ability_names=["Medicine"]) == 1

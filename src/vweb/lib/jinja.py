@@ -31,6 +31,11 @@ from vweb.lib.api import (
     get_user_campaign_experience,
     resolve_characters,
 )
+from vweb.lib.character_profile import (
+    character_trait_accepts_specialties,
+    character_trait_specialty_threshold,
+    specialty_rules_for,
+)
 from vweb.lib.guards import (
     can_edit_character,
     can_edit_trackers,
@@ -276,6 +281,9 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
     jinja_globals.update(
         is_derived_trait=is_derived_trait,
         accepts_specialties=accepts_specialties,
+        character_trait_accepts_specialties=character_trait_accepts_specialties,
+        character_trait_specialty_threshold=character_trait_specialty_threshold,
+        specialty_rules_for=specialty_rules_for,
         is_http_url=is_http_url,
     )
 

@@ -460,7 +460,7 @@ class TestSpecialtyUi(_Base):
         character, html = self._form(client, mocker)
         url = self._url(character, "XP")
         assert re.search(
-            r'<span class="text-sm text-base-content/60 font-normal">Knives</span>', html
+            r'<span class="trait-specialties[^"]*">\s*<span class="tooltip[^>]*>\s*Knives', html
         )
         pencil = html.split("fa-pencil")[0].rsplit("<button", 1)[1]
         assert f'hx-get="{url}"' in pencil

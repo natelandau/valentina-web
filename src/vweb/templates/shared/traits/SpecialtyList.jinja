@@ -1,0 +1,20 @@
+{#def
+    character,
+    character_trait,
+    extra_class: str = "",
+    inline: bool = False,
+#}
+{#- A trait's specialties with a tooltip explaining what they do. Under THRESHOLD rules a trait
+    below its threshold keeps its specialties, but they do nothing until the rating returns. -#}
+{%- set name = character_trait.trait.name.strip().title() -%}
+{%- set threshold = character_trait_specialty_threshold(character_trait, character) -%}
+{%- set inactive = character_trait.value < threshold -%}
+{%- set tip = "Specialty: +1 die to " ~ name ~ " when what you're doing fits. The Storyteller decides." -%}
+{%- if inactive -%}
+  {%- set tip = tip ~ " Inactive until " ~ name ~ " is back to " ~ threshold ~ " dots." -%}
+{%- endif -%}
+<{{ "span" if inline else "div" }} class="trait-specialties {{ extra_class }} text-sm font-normal {{ 'text-base-content/40 line-through' if inactive else 'text-base-content/60' }}">
+  <span class="tooltip tooltip-neutral cursor-help underline decoration-dotted underline-offset-2" data-tip="{{ tip }}">
+    {{ character_trait.specialties | map(attribute="name") | join(", ") }}
+  </span>
+</{{ "span" if inline else "div" }}>
