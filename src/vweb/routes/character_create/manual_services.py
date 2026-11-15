@@ -14,7 +14,11 @@ from vweb.api_client.models import CharacterCreate, CharacterTraitAdd, Character
 from vweb.lib import api_services
 from vweb.lib.api_errors import api_field_errors
 from vweb.lib.guards import can_manage_npcs, is_self, is_storyteller
-from vweb.routes.character_create.profile_form import build_class_attrs, character_to_form_data
+from vweb.routes.character_create.profile_form import (
+    build_class_attrs,
+    character_to_form_data,
+    parse_birth_year,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -40,6 +44,7 @@ _INLINE_ERROR_FIELDS: frozenset[str] = frozenset(
         "vampire_clan_id",
         "werewolf_tribe_id",
         "creed",
+        "birth_year",
     }
 )
 
@@ -161,7 +166,7 @@ def _build_update_payload(form_data: dict[str, str]) -> CharacterUpdate:
     """
     character_class = cast("CharacterClass", form_data["character_class"])
     game_version = cast("GameVersion", form_data["game_version"])
-    age_str = form_data.get("age", "").strip()
+    birth_year = parse_birth_year(form_data.get("birth_year", ""))
     _create_attrs, update_attrs = build_class_attrs(character_class, form_data)
     vampire_u, werewolf_u, hunter_u, mage_attrs = update_attrs
 
@@ -172,7 +177,7 @@ def _build_update_payload(form_data: dict[str, str]) -> CharacterUpdate:
         name_last=form_data["name_last"],
         type=cast("CharacterType", form_data.get("character_type") or "PLAYER"),
         name_nick=form_data.get("name_nick") or None,
-        age=int(age_str) if age_str else None,
+        birth_year=birth_year,
         biography=form_data.get("biography") or None,
         demeanor=form_data.get("demeanor") or None,
         nature=form_data.get("nature") or None,
@@ -196,7 +201,7 @@ def _build_create_payload(campaign_id: str, form_data: dict[str, str]) -> Charac
     """
     character_class = cast("CharacterClass", form_data["character_class"])
     game_version = cast("GameVersion", form_data["game_version"])
-    age_str = form_data.get("age", "").strip()
+    birth_year = parse_birth_year(form_data.get("birth_year", ""))
     create_attrs, _update_attrs = build_class_attrs(character_class, form_data)
     vampire_c, werewolf_c, hunter_c, mage_attrs = create_attrs
 
@@ -208,7 +213,7 @@ def _build_create_payload(campaign_id: str, form_data: dict[str, str]) -> Charac
         name_last=form_data["name_last"],
         type=cast("CharacterType", form_data.get("character_type") or "PLAYER"),
         name_nick=form_data.get("name_nick") or None,
-        age=int(age_str) if age_str else None,
+        birth_year=birth_year,
         biography=form_data.get("biography") or None,
         demeanor=form_data.get("demeanor") or None,
         nature=form_data.get("nature") or None,

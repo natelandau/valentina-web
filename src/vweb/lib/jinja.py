@@ -152,6 +152,37 @@ def character_type_label(character_type: str) -> str:
     return CHARACTER_TYPE_LABELS.get(character_type, character_type.title())
 
 
+def birth_year_label(birth_year: int) -> str:
+    """Return a birth year for display, marking years before 1 CE as BCE.
+
+    Args:
+        birth_year: The year of birth; negative years are BCE.
+
+    Returns:
+        The year as written on a character sheet, e.g. ``"1967"`` or ``"1250 BCE"``.
+    """
+    return f"{-birth_year} BCE" if birth_year < 0 else str(birth_year)
+
+
+def character_age_label(age: int | None, birth_year: int | None) -> str | None:
+    """Return a character's age as shown on the sheet, e.g. ``"23 (B. 1967)"``.
+
+    The API derives ``age`` from the birth year on the campaign's in-game date, so the
+    two always agree. Characters without a birth year show their stored age alone.
+
+    Args:
+        age: The character's age from the API.
+        birth_year: The character's birth year, when recorded.
+
+    Returns:
+        The display string, or None when neither is known.
+    """
+    if birth_year is None:
+        return str(age) if age is not None else None
+    born = f"B. {birth_year_label(birth_year)}"
+    return f"{age} ({born})" if age is not None else born
+
+
 def build_fragment_url(endpoint: str, **kwargs: object) -> str:
     """Build an HTMX fragment URL, dropping kwargs with empty or None values.
 
@@ -206,6 +237,7 @@ def register_jinjax_catalog() -> jinjax.Catalog:
     catalog.jinja_env.filters["normalize_string"] = normalize_string
     catalog.jinja_env.filters["to_roman"] = to_roman
     catalog.jinja_env.globals["user_campaign_experience"] = get_user_campaign_experience  # ty:ignore[invalid-assignment]
+    catalog.jinja_env.globals["character_age_label"] = character_age_label  # ty:ignore[invalid-assignment]
     catalog.jinja_env.add_extension("jinja2.ext.do")
     # JinjaX builds its environment without autoescape (Jinja2 defaults it off),
     # which would let user-controlled API data reflect raw HTML into every page.

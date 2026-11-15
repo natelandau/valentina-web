@@ -95,6 +95,20 @@
       </div>
     </div>
 
+    {% if can_edit and character.birth_year is none %}
+      <div role="alert" class="alert alert-info alert-soft">
+        <i class="fa-solid fa-cake-candles"></i>
+        <span>Add {{ character.name }}'s birth year so their age follows the campaign's in-game date.</span>
+        <button type="button"
+                class="btn btn-sm"
+                hx-get="{{ url_for('character_create.manual_profile', campaign_id=campaign.id) }}?character_id={{ character.id }}"
+                hx-target="#character-tab-content"
+                hx-swap="innerHTML">
+          Add birth year
+        </button>
+      </div>
+    {% endif %}
+
     <nav aria-label="Character sections"
          class="border-b border-base-300/60 relative"
          x-data='priorityNav({{ {"items": sub_tabs, "active": active_section} | tojson }})'

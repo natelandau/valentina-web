@@ -154,3 +154,38 @@ class TestBuildTraitItems:
 
         # Then only the traits at 3 and 100 are kept
         assert [(item.trait_id, item.value) for item in items] == [("t1", 3), ("t5", 100)]
+
+
+class TestBirthYearPayload:
+    """The profile form's birth year reaches the API; age is no longer sent."""
+
+    def test_save_sends_birth_year(self, app, characters_service) -> None:
+        """Verify creating a character sends the birth year and no age."""
+        # Given a form with a birth year
+        form = {**_FORM, "birth_year": "1967", "age": "40"}
+
+        # When saving the temporary character
+        with app.test_request_context():
+            session["user_id"] = "u1"
+            session["company_id"] = "company-1"
+            save_temp_character("camp-1", form)
+
+        # Then the payload carries the birth year and leaves age unset
+        payload = characters_service.create.call_args.args[0]
+        assert payload.birth_year == 1967
+        assert payload.age is None
+
+    def test_update_sends_birth_year(self, app, characters_service) -> None:
+        """Verify editing a profile sends the birth year."""
+        # Given a form with a BCE birth year
+        form = {**_FORM, "birth_year": "-1250"}
+
+        # When updating the profile
+        with app.test_request_context():
+            session["user_id"] = "u1"
+            session["company_id"] = "company-1"
+            update_character_profile("char-1", form)
+
+        # Then the payload carries the birth year
+        payload = characters_service.update.call_args.args[1]
+        assert payload.birth_year == -1250

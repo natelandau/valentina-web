@@ -16,7 +16,7 @@
   ("Concept", character.concept_name | title if character.concept_name else none),
   ("Demeanor", character.demeanor | title if character.demeanor else none),
   ("Nature", character.nature | title if character.nature else none),
-  ("Age", character.age if character.age else none),
+  ("Age", character_age_label(character.age, character.birth_year)),
   ("Game Version", character.game_version | title if character.game_version else none),
   ("Player", ns.user_player_owner.username if ns.user_player_owner else none),
 ] %}

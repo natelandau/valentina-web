@@ -7,7 +7,12 @@ from flask import flash
 
 import vweb
 from vweb.api_client.testing import CampaignBookFactory, CampaignFactory
-from vweb.lib.jinja import build_fragment_url, dice_notation, threat_badge_class
+from vweb.lib.jinja import (
+    build_fragment_url,
+    character_age_label,
+    dice_notation,
+    threat_badge_class,
+)
 
 
 class TestCatalogAutoescape:
@@ -136,3 +141,19 @@ def test_threat_badge_class_thresholds(value, expected) -> None:
 def test_dice_notation(modifier, expected) -> None:
     """Verify the modifier is appended with its sign only when non-zero."""
     assert dice_notation(num_dice=5, dice_size=10, dice_modifier=modifier) == expected
+
+
+@pytest.mark.parametrize(
+    ("age", "birth_year", "expected"),
+    [
+        (23, 1967, "23 (B. 1967)"),
+        (3236, -1250, "3236 (B. 1250 BCE)"),
+        (None, 1990, "B. 1990"),
+        (31, None, "31"),
+        (0, None, "0"),
+        (None, None, None),
+    ],
+)
+def test_character_age_label(age, birth_year, expected) -> None:
+    """Verify the sheet shows age with the birth year, BCE years, and the stored-age fallback."""
+    assert character_age_label(age, birth_year) == expected

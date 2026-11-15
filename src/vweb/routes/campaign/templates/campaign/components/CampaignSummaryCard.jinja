@@ -33,6 +33,12 @@
               {{ campaign.num_books }} books · {{ campaign.num_chapters }} chapters
             </span>
           {% endif %}
+          {% if campaign.in_game_date %}
+            <span class="badge badge-outline badge-sm" title="In-game date">
+              <i class="fa-regular fa-calendar"></i>
+              {{ campaign.in_game_date.strftime("%-d %b %Y") }}
+            </span>
+          {% endif %}
           <span class="badge badge-outline badge-sm">
             {{ campaign.date_created.strftime("Started %b %Y") }}
           </span>

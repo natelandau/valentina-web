@@ -86,14 +86,26 @@
         </fieldset>
 
         <fieldset class="fieldset">
-          <legend class="fieldset-legend">Age</legend>
-          <label class="input w-full">
+          <legend class="fieldset-legend">Birth year</legend>
+          <label class="input w-full {% if errors.get('birth_year') %}input-error{% endif %}">
             <input type="number"
-                   name="age"
+                   name="birth_year"
                    class="grow"
-                   value="{{ form_data.get('age', '') }}"
-                   min="0" />
+                   value="{{ form_data.get('birth_year', '') }}"
+                   min="-9999"
+                   max="9999"
+                   step="1" />
           </label>
+          {% if errors.get('birth_year') %}
+            <p class="text-error text-sm mt-1">{{ errors['birth_year'] }}</p>
+          {% endif %}
+          <p class="label whitespace-normal block">
+            Age is worked out from the campaign's in-game date{% if campaign.in_game_date %}, currently {{ campaign.in_game_date.year }}{% endif %}.
+            {% if form_data.get('age') and not form_data.get('birth_year') %}
+              This character was recorded as age {{ form_data.get('age') }}{% if campaign.in_game_date %}, so likely born in {{ campaign.in_game_date.year - form_data.get('age') | int }}{% endif %}.
+            {% endif %}
+            Use a negative year for BCE.
+          </p>
         </fieldset>
 
         {# Game Version #}

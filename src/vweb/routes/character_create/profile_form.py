@@ -19,6 +19,9 @@ if TYPE_CHECKING:
     from vweb.api_client.models import Character
 
 _NAME_MIN_LENGTH: int = 3
+# The API accepts -9999 (BCE) to 9999.
+BIRTH_YEAR_MIN: int = -9999
+BIRTH_YEAR_MAX: int = 9999
 
 ClassCreateAttrs = tuple[
     VampireAttributesCreate | None,
@@ -68,7 +71,29 @@ def validate_profile(form_data: dict[str, str]) -> dict[str, str]:
     if character_class == "HUNTER" and not form_data.get("creed"):
         errors["creed"] = "Hunter creed is required."
 
+    birth_year = form_data.get("birth_year", "").strip()
+    if birth_year and parse_birth_year(birth_year) is None:
+        errors["birth_year"] = (
+            f"Birth year must be a whole number from {BIRTH_YEAR_MIN} to {BIRTH_YEAR_MAX}."
+        )
+
     return errors
+
+
+def parse_birth_year(value: str) -> int | None:
+    """Parse a birth year from form input, rejecting anything outside the API's range.
+
+    Args:
+        value: The submitted text; negative years are BCE.
+
+    Returns:
+        The year, or None when the text is blank, not a whole number, or out of range.
+    """
+    try:
+        year = int(value.strip())
+    except ValueError:
+        return None
+    return year if BIRTH_YEAR_MIN <= year <= BIRTH_YEAR_MAX else None
 
 
 def character_to_form_data(character: Character) -> dict[str, str]:
@@ -90,7 +115,9 @@ def character_to_form_data(character: Character) -> dict[str, str]:
 
     optional: dict[str, str | None] = {
         "name_nick": character.name_nick,
+        # Shown as a hint for characters created before birth years were recorded.
         "age": str(character.age) if character.age is not None else None,
+        "birth_year": str(character.birth_year) if character.birth_year is not None else None,
         "biography": character.biography,
         "demeanor": character.demeanor,
         "nature": character.nature,
