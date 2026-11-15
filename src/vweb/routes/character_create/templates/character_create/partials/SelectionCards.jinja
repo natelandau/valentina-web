@@ -6,6 +6,7 @@
 #}
 
 {% set xp_cost = g.global_context.company.settings.character_autogen_xp_cost or 0 %}
+{% set num_choices = g.global_context.company.settings.character_autogen_num_choices or 1 %}
 
 {% if errors %}
   <div role="alert" class="alert alert-error mb-4">
@@ -117,9 +118,13 @@
     <div class="card-body">
       <h3 class="card-title text-lg">Roll a Random Character</h3>
       <div class="prose prose-sm max-w-none">
-        <p>
-          Generate {{ g.global_context.company.settings.character_autogen_num_choices }} randomly generated characters for you to choose between.
-        </p>
+        {% if num_choices > 1 %}
+          <p>
+            Each roll creates <strong>{{ num_choices }} random characters</strong> side by side. You pick <strong>one</strong> to keep; the other {{ num_choices - 1 }} are discarded.
+          </p>
+        {% else %}
+          <p>Each roll creates <strong>one random character</strong>. Review it, then select it to keep it.</p>
+        {% endif %}
         <p>For each character, the following steps are taken:</p>
         <ol>
           <li>
@@ -165,7 +170,7 @@
           <div>
             <h3 class="font-bold">Important:</h3>
             <div class="text-xs">
-              You will be charged {{ xp_cost }} XP for each group of {{ g.global_context.company.settings.character_autogen_num_choices }} characters you generate.
+              Each roll costs {{ xp_cost }} XP{% if num_choices > 1 %}, whichever of the {{ num_choices }} characters you keep{% endif %}.
             </div>
             <div class="text-xs">You have {{ user_xp }} XP available.</div>
           </div>
@@ -212,7 +217,11 @@
       <h3 class="text-lg font-bold">Start Generation Session</h3>
       <p class="py-4">
         This will cost <strong>{{ xp_cost }} XP</strong> from your current balance of <strong>{{ user_xp }} XP</strong>.
-        You'll see 3 randomly generated characters to choose from.
+        {% if num_choices > 1 %}
+          You'll see {{ num_choices }} random characters and keep one of them; the other {{ num_choices - 1 }} are discarded.
+        {% else %}
+          You'll get one random character to review and select.
+        {% endif %}
       </p>
       <div class="modal-action">
         <shared.CommonButton variant="cancel" hx-on:click="this.closest('dialog').close()">Cancel</shared.CommonButton>
