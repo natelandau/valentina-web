@@ -27,10 +27,13 @@
       Created {{ characters_data | length }} characters
     </h3>
     <div>
-      Review each character option using the tabs below, then select the one you'd like to keep.
+      Review each character using the tabs below, then select the <strong>one</strong> you want to keep.
+      {% if characters_data | length > 1 %}
+        The other {{ characters_data | length - 1 }} are discarded when you choose.
+      {% endif %}
     </div>
     <div>
-      You can leave this page and return to finish your selection from the character creation page before the session expires.
+      Nothing is kept until you select a character. You can leave and finish from the character creation page, but if the session expires first, its characters are deleted and the XP is not refunded.
     </div>
   </div>
 

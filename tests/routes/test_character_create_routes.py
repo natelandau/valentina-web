@@ -68,6 +68,46 @@ class TestSelectionCardsView:
         assert response.status_code == 200
 
 
+class TestAutogenChoiceExplanation:
+    """The random-character card explains that a player keeps one of the rolled choices."""
+
+    def _cards_html(self, client, mocker, num_choices: int) -> str:
+        ctx = build_global_context(user_role="PLAYER")
+        ctx.company.settings.character_autogen_num_choices = num_choices
+        ctx.company.settings.character_autogen_xp_cost = 10
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        mocker.patch(
+            "vweb.routes.character_create.picker_services.list_sessions",
+            return_value=[],
+        )
+        response = client.get(f"/campaign/{campaign.id}/characters/new/cards")
+        return " ".join(response.get_data(as_text=True).split())
+
+    def test_explains_keeping_one_of_several(self, client, mocker) -> None:
+        """Verify three choices are described as pick one, discard the other two."""
+        # When rendering the cards with three choices per roll
+        html = self._cards_html(client, mocker, num_choices=3)
+
+        # Then the card, the cost line, and the confirmation all say one is kept
+        assert "<strong>3 random characters</strong>" in html
+        assert "the other 2 are discarded" in html
+        assert "You'll see 3 random characters and keep one of them" in html
+        assert "Each roll costs 10 XP, whichever of the 3 characters you keep." in html
+
+    def test_describes_single_choice(self, client, mocker) -> None:
+        """Verify one choice per roll is described as a single character, not a choice."""
+        # When rendering the cards with one choice per roll
+        html = self._cards_html(client, mocker, num_choices=1)
+
+        # Then no choosing or discarding is mentioned
+        assert (
+            "<strong>one random character</strong>. Review it, then select it to keep it." in html
+        )
+        assert "discarded" not in html
+        assert "Each roll costs 10 XP." in html
+
+
 class TestSingleAutogenFormView:
     """Tests for GET /campaign/<id>/characters/new/single-autogen."""
 
