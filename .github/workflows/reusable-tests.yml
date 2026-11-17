@@ -12,11 +12,20 @@ on:
 
 jobs:
     test-python-code:
+        name: test-python-code (${{ matrix.python-version }}, ${{ matrix.suite }})
         runs-on: ubuntu-latest
         strategy:
-            fail-fast: true
+            # The suites are independent, so a failure in one should not cancel the other
+            fail-fast: false
             matrix:
                 python-version: ["3.13"]
+                # Keep in sync with TEST_SCOPES in duties.py
+                suite: [web, client]
+                include:
+                    - suite: web
+                      pytest-targets: tests/ --ignore=tests/api_client
+                    - suite: client
+                      pytest-targets: tests/api_client/
         steps:
             - name: Checkout repository
               uses: actions/checkout@v7
@@ -29,13 +38,14 @@ jobs:
             - name: Run tests
               shell: bash
               run: |
-                  uv run pytest tests/ --config-file pyproject.toml --color=yes --cov --cov-config=pyproject.toml --cov-report=xml --cov-report=term -n auto
+                  uv run pytest ${{ matrix.pytest-targets }} --config-file pyproject.toml --color=yes --cov --cov-config=pyproject.toml --cov-report=xml --cov-report=term -n auto
 
             - name: Upload coverage to Codecov
               if: ${{ inputs.run-coverage && matrix.python-version == '3.13' }}
               uses: codecov/codecov-action@v7
               with:
                   files: .cache/coverage.xml
+                  flags: ${{ matrix.suite }}
               env:
                   CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 

@@ -8,9 +8,8 @@ Specs and plans are never committed to this repo.
 
 ```bash
 uv run vweb           # Dev server (127.0.0.1:8089)
-uv run pytest tests/  # Tests
 duty lint             # ruff, ty, typos, pre-commit
-duty test             # Tests with coverage
+duty test             # All tests with coverage (see "Running tests" for scopes)
 duty run              # Flask + Tailwind watcher
 duty css              # Build CSS (production, minified)
 duty redis-up         # Start the dev Redis container (127.0.0.1:6380); `duty run` does this too
@@ -19,7 +18,7 @@ duty worktree-teardown branch=<name>  # Remove a worktree and flush its Redis da
 uv run duty validate_constants company_id=<id>  # Check client constants against a running API
 ```
 
-`duty ruff/format/ty/typos/test` and `duty precommit` run through gate-cache: a gate that already passed on the identical working tree is skipped ("already passed on tree ..."). A skip is a valid pass. Force a rerun with `GATE_CACHE_DISABLE=1`. `duty test <args>` is never cached.
+`duty ruff/format/ty/typos/test` and `duty precommit` run through gate-cache: a gate that already passed on the same files is skipped ("already passed on tree ..."). A skip is a valid pass. Force a rerun with `GATE_CACHE_DISABLE=1`.
 
 ## Stack
 
@@ -126,7 +125,25 @@ Tailwind v4's JIT scanner only sees **literal** class strings in templates at bu
 
 ## Testing
 
-- Sync pytest. `_mock_api` (autouse in `conftest.py`) prevents real API calls. Always run with a timeout to catch infinite loops. `--strict-markers` — register new markers in `pyproject.toml`.
+### Running tests
+
+Use `uv run duty test` for every check except iterating on a single test. Pick the scope from what you changed:
+
+| You changed                                                                 | Run                                 |
+| --------------------------------------------------------------------------- | ----------------------------------- |
+| Web code only: `src/vweb/` outside `api_client/`, templates, web tests      | `uv run duty test scope=web`        |
+| The API client: `src/vweb/api_client/` or `tests/api_client/`               | `uv run duty test` (web uses the client, so run both) |
+| Dependencies, `tests/conftest.py`, or you are about to commit               | `uv run duty test`                  |
+| One test file or test while iterating                                       | `uv run pytest tests/routes/test_book_view.py -k <name>` |
+
+- `scope=client` runs only `tests/api_client/`. Use it for a quick check while editing the client, then run `uv run duty test` before you commit.
+- Each scope is cached against only the files its tests read. A scope whose files did not change prints "already passed on tree ..." and exits 0. That is a pass, not a skipped check.
+- Extra pytest options after the scope (for example `uv run duty test scope=web -k book`) filter within that scope and turn off the cache, so the command always runs. Do not pass a file path to `duty test`: it adds to the scope's targets instead of narrowing them. Use bare `uv run pytest <path>` for that.
+- `pyproject.toml` sets a 10-second per-test timeout and `--exitfirst`. A timeout failure usually means an infinite loop or a real network call.
+
+### Writing tests
+
+- Sync pytest. `_mock_api` (autouse in `conftest.py`) prevents real API calls. `--strict-markers`: register new markers in `pyproject.toml`.
 - `conftest.py`'s `test_settings` fixture builds `Settings` and passes it to `create_app(settings_override=...)` — no env vars needed. **Always pass `_env_file=None`** when constructing `Settings()` directly or pydantic leaks real config from `.env.secret`.
 - **Model data:** use `vweb.api_client.testing` factories (`UserFactory`, `CampaignFactory`, `CharacterFactory`, …). `Factory.batch(n)` for multiples.
 - **`fake_vclient` fixture** (`FakeVClient`) intercepts API client HTTP in memory. Use `set_response()` / `set_error()`; `add_route()` is a low-level escape hatch. Import `Routes` from `vweb.api_client.testing`:

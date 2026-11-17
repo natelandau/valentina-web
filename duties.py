@@ -83,17 +83,20 @@ def strip_ansi(text: str) -> str:
     return ansi_chars.sub("", text).replace("[", r"\[")
 
 
-def gated(name: str, cmd: list[str]) -> list[str]:
+def gated(name: str, cmd: list[str], paths: tuple[str, ...] = ()) -> list[str]:
     """Wrap a gate command in gate-cache so it skips on a tree where it already passed.
 
     Args:
         name (str): Marker name for the gate.
         cmd (list[str]): Command to run.
+        paths (tuple[str, ...]): Git pathspecs the gate reads. A change outside them
+            does not rerun the gate. Empty keys the gate on the whole tree.
 
     Returns:
         list[str]: The command prefixed with the gate-cache invocation.
     """
-    return ["gate-cache", "--name", name, "--", *cmd]
+    path_args = [arg for path in paths for arg in ("--path", path)]
+    return ["gate-cache", "--name", name, *path_args, "--", *cmd]
 
 
 def compose(*args: str) -> list[str]:
@@ -214,12 +217,57 @@ def update(ctx: Context) -> None:
     ctx.run(["npm", "update", "--save"], title="update npm packages")
 
 
+_SHARED_TEST_INPUTS = ("pyproject.toml", "uv.lock")
+# scope: (pytest targets, gate-cache pathspecs). Web code calls the API client, so the
+# web gate watches all of src/. The client tests also load the root test support files.
+# The web and client targets match the test matrix in .github/workflows/reusable-tests.yml.
+TEST_SCOPES: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "all": (
+        ("tests/",),
+        ("src/", "scripts/", "tests/", *_SHARED_TEST_INPUTS),
+    ),
+    "web": (
+        ("tests/", "--ignore=tests/api_client"),
+        ("src/", "scripts/", "tests/", ":(exclude)tests/api_client", *_SHARED_TEST_INPUTS),
+    ),
+    "client": (
+        ("tests/api_client/",),
+        (
+            "src/vweb/api_client/",
+            "tests/api_client/",
+            "tests/__init__.py",
+            "tests/conftest.py",
+            "tests/helpers.py",
+            *_SHARED_TEST_INPUTS,
+        ),
+    ),
+}
+
+
 @duty()
-def test(ctx: Context, *cli_args: str) -> None:
-    """Test package and generate coverage reports."""
+def test(ctx: Context, *cli_args: str, scope: str = "all") -> None:  # noqa: PT028 (a duty, not a pytest test)
+    """Run the tests for web code, API client code, or both, and report coverage.
+
+    Each scope caches its pass against only the files its tests read, so editing
+    web code does not rerun the API client tests.
+
+    Usage: duty test [scope=all|web|client] [pytest args]
+
+    Args:
+        ctx (Context): The duty context.
+        *cli_args (str): Extra pytest arguments. Any argument turns off the cache.
+        scope (str): `web`, `client`, or `all` (default).
+
+    Raises:
+        ValueError: If `scope` is not a known scope.
+    """
+    if scope not in TEST_SCOPES:
+        msg = f"Unknown test scope {scope!r}, expected one of: {', '.join(TEST_SCOPES)}"
+        raise ValueError(msg)
+    targets, paths = TEST_SCOPES[scope]
     cmd = [
         "pytest",
-        "tests/",
+        *targets,
         "-c",
         "pyproject.toml",
         "--color=yes",
@@ -231,8 +279,8 @@ def test(ctx: Context, *cli_args: str) -> None:
     ]
     # A marker covers the name, not the arguments, so a filtered pass must not skip the full suite
     ctx.run(
-        cmd if cli_args else gated("test", cmd),
-        title=pyprefix("Running tests"),
+        cmd if cli_args else gated(f"test-{scope}", cmd, paths),
+        title=pyprefix(f"Running {scope} tests"),
         capture=CI,
     )
 

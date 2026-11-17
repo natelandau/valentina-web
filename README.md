@@ -119,6 +119,8 @@ Common commands:
 uv run vweb           # Start the dev server on 127.0.0.1:8089
 duty run              # Flask + Tailwind watcher
 duty test             # Run the test suite with coverage
+duty test scope=web   # Run only the web tests
+duty test scope=client  # Run only the API client tests
 duty lint             # Run ruff, ty, typos, and pre-commit
 duty css              # Build production (minified) CSS
 duty redis-up         # Start the development Redis container
