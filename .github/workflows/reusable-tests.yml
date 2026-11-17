@@ -12,7 +12,7 @@ on:
 
 jobs:
     test-python-code:
-        name: test-python-code (${{ matrix.python-version }}, ${{ matrix.suite }})
+        name: ${{ matrix.label }} (Python ${{ matrix.python-version }})
         runs-on: ubuntu-latest
         strategy:
             # The suites are independent, so a failure in one should not cancel the other
@@ -23,8 +23,10 @@ jobs:
                 suite: [web, client]
                 include:
                     - suite: web
+                      label: Web app tests
                       pytest-targets: tests/ --ignore=tests/api_client
                     - suite: client
+                      label: API client tests
                       pytest-targets: tests/api_client/
         steps:
             - name: Checkout repository
