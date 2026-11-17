@@ -629,15 +629,24 @@ class BaseService:
     def _build_idempotency_headers(
         self,
         idempotency_key: str | None,
+        *,
+        auto_generate: bool = False,
     ) -> dict[str, str] | None:
-        """Build headers dict with idempotency key if provided.
+        """Build the idempotency-key header, generating a key when asked and configured.
 
         Args:
-            idempotency_key: Optional idempotency key for the request.
+            idempotency_key: Explicit idempotency key, always sent when given.
+            auto_generate: Generate a key when none is given and ``auto_idempotency_keys``
+                is on. A key makes POST and PATCH safe to retry after network and server
+                errors.
 
         Returns:
-            Headers dict with idempotency key, or None if no key provided.
+            Headers dict with the idempotency key, or None if there is no key.
         """
+        if (
+            idempotency_key is None and auto_generate and self._client._config.auto_idempotency_keys  # noqa: SLF001
+        ):
+            idempotency_key = self._generate_idempotency_key()
         if idempotency_key is None:
             return None
         return {IDEMPOTENCY_KEY_HEADER: idempotency_key}
@@ -694,20 +703,15 @@ class BaseService:
         Returns:
             The HTTP response.
         """
-        if (
-            idempotency_key is None
-            and auto_idempotency_key
-            and self._client._config.auto_idempotency_keys  # noqa: SLF001
-        ):
-            idempotency_key = self._generate_idempotency_key()
-
         return self._request(
             "POST",
             path,
             json=json,
             data=data,
             params=params,
-            headers=self._build_idempotency_headers(idempotency_key),
+            headers=self._build_idempotency_headers(
+                idempotency_key, auto_generate=auto_idempotency_key
+            ),
         )
 
     def _put(
@@ -731,16 +735,13 @@ class BaseService:
         Returns:
             The HTTP response.
         """
-        if idempotency_key is None and self._client._config.auto_idempotency_keys:  # noqa: SLF001
-            idempotency_key = self._generate_idempotency_key()
-
         return self._request(
             "PUT",
             path,
             json=json,
             data=data,
             params=params,
-            headers=self._build_idempotency_headers(idempotency_key),
+            headers=self._build_idempotency_headers(idempotency_key, auto_generate=True),
         )
 
     def _patch(
@@ -764,16 +765,13 @@ class BaseService:
         Returns:
             The HTTP response.
         """
-        if idempotency_key is None and self._client._config.auto_idempotency_keys:  # noqa: SLF001
-            idempotency_key = self._generate_idempotency_key()
-
         return self._request(
             "PATCH",
             path,
             json=json,
             data=data,
             params=params,
-            headers=self._build_idempotency_headers(idempotency_key),
+            headers=self._build_idempotency_headers(idempotency_key, auto_generate=True),
         )
 
     def _delete(
