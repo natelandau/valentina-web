@@ -220,7 +220,6 @@ def test(ctx: Context, *cli_args: str) -> None:
     cmd = [
         "pytest",
         "tests/",
-        "src/",
         "-c",
         "pyproject.toml",
         "--color=yes",

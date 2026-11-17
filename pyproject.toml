@@ -112,7 +112,7 @@
 
 [tool.pytest.ini_options]
 
-    addopts = "--color=yes --doctest-modules --exitfirst --failed-first --strict-config --strict-markers"
+    addopts = "--color=yes --exitfirst --failed-first --strict-config --strict-markers"
     cache_dir = ".cache/pytest"
     filterwarnings = [
         'error',
