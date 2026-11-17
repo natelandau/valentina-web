@@ -210,3 +210,20 @@ class TestCompaniesServiceIterAllAuditLogs:
 
         assert len(logs) == 1
         assert isinstance(logs[0], AuditLog)
+
+
+class TestCompaniesServiceAuditLogFilters:
+    """Tests for audit log filter validation."""
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            lambda svc: svc.get_audit_log_page(COMPANY_ID, not_a_filter="x"),
+            lambda svc: svc.list_all_audit_logs(COMPANY_ID, limit=5),
+            lambda svc: svc.iter_all_audit_logs(COMPANY_ID, not_a_filter="x"),
+        ],
+    )
+    def test_unknown_filter_raises_type_error(self, vclient, call):
+        """Verify an unknown keyword raises TypeError before any request is sent."""
+        with pytest.raises(TypeError):
+            call(vclient.companies)
