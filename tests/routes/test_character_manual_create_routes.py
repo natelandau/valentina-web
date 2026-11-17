@@ -772,6 +772,31 @@ class TestProfileEditMode:
         assert '<select class="select w-full" disabled>' in body
         assert '<input type="hidden" name="game_version" value="V5" />' in body
 
+    def test_edit_mode_character_class_locked(self, client, mocker, fake_vclient) -> None:
+        """Verify character class cannot be changed in edit mode, since the API keeps it."""
+        # Given an existing hunter
+        ctx = build_global_context(user_role="PLAYER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        _mock_form_options(mocker)
+        character = CharacterFactory.build(
+            id="char-123", campaign_id=campaign.id, character_class="HUNTER", game_version="V5"
+        )
+        fake_vclient.set_response(
+            Routes.CHARACTERS_GET, model=character, params={"character_id": "char-123"}
+        )
+
+        # When the edit form renders
+        response = client.get(
+            f"/campaign/{campaign.id}/characters/profile_edit?character_id=char-123",
+            headers={"HX-Request": "true"},
+        )
+
+        # Then the class is shown read-only and submitted as a hidden field
+        body = " ".join(response.get_data(as_text=True).split())
+        assert '<input type="hidden" name="character_class" value="HUNTER" />' in body
+        assert '<select name="character_class"' not in body
+
     def test_edit_post_updates_and_redirects(self, client, mocker, fake_vclient) -> None:
         """Verify successful edit POST updates character and redirects."""
         ctx = build_global_context(user_role="PLAYER")

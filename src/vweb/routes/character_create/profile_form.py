@@ -67,6 +67,8 @@ def validate_profile(form_data: dict[str, str]) -> dict[str, str]:
         errors["vampire_clan_id"] = "Vampire clan is required."
     if character_class == "WEREWOLF" and not form_data.get("werewolf_tribe_id"):
         errors["werewolf_tribe_id"] = "Werewolf tribe is required."
+    if character_class == "WEREWOLF" and not form_data.get("werewolf_auspice_id"):
+        errors["werewolf_auspice_id"] = "Werewolf auspice is required."
     if character_class == "HUNTER" and not form_data.get("creed"):
         errors["creed"] = "Hunter creed is required."
 
@@ -188,7 +190,7 @@ def build_class_attrs(
             vampire_u = VampireAttributesUpdate(clan_id=clan_id)
         case "WEREWOLF":
             tribe_id = form_data["werewolf_tribe_id"]
-            auspice_id = form_data.get("werewolf_auspice_id") or None
+            auspice_id = form_data["werewolf_auspice_id"]
             werewolf_c = WerewolfAttributesCreate(tribe_id=tribe_id, auspice_id=auspice_id)
             werewolf_u = WerewolfAttributesUpdate(tribe_id=tribe_id, auspice_id=auspice_id)
         case "HUNTER":
