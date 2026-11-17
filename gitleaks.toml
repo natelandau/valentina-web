@@ -17,3 +17,9 @@ title = "Custom Gitleaks configuration"
         '''docs/oauth-apple\.md''',
         '''src/vweb/lib/apple_oauth\.py''',
     ]
+
+[[allowlists]]
+    condition   = "AND"
+    description = "API client tests use fake API keys"
+    paths       = ['''tests/api_client/''']
+    regexes     = ['''vapi_(abc123xyz|newkey123)''']
