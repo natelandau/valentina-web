@@ -18,7 +18,7 @@ from vweb.lib.catalog import catalog
 from vweb.lib.crud.routing import register_crud_table_routes
 from vweb.lib.form_validation import name_errors, position_number
 from vweb.lib.guards import can_manage_campaign
-from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
+from vweb.lib.htmx import htmx_flash_only, htmx_response_with_flash, hx_redirect
 from vweb.lib.image_uploads import handle_image_delete, handle_image_upload
 from vweb.routes.book.views_notes import BookNotesTableView
 
@@ -269,7 +269,8 @@ class BookImageUploadView(MethodView):
 
         svc = api_services.books(campaign_id)
 
-        handle_image_upload(svc=svc, parent_id=book_id, file=request.files.get("image"))
+        if not handle_image_upload(svc=svc, parent_id=book_id, file=request.files.get("image")):
+            return htmx_flash_only()
 
         assets = svc.list_all_assets(book_id)
         chapters = cache.campaign_content.chapters(campaign_id, book_id)

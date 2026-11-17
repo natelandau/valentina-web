@@ -18,7 +18,7 @@ from vweb.lib.api import get_character_and_campaign
 from vweb.lib.catalog import catalog
 from vweb.lib.crud.routing import register_crud_table_routes
 from vweb.lib.guards import can_edit_character
-from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
+from vweb.lib.htmx import htmx_flash_only, htmx_response_with_flash, hx_redirect
 from vweb.lib.image_uploads import handle_image_delete, handle_image_upload
 from vweb.routes.character_view.views_inventory import CharacterInventoryTableView
 from vweb.routes.character_view.views_notes import CharacterNotesTableView
@@ -223,7 +223,10 @@ class ImageUploadView(MethodView):
 
         char_svc = api_services.characters()
 
-        handle_image_upload(svc=char_svc, parent_id=character_id, file=request.files.get("image"))
+        if not handle_image_upload(
+            svc=char_svc, parent_id=character_id, file=request.files.get("image")
+        ):
+            return htmx_flash_only()
 
         assets = char_svc.list_all_assets(character_id)
         content = catalog.render(

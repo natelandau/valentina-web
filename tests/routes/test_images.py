@@ -253,6 +253,8 @@ class TestImageUpload:
         # Then upload was not called
         assert response.status_code == 200
         fake_vclient.assert_not_called(image_entity.asset_upload_route)
+        fake_vclient.assert_not_called(image_entity.assets_list_route)
+        assert response.headers["HX-Reswap"] == "none"
 
     def test_image_upload_rejects_over_pixel_cap(
         self, client, mocker, fake_vclient, image_entity
@@ -275,6 +277,8 @@ class TestImageUpload:
         # Then upload was not called and the limit is explained
         assert response.status_code == 200
         fake_vclient.assert_not_called(image_entity.asset_upload_route)
+        fake_vclient.assert_not_called(image_entity.assets_list_route)
+        assert response.headers["HX-Reswap"] == "none"
         assert "max 24 megapixels" in response.get_data(as_text=True)
 
     def test_image_upload_forbidden_for_non_editor(
@@ -448,6 +452,32 @@ class TestCharacterImageUpload:
         assert "carousel" in body
         assert sample_assets[0].public_url in body
 
+    def test_api_refused_upload_flashes_without_rerender(
+        self, client, fake_vclient, mock_character_lookup
+    ) -> None:
+        """Verify an upload the API refuses flashes its reason and leaves the carousel alone."""
+        # Given an API that rejects the upload
+        char, _ = mock_character_lookup
+        fake_vclient.set_error(
+            Routes.CHARACTERS_ASSETS_UPLOAD, status_code=400, detail="Unsupported image"
+        )
+        csrf = get_csrf(client)
+
+        # When uploading an image
+        data = {"image": (io.BytesIO(VALID_PNG), "photo.png", "image/png")}
+        response = client.post(
+            f"/character/{char.id}/images",
+            data=data,
+            content_type="multipart/form-data",
+            headers={"X-CSRFToken": csrf, "HX-Request": "true"},
+        )
+
+        # Then only the flash is returned and the asset list is not re-read
+        assert response.status_code == 200
+        assert response.headers["HX-Reswap"] == "none"
+        fake_vclient.assert_not_called(Routes.CHARACTERS_ASSETS_LIST)
+        assert "carousel" not in response.get_data(as_text=True)
+
     def test_non_owner_non_admin_gets_403(self, client, mocker, mock_campaign) -> None:
         """Verify non-owner non-admin cannot upload."""
         # Given a character owned by a different user
@@ -495,6 +525,8 @@ class TestCharacterImageUpload:
         # Then the response succeeds but contains a flash error
         assert response.status_code == 200
         fake_vclient.assert_not_called(Routes.CHARACTERS_ASSETS_UPLOAD)
+        fake_vclient.assert_not_called(Routes.CHARACTERS_ASSETS_LIST)
+        assert response.headers["HX-Reswap"] == "none"
 
     def test_missing_file_flashes_error(self, client, fake_vclient, mock_character_lookup) -> None:
         """Verify submitting without a file flashes an error."""
@@ -514,6 +546,8 @@ class TestCharacterImageUpload:
         # Then the response succeeds but upload was not called
         assert response.status_code == 200
         fake_vclient.assert_not_called(Routes.CHARACTERS_ASSETS_UPLOAD)
+        fake_vclient.assert_not_called(Routes.CHARACTERS_ASSETS_LIST)
+        assert response.headers["HX-Reswap"] == "none"
 
     def test_oversized_file_flashes_error(
         self, client, fake_vclient, mock_character_lookup
@@ -537,6 +571,8 @@ class TestCharacterImageUpload:
         # Then the upload is rejected
         assert response.status_code == 200
         fake_vclient.assert_not_called(Routes.CHARACTERS_ASSETS_UPLOAD)
+        fake_vclient.assert_not_called(Routes.CHARACTERS_ASSETS_LIST)
+        assert response.headers["HX-Reswap"] == "none"
 
 
 class TestCharacterImageDelete:

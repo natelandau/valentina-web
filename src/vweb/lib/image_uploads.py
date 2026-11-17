@@ -1,7 +1,7 @@
 """Shared validation helpers for image upload and delete handlers.
 
 Book, chapter, and character image routes run the same validation ladder
-(file presence, MIME check, size check, pixel check, vclient call, flash) and the same
+(file presence, MIME check, size check, pixel check, API call, flash) and the same
 delete-with-flash pattern. These helpers centralize that work so each view
 only needs to handle authentication, lookups, and re-rendering.
 """
@@ -60,30 +60,35 @@ def handle_image_upload(
     svc: AssetsMixin,
     parent_id: str,
     file: FileStorage | None,
-) -> None:
-    """Validate and persist an uploaded image, flashing the outcome."""
+) -> bool:
+    """Validate and persist an uploaded image, flashing the outcome.
+
+    Returns:
+        True when the image was uploaded, so callers re-render only when something changed.
+    """
     if file is None or not file.filename:
         flash("No image selected.", "error")
-        return
+        return False
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         flash("Invalid image type. Allowed: JPEG, PNG, WebP, GIF.", "error")
-        return
+        return False
 
     content = file.read()
     if len(content) > MAX_IMAGE_SIZE:
         flash(f"Image is too large (max {MAX_IMAGE_SIZE_MB} MB).", "error")
-        return
+        return False
     if dimensions_error := image_dimensions_error(content):
         flash(dimensions_error, "error")
-        return
+        return False
 
     try:
         svc.upload_asset(parent_id, file.filename, content, file.content_type)
     except APIError as e:
         flash(api_error_message(e, fallback="Failed to upload image. Please try again."), "error")
-        return
+        return False
 
     flash("Image uploaded successfully.", "success")
+    return True
 
 
 def handle_image_delete(
