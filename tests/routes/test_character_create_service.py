@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock
 
+import pytest
 from flask import Flask
 
 from tests.helpers import make_cache_store_mock
@@ -220,9 +221,12 @@ class TestListSessions:
 
     def test_returns_sessions_from_api(self, app: Flask, fake_vclient) -> None:
         """Verify list_sessions returns sessions from the API."""
-        # Given an API with two chargen sessions
-        sessions = ChargenSessionResponseFactory.batch(2)
-        fake_vclient.set_response(Routes.CHARACTERS_CHARGEN_SESSIONS_LIST, items=sessions)
+        # Given an API with two chargen sessions in this campaign and one in another
+        sessions = ChargenSessionResponseFactory.batch(2, campaign_id="c1")
+        other = ChargenSessionResponseFactory.build(campaign_id="c2")
+        fake_vclient.set_response(
+            Routes.CHARACTERS_CHARGEN_SESSIONS_LIST, items=[sessions[0], other, sessions[1]]
+        )
 
         from vweb.routes.character_create.autogen_services import list_sessions
 
@@ -234,7 +238,7 @@ class TestListSessions:
             session["user_id"] = "u1"
             result = list_sessions(campaign_id="c1")
 
-        # Then both sessions are returned
+        # Then only this campaign's sessions are returned
         assert result == sessions
 
     def test_returns_empty_list_when_no_sessions(self, app: Flask, fake_vclient) -> None:
@@ -263,7 +267,7 @@ class TestGetSession:
         """Verify get_session returns the requested session."""
         # Given a mocked autogen service
         mock_service = MagicMock()
-        expected = ChargenSessionResponseFactory.build(id="sess-123")
+        expected = ChargenSessionResponseFactory.build(id="sess-123", campaign_id="c1")
         mock_service.get.return_value = expected
         mocker.patch(
             "vweb.routes.character_create.autogen_services.api_services.character_autogen",
@@ -283,3 +287,29 @@ class TestGetSession:
         # Then the session is returned
         assert result.id == "sess-123"
         mock_service.get.assert_called_once_with("sess-123")
+
+    def test_rejects_session_from_another_campaign(self, app: Flask, mocker) -> None:
+        """Verify get_session raises NotFoundError for a session in a different campaign."""
+        # Given a session that belongs to another campaign
+        mock_service = MagicMock()
+        mock_service.get.return_value = ChargenSessionResponseFactory.build(
+            id="sess-123", campaign_id="c2"
+        )
+        mocker.patch(
+            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
+            return_value=mock_service,
+        )
+
+        from vweb.api_client.exceptions import NotFoundError
+        from vweb.routes.character_create.autogen_services import get_session
+
+        # When getting it under campaign c1
+        with app.test_request_context():
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "u1"
+
+            # Then it is refused as not found
+            with pytest.raises(NotFoundError):
+                get_session(campaign_id="c1", session_id="sess-123")

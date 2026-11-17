@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 from flask import session
 
+from vweb.api_client.exceptions import NotFoundError
 from vweb.constants import CACHE_BLUEPRINT_TTL
 from vweb.lib import api_services, cache
 
@@ -101,31 +102,40 @@ def finalize_session(
     )
 
 
-def list_sessions(*, campaign_id: str) -> list[ChargenSessionResponse]:  # noqa: ARG001
-    """List all active chargen sessions for a user in a campaign.
+def list_sessions(*, campaign_id: str) -> list[ChargenSessionResponse]:
+    """List the user's chargen sessions in a campaign.
+
+    The API lists the user's sessions across every campaign, so keep only this campaign's.
 
     Args:
         campaign_id: The campaign to list sessions for.
 
     Returns:
-        All active chargen sessions for the user/campaign.
+        The user's chargen sessions in the campaign.
     """
     svc = api_services.character_autogen()
-    return svc.list_all()
+    return [s for s in svc.list_all() if s.campaign_id == campaign_id]
 
 
-def get_session(*, campaign_id: str, session_id: str) -> ChargenSessionResponse:  # noqa: ARG001
+def get_session(*, campaign_id: str, session_id: str) -> ChargenSessionResponse:
     """Retrieve a single chargen session by ID.
 
     Args:
-        campaign_id: The campaign the session belongs to.
+        campaign_id: The campaign the session must belong to.
         session_id: The session to retrieve.
 
     Returns:
         The chargen session matching the given session_id.
+
+    Raises:
+        NotFoundError: If the session belongs to another campaign.
     """
     svc = api_services.character_autogen()
-    return svc.get(session_id)
+    chargen_session = svc.get(session_id)
+    if chargen_session.campaign_id != campaign_id:
+        msg = f"Chargen session {session_id} is not in campaign {campaign_id}"
+        raise NotFoundError(msg, 404)
+    return chargen_session
 
 
 def fetch_form_options() -> dict:
