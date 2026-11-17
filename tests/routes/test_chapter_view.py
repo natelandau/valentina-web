@@ -185,6 +185,28 @@ class TestChapterCreate:
         assert kwargs["book_id"] == mock_book.id
         assert kwargs["campaign_id"] == mock_campaign.id
 
+    def test_create_api_rejection_rerenders_form_with_its_reason(
+        self, client, mocker, mock_campaign, mock_book, fake_vclient
+    ) -> None:
+        """Verify an API rejection on create shows its field message on the form."""
+        # Given a privileged user and an API that rejects the name
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+        fake_vclient.set_error(
+            Routes.CHAPTERS_CREATE,
+            status_code=400,
+            invalid_parameters=[{"field": "name", "message": "Name is already taken"}],
+        )
+
+        # When creating a chapter
+        response = client.post(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter",
+            data={"name": "Taken Name", "csrf_token": get_csrf(client)},
+        )
+
+        # Then the form shows the API's reason instead of a server error
+        assert response.status_code == 200
+        assert b"Name is already taken" in response.data
+
 
 @pytest.mark.usefixtures("_mock_chapter_lookup")
 class TestChapterDelete:
@@ -332,6 +354,49 @@ class TestChapterCharacterAssociations:
         assert response.status_code == 200
         assert b"chapter-content" in response.data
         assert b"unknown character" in response.data
+
+    def test_edit_renumber_rejection_rerenders_form(
+        self, client, mocker, mock_campaign, mock_book, mock_chapters, fake_vclient
+    ) -> None:
+        """Verify an API rejection on renumber re-renders the form, not a 500."""
+        # Given a privileged user and a renumber that the API rejects
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+        fake_vclient.set_error(
+            Routes.CHAPTERS_RENUMBER, status_code=400, detail="Number is out of range"
+        )
+        chapter = mock_chapters[1]
+
+        # When submitting the edit form with a new number
+        response = client.post(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/{chapter.id}/edit",
+            data={
+                "name": "Chapter Two",
+                "number": str(chapter.number + 5),
+                "csrf_token": get_csrf(client),
+            },
+        )
+
+        # Then the form shows the API's reason
+        assert response.status_code == 200
+        assert b"Number is out of range" in response.data
+
+    def test_edit_number_below_one_rerenders_form_without_calling_api(
+        self, client, mocker, mock_campaign, mock_book, fake_vclient
+    ) -> None:
+        """Verify a number below 1 shows a form error before any API call."""
+        # Given a privileged user
+        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+
+        # When submitting the edit form with number 0
+        response = client.post(
+            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2/edit",
+            data={"name": "Chapter Two", "number": "0", "csrf_token": get_csrf(client)},
+        )
+
+        # Then the form shows the error and nothing reaches the API
+        assert response.status_code == 200
+        assert b"Number must be 1 or greater" in response.data
+        fake_vclient.assert_not_called(Routes.CHAPTERS_UPDATE)
 
 
 class TestChapterSidebarCharacters:

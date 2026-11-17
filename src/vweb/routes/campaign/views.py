@@ -13,35 +13,13 @@ from vweb.lib.api import (
     get_user_campaign_experience,
     validate_and_submit_experience,
 )
+from vweb.lib.api_errors import USER_FACING_API_ERRORS, api_error_message
 from vweb.lib.catalog import catalog
+from vweb.lib.form_validation import CAMPAIGN_NAME_MIN_LENGTH, name_errors
 from vweb.lib.guards import can_grant_experience, can_manage_campaign
 from vweb.lib.htmx import hx_redirect
 
 bp = Blueprint("campaign", __name__)
-
-_NAME_MIN_LEN = 3
-_NAME_MAX_LEN = 50
-_DESC_MIN_LEN = 3
-
-
-def _validate_campaign_form(name: str, description: str) -> list[str]:
-    """Validate campaign form fields.
-
-    Args:
-        name: The campaign name from the form.
-        description: The campaign description from the form.
-
-    Returns:
-        A list of validation error messages (empty if valid).
-    """
-    errors: list[str] = []
-    if not name or len(name) < _NAME_MIN_LEN:
-        errors.append("Name must be at least 3 characters.")
-    if len(name) > _NAME_MAX_LEN:
-        errors.append("Name must be 50 characters or fewer.")
-    if description and len(description) < _DESC_MIN_LEN:
-        errors.append("Description must be at least 3 characters if provided.")
-    return errors
 
 
 class CampaignView(MethodView):
@@ -123,8 +101,14 @@ class CampaignCreateView(MethodView):
         name = request.form.get("name", "").strip()
         description = request.form.get("description", "").strip()
 
-        errors = _validate_campaign_form(name, description)
-
+        errors = name_errors(name, min_length=CAMPAIGN_NAME_MIN_LENGTH)
+        if not errors:
+            try:
+                new_campaign = api_services.campaigns().create(
+                    CampaignCreate(name=name, description=description or None)
+                )
+            except USER_FACING_API_ERRORS as error:
+                errors = [api_error_message(error, fallback="Could not create the campaign")]
         if errors:
             return catalog.render(
                 "shared.layout.CampaignCreateModalContent",
@@ -132,8 +116,6 @@ class CampaignCreateView(MethodView):
                 form_data={"name": name, "description": description},
             )
 
-        service = api_services.campaigns()
-        new_campaign = service.create(CampaignCreate(name=name, description=description or None))
         cache.global_context.clear_current()
 
         return hx_redirect(url_for("campaign.campaign", campaign_id=new_campaign.id))
@@ -166,7 +148,16 @@ class CampaignUpdateView(MethodView):
         name = request.form.get("name", "").strip()
         description = request.form.get("description", "").strip()
 
-        errors = _validate_campaign_form(name, description)
+        errors = name_errors(name, min_length=CAMPAIGN_NAME_MIN_LENGTH)
+        if not errors:
+            try:
+                api_services.campaigns().update(
+                    # An empty description is sent as-is so the API clears it
+                    campaign_id,
+                    CampaignUpdate(name=name, description=description),
+                )
+            except USER_FACING_API_ERRORS as error:
+                errors = [api_error_message(error, fallback="Could not save the campaign")]
         if errors:
             return catalog.render(
                 "shared.layout.CampaignCreateModalContent",
@@ -175,8 +166,6 @@ class CampaignUpdateView(MethodView):
                 campaign=campaign,
             )
 
-        service = api_services.campaigns()
-        service.update(campaign_id, CampaignUpdate(name=name, description=description or None))
         cache.global_context.clear_current()
 
         return hx_redirect(url_for("campaign.campaign", campaign_id=campaign_id))
