@@ -11,12 +11,16 @@ from vweb.lib import api_services, cache
 from vweb.lib.api import get_character_and_campaign
 from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog
-from vweb.lib.character_profile import TRAIT_API_ERRORS, find_character_trait
+from vweb.lib.character_profile import (
+    TRAIT_API_ERRORS,
+    character_trait_accepts_specialties,
+    character_trait_specialty_min_rating,
+    find_character_trait,
+)
 from vweb.lib.guards import can_edit_character, can_edit_traits_free
 from vweb.lib.htmx import hx_redirect
-from vweb.lib.trait_rules import accepts_specialties
+from vweb.lib.trait_rules import specialty_sections_text
 from vweb.routes.character_trait_edit.services import (
-    SPECIALTY_COST,
     SPECIALTY_NAME_MAX_LENGTH,
     SPECIALTY_NAME_MIN_LENGTH,
     humanize_spend_type,
@@ -24,6 +28,7 @@ from vweb.routes.character_trait_edit.services import (
     specialty_cost,
     specialty_help_text,
     specialty_name_error,
+    specialty_rules_text,
 )
 
 if TYPE_CHECKING:
@@ -91,6 +96,22 @@ class _SpecialtyBaseView(MethodView):
     def _ability_name(self) -> str:
         return self.character_trait.trait.name.strip().title()
 
+    def _reject_ineligible(self) -> Response | None:
+        """Redirect with a warning when the trait cannot take a specialty at its rating."""
+        if character_trait_accepts_specialties(self.character_trait, self.character):
+            return None
+        min_rating = character_trait_specialty_min_rating(self.character_trait, self.character)
+        if min_rating is None:
+            sections = specialty_sections_text(g.global_context.company.settings.specialty_rules)
+            message = f"Only {sections} can have specialties"
+        else:
+            dots = "dot" if min_rating == 1 else "dots"
+            message = (
+                f"{self._ability_name} needs {min_rating} {dots} before it can take a specialty"
+            )
+        flash(message, "warning")
+        return hx_redirect(self.form_url)
+
 
 class SpecialtiesView(_SpecialtyBaseView):
     """Render the specialty dialog (GET) and add a specialty (POST)."""
@@ -101,18 +122,19 @@ class SpecialtiesView(_SpecialtyBaseView):
         if denied is not None:
             return denied
 
-        if not accepts_specialties(self.character_trait):
-            flash("Only abilities with at least one dot can have specialties", "warning")
-            return hx_redirect(self.form_url)
+        if (ineligible := self._reject_ineligible()) is not None:
+            return ineligible
 
         settings = g.global_context.company.settings
+        min_rating = character_trait_specialty_min_rating(self.character_trait, self.character)
         return catalog.render(
             "character_trait_edit.partials.SpecialtyDialog",
             character=self.character,
             character_trait=self.character_trait,
             spend_type=self.spend_type,
-            add_label=specialty_add_label(self.spend_type, settings),
+            add_label=specialty_add_label(self.spend_type, settings, self.character_trait),
             help_text=specialty_help_text(settings),
+            rules_text=specialty_rules_text(self.character_trait, settings, min_rating),
             ability_name=self._ability_name,
             name_min=SPECIALTY_NAME_MIN_LENGTH,
             name_max=SPECIALTY_NAME_MAX_LENGTH,
@@ -129,10 +151,12 @@ class SpecialtiesView(_SpecialtyBaseView):
             flash(error_message, "warning")
             return hx_redirect(self.form_url)
 
-        if not accepts_specialties(self.character_trait):
-            flash("Only abilities with at least one dot can have specialties", "warning")
-            return hx_redirect(self.form_url)
+        if (ineligible := self._reject_ineligible()) is not None:
+            return ineligible
 
+        cost = specialty_cost(
+            self.spend_type, g.global_context.company.settings, self.character_trait
+        )
         try:
             self._service().add_specialty(character_trait_id, name, currency=self.spend_type)
         except TRAIT_API_ERRORS as error:
@@ -140,8 +164,8 @@ class SpecialtiesView(_SpecialtyBaseView):
             return hx_redirect(self.form_url)
 
         message = f"Added {name} to {self._ability_name}."
-        if specialty_cost(self.spend_type, g.global_context.company.settings):
-            message += f" You spent {SPECIALTY_COST} {humanize_spend_type(self.spend_type)}"
+        if cost:
+            message += f" You spent {cost} {humanize_spend_type(self.spend_type)}"
         return self._finish(message)
 
 

@@ -311,15 +311,18 @@ class CharacterTraitsService(BaseService):
         name: str,
         currency: TraitModifyCurrency = "NO_COST",
     ) -> CharacterTrait:
-        """Add a specialty to an ability trait.
+        """Add a specialty to a trait.
 
-        Specialties are only available on abilities with a value of 1 or higher. When the
-        company's ``specialty_xp_cost_enabled`` setting is on, a specialty paid with ``XP``
-        or ``STARTING_POINTS`` costs 3 points, and ``NO_COST`` follows the company's
-        ``permission_free_trait_changes`` setting. When the setting is off, specialties are free.
+        The company's ``specialty_rules`` setting decides which traits qualify and what a
+        specialty costs. ``FIXED_COST``: abilities with a value of 1 or higher, and each
+        specialty costs 3. ``RATING_BASED``: attributes and abilities with a value of 4 or
+        higher (3 for an ability the character's concept favors); the first specialty on a
+        trait is free and each further one costs the trait's value. Costs apply only when
+        ``specialty_xp_cost_enabled`` is on and the specialty is paid with ``XP`` or
+        ``STARTING_POINTS``; ``NO_COST`` follows the ``permission_free_trait_changes`` setting.
 
         Args:
-            character_trait_id: The ID of the ability trait.
+            character_trait_id: The ID of the character trait.
             name: The specialty name (3-50 characters), unique on the trait ignoring case.
             currency: The currency to use to pay for the specialty.
 
@@ -330,7 +333,7 @@ class CharacterTraitsService(BaseService):
             NotFoundError: If the trait does not exist.
             AuthorizationError: If you don't have access to the character.
             RequestValidationError: If the input parameters fail client-side validation.
-            ValidationError: If the trait is not an ability, has a value of 0, already has a
+            ValidationError: If the trait does not qualify under the specialty rules, already has a
                 specialty with this name, the character cannot afford the cost, or an
                 ``NPC`` or ``STORYTELLER`` character pays with anything but ``NO_COST``.
         """
@@ -351,12 +354,12 @@ class CharacterTraitsService(BaseService):
         specialty_id: str,
         name: str,
     ) -> CharacterTrait:
-        """Rename a specialty on an ability trait.
+        """Rename a specialty on a trait.
 
         Renaming never changes the cost paid or the currency used.
 
         Args:
-            character_trait_id: The ID of the ability trait.
+            character_trait_id: The ID of the character trait.
             specialty_id: The ID of the specialty to rename.
             name: The new specialty name (3-50 characters), unique on the trait ignoring case.
 
@@ -379,13 +382,13 @@ class CharacterTraitsService(BaseService):
         )
 
     def delete_specialty(self, character_trait_id: str, specialty_id: str) -> None:
-        """Remove a specialty from an ability trait.
+        """Remove a specialty from a trait.
 
         The cost paid is refunded in the currency used to buy it. An ``XP`` refund follows
         the company's ``permission_recoup_xp`` setting; starting points are always refunded.
 
         Args:
-            character_trait_id: The ID of the ability trait.
+            character_trait_id: The ID of the character trait.
             specialty_id: The ID of the specialty to remove.
 
         Returns:

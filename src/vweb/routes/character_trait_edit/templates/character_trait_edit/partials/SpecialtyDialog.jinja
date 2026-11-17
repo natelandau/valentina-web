@@ -1,7 +1,8 @@
-{#def character, character_trait, spend_type, add_label, help_text, ability_name, name_min, name_max #}
+{#def character, character_trait, spend_type, add_label, help_text, ability_name, name_min, name_max, rules_text = "" #}
 {%- set base_url = url_for("character_trait_edit.specialties_" ~ spend_type, character_id=character.id, character_trait_id=character_trait.id) -%}
 <div id="specialty-dialog-body">
   <h3 id="specialty-dialog-heading" class="text-lg font-bold">{{ ability_name }} specialties</h3>
+  {% if rules_text %}<p class="mt-2 text-sm opacity-80">{{ rules_text }}</p>{% endif %}
   <ul class="my-4 space-y-2">
     {% for specialty in character_trait.specialties %}
       {%- set item_url = url_for("character_trait_edit.specialty_" ~ spend_type, character_id=character.id, character_trait_id=character_trait.id, specialty_id=specialty.id) -%}

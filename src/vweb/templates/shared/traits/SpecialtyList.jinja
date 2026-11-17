@@ -1,0 +1,13 @@
+{#def
+    character_trait,
+    extra_class: str = "",
+    inline: bool = False,
+#}
+{#- A trait's specialties with a tooltip explaining what they do. -#}
+{%- set name = character_trait.trait.name.strip().title() -%}
+{%- set tip = "Specialty: +1 die to " ~ name ~ " when what you're doing fits. The Storyteller decides." -%}
+<{{ "span" if inline else "div" }} class="trait-specialties {{ extra_class }} text-sm font-normal text-base-content/60">
+  <span class="tooltip tooltip-neutral cursor-help underline decoration-dotted underline-offset-2" data-tip="{{ tip }}">
+    {{ character_trait.specialties | map(attribute="name") | join(", ") }}
+  </span>
+</{{ "span" if inline else "div" }}>

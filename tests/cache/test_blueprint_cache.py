@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 from tests.helpers import seed_session
 from vweb.api_client.testing import (
+    CharacterConceptFactory,
     FakeResponse,
     Routes,
     TraitFactory,
@@ -14,6 +15,7 @@ from vweb.api_client.testing import (
 )
 from vweb.lib.cache.blueprint import (
     clear,
+    concept,
     subcategories,
     trait,
     traits,
@@ -267,3 +269,33 @@ class TestSingleFlight:
         assert fetch_count == 1
         assert results["a"] == results["b"]
         assert len(results["a"]) == 2
+
+
+class TestConcept:
+    """Tests for concept()."""
+
+    def test_fetches_concepts_once_and_looks_up_by_id(
+        self, app, mock_cache_store, fake_vclient
+    ) -> None:
+        """Verify concept() reads one cached list for every lookup."""
+        # Given the API lists two concepts
+        healer, soldier = CharacterConceptFactory.batch(2)
+        fake_vclient.set_response(Routes.BLUEPRINT_CONCEPTS_LIST, items=[healer, soldier])
+
+        # When looking up both concepts
+        with app.test_request_context("/"):
+            seed_session()
+            found = [concept(healer.id), concept(soldier.id)]
+
+        # Then both are found with a single API request
+        assert found == [healer, soldier]
+        fake_vclient.assert_called(Routes.BLUEPRINT_CONCEPTS_LIST, params=COMPANY, times=1)
+
+    def test_returns_none_without_an_id(self, app, mock_cache_store, fake_vclient) -> None:
+        """Verify a character without a concept costs no API request."""
+        with app.test_request_context("/"):
+            seed_session()
+            result = concept(None)
+
+        assert result is None
+        fake_vclient.assert_not_called(Routes.BLUEPRINT_CONCEPTS_LIST)

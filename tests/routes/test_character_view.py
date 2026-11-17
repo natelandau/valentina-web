@@ -258,13 +258,17 @@ class TestSheetSpecialties:
         # When viewing the sheet
         html = client.get(f"/character/{char.id}").get_data(as_text=True)
 
-        # Then both specialty lines are shown
-        lines = re.findall(r'<div class="trait-specialties([^"]*)">([^<]*)</div>', html)
+        # Then both specialty lines are shown, each with an explanatory tooltip
+        lines = re.findall(
+            r'<div class="trait-specialties([^"]*)">\s*<span class="tooltip[^"]*" data-tip="([^"]*)">\s*([^<]*?)\s*</span>',
+            html,
+        )
         assert len(lines) == 2
-        category_classes, category_text = lines[0]
-        assert "text-sm text-base-content/60 font-normal" in category_classes
+        category_classes, category_tip, category_text = lines[0]
+        assert "text-sm font-normal text-base-content/60" in category_classes
+        assert category_tip.startswith("Specialty: +1 die to Melee")
         assert category_text == "Knives, Swords"
-        assert lines[1][1] == "Pistols"
+        assert lines[1][2] == "Pistols"
 
     def test_sheet_escapes_specialty_names(self, client, mocker, mock_character_lookup) -> None:
         """Verify specialty names are HTML-escaped."""

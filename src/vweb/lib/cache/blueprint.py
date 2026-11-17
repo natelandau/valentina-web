@@ -18,10 +18,11 @@ from vweb.lib import api_services
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
-    from vweb.api_client.models import Trait, TraitSubcategory
+    from vweb.api_client.models import CharacterConcept, Trait, TraitSubcategory
 
 _CACHE_BLUEPRINT_ALL_TRAITS_PREFIX: Final[str] = "bp_all_traits:"
 _CACHE_BLUEPRINT_ALL_SHEET_SECTIONS_PREFIX: Final[str] = "bp_all_sheet_sections:"
+_CACHE_BLUEPRINT_ALL_CONCEPTS_PREFIX: Final[str] = "bp_all_concepts:"
 
 _STRATEGY = base.PureTTL(ttl=CACHE_BLUEPRINT_TTL)
 
@@ -32,6 +33,10 @@ def _traits_key() -> str:
 
 def _sections_key() -> str:
     return f"{_CACHE_BLUEPRINT_ALL_SHEET_SECTIONS_PREFIX}{session['company_id']}"
+
+
+def _concepts_key() -> str:
+    return f"{_CACHE_BLUEPRINT_ALL_CONCEPTS_PREFIX}{session['company_id']}"
 
 
 def traits() -> dict[str, Trait]:
@@ -68,9 +73,26 @@ def subcategory(subcategory_id: str) -> TraitSubcategory | None:
     return subcategories().get(subcategory_id)
 
 
+def concepts() -> dict[str, CharacterConcept]:
+    """Return the company's character concepts keyed by ID (1-hour TTL, per company)."""
+    return base.cached_fetch(_concepts_key(), _fetch_concepts, _STRATEGY)
+
+
+def concept(concept_id: str | None) -> CharacterConcept | None:
+    """Return a single character concept by ID from the global cache.
+
+    Args:
+        concept_id: The concept ID to look up, or None for a character without one.
+
+    Returns:
+        The CharacterConcept model, or None when the ID is empty or unknown.
+    """
+    return concepts().get(concept_id) if concept_id else None
+
+
 def clear() -> None:
-    """Remove the current company's cached blueprint dicts (traits + subcategories)."""
-    base.clear_key(_traits_key(), _sections_key())
+    """Remove the current company's cached blueprint dicts (traits, subcategories, concepts)."""
+    base.clear_key(_traits_key(), _sections_key(), _concepts_key())
 
 
 def _fetch_traits() -> dict[str, Trait]:
@@ -79,3 +101,7 @@ def _fetch_traits() -> dict[str, Trait]:
 
 def _fetch_subcategories() -> dict[str, TraitSubcategory]:
     return {sc.id: sc for sc in api_services.character_blueprint().list_all_subcategories()}
+
+
+def _fetch_concepts() -> dict[str, CharacterConcept]:
+    return {c.id: c for c in api_services.character_blueprint().list_all_concepts()}

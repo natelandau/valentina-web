@@ -33,6 +33,7 @@ class TestCompanySettings:
             "permission_free_trait_changes": "UNRESTRICTED",
             "permission_recoup_xp": "DENIED",
             "specialty_xp_cost_enabled": True,
+            "specialty_rules": "RATING_BASED",
         }
 
     def test_all_fields_required(self):
@@ -50,6 +51,7 @@ class TestCompanySettings:
         assert settings.permission_free_trait_changes == "UNRESTRICTED"
         assert settings.permission_recoup_xp == "DENIED"
         assert settings.specialty_xp_cost_enabled is True
+        assert settings.specialty_rules == "RATING_BASED"
 
     def test_specialty_xp_cost_enabled_defaults_false(self):
         """Verify specialty_xp_cost_enabled defaults to False when the server omits it."""
@@ -62,6 +64,28 @@ class TestCompanySettings:
 
         # Then: The setting matches the server default
         assert settings.specialty_xp_cost_enabled is False
+
+    def test_specialty_rules_defaults_fixed_cost(self):
+        """Verify specialty_rules defaults to FIXED_COST when the server omits it."""
+        # Given: Full kwargs without specialty_rules
+        kwargs = self._full_settings_kwargs()
+        del kwargs["specialty_rules"]
+
+        # When: Constructing
+        settings = CompanySettings(**kwargs)
+
+        # Then: The setting matches the server default
+        assert settings.specialty_rules == "FIXED_COST"
+
+    def test_specialty_rules_rejects_unknown_value(self):
+        """Verify an unknown specialty_rules value fails validation."""
+        # Given: Full kwargs with a value the API does not define
+        kwargs = self._full_settings_kwargs()
+        kwargs["specialty_rules"] = "THRESHOLD"
+
+        # When/Then: Construction fails
+        with pytest.raises(PydanticValidationError):
+            CompanySettings(**kwargs)
 
     @pytest.mark.parametrize(
         "missing_field",
@@ -140,6 +164,7 @@ class TestCompanySettingsCreate:
         assert settings.permission_free_trait_changes is None
         assert settings.permission_recoup_xp is None
         assert settings.specialty_xp_cost_enabled is None
+        assert settings.specialty_rules is None
 
     def test_partial_construction(self):
         """Verify construction with only some fields set."""

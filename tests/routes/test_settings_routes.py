@@ -227,6 +227,21 @@ class TestSettingsGet:
         assert tag is not None
         assert "checked" not in tag.group(0)
 
+    def test_get_selects_saved_specialty_rules(
+        self, client: FlaskClient, company: Company, fake_vclient
+    ) -> None:
+        """Verify the specialty rules select shows the saved value and remembers it for the warning."""
+        company.settings.specialty_rules = "RATING_BASED"
+        fake_vclient.set_response(Routes.COMPANIES_GET, model=company)
+
+        body = client.get("/admin/settings").get_data(as_text=True)
+
+        selected = re.search(r'<option value="RATING_BASED"[^>]*>', body)
+        assert selected is not None
+        assert "selected" in selected.group(0)
+        assert "savedRules: 'RATING_BASED'" in body
+        assert "$refs.specialtyRules.value !== savedRules" in body
+
 
 class TestSettingsPostSuccess:
     """POST /settings happy path."""
@@ -253,6 +268,7 @@ class TestSettingsPostSuccess:
                 "permission_manage_npc": "UNRESTRICTED",
                 "permission_grant_xp": "UNRESTRICTED",
                 "permission_free_trait_changes": "",
+                "specialty_rules": "RATING_BASED",
             },
         )
 
@@ -275,6 +291,7 @@ class TestSettingsPostSuccess:
                     "permission_manage_npc": "UNRESTRICTED",
                     "permission_grant_xp": "UNRESTRICTED",
                     "specialty_xp_cost_enabled": False,
+                    "specialty_rules": "RATING_BASED",
                     "custom_flaw_xp_cost": 4,
                 },
             },

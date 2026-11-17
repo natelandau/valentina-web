@@ -12,7 +12,7 @@ from .shared import Trait
 
 
 class CharacterTraitSpecialty(BaseModel):
-    """Response model for a specialty on an ability trait."""
+    """Response model for a specialty on a character trait."""
 
     id: str
     name: str
@@ -78,7 +78,10 @@ class CharacterTrait(BaseModel):
     trait: Trait
     specialties: list[CharacterTraitSpecialty] = Field(
         default_factory=list,
-        description="Active specialties on the trait, oldest first. Only abilities have specialties.",
+        description=(
+            "Active specialties on the trait, oldest first. The company's specialty rules"
+            " decide which traits can have them."
+        ),
     )
     tracker: Tracker | None = Field(
         default=None,
@@ -167,7 +170,7 @@ class TraitCreate(BaseModel):
 
 
 class CharacterTraitSpecialtyCreate(BaseModel):
-    """Request model for adding a specialty to an ability trait."""
+    """Request model for adding a specialty to a character trait."""
 
     name: str = Field(
         ...,
