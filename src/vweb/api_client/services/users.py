@@ -7,11 +7,7 @@ from typing import TYPE_CHECKING
 from vweb.api_client.constants import DEFAULT_PAGE_LIMIT, IdentityProvider, UserInclude, UserRole
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import (
-    Asset,
     CampaignExperience,
-    Note,
-    NoteCreate,
-    NoteUpdate,
     PaginatedResponse,
     Quickroll,
     QuickrollCreate,
@@ -26,13 +22,14 @@ from vweb.api_client.models import (
     UserUpdate,
     _ExperienceAddRemove,
 )
-from vweb.api_client.services.base import BaseService
+from vweb.api_client.services._assets import AssetsMixin
+from vweb.api_client.services._notes import NotesMixin
 
 if TYPE_CHECKING:
     from vweb.api_client.client import VClient
 
 
-class UsersService(BaseService):
+class UsersService(NotesMixin, AssetsMixin):
     """Service for managing users within a company in the Valentina API.
 
     This service is scoped to a specific company at initialization time.
@@ -47,6 +44,13 @@ class UsersService(BaseService):
             all_users = users.list_all()
             user = users.get("user_id")
     """
+
+    _parent_id_param = "user_id"
+    _notes_endpoint = Endpoints.USER_NOTES
+    _note_endpoint = Endpoints.USER_NOTE
+    _assets_endpoint = Endpoints.USER_ASSETS
+    _asset_endpoint = Endpoints.USER_ASSET
+    _asset_upload_endpoint = Endpoints.USER_ASSET_UPLOAD
 
     def __init__(self, client: "VClient", company_id: str, on_behalf_of: str) -> None:
         """Initialize the service scoped to a specific company.
@@ -520,173 +524,6 @@ class UsersService(BaseService):
         )
         return RollStatistics.model_validate(response.json())
 
-    # Asset Methods
-
-    def get_assets_page(
-        self,
-        user_id: str,
-        *,
-        limit: int = DEFAULT_PAGE_LIMIT,
-        offset: int = 0,
-    ) -> PaginatedResponse[Asset]:
-        """Retrieve a paginated page of assets for a user.
-
-        Args:
-            user_id: The ID of the user whose assets to list.
-            limit: Maximum number of items to return (0-100, default 10).
-            offset: Number of items to skip from the beginning (default 0).
-
-        Returns:
-            A PaginatedResponse containing Asset objects and pagination metadata.
-
-        Raises:
-            NotFoundError: If the user does not exist.
-            AuthorizationError: If you don't have access to the company.
-        """
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.USER_ASSETS, user_id=user_id),
-            Asset,
-            limit=limit,
-            offset=offset,
-        )
-
-    def list_all_assets(
-        self,
-        user_id: str,
-    ) -> list[Asset]:
-        """Retrieve all assets for a user.
-
-        Automatically paginates through all results. Use `get_assets_page()` for paginated
-        access or `iter_all_assets()` for memory-efficient streaming of large datasets.
-
-        Args:
-            user_id: The ID of the user whose assets to list.
-
-        Returns:
-            A list of all Asset objects.
-
-        Raises:
-            NotFoundError: If the user does not exist.
-            AuthorizationError: If you don't have access to the company.
-        """
-        return list(self.iter_all_assets(user_id))
-
-    def iter_all_assets(
-        self,
-        user_id: str,
-        *,
-        limit: int = 100,
-    ) -> Iterator[Asset]:
-        """Iterate through all assets for a user.
-
-        Yields individual assets, automatically fetching subsequent pages until
-        all items have been retrieved.
-
-        Args:
-            user_id: The ID of the user whose assets to iterate.
-            limit: Items per page (default 100 for efficiency).
-
-        Yields:
-            Individual Asset objects.
-
-        Example:
-            for asset in users.iter_all_assets("user_id"):
-                print(asset.original_filename)
-        """
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.USER_ASSETS, user_id=user_id),
-            Asset,
-            limit=limit,
-        )
-
-    def get_asset(
-        self,
-        user_id: str,
-        asset_id: str,
-    ) -> Asset:
-        """Retrieve details of a specific asset including its URL and metadata.
-
-        Args:
-            user_id: The ID of the user who owns the asset.
-            asset_id: The ID of the asset to retrieve.
-
-        Returns:
-            The Asset object with full details.
-
-        Raises:
-            NotFoundError: If the asset does not exist.
-            AuthorizationError: If you don't have access to the company.
-        """
-        response = self._get(
-            self._format_endpoint(Endpoints.USER_ASSET, user_id=user_id, asset_id=asset_id)
-        )
-        return Asset.model_validate(response.json())
-
-    def delete_asset(
-        self,
-        user_id: str,
-        asset_id: str,
-    ) -> None:
-        """Delete an asset from a user.
-
-        This action cannot be undone. The asset file is permanently removed.
-
-        Args:
-            user_id: The ID of the user who owns the asset.
-            asset_id: The ID of the asset to delete.
-
-        Raises:
-            NotFoundError: If the asset does not exist or belongs to a different user.
-            AuthorizationError: If the acting user is neither ``user_id`` nor a
-                company admin.
-        """
-        self._delete(
-            self._format_endpoint(Endpoints.USER_ASSET, user_id=user_id, asset_id=asset_id)
-        )
-
-    def upload_asset(
-        self,
-        user_id: str,
-        filename: str,
-        content: bytes,
-        content_type: str | None = None,
-    ) -> Asset:
-        """Upload a new image asset for a user.
-
-        Uploads an image to S3 storage and associates it with the user.
-
-        Only image files are accepted: PNG, JPEG, GIF, and WEBP. Any other
-        upload (documents, audio, video, archives, SVG, or a non-image payload
-        mislabeled as an image) is rejected with 400 Bad Request, as are
-        images over 24 megapixels (width x height). The stored
-        ``mime_type`` is detected from the file's bytes; the ``content_type``
-        argument is ignored server-side and cannot change or bypass the stored
-        type. Uploaded assets therefore always have ``asset_type == "image"``.
-
-        Args:
-            user_id: The ID of the user to upload the asset for.
-            filename: The original filename of the asset.
-            content: The raw bytes of the file to upload.
-            content_type: The MIME type of the file. If not provided, inferred from filename.
-
-        Returns:
-            The created Asset object with the public URL and metadata.
-
-        Raises:
-            NotFoundError: If the user does not exist.
-            AuthorizationError: If the acting user is neither ``user_id`` nor a
-                company admin.
-            ValidationError: If the file is invalid or exceeds size limits.
-        """
-        if content_type is None:
-            content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-
-        response = self._post_file(
-            self._format_endpoint(Endpoints.USER_ASSET_UPLOAD, user_id=user_id),
-            file=(filename, content, content_type),
-        )
-        return Asset.model_validate(response.json())
-
     # Avatar Methods
 
     def upload_avatar(
@@ -873,193 +710,6 @@ class UsersService(BaseService):
             json=body.model_dump(mode="json"),
         )
         return CampaignExperience.model_validate(response.json())
-
-    # Notes Methods
-
-    def get_notes_page(
-        self,
-        user_id: str,
-        *,
-        limit: int = DEFAULT_PAGE_LIMIT,
-        offset: int = 0,
-    ) -> PaginatedResponse[Note]:
-        """Retrieve a paginated page of notes for a user.
-
-        Args:
-            user_id: The ID of the user whose notes to list.
-            limit: Maximum number of items to return (0-100, default 10).
-            offset: Number of items to skip from the beginning (default 0).
-
-        Returns:
-            A PaginatedResponse containing Note objects and pagination metadata.
-
-        Raises:
-            NotFoundError: If the user does not exist.
-            AuthorizationError: If you don't have access to the company.
-        """
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.USER_NOTES, user_id=user_id),
-            Note,
-            limit=limit,
-            offset=offset,
-        )
-
-    def list_all_notes(
-        self,
-        user_id: str,
-    ) -> list[Note]:
-        """Retrieve all notes for a user.
-
-        Automatically paginates through all results. Use `get_notes_page()` for paginated
-        access or `iter_all_notes()` for memory-efficient streaming of large datasets.
-
-        Args:
-            user_id: The ID of the user whose notes to list.
-
-        Returns:
-            A list of all Note objects.
-
-        Raises:
-            NotFoundError: If the user does not exist.
-            AuthorizationError: If you don't have access to the company.
-        """
-        return list(self.iter_all_notes(user_id))
-
-    def iter_all_notes(
-        self,
-        user_id: str,
-        *,
-        limit: int = 100,
-    ) -> Iterator[Note]:
-        """Iterate through all notes for a user.
-
-        Yields individual notes, automatically fetching subsequent pages until
-        all items have been retrieved.
-
-        Args:
-            user_id: The ID of the user whose notes to iterate.
-            limit: Items per page (default 100 for efficiency).
-
-        Yields:
-            Individual Note objects.
-
-        Example:
-            for note in users.iter_all_notes("user_id"):
-                print(note.title)
-        """
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.USER_NOTES, user_id=user_id),
-            Note,
-            limit=limit,
-        )
-
-    def get_note(
-        self,
-        user_id: str,
-        note_id: str,
-    ) -> Note:
-        """Retrieve a specific note including its content and metadata.
-
-        Args:
-            user_id: The ID of the user who owns the note.
-            note_id: The ID of the note to retrieve.
-
-        Returns:
-            The Note object with full details.
-
-        Raises:
-            NotFoundError: If the note does not exist.
-            AuthorizationError: If you don't have access to the company.
-        """
-        response = self._get(
-            self._format_endpoint(Endpoints.USER_NOTE, user_id=user_id, note_id=note_id)
-        )
-        return Note.model_validate(response.json())
-
-    def create_note(
-        self,
-        user_id: str,
-        request: NoteCreate | None = None,
-        **kwargs,
-    ) -> Note:
-        """Create a new note for a user.
-
-        Notes support markdown formatting for rich text content.
-
-        Args:
-            user_id: The ID of the user to create the note for.
-            request: A NoteCreate model, OR pass fields as keyword arguments.
-            **kwargs: Fields for NoteCreate if request is not provided.
-                Accepts: title (str, required), content (str, required).
-
-        Returns:
-            The newly created Note object.
-
-        Raises:
-            NotFoundError: If the user does not exist.
-            AuthorizationError: If you don't have appropriate access.
-            RequestValidationError: If the input parameters fail client-side validation.
-            ValidationError: If the request data is invalid.
-        """
-        body = request if request is not None else self._validate_request(NoteCreate, **kwargs)
-        response = self._post(
-            self._format_endpoint(Endpoints.USER_NOTES, user_id=user_id),
-            json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
-        )
-        return Note.model_validate(response.json())
-
-    def update_note(
-        self,
-        user_id: str,
-        note_id: str,
-        request: NoteUpdate | None = None,
-        **kwargs,
-    ) -> Note:
-        """Modify a note's content.
-
-        Only include fields that need to be changed; omitted fields remain unchanged.
-
-        Args:
-            user_id: The ID of the user who owns the note.
-            note_id: The ID of the note to update.
-            request: A NoteUpdate model, OR pass fields as keyword arguments.
-            **kwargs: Fields for NoteUpdate if request is not provided.
-                Accepts: title (str | None), content (str | None).
-
-        Returns:
-            The updated Note object.
-
-        Raises:
-            NotFoundError: If the note does not exist.
-            AuthorizationError: If you don't have appropriate access.
-            RequestValidationError: If the input parameters fail client-side validation.
-            ValidationError: If the request data is invalid.
-        """
-        body = request if request is not None else self._validate_request(NoteUpdate, **kwargs)
-        response = self._patch(
-            self._format_endpoint(Endpoints.USER_NOTE, user_id=user_id, note_id=note_id),
-            json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
-        )
-        return Note.model_validate(response.json())
-
-    def delete_note(
-        self,
-        user_id: str,
-        note_id: str,
-    ) -> None:
-        """Remove a note from a user.
-
-        This action cannot be undone.
-
-        Args:
-            user_id: The ID of the user who owns the note.
-            note_id: The ID of the note to delete.
-
-        Raises:
-            NotFoundError: If the note does not exist.
-            AuthorizationError: If you don't have appropriate access.
-        """
-        self._delete(self._format_endpoint(Endpoints.USER_NOTE, user_id=user_id, note_id=note_id))
 
     # Quickroll Methods
 

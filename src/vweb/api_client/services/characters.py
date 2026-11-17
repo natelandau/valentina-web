@@ -1,6 +1,5 @@
 """Service for interacting with the Characters API."""
 
-import mimetypes
 from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING
 
@@ -14,7 +13,6 @@ from vweb.api_client.constants import (
 )
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import (
-    Asset,
     Character,
     CharacterCreate,
     CharacterDetail,
@@ -26,20 +24,18 @@ from vweb.api_client.models import (
     InventoryItem,
     InventoryItemCreate,
     InventoryItemUpdate,
-    Note,
-    NoteCreate,
-    NoteUpdate,
     PaginatedResponse,
     RollStatistics,
     _TrackerAction,
 )
-from vweb.api_client.services.base import BaseService
+from vweb.api_client.services._assets import AssetsMixin
+from vweb.api_client.services._notes import NotesMixin
 
 if TYPE_CHECKING:
     from vweb.api_client.client import VClient
 
 
-class CharactersService(BaseService):
+class CharactersService(NotesMixin, AssetsMixin):
     """Service for managing characters within a company in the Valentina API.
 
     This service is scoped to a specific company at initialization time.
@@ -53,6 +49,13 @@ class CharactersService(BaseService):
             all_characters = characters.list_all()
             character = characters.get("character_id")
     """
+
+    _parent_id_param = "character_id"
+    _notes_endpoint = Endpoints.CHARACTER_NOTES
+    _note_endpoint = Endpoints.CHARACTER_NOTE
+    _assets_endpoint = Endpoints.CHARACTER_ASSETS
+    _asset_endpoint = Endpoints.CHARACTER_ASSET
+    _asset_upload_endpoint = Endpoints.CHARACTER_ASSET_UPLOAD
 
     def __init__(self, client: "VClient", company_id: str, on_behalf_of: str) -> None:
         """Initialize the service scoped to a specific company.
@@ -421,370 +424,6 @@ class CharactersService(BaseService):
             params=params,
         )
         return FullSheetTraitCategory.model_validate(response.json())
-
-    # Asset Methods
-
-    def get_assets_page(
-        self,
-        character_id: str,
-        *,
-        limit: int = DEFAULT_PAGE_LIMIT,
-        offset: int = 0,
-    ) -> PaginatedResponse[Asset]:
-        """Retrieve a paginated page of assets for a character.
-
-        Args:
-            character_id: The ID of the character whose assets to list.
-            limit: Maximum number of items to return (0-100, default 10).
-            offset: Number of items to skip from the beginning (default 0).
-
-        Returns:
-            A PaginatedResponse containing Asset objects and pagination metadata.
-
-        Raises:
-            NotFoundError: If the character does not exist.
-            AuthorizationError: If you don't have access.
-        """
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.CHARACTER_ASSETS, character_id=character_id),
-            Asset,
-            limit=limit,
-            offset=offset,
-        )
-
-    def list_all_assets(
-        self,
-        character_id: str,
-    ) -> list[Asset]:
-        """Retrieve all assets for a character.
-
-        Automatically paginates through all results. Use `get_assets_page()` for paginated
-        access or `iter_all_assets()` for memory-efficient streaming of large datasets.
-
-        Args:
-            character_id: The ID of the character whose assets to list.
-
-        Returns:
-            A list of all Asset objects.
-
-        Raises:
-            NotFoundError: If the character does not exist.
-            AuthorizationError: If you don't have access.
-        """
-        return list(self.iter_all_assets(character_id))
-
-    def iter_all_assets(
-        self,
-        character_id: str,
-        *,
-        limit: int = 100,
-    ) -> Iterator[Asset]:
-        """Iterate through all assets for a character.
-
-        Yields individual assets, automatically fetching subsequent pages until
-        all items have been retrieved.
-
-        Args:
-            character_id: The ID of the character whose assets to iterate.
-            limit: Items per page (default 100 for efficiency).
-
-        Yields:
-            Individual Asset objects.
-
-        Example:
-            for asset in characters.iter_all_assets("character_id"):
-                print(asset.original_filename)
-        """
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.CHARACTER_ASSETS, character_id=character_id),
-            Asset,
-            limit=limit,
-        )
-
-    def get_asset(
-        self,
-        character_id: str,
-        asset_id: str,
-    ) -> Asset:
-        """Retrieve details of a specific asset including its URL and metadata.
-
-        Args:
-            character_id: The ID of the character that owns the asset.
-            asset_id: The ID of the asset to retrieve.
-
-        Returns:
-            The Asset object with full details.
-
-        Raises:
-            NotFoundError: If the asset does not exist.
-            AuthorizationError: If you don't have access.
-        """
-        response = self._get(
-            self._format_endpoint(
-                Endpoints.CHARACTER_ASSET, character_id=character_id, asset_id=asset_id
-            )
-        )
-        return Asset.model_validate(response.json())
-
-    def delete_asset(
-        self,
-        character_id: str,
-        asset_id: str,
-    ) -> None:
-        """Delete an asset from a campaign.
-
-        This action cannot be undone. The asset file is permanently removed.
-
-        Args:
-            character_id: The ID of the character that owns the asset.
-            asset_id: The ID of the asset to delete.
-
-        Raises:
-            NotFoundError: If the asset does not exist or belongs to a different character.
-            AuthorizationError: If you don't have appropriate access.
-        """
-        self._delete(
-            self._format_endpoint(
-                Endpoints.CHARACTER_ASSET, character_id=character_id, asset_id=asset_id
-            )
-        )
-
-    def upload_asset(
-        self,
-        character_id: str,
-        filename: str,
-        content: bytes,
-        content_type: str | None = None,
-    ) -> Asset:
-        """Upload a new image asset for a character.
-
-        Uploads an image to S3 storage and associates it with the character.
-
-        Only image files are accepted: PNG, JPEG, GIF, and WEBP. Any other
-        upload (documents, audio, video, archives, SVG, or a non-image payload
-        mislabeled as an image) is rejected with 400 Bad Request, as are
-        images over 24 megapixels (width x height). The stored
-        ``mime_type`` is detected from the file's bytes; the ``content_type``
-        argument is ignored server-side and cannot change or bypass the stored
-        type. Uploaded assets therefore always have ``asset_type == "image"``.
-
-        Args:
-            character_id: The ID of the character to upload the asset for.
-            filename: The original filename of the asset.
-            content: The raw bytes of the file to upload.
-            content_type: The MIME type of the file. If not provided, inferred from filename.
-
-        Returns:
-            The created Asset object with the public URL and metadata.
-
-        Raises:
-            NotFoundError: If the character does not exist.
-            AuthorizationError: If you don't have appropriate access.
-            ValidationError: If the file is invalid or exceeds size limits.
-        """
-        if content_type is None:
-            content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-
-        response = self._post_file(
-            self._format_endpoint(Endpoints.CHARACTER_ASSET_UPLOAD, character_id=character_id),
-            file=(filename, content, content_type),
-        )
-        return Asset.model_validate(response.json())
-
-    # Notes Methods
-
-    def get_notes_page(
-        self,
-        character_id: str,
-        *,
-        limit: int = DEFAULT_PAGE_LIMIT,
-        offset: int = 0,
-    ) -> PaginatedResponse[Note]:
-        """Retrieve a paginated page of notes for a character.
-
-        Args:
-            character_id: The ID of the character whose notes to list.
-            limit: Maximum number of items to return (0-100, default 10).
-            offset: Number of items to skip from the beginning (default 0).
-
-        Returns:
-            A PaginatedResponse containing Note objects and pagination metadata.
-
-        Raises:
-            NotFoundError: If the character does not exist.
-            AuthorizationError: If you don't have access.
-        """
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.CHARACTER_NOTES, character_id=character_id),
-            Note,
-            limit=limit,
-            offset=offset,
-        )
-
-    def list_all_notes(
-        self,
-        character_id: str,
-    ) -> list[Note]:
-        """Retrieve all notes for a character.
-
-        Automatically paginates through all results. Use `get_notes_page()` for paginated
-        access or `iter_all_notes()` for memory-efficient streaming of large datasets.
-
-        Args:
-            character_id: The ID of the character whose notes to list.
-
-        Returns:
-            A list of all Note objects.
-
-        Raises:
-            NotFoundError: If the character does not exist.
-            AuthorizationError: If you don't have access.
-        """
-        return list(self.iter_all_notes(character_id))
-
-    def iter_all_notes(
-        self,
-        character_id: str,
-        *,
-        limit: int = 100,
-    ) -> Iterator[Note]:
-        """Iterate through all notes for a character.
-
-        Yields individual notes, automatically fetching subsequent pages until
-        all items have been retrieved.
-
-        Args:
-            character_id: The ID of the character whose notes to iterate.
-            limit: Items per page (default 100 for efficiency).
-
-        Yields:
-            Individual Note objects.
-
-        Example:
-            for note in characters.iter_all_notes("character_id"):
-                print(note.title)
-        """
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.CHARACTER_NOTES, character_id=character_id),
-            Note,
-            limit=limit,
-        )
-
-    def get_note(
-        self,
-        character_id: str,
-        note_id: str,
-    ) -> Note:
-        """Retrieve a specific note including its content and metadata.
-
-        Args:
-            character_id: The ID of the character that owns the note.
-            note_id: The ID of the note to retrieve.
-
-        Returns:
-            The Note object with full details.
-
-        Raises:
-            NotFoundError: If the note does not exist.
-            AuthorizationError: If you don't have access.
-        """
-        response = self._get(
-            self._format_endpoint(
-                Endpoints.CHARACTER_NOTE, character_id=character_id, note_id=note_id
-            )
-        )
-        return Note.model_validate(response.json())
-
-    def create_note(
-        self,
-        character_id: str,
-        request: NoteCreate | None = None,
-        **kwargs,
-    ) -> Note:
-        """Create a new note for a character.
-
-        Notes support markdown formatting for rich text content.
-
-        Args:
-            character_id: The ID of the character to create the note for.
-            request: A NoteCreate model, OR pass fields as keyword arguments.
-            **kwargs: Fields for NoteCreate if request is not provided.
-                Accepts: title (str, required), content (str, required).
-
-        Returns:
-            The newly created Note object.
-
-        Raises:
-            NotFoundError: If the character does not exist.
-            AuthorizationError: If you don't have appropriate access.
-            RequestValidationError: If the input parameters fail client-side validation.
-            ValidationError: If the request data is invalid.
-        """
-        body = request if request is not None else self._validate_request(NoteCreate, **kwargs)
-        response = self._post(
-            self._format_endpoint(Endpoints.CHARACTER_NOTES, character_id=character_id),
-            json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
-        )
-        return Note.model_validate(response.json())
-
-    def update_note(
-        self,
-        character_id: str,
-        note_id: str,
-        request: NoteUpdate | None = None,
-        **kwargs,
-    ) -> Note:
-        """Modify a note's content.
-
-        Only include fields that need to be changed; omitted fields remain unchanged.
-
-        Args:
-            character_id: The ID of the character that owns the note.
-            note_id: The ID of the note to update.
-            request: A NoteUpdate model, OR pass fields as keyword arguments.
-            **kwargs: Fields for NoteUpdate if request is not provided.
-                Accepts: title (str | None), content (str | None).
-
-        Returns:
-            The updated Note object.
-
-        Raises:
-            NotFoundError: If the note does not exist.
-            AuthorizationError: If you don't have appropriate access.
-            RequestValidationError: If the input parameters fail client-side validation.
-            ValidationError: If the request data is invalid.
-        """
-        body = request if request is not None else self._validate_request(NoteUpdate, **kwargs)
-        response = self._patch(
-            self._format_endpoint(
-                Endpoints.CHARACTER_NOTE, character_id=character_id, note_id=note_id
-            ),
-            json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
-        )
-        return Note.model_validate(response.json())
-
-    def delete_note(
-        self,
-        character_id: str,
-        note_id: str,
-    ) -> None:
-        """Remove a note from a character.
-
-        This action cannot be undone.
-
-        Args:
-            character_id: The ID of the character that owns the note.
-            note_id: The ID of the note to delete.
-
-        Raises:
-            NotFoundError: If the note does not exist.
-            AuthorizationError: If you don't have appropriate access.
-        """
-        self._delete(
-            self._format_endpoint(
-                Endpoints.CHARACTER_NOTE, character_id=character_id, note_id=note_id
-            )
-        )
 
     # Character Inventory Methods
 

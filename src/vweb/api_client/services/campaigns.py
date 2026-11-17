@@ -1,29 +1,25 @@
 """Service for interacting with the Campaigns API."""
 
-import mimetypes
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 from vweb.api_client.constants import DEFAULT_PAGE_LIMIT
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import (
-    Asset,
     Campaign,
     CampaignCreate,
     CampaignUpdate,
-    Note,
-    NoteCreate,
-    NoteUpdate,
     PaginatedResponse,
     RollStatistics,
 )
-from vweb.api_client.services.base import BaseService
+from vweb.api_client.services._assets import AssetsMixin
+from vweb.api_client.services._notes import NotesMixin
 
 if TYPE_CHECKING:
     from vweb.api_client.client import VClient
 
 
-class CampaignsService(BaseService):
+class CampaignsService(NotesMixin, AssetsMixin):
     """Service for managing campaigns within a company in the Valentina API.
 
     This service is scoped to a specific company at initialization time.
@@ -41,6 +37,13 @@ class CampaignsService(BaseService):
             all_campaigns = campaigns.list_all()
             campaign = campaigns.get("campaign_id")
     """
+
+    _parent_id_param = "campaign_id"
+    _notes_endpoint = Endpoints.CAMPAIGN_NOTES
+    _note_endpoint = Endpoints.CAMPAIGN_NOTE
+    _assets_endpoint = Endpoints.CAMPAIGN_ASSETS
+    _asset_endpoint = Endpoints.CAMPAIGN_ASSET
+    _asset_upload_endpoint = Endpoints.CAMPAIGN_ASSET_UPLOAD
 
     def __init__(self, client: "VClient", company_id: str, on_behalf_of: str) -> None:
         """Initialize the service scoped to a specific company.
@@ -242,367 +245,3 @@ class CampaignsService(BaseService):
             params={"num_top_traits": num_top_traits},
         )
         return RollStatistics.model_validate(response.json())
-
-    # -------------------------------------------------------------------------
-    # Asset Methods
-    # -------------------------------------------------------------------------
-
-    def get_assets_page(
-        self,
-        campaign_id: str,
-        *,
-        limit: int = DEFAULT_PAGE_LIMIT,
-        offset: int = 0,
-    ) -> PaginatedResponse[Asset]:
-        """Retrieve a paginated page of assets for a campaign.
-
-        Args:
-            campaign_id: The ID of the campaign whose assets to list.
-            limit: Maximum number of items to return (0-100, default 10).
-            offset: Number of items to skip from the beginning (default 0).
-
-        Returns:
-            A PaginatedResponse containing Asset objects and pagination metadata.
-
-        Raises:
-            NotFoundError: If the campaign does not exist.
-            AuthorizationError: If you don't have access.
-        """
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.CAMPAIGN_ASSETS, campaign_id=campaign_id),
-            Asset,
-            limit=limit,
-            offset=offset,
-        )
-
-    def list_all_assets(
-        self,
-        campaign_id: str,
-    ) -> list[Asset]:
-        """Retrieve all assets for a campaign.
-
-        Automatically paginates through all results. Use `get_assets_page()` for paginated
-        access or `iter_all_assets()` for memory-efficient streaming of large datasets.
-
-        Args:
-            campaign_id: The ID of the campaign whose assets to list.
-
-        Returns:
-            A list of all Asset objects.
-
-        Raises:
-            NotFoundError: If the campaign does not exist.
-            AuthorizationError: If you don't have access.
-        """
-        return list(self.iter_all_assets(campaign_id))
-
-    def iter_all_assets(
-        self,
-        campaign_id: str,
-        *,
-        limit: int = 100,
-    ) -> Iterator[Asset]:
-        """Iterate through all assets for a campaign.
-
-        Yields individual assets, automatically fetching subsequent pages until
-        all items have been retrieved.
-
-        Args:
-            campaign_id: The ID of the campaign whose assets to iterate.
-            limit: Items per page (default 100 for efficiency).
-
-        Yields:
-            Individual Asset objects.
-
-        Example:
-            for asset in campaigns.iter_all_assets("campaign_id"):
-                print(asset.original_filename)
-        """
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.CAMPAIGN_ASSETS, campaign_id=campaign_id),
-            Asset,
-            limit=limit,
-        )
-
-    def get_asset(
-        self,
-        campaign_id: str,
-        asset_id: str,
-    ) -> Asset:
-        """Retrieve details of a specific asset including its URL and metadata.
-
-        Args:
-            campaign_id: The ID of the campaign that owns the asset.
-            asset_id: The ID of the asset to retrieve.
-
-        Returns:
-            The Asset object with full details.
-
-        Raises:
-            NotFoundError: If the asset does not exist.
-            AuthorizationError: If you don't have access.
-        """
-        response = self._get(
-            self._format_endpoint(
-                Endpoints.CAMPAIGN_ASSET, campaign_id=campaign_id, asset_id=asset_id
-            )
-        )
-        return Asset.model_validate(response.json())
-
-    def delete_asset(
-        self,
-        campaign_id: str,
-        asset_id: str,
-    ) -> None:
-        """Delete an asset from a campaign.
-
-        This action cannot be undone. The asset file is permanently removed.
-
-        Args:
-            campaign_id: The ID of the campaign that owns the asset.
-            asset_id: The ID of the asset to delete.
-
-        Raises:
-            NotFoundError: If the asset does not exist or belongs to a different campaign.
-            AuthorizationError: If you don't have appropriate access.
-        """
-        self._delete(
-            self._format_endpoint(
-                Endpoints.CAMPAIGN_ASSET, campaign_id=campaign_id, asset_id=asset_id
-            )
-        )
-
-    def upload_asset(
-        self,
-        campaign_id: str,
-        filename: str,
-        content: bytes,
-        content_type: str | None = None,
-    ) -> Asset:
-        """Upload a new image asset for a campaign.
-
-        Uploads an image to S3 storage and associates it with the campaign.
-
-        Only image files are accepted: PNG, JPEG, GIF, and WEBP. Any other
-        upload (documents, audio, video, archives, SVG, or a non-image payload
-        mislabeled as an image) is rejected with 400 Bad Request, as are
-        images over 24 megapixels (width x height). The stored
-        ``mime_type`` is detected from the file's bytes; the ``content_type``
-        argument is ignored server-side and cannot change or bypass the stored
-        type. Uploaded assets therefore always have ``asset_type == "image"``.
-
-        Args:
-            campaign_id: The ID of the campaign to upload the asset for.
-            filename: The original filename of the asset.
-            content: The raw bytes of the file to upload.
-            content_type: The MIME type of the file. If not provided, inferred from filename.
-
-        Returns:
-            The created Asset object with the public URL and metadata.
-
-        Raises:
-            NotFoundError: If the campaign does not exist.
-            AuthorizationError: If you don't have appropriate access.
-            ValidationError: If the file is invalid or exceeds size limits.
-        """
-        if content_type is None:
-            content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-
-        response = self._post_file(
-            self._format_endpoint(Endpoints.CAMPAIGN_ASSET_UPLOAD, campaign_id=campaign_id),
-            file=(filename, content, content_type),
-        )
-        return Asset.model_validate(response.json())
-
-    # -------------------------------------------------------------------------
-    # Notes Methods
-    # -------------------------------------------------------------------------
-
-    def get_notes_page(
-        self,
-        campaign_id: str,
-        *,
-        limit: int = DEFAULT_PAGE_LIMIT,
-        offset: int = 0,
-    ) -> PaginatedResponse[Note]:
-        """Retrieve a paginated page of notes for a campaign.
-
-        Args:
-            campaign_id: The ID of the campaign whose notes to list.
-            limit: Maximum number of items to return (0-100, default 10).
-            offset: Number of items to skip from the beginning (default 0).
-
-        Returns:
-            A PaginatedResponse containing Note objects and pagination metadata.
-
-        Raises:
-            NotFoundError: If the campaign does not exist.
-            AuthorizationError: If you don't have access.
-        """
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.CAMPAIGN_NOTES, campaign_id=campaign_id),
-            Note,
-            limit=limit,
-            offset=offset,
-        )
-
-    def list_all_notes(
-        self,
-        campaign_id: str,
-    ) -> list[Note]:
-        """Retrieve all notes for a campaign.
-
-        Automatically paginates through all results. Use `get_notes_page()` for paginated
-        access or `iter_all_notes()` for memory-efficient streaming of large datasets.
-
-        Args:
-            campaign_id: The ID of the campaign whose notes to list.
-
-        Returns:
-            A list of all Note objects.
-
-        Raises:
-            NotFoundError: If the campaign does not exist.
-            AuthorizationError: If you don't have access.
-        """
-        return list(self.iter_all_notes(campaign_id))
-
-    def iter_all_notes(
-        self,
-        campaign_id: str,
-        *,
-        limit: int = 100,
-    ) -> Iterator[Note]:
-        """Iterate through all notes for a campaign.
-
-        Yields individual notes, automatically fetching subsequent pages until
-        all items have been retrieved.
-
-        Args:
-            campaign_id: The ID of the campaign whose notes to iterate.
-            limit: Items per page (default 100 for efficiency).
-
-        Yields:
-            Individual Note objects.
-
-        Example:
-            for note in campaigns.iter_all_notes("campaign_id"):
-                print(note.title)
-        """
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.CAMPAIGN_NOTES, campaign_id=campaign_id),
-            Note,
-            limit=limit,
-        )
-
-    def get_note(
-        self,
-        campaign_id: str,
-        note_id: str,
-    ) -> Note:
-        """Retrieve a specific note including its content and metadata.
-
-        Args:
-            campaign_id: The ID of the campaign that owns the note.
-            note_id: The ID of the note to retrieve.
-
-        Returns:
-            The Note object with full details.
-
-        Raises:
-            NotFoundError: If the note does not exist.
-            AuthorizationError: If you don't have access.
-        """
-        response = self._get(
-            self._format_endpoint(Endpoints.CAMPAIGN_NOTE, campaign_id=campaign_id, note_id=note_id)
-        )
-        return Note.model_validate(response.json())
-
-    def create_note(
-        self,
-        campaign_id: str,
-        request: NoteCreate | None = None,
-        **kwargs,
-    ) -> Note:
-        """Create a new note for a campaign.
-
-        Notes support markdown formatting for rich text content.
-
-        Args:
-            campaign_id: The ID of the campaign to create the note for.
-            request: A NoteCreate model, OR pass fields as keyword arguments.
-            **kwargs: Fields for NoteCreate if request is not provided.
-                Accepts: title (str, required), content (str, required).
-
-        Returns:
-            The newly created Note object.
-
-        Raises:
-            NotFoundError: If the campaign does not exist.
-            AuthorizationError: If you don't have appropriate access.
-            RequestValidationError: If the input parameters fail client-side validation.
-            ValidationError: If the request data is invalid.
-        """
-        body = request if request is not None else self._validate_request(NoteCreate, **kwargs)
-        response = self._post(
-            self._format_endpoint(Endpoints.CAMPAIGN_NOTES, campaign_id=campaign_id),
-            json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
-        )
-        return Note.model_validate(response.json())
-
-    def update_note(
-        self,
-        campaign_id: str,
-        note_id: str,
-        request: NoteUpdate | None = None,
-        **kwargs,
-    ) -> Note:
-        """Modify a note's content.
-
-        Only include fields that need to be changed; omitted fields remain unchanged.
-
-        Args:
-            campaign_id: The ID of the campaign that owns the note.
-            note_id: The ID of the note to update.
-            request: A NoteUpdate model, OR pass fields as keyword arguments.
-            **kwargs: Fields for NoteUpdate if request is not provided.
-                Accepts: title (str | None), content (str | None).
-
-        Returns:
-            The updated Note object.
-
-        Raises:
-            NotFoundError: If the note does not exist.
-            AuthorizationError: If you don't have appropriate access.
-            RequestValidationError: If the input parameters fail client-side validation.
-            ValidationError: If the request data is invalid.
-        """
-        body = request if request is not None else self._validate_request(NoteUpdate, **kwargs)
-        response = self._patch(
-            self._format_endpoint(
-                Endpoints.CAMPAIGN_NOTE, campaign_id=campaign_id, note_id=note_id
-            ),
-            json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
-        )
-        return Note.model_validate(response.json())
-
-    def delete_note(
-        self,
-        campaign_id: str,
-        note_id: str,
-    ) -> None:
-        """Remove a note from a campaign.
-
-        This action cannot be undone.
-
-        Args:
-            campaign_id: The ID of the campaign that owns the note.
-            note_id: The ID of the note to delete.
-
-        Raises:
-            NotFoundError: If the note does not exist.
-            AuthorizationError: If you don't have appropriate access.
-        """
-        self._delete(
-            self._format_endpoint(Endpoints.CAMPAIGN_NOTE, campaign_id=campaign_id, note_id=note_id)
-        )

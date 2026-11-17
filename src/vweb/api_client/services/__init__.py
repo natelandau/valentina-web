@@ -1,5 +1,7 @@
 """API services for interacting with specific endpoints."""
 
+from ._assets import AssetsMixin
+from ._notes import NotesMixin
 from .base import BaseService
 from .campaign_book_chapters import ChaptersService
 from .campaign_books import BooksService
@@ -18,6 +20,7 @@ from .user_lookup import UserLookupService
 from .users import UsersService
 
 __all__ = [
+    "AssetsMixin",
     "BaseService",
     "BooksService",
     "CampaignsService",
@@ -30,6 +33,7 @@ __all__ = [
     "DicerollService",
     "DictionaryService",
     "IdentityService",
+    "NotesMixin",
     "OptionsService",
     "SystemService",
     "UserLookupService",
