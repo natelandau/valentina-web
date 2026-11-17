@@ -19,7 +19,7 @@ from vweb.lib.crud.routing import register_crud_table_routes
 from vweb.lib.form_validation import name_errors, position_number
 from vweb.lib.guards import can_manage_campaign
 from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
-from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
+from vweb.lib.image_uploads import handle_image_delete, handle_image_upload
 from vweb.routes.book.views_notes import BookNotesTableView
 
 if TYPE_CHECKING:
@@ -269,9 +269,9 @@ class BookImageUploadView(MethodView):
 
         svc = api_services.books(campaign_id)
 
-        assets = upload_and_append_asset(
-            svc=svc, parent_id=book_id, file=request.files.get("image")
-        )
+        handle_image_upload(svc=svc, parent_id=book_id, file=request.files.get("image"))
+
+        assets = svc.list_all_assets(book_id)
         chapters = cache.campaign_content.chapters(campaign_id, book_id)
         note_count = count_notes(svc, book_id)
         content_html = _render_book_card(

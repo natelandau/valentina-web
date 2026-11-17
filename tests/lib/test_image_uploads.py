@@ -72,9 +72,8 @@ def test_413_from_api_flashes_upload_limit(app) -> None:
 
     # When the image is uploaded
     with app.test_request_context():
-        result = handle_image_upload(svc=svc, parent_id="p1", file=file)
+        handle_image_upload(svc=svc, parent_id="p1", file=file)
         messages = get_flashed_messages(category_filter=["error"])
 
-    # Then nothing is returned and the flash names the limit
-    assert result is None
+    # Then the flash names the limit
     assert messages == ["Upload is too large (max 4 MB)."]

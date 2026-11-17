@@ -28,7 +28,6 @@ from vweb.lib.api_errors import api_error_message
 if TYPE_CHECKING:
     from werkzeug.datastructures import FileStorage
 
-    from vweb.api_client.models import Asset
     from vweb.api_client.services import AssetsMixin
 
 
@@ -61,52 +60,30 @@ def handle_image_upload(
     svc: AssetsMixin,
     parent_id: str,
     file: FileStorage | None,
-) -> Asset | None:
-    """Validate and persist an uploaded image, flashing the outcome.
-
-    Returns the newly-created Asset on success so callers can append it to a
-    pre-fetched asset list without re-querying — ``list_all_assets`` has been
-    observed to return stale results immediately after an upload.
-    """
+) -> None:
+    """Validate and persist an uploaded image, flashing the outcome."""
     if file is None or not file.filename:
         flash("No image selected.", "error")
-        return None
+        return
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         flash("Invalid image type. Allowed: JPEG, PNG, WebP, GIF.", "error")
-        return None
+        return
 
     content = file.read()
     if len(content) > MAX_IMAGE_SIZE:
         flash(f"Image is too large (max {MAX_IMAGE_SIZE_MB} MB).", "error")
-        return None
+        return
     if dimensions_error := image_dimensions_error(content):
         flash(dimensions_error, "error")
-        return None
+        return
 
     try:
-        asset = svc.upload_asset(parent_id, file.filename, content, file.content_type)
+        svc.upload_asset(parent_id, file.filename, content, file.content_type)
     except APIError as e:
         flash(api_error_message(e, fallback="Failed to upload image. Please try again."), "error")
-        return None
+        return
 
     flash("Image uploaded successfully.", "success")
-    return asset
-
-
-def upload_and_append_asset(
-    *,
-    svc: AssetsMixin,
-    parent_id: str,
-    file: FileStorage | None,
-) -> list[Asset]:
-    """Snapshot the current asset list, upload, and return the combined list.
-
-    ``list_all_assets`` returns stale data immediately after an upload, so the
-    existing assets must be captured *before* calling ``upload_asset``.
-    """
-    existing = svc.list_all_assets(parent_id)
-    new_asset = handle_image_upload(svc=svc, parent_id=parent_id, file=file)
-    return [*existing, new_asset] if new_asset is not None else existing
 
 
 def handle_image_delete(

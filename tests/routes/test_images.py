@@ -29,6 +29,11 @@ VALID_JPEG = make_image_bytes(image_format="JPEG")
 VALID_PNG = make_image_bytes()
 
 
+def _routes_called(fake_vclient, *routes: RouteSpec) -> list[RouteSpec | None]:
+    """Return which of ``routes`` the fake API received, in order, ignoring other calls."""
+    return [request.route for request in fake_vclient.requests if request.route in routes]
+
+
 @dataclass(frozen=True)
 class ImageEntityCase:
     """Describe one image-bearing entity for the shared carousel/upload/delete tests."""
@@ -166,10 +171,11 @@ class TestImageUpload:
     def test_book_image_upload_happy_path(
         self, client, mocker, fake_vclient, book_image_entity, mock_asset
     ) -> None:
-        """Verify a valid book upload re-renders the partial with the new asset."""
-        # Given a privileged user and an API that accepts the upload
+        """Verify a valid book upload re-renders the partial with the asset list read after it."""
+        # Given a privileged user and an API that accepts the upload and then lists the new asset
         mocker.patch(book_image_entity.guard_path, return_value=True)
         fake_vclient.set_response(book_image_entity.asset_upload_route, model=mock_asset)
+        fake_vclient.set_response(book_image_entity.assets_list_route, items=[mock_asset])
         csrf = get_csrf(client)
 
         # When uploading an image
@@ -187,15 +193,18 @@ class TestImageUpload:
         fake_vclient.assert_called(
             book_image_entity.asset_upload_route, params=book_image_entity.path_params, times=1
         )
+        expected = [book_image_entity.asset_upload_route, book_image_entity.assets_list_route]
+        assert _routes_called(fake_vclient, *expected) == expected
         assert mock_asset.public_url in response.get_data(as_text=True)
 
     def test_chapter_image_upload_happy_path(
         self, client, mocker, fake_vclient, chapter_image_entity, mock_asset
     ) -> None:
-        """Verify a valid chapter upload re-renders the partial with the new asset."""
-        # Given a privileged user, no existing assets, and an API that accepts the upload
+        """Verify a valid chapter upload re-renders the partial with the asset list read after it."""
+        # Given a privileged user and an API that accepts the upload and then lists the new asset
         mocker.patch(chapter_image_entity.guard_path, return_value=True)
         fake_vclient.set_response(chapter_image_entity.asset_upload_route, model=mock_asset)
+        fake_vclient.set_response(chapter_image_entity.assets_list_route, items=[mock_asset])
         csrf = get_csrf(client)
 
         # When uploading an image
@@ -219,6 +228,8 @@ class TestImageUpload:
         assert upload.files["data"] == RecordedFile(
             filename="img.jpg", content_type="image/jpeg", content=VALID_JPEG
         )
+        expected = [chapter_image_entity.asset_upload_route, chapter_image_entity.assets_list_route]
+        assert _routes_called(fake_vclient, *expected) == expected
         assert mock_asset.public_url in response.get_data(as_text=True)
 
     def test_image_upload_rejects_wrong_type(
@@ -410,9 +421,9 @@ class TestCharacterImageUpload:
         self, client, fake_vclient, mock_character_lookup, sample_assets
     ) -> None:
         """Verify character owner can upload an image and gets updated carousel."""
-        # Given existing assets and an API that accepts the upload
+        # Given an API that accepts the upload and then lists the new asset with the existing ones
         char, _ = mock_character_lookup
-        fake_vclient.set_response(Routes.CHARACTERS_ASSETS_LIST, items=sample_assets[1:])
+        fake_vclient.set_response(Routes.CHARACTERS_ASSETS_LIST, items=sample_assets)
         fake_vclient.set_response(Routes.CHARACTERS_ASSETS_UPLOAD, model=sample_assets[0])
         csrf = get_csrf(client)
 
@@ -431,6 +442,8 @@ class TestCharacterImageUpload:
             Routes.CHARACTERS_ASSETS_UPLOAD, params={"character_id": char.id}, times=1
         )
         assert upload.files["data"].content == VALID_PNG
+        expected = [Routes.CHARACTERS_ASSETS_UPLOAD, Routes.CHARACTERS_ASSETS_LIST]
+        assert _routes_called(fake_vclient, *expected) == expected
         body = response.get_data(as_text=True)
         assert "carousel" in body
         assert sample_assets[0].public_url in body

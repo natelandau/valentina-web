@@ -19,7 +19,7 @@ from vweb.lib.crud.routing import register_crud_table_routes
 from vweb.lib.form_validation import position_number
 from vweb.lib.guards import can_manage_campaign
 from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
-from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
+from vweb.lib.image_uploads import handle_image_delete, handle_image_upload
 from vweb.routes.chapter.views_notes import ChapterNotesTableView
 
 if TYPE_CHECKING:
@@ -308,9 +308,9 @@ class ChapterImageUploadView(MethodView):
         chapter = fetch_chapter_or_404(campaign_id, book_id, chapter_id)
         svc = api_services.chapters(campaign_id, book_id)
 
-        assets = upload_and_append_asset(
-            svc=svc, parent_id=chapter_id, file=request.files.get("image")
-        )
+        handle_image_upload(svc=svc, parent_id=chapter_id, file=request.files.get("image"))
+
+        assets = svc.list_all_assets(chapter_id)
         note_count = count_notes(svc, chapter_id)
         content_html = _render_chapter_card(
             chapter=chapter,
