@@ -73,6 +73,9 @@ class CharacterTrait(BaseModel):
     """Response model for a character trait."""
 
     id: str
+    # The full sheet embeds traits without timestamps
+    date_created: datetime | None = None
+    date_modified: datetime | None = None
     character_id: str
     value: int
     trait: Trait

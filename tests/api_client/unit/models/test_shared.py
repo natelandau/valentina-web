@@ -92,11 +92,14 @@ class TestNote:
             date_modified="2024-01-15T10:30:00Z",
             title="Test Note",
             content="This is a test note.",
+            company_id="note-company-1",
         )
 
         assert note.id == "note123"
         assert note.title == "Test Note"
         assert note.content == "This is a test note."
+        assert note.company_id == "note-company-1"
+        assert note.user_id is None
 
 
 class TestNoteCreate:

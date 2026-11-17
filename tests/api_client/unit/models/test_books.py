@@ -29,7 +29,6 @@ class TestCampaignBook:
             date_modified="2024-01-15T10:30:00Z",
             name="Test Book",
             description="A test book",
-            asset_ids=["asset1", "asset2"],
             number=1,
             campaign_id="campaign123",
         )
@@ -37,7 +36,6 @@ class TestCampaignBook:
         assert book.id == "book123"
         assert book.name == "Test Book"
         assert book.description == "A test book"
-        assert book.asset_ids == ["asset1", "asset2"]
         assert book.number == 1
         assert book.campaign_id == "campaign123"
 
@@ -53,7 +51,6 @@ class TestCampaignBook:
         )
 
         assert book.description is None
-        assert book.asset_ids == []
         assert book.character_ids == []
 
     def test_character_ids_default_empty(self):
@@ -193,7 +190,6 @@ def _book_payload() -> dict:
         "date_modified": datetime.now(UTC).isoformat(),
         "name": "Book One",
         "description": "A book.",
-        "asset_ids": [],
         "character_ids": [],
         "number": 1,
         "campaign_id": "camp_1",
@@ -218,7 +214,6 @@ def test_campaign_book_detail_accepts_embedded_lists() -> None:
         "date_modified": datetime.now(UTC).isoformat(),
         "name": "Chapter 1",
         "description": None,
-        "asset_ids": [],
         "character_ids": [],
         "number": 1,
         "book_id": "book_1",

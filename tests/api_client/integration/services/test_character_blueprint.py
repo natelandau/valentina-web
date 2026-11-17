@@ -9,7 +9,7 @@ from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.exceptions import NotFoundError
 from vweb.api_client.models import (
     CharacterConcept,
-    CharacterSpecialty,
+    ConceptSpecialty,
     PaginatedResponse,
     SheetSection,
     Trait,
@@ -114,7 +114,7 @@ def character_concept_response_data() -> dict:
             name="Physical",
             max_specialties=1,
             specialties=[
-                CharacterSpecialty(
+                ConceptSpecialty(
                     name="Brawl: Kindred",
                     type="ACTION",
                     description="Skilled in fighting other Kindred",

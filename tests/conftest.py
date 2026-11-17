@@ -35,6 +35,7 @@ from vweb.lib.cache.global_context import GlobalContext
 _original_company_build = CompanyFactory.build
 
 _TEST_COMPANY_SETTINGS = CompanySettings(
+    id="settings-1",
     character_autogen_xp_cost=0,
     character_autogen_num_choices=3,
     character_autogen_starting_points=0,

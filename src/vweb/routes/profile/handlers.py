@@ -82,7 +82,8 @@ class QuickrollHandler:
     def update_item(self, item_id: str, form_data: dict[str, str]) -> None:
         """Update an existing quickroll from form data."""
         trait_ids = self._extract_trait_ids(form_data)
-        description = form_data.get("description", "").strip() or None
+        # An empty description is sent as-is so the API clears it
+        description = form_data.get("description", "").strip()
 
         request = QuickrollUpdate(
             name=form_data["name"].strip(),

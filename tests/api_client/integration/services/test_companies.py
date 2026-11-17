@@ -282,6 +282,22 @@ class TestCompaniesServiceUpdate:
         assert body == {"name": "Updated Name"}
 
     @respx.mock
+    def test_update_company_clears_description(self, vclient, base_url, company_response_data):
+        """Verify description=None sends null so the API clears it."""
+        # Given: A mocked update endpoint
+        route = respx.patch(f"{base_url}{Endpoints.COMPANY.format(company_id='co1')}").respond(
+            200, json={**company_response_data, "description": None}
+        )
+
+        # When: Clearing the description
+        vclient.companies.update("co1", description=None)
+
+        # Then: The description is sent as null
+        import json
+
+        assert json.loads(route.calls.last.request.content) == {"description": None}
+
+    @respx.mock
     def test_update_company_with_settings(self, vclient, base_url, company_response_data):
         """Verify updating company with settings object."""
         # Given: A mocked update endpoint

@@ -119,18 +119,18 @@ class TestCharacterInventoryHandlerOperations:
             times=1,
         )
 
-    def test_update_item_sets_empty_description_to_none(self, handler, fake_vclient) -> None:
-        """Verify update_item converts empty description to None."""
+    def test_update_item_clears_empty_description(self, handler, fake_vclient) -> None:
+        """Verify update_item clears the description when the field is blank."""
         # When updating with an empty description
         handler.update_item(
             "inv-1", {"name": "  Updated Sword  ", "type": "WEAPON", "description": "  "}
         )
 
-        # Then the API receives a stripped name and no description
+        # Then the API receives a stripped name and a null description, which clears it
         fake_vclient.assert_called(
             Routes.CHARACTERS_INVENTORY_UPDATE,
             params={"character_id": "char-123", "item_id": "inv-1"},
-            json={"name": "Updated Sword", "type": "WEAPON"},
+            json={"name": "Updated Sword", "type": "WEAPON", "description": None},
             times=1,
         )
 

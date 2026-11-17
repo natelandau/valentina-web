@@ -45,7 +45,7 @@ class Asset(BaseModel):
     mime_type: str
     original_filename: str
     public_url: str
-    uploaded_by_id: str
+    uploaded_by_id: str | None = None
     company_id: str
     character_id: str | None = None
     campaign_id: str | None = None
@@ -70,6 +70,12 @@ class Note(BaseModel):
     date_modified: datetime
     title: str
     content: str
+    company_id: str
+    user_id: str | None = None
+    campaign_id: str | None = None
+    book_id: str | None = None
+    chapter_id: str | None = None
+    character_id: str | None = None
 
 
 class NoteCreate(BaseModel):
@@ -200,17 +206,27 @@ class Trait(BaseModel):
     )
 
 
-class CharacterSpecialty(BaseModel):
-    """A character specialty for a trait."""
+class ConceptSpecialty(BaseModel):
+    """A specialty a character concept suggests."""
 
     name: str
     type: SpecialtyType
     description: str
 
 
+class CharacterSpecialty(BaseModel):
+    """A character specialty for a trait."""
+
+    id: str
+    name: str
+    type: SpecialtyType
+    description: str | None = None
+
+
 __all__ = [
     "Asset",
     "CharacterSpecialty",
+    "ConceptSpecialty",
     "GiftAttributes",
     "NameDescriptionSubDocument",
     "Note",

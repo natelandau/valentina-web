@@ -45,6 +45,8 @@ class TestCharacterTrait:
             id="ct123",
             character_id="char123",
             value=3,
+            date_created=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+            date_modified=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
             trait=trait,
         )
 
@@ -92,6 +94,8 @@ class TestCharacterTrait:
             "id": "ct456",
             "character_id": "char789",
             "value": 5,
+            "date_created": "2024-01-15T10:30:00Z",
+            "date_modified": "2024-01-15T10:30:00Z",
             "trait": {
                 "id": "trait456",
                 "name": "Dexterity",
@@ -128,6 +132,8 @@ class TestCharacterTrait:
             "id": "ct456",
             "character_id": "char789",
             "value": 2,
+            "date_created": "2024-01-15T10:30:00Z",
+            "date_modified": "2024-01-15T10:30:00Z",
             "trait": {
                 "id": "trait456",
                 "name": "Melee",
@@ -168,6 +174,8 @@ class TestCharacterTrait:
             "id": "ct789",
             "character_id": "char111",
             "value": 2,
+            "date_created": "2024-01-15T10:30:00Z",
+            "date_modified": "2024-01-15T10:30:00Z",
             "trait": {
                 "id": "trait789",
                 "name": "Firearms",
@@ -474,6 +482,8 @@ def _character_trait_data(**overrides: object) -> dict:
         "id": "ct123",
         "character_id": "char123",
         "value": 3,
+        "date_created": "2024-01-15T10:30:00Z",
+        "date_modified": "2024-01-15T10:30:00Z",
         "trait": {
             "id": "trait123",
             "name": "Willpower",

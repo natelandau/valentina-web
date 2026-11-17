@@ -230,10 +230,12 @@ class TestCampaignExperience:
 
     def test_defaults(self):
         """Verify default values for experience fields."""
-        # When: Creating experience with only campaign_id
-        exp = CampaignExperience(campaign_id="campaign123")
+        # When: Creating experience with only the required fields
+        exp = CampaignExperience(id="exp123", user_id="user123", campaign_id="campaign123")
 
         # Then: Defaults are set correctly
+        assert exp.id == "exp123"
+        assert exp.user_id == "user123"
         assert exp.campaign_id == "campaign123"
         assert exp.xp_current == 0
         assert exp.xp_total == 0
@@ -243,6 +245,8 @@ class TestCampaignExperience:
         """Verify creating experience with all fields."""
         # When: Creating experience with all fields
         exp = CampaignExperience(
+            id="exp123",
+            user_id="user123",
             campaign_id="campaign123",
             xp_current=50,
             xp_total=100,
@@ -287,7 +291,6 @@ class TestUser:
         assert user.github_profile is None
         assert user.apple_profile is None
         assert user.campaign_experience == []
-        assert user.asset_ids == []
 
     def test_full_user(self):
         """Verify creating user with all fields populated."""
@@ -296,7 +299,9 @@ class TestUser:
         google = GoogleProfile(id="google123", email="user@gmail.com")
         github = GitHubProfile(id="github123", login="testuser")
         apple = AppleProfile(id="apple123", email="full@privaterelay.appleid.com")
-        experience = CampaignExperience(campaign_id="campaign1", xp_current=50)
+        experience = CampaignExperience(
+            id="exp1", user_id="user123", campaign_id="campaign1", xp_current=50
+        )
 
         # When: Creating user with all fields
         user = User(
@@ -314,7 +319,6 @@ class TestUser:
             github_profile=github,
             apple_profile=apple,
             campaign_experience=[experience],
-            asset_ids=["asset1", "asset2"],
         )
 
         # Then: All fields are set correctly
@@ -325,7 +329,6 @@ class TestUser:
         assert user.apple_profile.id == "apple123"
         assert len(user.campaign_experience) == 1
         assert user.campaign_experience[0].xp_current == 50
-        assert user.asset_ids == ["asset1", "asset2"]
 
     def test_user_from_api_response(self):
         """Verify creating user from API response dict."""
@@ -359,9 +362,15 @@ class TestUser:
                 "fullname": "API User",
             },
             "campaign_experience": [
-                {"campaign_id": "campaign1", "xp_current": 100, "xp_total": 200, "cool_points": 10}
+                {
+                    "id": "exp1",
+                    "user_id": "507f1f77bcf86cd799439011",
+                    "campaign_id": "campaign1",
+                    "xp_current": 100,
+                    "xp_total": 200,
+                    "cool_points": 10,
+                }
             ],
-            "asset_ids": ["a1", "a2"],
         }
 
         # When: Creating user from dict
@@ -729,12 +738,24 @@ class TestNote:
             date_modified="2024-01-15T10:30:00Z",
             title="My Note",
             content="This is the content of my note.",
+            company_id="note-company-1",
+            user_id="note-user-1",
+            campaign_id="note-campaign-1",
+            book_id="note-book-1",
+            chapter_id="note-chapter-1",
+            character_id="note-character-1",
         )
 
         # Then: All fields are set correctly
         assert note.id == "note123"
         assert note.title == "My Note"
         assert note.content == "This is the content of my note."
+        assert note.company_id == "note-company-1"
+        assert note.user_id == "note-user-1"
+        assert note.campaign_id == "note-campaign-1"
+        assert note.book_id == "note-book-1"
+        assert note.chapter_id == "note-chapter-1"
+        assert note.character_id == "note-character-1"
 
 
 class TestNoteCreate:

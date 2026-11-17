@@ -1,6 +1,7 @@
 """Pydantic models for User API responses and requests."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -70,6 +71,8 @@ class CampaignExperience(BaseModel):
     for spending, total XP earned, and cool points.
     """
 
+    id: str
+    user_id: str
     campaign_id: str
     xp_current: int = 0
     xp_total: int = 0
@@ -106,7 +109,6 @@ class User(BaseModel):
     then the identity-provider-derived avatar (currently Discord), else ``None``.
     Prefer this over ``discord_profile.avatar_url`` for display."""
     campaign_experience: list[CampaignExperience] = Field(default_factory=list)
-    asset_ids: list[str] = Field(default_factory=list)
     lifetime_xp: int = 0
     lifetime_cool_points: int = 0
     num_quickrolls: int = 0
@@ -258,7 +260,8 @@ class QuickrollUpdate(BaseModel):
     """
 
     name: Name3to50 | None = None
-    description: LongText3 | None = None
+    # The API stores an empty description as null, so "" is how a caller clears it.
+    description: Literal[""] | LongText3 | None = None
     trait_ids: list[str] | None = None
 
 

@@ -191,6 +191,7 @@ class BooksService(NotesMixin, AssetsMixin):
         """Modify a campaign book's properties.
 
         Only include fields that need to be changed; omitted fields remain unchanged.
+        Set description to None to clear it.
 
         Args:
             book_id: The ID of the book to update.
@@ -210,7 +211,7 @@ class BooksService(NotesMixin, AssetsMixin):
         body = request if request is not None else self._validate_request(BookUpdate, **kwargs)
         return self._call(
             Routes.BOOKS_UPDATE,
-            json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            json=self._update_payload(body, clearable={"description"}),
             book_id=book_id,
         )
 

@@ -500,13 +500,9 @@ class TestCharactersServiceCreate:
     def test_create_character_with_traits(self, vclient, base_url, character_response_data) -> None:
         """Verify creating a character with traits."""
         # Given: A mocked create endpoint
-        response_data = {
-            **character_response_data,
-            "character_trait_ids": ["trait123", "trait456"],
-        }
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=MockResponse(201, json=response_data))
+        ).mock(return_value=MockResponse(201, json=character_response_data))
 
         # Given: Traits to assign
         from vweb.api_client.models.character_trait import CharacterCreateTraitAssign
@@ -529,7 +525,6 @@ class TestCharactersServiceCreate:
         # Then: The route was called and character is returned
         assert route.called
         assert isinstance(result, Character)
-        assert len(result.character_trait_ids) == 2
 
         # Verify request body includes traits
         import json
@@ -657,6 +652,63 @@ class TestCharactersServiceUpdate:
 
         body = json.loads(route.calls.last.request.content)
         assert body == {"name_first": "Renamed", "name_nick": None, "age": None, "concept_id": None}
+
+    @respx.mock
+    def test_update_character_clears_nested_attributes(
+        self, vclient, base_url, character_response_data
+    ) -> None:
+        """Verify None on a clearable class attribute sends null inside its parent object."""
+        # Given: A mocked update endpoint
+        route = respx.patch(
+            f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', character_id='char123')}"
+        ).mock(return_value=MockResponse(200, json=character_response_data))
+
+        # When: Changing the clan while clearing the sire, and clearing the player
+        vclient.characters("on-behalf-of-user", company_id="company123").update(
+            "char123",
+            vampire_attributes={"clan_id": "clan1", "sire": None},
+            user_player_id=None,
+        )
+
+        # Then: The cleared fields are sent as null and unset ones stay out
+        import json
+
+        body = json.loads(route.calls.last.request.content)
+        assert body == {
+            "user_player_id": None,
+            "vampire_attributes": {"clan_id": "clan1", "sire": None},
+        }
+
+    @respx.mock
+    def test_update_inventory_item_clears_description(self, vclient, base_url) -> None:
+        """Verify description=None on an inventory update sends null to clear it."""
+        # Given: A mocked inventory update endpoint
+        route = respx.patch(
+            f"{base_url}{Endpoints.CHARACTER_INVENTORY_ITEM.format(company_id='company123', character_id='char123', item_id='item1')}"
+        ).mock(
+            return_value=MockResponse(
+                200,
+                json={
+                    "id": "item1",
+                    "character_id": "char123",
+                    "name": "Knife",
+                    "type": "WEAPON",
+                    "description": None,
+                    "date_created": "2024-01-15T10:30:00Z",
+                    "date_modified": "2024-01-15T10:30:00Z",
+                },
+            )
+        )
+
+        # When: Clearing the description
+        vclient.characters("on-behalf-of-user", company_id="company123").update_inventory_item(
+            "char123", "item1", description=None
+        )
+
+        # Then: The description is sent as null
+        import json
+
+        assert json.loads(route.calls.last.request.content) == {"description": None}
 
     @respx.mock
     def test_update_character_not_found(self, vclient, base_url) -> None:

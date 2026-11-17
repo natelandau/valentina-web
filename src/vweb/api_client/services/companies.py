@@ -173,6 +173,7 @@ class CompaniesService(BaseService):
         """Modify a company's properties.
 
         Only include fields that need to be changed; omitted fields remain unchanged.
+        Set description to None to clear it.
 
         Args:
             company_id: The ID of the company to update.
@@ -193,7 +194,7 @@ class CompaniesService(BaseService):
         body = request if request is not None else self._validate_request(CompanyUpdate, **kwargs)
         return self._call(
             Routes.COMPANIES_UPDATE,
-            json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            json=self._update_payload(body, clearable={"description"}),
             company_id=company_id,
         )
 

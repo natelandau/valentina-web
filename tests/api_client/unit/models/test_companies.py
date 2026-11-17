@@ -24,6 +24,7 @@ class TestCompanySettings:
     def _full_settings_kwargs(self) -> dict[str, int | str]:
         """Return a complete set of valid kwargs for CompanySettings."""
         return {
+            "id": "settings-1",
             "character_autogen_xp_cost": 10,
             "character_autogen_num_choices": 3,
             "character_autogen_starting_points": 15,
@@ -279,6 +280,7 @@ class TestCompany:
             description=None,
             email="test@example.com",
             settings=CompanySettings(
+                id="settings-1",
                 character_autogen_xp_cost=10,
                 character_autogen_num_choices=3,
                 character_autogen_starting_points=5,
@@ -303,6 +305,7 @@ class TestCompany:
         """Verify creating company with all fields populated."""
         # Given: Settings with some values
         settings = CompanySettings(
+            id="settings-1",
             character_autogen_xp_cost=15,
             character_autogen_num_choices=3,
             character_autogen_starting_points=10,
@@ -347,6 +350,7 @@ class TestCompany:
             "email": "api@example.com",
             "resources_modified_at": "2024-01-15T10:30:00Z",
             "settings": {
+                "id": "settings123",
                 "character_autogen_xp_cost": 10,
                 "character_autogen_num_choices": 3,
                 "character_autogen_starting_points": 5,

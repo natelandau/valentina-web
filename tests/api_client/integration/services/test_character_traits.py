@@ -664,12 +664,16 @@ class TestCharacterTraitsServiceMultiplePages:
             "id": "ct1",
             "character_id": "char123",
             "value": 1,
+            "date_created": "2024-01-15T10:30:00Z",
+            "date_modified": "2024-01-15T10:30:00Z",
             "trait": {**trait_response_data, "id": "trait1", "name": "Strength"},
         }
         trait2 = {
             "id": "ct2",
             "character_id": "char123",
             "value": 2,
+            "date_created": "2024-01-15T10:30:00Z",
+            "date_modified": "2024-01-15T10:30:00Z",
             "trait": {**trait_response_data, "id": "trait2", "name": "Dexterity"},
         }
 

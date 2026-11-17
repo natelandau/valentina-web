@@ -25,7 +25,6 @@ class Campaign(BaseModel):
     name: str
     description: str | None = None
     in_game_date: date | None = None
-    asset_ids: list[str] = Field(default_factory=list)
     desperation: int = 0
     danger: int = 0
     company_id: str

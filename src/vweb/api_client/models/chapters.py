@@ -21,7 +21,6 @@ class CampaignChapter(BaseModel):
     )
     name: str = Field(..., description="Chapter name (3-50 characters).")
     description: str | None = Field(default=None, description="Chapter description.")
-    asset_ids: list[str] = Field(default_factory=list, description="List of associated asset IDs.")
     character_ids: list[str] = Field(
         default_factory=list, description="List of associated character IDs."
     )

@@ -124,19 +124,23 @@ class BaseService:
 
         Args:
             body: The update request model.
-            clearable: Field names the API clears when sent null.
+            clearable: Field names the API clears when sent null. Name a field of a nested
+                model as ``parent.field``.
 
         Returns:
             The JSON payload for the request.
         """
         payload = body.model_dump(exclude_none=True, exclude_unset=True, mode="json")
-        payload.update(
-            dict.fromkeys(
-                field
-                for field in clearable
-                if field in body.model_fields_set and getattr(body, field) is None
-            )
-        )
+        for field in clearable:
+            parent_name, _, child_name = field.rpartition(".")
+            model: BaseModel | None = getattr(body, parent_name) if parent_name else body
+            if (
+                model is not None
+                and child_name in model.model_fields_set
+                and getattr(model, child_name) is None
+            ):
+                target = payload.setdefault(parent_name, {}) if parent_name else payload
+                target[child_name] = None
         return payload
 
     def _validate_request(self, request_class: type[T], **kwargs: Any) -> T:

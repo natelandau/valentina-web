@@ -140,6 +140,7 @@ class TestManualProfileView:
         company = CompanyFactory.build(
             name="Test Company",
             settings=CompanySettings(
+                id="settings-1",
                 character_autogen_xp_cost=0,
                 character_autogen_num_choices=3,
                 character_autogen_starting_points=0,
