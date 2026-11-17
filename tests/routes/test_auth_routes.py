@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from tests.helpers import identify_resolving
 from vweb.api_client.models import IdentityResolution, UserLookupResult
 from vweb.api_client.testing import UserFactory
@@ -564,17 +566,14 @@ class TestAppleCallbackView:
 class TestLogoutView:
     """Tests for the logout route."""
 
-    def test_logout_clears_session(self, client, mocker):
+    @pytest.mark.usefixtures("fake_vclient")
+    def test_logout_clears_session(self, client):
         """Verify POST /auth/logout clears session and redirects to index."""
         # Given a session with a user_id
         with client.session_transaction() as sess:
             assert sess.get("user_id") is not None
 
-        # Given a valid CSRF token (mock profile API call triggered by get_csrf)
-        mock_svc = MagicMock()
-        mock_svc.get_statistics.return_value = MagicMock()
-        mocker.patch("vweb.routes.profile.views.users_service", return_value=mock_svc)
-
+        # Given a valid CSRF token
         from tests.conftest import get_csrf
 
         csrf_token = get_csrf(client)

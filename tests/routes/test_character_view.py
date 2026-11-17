@@ -98,11 +98,11 @@ class TestCharacterDelete:
         # Then a 403 is returned
         assert response.status_code == 403
 
+    @pytest.mark.usefixtures("fake_vclient")
     def test_clears_cache_on_delete(self, client, mocker, mock_character_lookup) -> None:
         """Verify global context cache is cleared after deletion."""
-        # Given a mocked vclient delete
+        # Given an API that accepts the delete
         char, _ = mock_character_lookup
-        mocker.patch("vweb.routes.character_view.views.characters_service")
         mock_clear = mocker.patch("vweb.lib.cache.global_context.clear")
 
         csrf = get_csrf(client)

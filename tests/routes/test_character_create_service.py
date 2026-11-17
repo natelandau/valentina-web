@@ -9,6 +9,7 @@ from vweb.api_client.testing import (
     CharacterConceptFactory,
     CharacterFactory,
     ChargenSessionResponseFactory,
+    Routes,
     VampireClanFactory,
     WerewolfAuspiceFactory,
     WerewolfTribeFactory,
@@ -167,24 +168,19 @@ class TestFinalizeSession:
 class TestFetchFormOptions:
     """Tests for fetch_form_options()."""
 
-    def test_returns_all_dropdown_data(self, app, mocker) -> None:
+    def test_returns_all_dropdown_data(self, app, mocker, fake_vclient) -> None:
         """Verify fetch_form_options returns enum lists and blueprint data."""
         # Given mocked blueprint service, base cache store, and options
         make_cache_store_mock(mocker, "vweb.lib.cache.base.cache")
 
-        mock_bp_service = MagicMock()
         concepts = CharacterConceptFactory.batch(2)
         clans = VampireClanFactory.batch(3)
         tribes = WerewolfTribeFactory.batch(2)
         auspices = WerewolfAuspiceFactory.batch(2)
-        mock_bp_service.list_all_concepts.return_value = concepts
-        mock_bp_service.list_all_vampire_clans.return_value = clans
-        mock_bp_service.list_all_werewolf_tribes.return_value = tribes
-        mock_bp_service.list_all_werewolf_auspices.return_value = auspices
-        mocker.patch(
-            "vweb.routes.character_create.autogen_services.character_blueprint_service",
-            return_value=mock_bp_service,
-        )
+        fake_vclient.set_response(Routes.BLUEPRINT_CONCEPTS_LIST, items=concepts)
+        fake_vclient.set_response(Routes.BLUEPRINT_VAMPIRE_CLANS_LIST, items=clans)
+        fake_vclient.set_response(Routes.BLUEPRINT_WEREWOLF_TRIBES_LIST, items=tribes)
+        fake_vclient.set_response(Routes.BLUEPRINT_WEREWOLF_AUSPICES_LIST, items=auspices)
 
         from vweb.lib.cache.options import ApiOptions, CharacterOptions
 
@@ -220,16 +216,11 @@ class TestFetchFormOptions:
 class TestListSessions:
     """Tests for list_sessions."""
 
-    def test_returns_sessions_from_api(self, app: Flask, mocker) -> None:
+    def test_returns_sessions_from_api(self, app: Flask, fake_vclient) -> None:
         """Verify list_sessions returns sessions from the API."""
-        # Given a mocked autogen service with two sessions
-        mock_service = MagicMock()
+        # Given an API with two chargen sessions
         sessions = ChargenSessionResponseFactory.batch(2)
-        mock_service.list_all.return_value = sessions
-        mocker.patch(
-            "vweb.routes.character_create.autogen_services.character_autogen_service",
-            return_value=mock_service,
-        )
+        fake_vclient.set_response(Routes.CHARACTERS_CHARGEN_SESSIONS_LIST, items=sessions)
 
         from vweb.routes.character_create.autogen_services import list_sessions
 
@@ -241,18 +232,12 @@ class TestListSessions:
             result = list_sessions(user_id="u1", campaign_id="c1")
 
         # Then both sessions are returned
-        assert len(result) == 2
-        mock_service.list_all.assert_called_once()
+        assert result == sessions
 
-    def test_returns_empty_list_when_no_sessions(self, app: Flask, mocker) -> None:
+    def test_returns_empty_list_when_no_sessions(self, app: Flask, fake_vclient) -> None:
         """Verify list_sessions returns empty list when no sessions exist."""
-        # Given a mocked autogen service with no sessions
-        mock_service = MagicMock()
-        mock_service.list_all.return_value = []
-        mocker.patch(
-            "vweb.routes.character_create.autogen_services.character_autogen_service",
-            return_value=mock_service,
-        )
+        # Given an API with no chargen sessions
+        fake_vclient.set_response(Routes.CHARACTERS_CHARGEN_SESSIONS_LIST, items=[])
 
         from vweb.routes.character_create.autogen_services import list_sessions
 

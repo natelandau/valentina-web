@@ -9,6 +9,7 @@ import pytest
 
 from vweb.api_client.exceptions import NotFoundError, ServerError, UnprocessableEntityError
 from vweb.api_client.models import UserLookupResult
+from vweb.api_client.testing import Routes
 from vweb.routes.auth.services import (
     build_companies_mapping,
     identify_in_companies,
@@ -74,14 +75,10 @@ class TestLookupUserCompanies:
         mock_svc.by_github_id.assert_called_once_with("gh-999")
         mock_svc.by_email.assert_called_once_with("found@example.com")
 
-    @patch("vweb.routes.auth.services.user_lookup_service")
-    def test_empty_results_when_no_match(self, mock_svc_factory) -> None:
+    def test_empty_results_when_no_match(self, fake_vclient) -> None:
         """Verify lookup returns empty list when neither provider ID nor email matches."""
-        # Given a lookup service that finds nothing
-        mock_svc = MagicMock()
-        mock_svc.by_google_id.return_value = []
-        mock_svc.by_email.return_value = []
-        mock_svc_factory.return_value = mock_svc
+        # Given a lookup endpoint that finds nothing
+        fake_vclient.set_response(Routes.USERS_LOOKUP, items=[])
 
         # When looking up by google provider
         results = lookup_user_companies(

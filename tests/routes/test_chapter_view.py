@@ -8,7 +8,7 @@ import pytest
 
 from tests.conftest import get_csrf
 from tests.helpers import build_global_context
-from vweb.api_client.testing import CampaignChapterFactory
+from vweb.api_client.testing import CampaignChapterFactory, Routes
 
 if TYPE_CHECKING:
     from vweb.api_client.models import CampaignChapter
@@ -334,7 +334,7 @@ class TestChapterSidebarCharacters:
     """Tests for associated-character links in the chapter sidebar."""
 
     def test_sidebar_links_associated_characters(
-        self, client, mocker, mock_campaign, mock_book
+        self, client, mocker, mock_campaign, mock_book, fake_vclient
     ) -> None:
         """Verify the chapter sidebar renders a link to each associated character."""
         # Given a campaign whose roster contains the associated character
@@ -353,9 +353,8 @@ class TestChapterSidebarCharacters:
         mocker.patch(
             "vweb.routes.chapter.views.fetch_book_or_404", return_value=(mock_book, mock_campaign)
         )
-        svc = mocker.patch("vweb.routes.chapter.views.chapters_service").return_value
-        svc.list_all_assets.return_value = []
-        svc.list_all_notes.return_value = []
+        fake_vclient.set_response(Routes.CHAPTERS_ASSETS_LIST, items=[])
+        fake_vclient.set_response(Routes.CHAPTERS_NOTES_LIST, items=[])
         mocker.patch("vweb.lib.cache.campaign_content.chapters", return_value=[chapter])
 
         # When viewing the chapter

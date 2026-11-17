@@ -7,7 +7,7 @@ from werkzeug.exceptions import NotFound
 
 from tests.conftest import get_csrf
 from tests.helpers import build_global_context
-from vweb.api_client.testing import CampaignBookFactory
+from vweb.api_client.testing import CampaignBookFactory, Routes
 
 
 @pytest.fixture
@@ -29,10 +29,9 @@ def _mock_chapters_service(mocker, mock_chapters) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _mock_books_service(mocker) -> None:
-    """Mock the books service so list_all_assets does not hit the API."""
-    svc = mocker.patch("vweb.routes.book.views.books_service").return_value
-    svc.list_all_assets.return_value = []
+def _mock_books_service(fake_vclient) -> None:
+    """Serve an empty asset list so book pages render without images."""
+    fake_vclient.set_response(Routes.BOOKS_ASSETS_LIST, items=[])
 
 
 @pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")
@@ -147,6 +146,7 @@ class TestBookUpdate:
         """Verify updating a book invalidates the campaign's book-list cache."""
         # Given a privileged user and a patched cache-clear
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
+        mocker.patch("vweb.routes.book.views.books_service")
         clear_cache = mocker.patch("vweb.lib.cache.campaign_content.clear")
         csrf = get_csrf(client)
 

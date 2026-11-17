@@ -10,7 +10,7 @@ import pytest
 
 from tests.conftest import get_csrf
 from tests.helpers import make_image_bytes
-from vweb.api_client.testing import AssetFactory, CampaignChapterFactory, CharacterFactory
+from vweb.api_client.testing import AssetFactory, CampaignChapterFactory, CharacterFactory, Routes
 from vweb.constants import MAX_IMAGE_SIZE
 
 if TYPE_CHECKING:
@@ -313,15 +313,12 @@ class TestCharacterImagesTabRendering:
     """Tests for GET /character/<id>/images via HTMX."""
 
     def test_images_tab_passes_assets_to_template(
-        self, client, mocker, mock_character_lookup, sample_assets
+        self, client, mocker, fake_vclient, mock_character_lookup, sample_assets
     ) -> None:
         """Verify the images tab renders with asset data."""
         # Given a mocked character service returning assets
         char, _ = mock_character_lookup
-        mock_svc = mocker.patch(
-            "vweb.routes.character_view.views.characters_service",
-        ).return_value
-        mock_svc.list_all_assets.return_value = sample_assets
+        fake_vclient.set_response(Routes.CHARACTERS_ASSETS_LIST, items=sample_assets)
 
         # When requesting the images tab via HTMX
         response = client.get(
@@ -335,15 +332,12 @@ class TestCharacterImagesTabRendering:
         assert "carousel" in body
 
     def test_images_tab_full_page_load_renders_assets(
-        self, client, mocker, mock_character_lookup, sample_assets
+        self, client, mocker, fake_vclient, mock_character_lookup, sample_assets
     ) -> None:
         """Verify hitting /character/<id>/images directly threads assets through Main.jinja."""
         # Given a mocked character service returning assets and a non-HTMX request
         _ = mock_character_lookup
-        mock_svc = mocker.patch(
-            "vweb.routes.character_view.views.characters_service",
-        ).return_value
-        mock_svc.list_all_assets.return_value = sample_assets
+        fake_vclient.set_response(Routes.CHARACTERS_ASSETS_LIST, items=sample_assets)
 
         # When requesting the images tab without HX-Request
         response = client.get("/character/char-123/images")
@@ -354,7 +348,9 @@ class TestCharacterImagesTabRendering:
         assert "image-carousel" in body
         assert sample_assets[0].public_url in body
 
-    def test_images_tab_shows_empty_state_for_viewer(self, client, mocker, mock_campaign) -> None:
+    def test_images_tab_shows_empty_state_for_viewer(
+        self, client, mocker, fake_vclient, mock_campaign
+    ) -> None:
         """Verify non-editor sees viewer empty state when no images exist."""
         # Given a character owned by a different user (viewer)
         char = CharacterFactory.build(
@@ -366,10 +362,7 @@ class TestCharacterImagesTabRendering:
             "vweb.routes.character_view.views.get_character_and_campaign",
             return_value=(char, mock_campaign),
         )
-        mock_svc = mocker.patch(
-            "vweb.routes.character_view.views.characters_service",
-        ).return_value
-        mock_svc.list_all_assets.return_value = []
+        fake_vclient.set_response(Routes.CHARACTERS_ASSETS_LIST, items=[])
 
         # When requesting the images tab
         response = client.get(
@@ -557,15 +550,12 @@ class TestCharacterImageDelete:
         assert response.status_code == 403
 
     def test_delete_returns_updated_carousel(
-        self, client, mocker, mock_character_lookup, sample_assets
+        self, client, mocker, fake_vclient, mock_character_lookup, sample_assets
     ) -> None:
         """Verify delete returns the updated images content fragment."""
         # Given a mocked character service with remaining assets
         char, _ = mock_character_lookup
-        mock_svc = mocker.patch(
-            "vweb.routes.character_view.views.characters_service",
-        ).return_value
-        mock_svc.list_all_assets.return_value = sample_assets[:2]
+        fake_vclient.set_response(Routes.CHARACTERS_ASSETS_LIST, items=sample_assets[:2])
         csrf = get_csrf(client)
 
         # When deleting an image

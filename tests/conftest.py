@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 import subprocess
-from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -17,6 +16,7 @@ from tests.helpers import (
 from vweb.api_client.models.companies import CompanySettings
 from vweb.api_client.models.diceroll import DiceRollResultSchema
 from vweb.api_client.testing import (
+    AssetFactory,
     CampaignBookFactory,
     CampaignChapterFactory,
     CampaignFactory,
@@ -61,7 +61,7 @@ if TYPE_CHECKING:
     from flask.testing import FlaskClient
     from pytest_mock import MockerFixture
 
-    from vweb.api_client.models import Campaign, CampaignBook, CampaignChapter, Character
+    from vweb.api_client.models import Asset, Campaign, CampaignBook, CampaignChapter, Character
 
 
 @pytest.fixture
@@ -186,10 +186,11 @@ def mock_character() -> Character:
 
 
 @pytest.fixture
-def mock_asset() -> SimpleNamespace:
-    """Build a stand-in asset object."""
-    return SimpleNamespace(
+def mock_asset() -> Asset:
+    """Build an image asset."""
+    return AssetFactory.build(
         id="asset-1",
+        asset_type="image",
         public_url="https://cdn.example.com/img.jpg",
         original_filename="img.jpg",
     )

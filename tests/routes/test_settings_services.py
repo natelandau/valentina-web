@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from tests.helpers import seed_session
-from vweb.api_client.testing import UserFactory
+from vweb.api_client.testing import Routes, UserFactory
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -17,11 +17,7 @@ if TYPE_CHECKING:
 class TestListPendingAndApproved:
     """list_pending_and_approved partitions users via two service calls."""
 
-    def test_list_pending_and_approved_excludes_self(
-        self,
-        app: Flask,
-        mocker,
-    ) -> None:
+    def test_list_pending_and_approved_excludes_self(self, app: Flask, fake_vclient) -> None:
         """Verify the current admin is filtered from both lists."""
         # Given two unapproved users (one is "self") and three approved (one is "self")
         self_id = "self-id"
@@ -34,13 +30,8 @@ class TestListPendingAndApproved:
             UserFactory.build(id="user-1", role="PLAYER"),
             UserFactory.build(id="user-2", role="STORYTELLER"),
         ]
-        svc = MagicMock()
-        svc.list_all_unapproved.return_value = pending
-        svc.list_all.return_value = approved
-        mocker.patch(
-            "vweb.routes.admin.services.users_service",
-            return_value=svc,
-        )
+        fake_vclient.set_response(Routes.USERS_UNAPPROVED_LIST, items=pending)
+        fake_vclient.set_response(Routes.USERS_LIST, items=approved)
 
         # When partitioning with the self id excluded
         from vweb.routes.admin.services import list_pending_and_approved
