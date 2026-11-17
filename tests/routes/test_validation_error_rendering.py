@@ -51,7 +51,13 @@ class TestDictionaryCreateErrorRendering:
         # When submitting the create form
         response = client.post(
             "/dictionary/term",
-            data={"term": "ab", "definition": "", "link": "", "synonyms": "", "csrf_token": csrf},
+            data={
+                "term": "ab",
+                "definition": "A discipline.",
+                "link": "",
+                "synonyms": "",
+                "csrf_token": csrf,
+            },
             headers={"HX-Request": "true"},
         )
 
