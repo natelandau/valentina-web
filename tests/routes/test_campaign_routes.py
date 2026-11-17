@@ -3,6 +3,7 @@
 import re
 
 import pytest
+from werkzeug.test import TestResponse
 
 from tests.conftest import get_csrf
 from tests.helpers import assert_has_element, build_global_context
@@ -345,74 +346,80 @@ class TestNavbarCampaignDropdown:
 class TestCampaignInGameDate:
     """The campaign form sets the in-game date that character ages are measured on."""
 
-    def test_create_sends_in_game_date(self, client, mocker, fake_vclient) -> None:
-        """Verify a submitted in-game date reaches the create payload."""
-        from datetime import date
+    @pytest.fixture(autouse=True)
+    def _storyteller(self, mocker) -> None:
+        self.ctx = build_global_context(user_role="STORYTELLER")
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=self.ctx)
 
-        # Given a STORYTELLER user and a mocked campaign service
-        ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mock_service = mocker.MagicMock()
-        mock_service.create.return_value = CampaignFactory.build(name="Noir")
-        mocker.patch("vweb.routes.campaign.views.sync_campaigns_service", return_value=mock_service)
-        mocker.patch("vweb.lib.cache.global_context.clear")
-
-        # When creating a campaign set in June 1990
-        csrf = get_csrf(client)
-        client.post(
-            "/campaign/create",
-            data={"name": "Noir", "in_game_date": "1990-06-01"},
-            headers={"X-CSRFToken": csrf, "HX-Request": "true"},
+    def _post(self, client, url: str, data: dict[str, str]) -> TestResponse:
+        return client.post(
+            url, data=data, headers={"X-CSRFToken": get_csrf(client), "HX-Request": "true"}
         )
 
-        # Then the payload carries the in-game date
-        payload = mock_service.create.call_args.args[0]
-        assert payload.in_game_date == date(1990, 6, 1)
+    def test_create_sends_in_game_date(self, client, fake_vclient) -> None:
+        """Verify a submitted in-game date reaches the create request."""
+        fake_vclient.set_response(Routes.CAMPAIGNS_CREATE, model=CampaignFactory.build())
 
-    def test_update_sends_in_game_date(self, client, mocker, fake_vclient) -> None:
-        """Verify moving the in-game date forward reaches the update payload."""
-        from datetime import date
+        self._post(client, "/campaign/create", {"name": "Noir", "in_game_date": "1990-06-01"})
 
-        # Given a STORYTELLER user and a mocked campaign service
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mock_service = mocker.MagicMock()
-        mock_service.update.return_value = campaign
-        mocker.patch("vweb.routes.campaign.views.sync_campaigns_service", return_value=mock_service)
-        mocker.patch("vweb.lib.cache.global_context.clear")
+        fake_vclient.assert_called(
+            Routes.CAMPAIGNS_CREATE, json={"name": "Noir", "in_game_date": "1990-06-01"}, times=1
+        )
 
-        # When moving the campaign to 2003
-        csrf = get_csrf(client)
-        client.post(
+    def test_update_sends_in_game_date(self, client, fake_vclient) -> None:
+        """Verify moving the in-game date forward reaches the update request."""
+        campaign = self.ctx.campaigns[0]
+        fake_vclient.set_response(Routes.CAMPAIGNS_GET, model=campaign)
+        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=campaign)
+
+        self._post(
+            client,
             f"/campaign/{campaign.id}/update",
-            data={"name": campaign.name, "in_game_date": "2003-01-01"},
-            headers={"X-CSRFToken": csrf, "HX-Request": "true"},
+            {"name": campaign.name, "in_game_date": "2003-01-01"},
         )
 
-        # Then the payload carries the new date
-        payload = mock_service.update.call_args.args[1]
-        assert payload.in_game_date == date(2003, 1, 1)
-
-    def test_rejects_invalid_in_game_date(self, client, mocker) -> None:
-        """Verify an invalid date re-renders the form with an error and saves nothing."""
-        # Given a STORYTELLER user and a mocked campaign service
-        ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mock_service = mocker.MagicMock()
-        mocker.patch("vweb.routes.campaign.views.sync_campaigns_service", return_value=mock_service)
-
-        # When submitting an impossible date
-        csrf = get_csrf(client)
-        response = client.post(
-            "/campaign/create",
-            data={"name": "Noir", "in_game_date": "1990-02-31"},
-            headers={"X-CSRFToken": csrf, "HX-Request": "true"},
+        fake_vclient.assert_called(
+            Routes.CAMPAIGNS_UPDATE, json_subset={"in_game_date": "2003-01-01"}, times=1
         )
 
-        # Then the form shows the error and nothing is created
+    def test_update_blank_date_clears_it(self, client, fake_vclient) -> None:
+        """Verify blanking the in-game date sends null so the API clears it."""
+        campaign = self.ctx.campaigns[0]
+        fake_vclient.set_response(Routes.CAMPAIGNS_GET, model=campaign)
+        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=campaign)
+
+        self._post(
+            client, f"/campaign/{campaign.id}/update", {"name": campaign.name, "in_game_date": ""}
+        )
+
+        fake_vclient.assert_called(
+            Routes.CAMPAIGNS_UPDATE, json_subset={"in_game_date": None}, times=1
+        )
+
+    def test_rejects_invalid_in_game_date(self, client, fake_vclient) -> None:
+        """Verify an impossible date re-renders the form with an error and saves nothing."""
+        response = self._post(
+            client, "/campaign/create", {"name": "Noir", "in_game_date": "1990-02-31"}
+        )
+
         assert "In-game date must be a valid date." in response.get_data(as_text=True)
-        mock_service.create.assert_not_called()
+        fake_vclient.assert_not_called(Routes.CAMPAIGNS_CREATE)
+
+    def test_player_cannot_set_in_game_date(self, client, mocker, fake_vclient) -> None:
+        """Verify only users who manage campaigns can change the in-game date."""
+        ctx = build_global_context(user_role="PLAYER")
+        ctx.company.settings.permission_manage_campaign = "STORYTELLER"
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        campaign = ctx.campaigns[0]
+
+        response = self._post(
+            client,
+            f"/campaign/{campaign.id}/update",
+            {"name": campaign.name, "in_game_date": "2003-01-01"},
+        )
+
+        assert response.status_code == 403
+        fake_vclient.assert_not_called(Routes.CAMPAIGNS_UPDATE)
 
 
 class TestCampaignUpdateView:

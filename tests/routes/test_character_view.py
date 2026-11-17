@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -296,3 +296,37 @@ class TestSheetSpecialties:
 
         # Then no specialty element is rendered
         assert "trait-specialties" not in html
+
+
+class TestDateOfBirthBanner:
+    """The banner asking for a date of birth appears only where the age could follow it."""
+
+    @pytest.mark.parametrize(
+        "case",
+        [
+            (date(1990, 6, 1), None, "ALIVE", True),
+            (None, None, "ALIVE", False),
+            (date(1990, 6, 1), date(1960, 3, 15), "ALIVE", False),
+            (date(1990, 6, 1), None, "DEAD", False),
+        ],
+    )
+    def test_banner_needs_dated_campaign_and_living_character_without_birth_date(
+        self, client, mocker, mock_character_lookup, case
+    ) -> None:
+        """Verify the banner shows for a living character without a date of birth in a dated campaign."""
+        # Given the campaign's in-game date and the character's birth and status under test
+        in_game_date, date_of_birth, status, shown = case
+        char, campaign = mock_character_lookup
+        campaign.in_game_date = in_game_date
+        char.date_of_birth = date_of_birth
+        char.status = status
+        mocker.patch(
+            "vweb.lib.cache.character_sheet.get",
+            return_value=CharacterFullSheetFactory.build(character=char, sections=[]),
+        )
+
+        # When viewing the character
+        html = client.get(f"/character/{char.id}").get_data(as_text=True)
+
+        # Then the banner appears only in the expected case
+        assert ("Add date of birth" in html) is shown

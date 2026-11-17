@@ -6,7 +6,7 @@ import logging
 
 from flask import session
 
-from vweb.api_client.testing import Routes
+from vweb.api_client.testing import CharacterFactory, Routes
 from vweb.routes.character_create.manual_services import (
     build_trait_items,
     save_temp_character,
@@ -22,14 +22,14 @@ _FORM = {
 
 
 def _set_field_error(fake_vclient, route) -> None:
-    """Make ``route`` reject the name and the age with field errors."""
+    """Make ``route`` reject the name and the player with field errors."""
     fake_vclient.set_error(
         route,
         status_code=400,
         detail="Validation failed for one or more fields.",
         invalid_parameters=[
             {"field": "name_first", "message": "Name already taken"},
-            {"field": "age", "message": "Must be at least 0."},
+            {"field": "user_player_id", "message": "Unknown user."},
         ],
     )
 
@@ -52,35 +52,34 @@ class TestUnrenderedFieldErrors:
     """API errors on fields the profile form cannot show inline still reach the user."""
 
     def test_save_folds_unrendered_field_into_general(self, app, fake_vclient) -> None:
-        """Verify an age error lands in the banner while a name error stays inline."""
-        # Given the API rejects the name and the age
+        """Verify a player error lands in the banner while a name error stays inline."""
+        # Given the API rejects the name and the player
         _set_field_error(fake_vclient, Routes.CHARACTERS_CREATE)
 
         # When saving the temporary character
         errors = _save(app)
 
-        # Then the name error is inline and the age error is in the banner
-        assert errors == {
-            "name_first": "Name already taken",
-            "_general": "Validation failed for one or more fields. Age: Must be at least 0.",
-        }
+        # Then the name error is inline and the player error is in the banner
+        assert errors["name_first"] == "Name already taken"
+        assert errors["_general"].startswith("Validation failed for one or more fields.")
+        assert "Unknown user." in errors["_general"]
 
     def test_update_folds_unrendered_field_into_general(self, app, fake_vclient) -> None:
         """Verify edit mode folds the same way."""
-        # Given the API rejects the name and the age
+        # Given the API rejects the name and the player
         _set_field_error(fake_vclient, Routes.CHARACTERS_UPDATE)
 
         # When updating the profile
         errors = _update(app)
 
-        # Then the character was patched, and the age error is in the banner
+        # Then the character was patched, and the player error is in the banner
         fake_vclient.assert_called(
             Routes.CHARACTERS_UPDATE,
             params={"company_id": "company-1", "character_id": "char-1"},
             times=1,
         )
-        assert errors["_general"].endswith("Age: Must be at least 0.")
-        assert "age" not in errors
+        assert errors["_general"].endswith("Unknown user.")
+        assert "user_player_id" not in errors
 
 
 class TestCharacterTypeError:
@@ -156,36 +155,52 @@ class TestBuildTraitItems:
         assert [(item.trait_id, item.value) for item in items] == [("t1", 3), ("t5", 100)]
 
 
-class TestBirthYearPayload:
-    """The profile form's birth year reaches the API; age is no longer sent."""
+class TestAgePayload:
+    """The profile form sends an age or a date of birth, and clears the other."""
 
-    def test_save_sends_birth_year(self, app, characters_service) -> None:
-        """Verify creating a character sends the birth year and no age."""
-        # Given a form with a birth year
-        form = {**_FORM, "birth_year": "1967", "age": "40"}
-
-        # When saving the temporary character
+    @staticmethod
+    def _update(app, form: dict[str, str], *, keep_stored_age: bool = False) -> None:
         with app.test_request_context():
             session["user_id"] = "u1"
             session["company_id"] = "company-1"
-            save_temp_character("camp-1", form)
+            update_character_profile("char-1", {**_FORM, **form}, keep_stored_age=keep_stored_age)
 
-        # Then the payload carries the birth year and leaves age unset
-        payload = characters_service.create.call_args.args[0]
-        assert payload.birth_year == 1967
-        assert payload.age is None
-
-    def test_update_sends_birth_year(self, app, characters_service) -> None:
-        """Verify editing a profile sends the birth year."""
-        # Given a form with a BCE birth year
-        form = {**_FORM, "birth_year": "-1250"}
-
-        # When updating the profile
+    def test_create_sends_date_of_birth(self, app, fake_vclient) -> None:
+        """Verify creating a character sends the date of birth and no age."""
+        fake_vclient.set_response(Routes.CHARACTERS_CREATE, model=CharacterFactory.build())
         with app.test_request_context():
             session["user_id"] = "u1"
             session["company_id"] = "company-1"
-            update_character_profile("char-1", form)
+            save_temp_character("camp-1", {**_FORM, "date_of_birth": "1960-03-15"})
 
-        # Then the payload carries the birth year
-        payload = characters_service.update.call_args.args[1]
-        assert payload.birth_year == -1250
+        body = fake_vclient.requests_for(Routes.CHARACTERS_CREATE)[0].json
+        assert body["date_of_birth"] == "1960-03-15"
+        assert "age" not in body
+
+    def test_update_with_date_of_birth_clears_age(self, app, fake_vclient) -> None:
+        """Verify choosing a date of birth clears the stored age."""
+        fake_vclient.set_response(Routes.CHARACTERS_UPDATE, model=CharacterFactory.build())
+        self._update(app, {"date_of_birth": "1960-03-15"})
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_UPDATE,
+            json_subset={"date_of_birth": "1960-03-15", "age": None},
+            times=1,
+        )
+
+    def test_update_with_age_clears_date_of_birth(self, app, fake_vclient) -> None:
+        """Verify choosing an age clears the date of birth."""
+        fake_vclient.set_response(Routes.CHARACTERS_UPDATE, model=CharacterFactory.build())
+        self._update(app, {"age": "3236"})
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_UPDATE,
+            json_subset={"age": 3236, "date_of_birth": None},
+            times=1,
+        )
+
+    def test_dead_character_keeps_age_at_death(self, app, fake_vclient) -> None:
+        """Verify a dead character's stored age survives saving a date of birth."""
+        fake_vclient.set_response(Routes.CHARACTERS_UPDATE, model=CharacterFactory.build())
+        self._update(app, {"date_of_birth": "1960-03-15"}, keep_stored_age=True)
+        body = fake_vclient.requests_for(Routes.CHARACTERS_UPDATE)[0].json
+        assert body["date_of_birth"] == "1960-03-15"
+        assert "age" not in body

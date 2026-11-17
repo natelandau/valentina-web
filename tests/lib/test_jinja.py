@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import date
+from types import SimpleNamespace
+
 import pytest
-from flask import flash
+from flask import flash, g
 
 import vweb
-from vweb.api_client.testing import CampaignBookFactory, CampaignFactory
+from vweb.api_client.testing import CampaignBookFactory, CampaignFactory, CharacterFactory
 from vweb.lib.jinja import (
     build_fragment_url,
-    character_age_label,
+    character_born_label,
     dice_notation,
     threat_badge_class,
 )
@@ -144,16 +147,29 @@ def test_dice_notation(modifier, expected) -> None:
 
 
 @pytest.mark.parametrize(
-    ("age", "birth_year", "expected"),
+    ("in_game_date", "date_of_birth", "age", "status", "expected"),
     [
-        (23, 1967, "23 (B. 1967)"),
-        (3236, -1250, "3236 (B. 1250 BCE)"),
-        (None, 1990, "B. 1990"),
-        (31, None, "31"),
-        (0, None, "0"),
-        (None, None, None),
+        (date(1990, 6, 1), date(1960, 3, 15), 30, "ALIVE", "15 Mar 1960"),
+        (date(1990, 6, 1), None, 23, "ALIVE", "c. 1967"),
+        (date(1990, 6, 1), None, 2000, "ALIVE", "c. 11 BCE"),
+        (date(1990, 6, 1), None, 1990, "ALIVE", "c. 1 BCE"),
+        (date(1990, 6, 1), None, 23, "DEAD", None),
+        (date(1990, 6, 1), None, None, "ALIVE", None),
+        (None, date(1960, 3, 15), 30, "ALIVE", None),
     ],
 )
-def test_character_age_label(age, birth_year, expected) -> None:
-    """Verify the sheet shows age with the birth year, BCE years, and the stored-age fallback."""
-    assert character_age_label(age, birth_year) == expected
+def test_character_born_label(app, in_game_date, date_of_birth, age, status, expected) -> None:
+    """Verify the Born row: a date of birth as recorded, an estimate from age, nothing undated."""
+    # Given a character in a campaign with the in-game date under test
+    campaign = CampaignFactory.build(id="camp-1", in_game_date=in_game_date)
+    character = CharacterFactory.build(
+        campaign_id="camp-1", date_of_birth=date_of_birth, age=age, status=status
+    )
+
+    # When building the label in a request whose context holds that campaign
+    with app.test_request_context():
+        g.global_context = SimpleNamespace(campaigns=[campaign])
+        label = character_born_label(character)
+
+    # Then it matches the rules for the Born row
+    assert label == expected

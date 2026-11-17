@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import TYPE_CHECKING
 
+from vweb.api_client.constants import MAX_CHARACTER_AGE
 from vweb.api_client.models.characters import (
     HunterAttributesCreate,
     HunterAttributesUpdate,
@@ -19,9 +21,6 @@ if TYPE_CHECKING:
     from vweb.api_client.models import Character
 
 _NAME_MIN_LENGTH: int = 3
-# The API accepts -9999 (BCE) to 9999.
-BIRTH_YEAR_MIN: int = -9999
-BIRTH_YEAR_MAX: int = 9999
 
 ClassCreateAttrs = tuple[
     VampireAttributesCreate | None,
@@ -71,29 +70,53 @@ def validate_profile(form_data: dict[str, str]) -> dict[str, str]:
     if character_class == "HUNTER" and not form_data.get("creed"):
         errors["creed"] = "Hunter creed is required."
 
-    birth_year = form_data.get("birth_year", "").strip()
-    if birth_year and parse_birth_year(birth_year) is None:
-        errors["birth_year"] = (
-            f"Birth year must be a whole number from {BIRTH_YEAR_MIN} to {BIRTH_YEAR_MAX}."
-        )
+    errors.update(_age_errors(form_data))
 
     return errors
 
 
-def parse_birth_year(value: str) -> int | None:
-    """Parse a birth year from form input, rejecting anything outside the API's range.
+def _age_errors(form_data: dict[str, str]) -> dict[str, str]:
+    """Check that at most one of age and date of birth is given, and that it is valid."""
+    age = form_data.get("age", "").strip()
+    date_of_birth = form_data.get("date_of_birth", "").strip()
+    if age and date_of_birth:
+        return {"date_of_birth": "Enter an age or a date of birth, not both."}
+    if age and parse_age(age) is None:
+        return {"age": f"Age must be a whole number from 0 to {MAX_CHARACTER_AGE:,}."}
+    if date_of_birth and parse_date_of_birth(date_of_birth) is None:
+        return {"date_of_birth": "Date of birth must be a valid date."}
+    return {}
+
+
+def parse_age(value: str) -> int | None:
+    """Parse an age from form input, rejecting anything outside the API's range.
 
     Args:
-        value: The submitted text; negative years are BCE.
+        value: The submitted text.
 
     Returns:
-        The year, or None when the text is blank, not a whole number, or out of range.
+        The age, or None when the text is blank, not a whole number, or out of range.
     """
     try:
-        year = int(value.strip())
+        age = int(value.strip())
     except ValueError:
         return None
-    return year if BIRTH_YEAR_MIN <= year <= BIRTH_YEAR_MAX else None
+    return age if 0 <= age <= MAX_CHARACTER_AGE else None
+
+
+def parse_date_of_birth(value: str) -> date | None:
+    """Parse a date of birth from a date input.
+
+    Args:
+        value: The submitted ``YYYY-MM-DD`` text.
+
+    Returns:
+        The date, or None when the text is blank or not a valid calendar date.
+    """
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError:
+        return None
 
 
 def character_to_form_data(character: Character) -> dict[str, str]:
@@ -115,9 +138,12 @@ def character_to_form_data(character: Character) -> dict[str, str]:
 
     optional: dict[str, str | None] = {
         "name_nick": character.name_nick,
-        # Shown as a hint for characters created before birth years were recorded.
-        "age": str(character.age) if character.age is not None else None,
-        "birth_year": str(character.birth_year) if character.birth_year is not None else None,
+        # Age and date of birth are alternatives; a date of birth wins because the API
+        # computes the age from it.
+        "date_of_birth": character.date_of_birth.isoformat() if character.date_of_birth else None,
+        "age": str(character.age)
+        if character.age is not None and character.date_of_birth is None
+        else None,
         "biography": character.biography,
         "demeanor": character.demeanor,
         "nature": character.nature,

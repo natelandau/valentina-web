@@ -172,7 +172,9 @@ class ManualProfileView(MethodView):
                 campaign, character_id, form_data, {"character_type": type_error}
             )
 
-        errors = update_character_profile(character_id, form_data)
+        errors = update_character_profile(
+            character_id, form_data, keep_stored_age=character.status == "DEAD"
+        )
         if errors:
             return self._render_edit_form(campaign, character_id, form_data, errors)
 

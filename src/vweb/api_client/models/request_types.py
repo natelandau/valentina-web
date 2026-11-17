@@ -5,6 +5,7 @@ from typing import Annotated
 from pydantic import Field
 
 from vweb.api_client.constants import (
+    MAX_CHARACTER_AGE,
     MAX_CUSTOM_FLAW_XP_COST,
     MAX_DICTIONARY_SYNONYMS,
     MAX_EXTRA_HEALTH_LEVELS,
@@ -32,3 +33,4 @@ ProviderToken = Annotated[str, Field(min_length=1, max_length=MAX_PROVIDER_TOKEN
 Generation = Annotated[int, Field(ge=MIN_VAMPIRE_GENERATION, le=MAX_VAMPIRE_GENERATION)]
 TraitScore = Annotated[int, Field(ge=0, le=MAX_TRAIT_VALUE)]
 ExtraHealthLevels = Annotated[int, Field(ge=0, le=MAX_EXTRA_HEALTH_LEVELS)]
+CharacterAge = Annotated[int, Field(ge=0, le=MAX_CHARACTER_AGE)]

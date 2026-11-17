@@ -23,6 +23,7 @@ from vweb.lib.htmx import hx_redirect
 
 bp = Blueprint("campaign", __name__)
 
+
 def _parse_in_game_date(value: str) -> date | None:
     """Parse the campaign's in-game date from a date input.
 
@@ -43,7 +44,6 @@ def _in_game_date_errors(value: str) -> list[str]:
     if value and _parse_in_game_date(value) is None:
         return ["In-game date must be a valid date."]
     return []
-
 
 
 class CampaignView(MethodView):
@@ -186,16 +186,13 @@ class CampaignUpdateView(MethodView):
         errors = name_errors(name, min_length=CAMPAIGN_NAME_MIN_LENGTH)
         errors += _in_game_date_errors(in_game_date)
         if not errors:
+            # An empty description is sent as-is so the API clears it
+            update = CampaignUpdate(name=name, description=description)
+            # A blank date clears it; a form without the field leaves it unchanged.
+            if "in_game_date" in request.form:
+                update.in_game_date = _parse_in_game_date(in_game_date)
             try:
-                api_services.campaigns().update(
-                    # An empty description is sent as-is so the API clears it
-                    campaign_id,
-                    CampaignUpdate(
-                        name=name,
-                        description=description,
-                        in_game_date=_parse_in_game_date(in_game_date),
-                    ),
-                )
+                api_services.campaigns().update(campaign_id, update)
             except USER_FACING_API_ERRORS as error:
                 errors = [api_error_message(error, fallback="Could not save the campaign")]
         if errors:

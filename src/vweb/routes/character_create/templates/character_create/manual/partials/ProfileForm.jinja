@@ -85,26 +85,52 @@
           </label>
         </fieldset>
 
-        <fieldset class="fieldset">
-          <legend class="fieldset-legend">Birth year</legend>
-          <label class="input w-full {% if errors.get('birth_year') %}input-error{% endif %}">
+        {#- Age and date of birth are alternatives; only the chosen input is enabled, so only it submits. -#}
+        {%- set age_mode = "date_of_birth" if form_data.get("date_of_birth") else "age" -%}
+        <fieldset class="fieldset" x-data="{ ageMode: '{{ age_mode }}' }">
+          <legend class="fieldset-legend">Age</legend>
+          <div class="flex gap-4" role="radiogroup" aria-label="Record age as">
+            <label class="label cursor-pointer gap-2">
+              <input type="radio" class="radio radio-sm" value="age" x-model="ageMode" {% if age_mode == "age" %}checked{% endif %} />
+              <span>Age</span>
+            </label>
+            <label class="label cursor-pointer gap-2">
+              <input type="radio" class="radio radio-sm" value="date_of_birth" x-model="ageMode" {% if age_mode == "date_of_birth" %}checked{% endif %} />
+              <span>Date of birth</span>
+            </label>
+          </div>
+          <label class="input w-full {% if errors.get('age') %}input-error{% endif %}" x-show="ageMode === 'age'">
             <input type="number"
-                   name="birth_year"
+                   name="age"
                    class="grow"
-                   value="{{ form_data.get('birth_year', '') }}"
-                   min="-9999"
-                   max="9999"
-                   step="1" />
+                   aria-label="Age"
+                   value="{{ form_data.get('age', '') }}"
+                   min="0"
+                   max="{{ MAX_CHARACTER_AGE }}"
+                   step="1"
+                   :disabled="ageMode !== 'age'" />
           </label>
-          {% if errors.get('birth_year') %}
-            <p class="text-error text-sm mt-1">{{ errors['birth_year'] }}</p>
-          {% endif %}
-          <p class="label whitespace-normal block">
-            Age is worked out from the campaign's in-game date{% if campaign.in_game_date %}, currently {{ campaign.in_game_date.year }}{% endif %}.
-            {% if form_data.get('age') and not form_data.get('birth_year') %}
-              This character was recorded as age {{ form_data.get('age') }}{% if campaign.in_game_date %}, so likely born in {{ campaign.in_game_date.year - form_data.get('age') | int }}{% endif %}.
+          <label class="input w-full {% if errors.get('date_of_birth') %}input-error{% endif %}" x-show="ageMode === 'date_of_birth'">
+            <input type="date"
+                   name="date_of_birth"
+                   class="grow"
+                   aria-label="Date of birth"
+                   value="{{ form_data.get('date_of_birth', '') }}"
+                   :disabled="ageMode !== 'date_of_birth'" />
+          </label>
+          {% for field in ("age", "date_of_birth") if errors.get(field) %}
+            <p class="text-error text-sm mt-1">{{ errors[field] }}</p>
+          {% endfor %}
+          <p class="label whitespace-normal block" x-show="ageMode === 'age'">
+            Optional. The age stays as entered.
+          </p>
+          <p class="label whitespace-normal block" x-show="ageMode === 'date_of_birth'">
+            Optional.
+            {% if campaign.in_game_date %}
+              The age is worked out from the campaign's in-game date, currently {{ campaign.in_game_date.strftime("%-d %b %Y") }}.
+            {% else %}
+              The age is worked out once the campaign has an in-game date.
             {% endif %}
-            Use a negative year for BCE.
           </p>
         </fieldset>
 

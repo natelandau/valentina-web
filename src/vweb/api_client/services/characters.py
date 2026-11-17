@@ -292,8 +292,9 @@ class CharactersService(NotesMixin, AssetsMixin):
             request: A CharacterUpdate model, OR pass fields as keyword arguments.
             **kwargs: Fields for CharacterUpdate if request is not provided.
                 All fields are optional: character_class, type, game_version, status,
-                name_first, name_last, name_nick, age, date_of_birth (datetime.date | None,
-                ISO 8601 calendar date; pass None to clear it), biography, demeanor, nature,
+                name_first, name_last, name_nick, age (0 to 100,000; pass None to clear it),
+                date_of_birth (datetime.date | None, ISO 8601 calendar date; pass None to
+                clear it), biography, demeanor, nature,
                 concept_id, user_player_id, vampire_attributes, werewolf_attributes, etc.
 
         Returns:
@@ -306,7 +307,7 @@ class CharactersService(NotesMixin, AssetsMixin):
             ValidationError: If the request data is invalid.
         """
         body = request if request is not None else self._validate_request(CharacterUpdate, **kwargs)
-        payload = self._update_payload(body, clearable={"date_of_birth"})
+        payload = self._update_payload(body, clearable={"age", "date_of_birth"})
         return self._call(Routes.CHARACTERS_UPDATE, json=payload, character_id=character_id)
 
     def delete(self, character_id: str) -> None:

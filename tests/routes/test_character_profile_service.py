@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from vweb.api_client.testing import CharacterFactory
 
 
@@ -163,16 +165,16 @@ class TestValidateProfile:
         assert "game_version" in errors
 
 
-class TestBirthYearValidation:
-    """Tests for birth year parsing and validation."""
+class TestAgeValidation:
+    """Tests for the profile form's age and date of birth fields."""
 
-    def _validate(self, app, birth_year: str) -> dict[str, str]:
+    def _validate(self, app, **fields: str) -> dict[str, str]:
         form_data = {
             "name_first": "Alice",
             "name_last": "Smith",
             "game_version": "V5",
             "character_class": "MORTAL",
-            "birth_year": birth_year,
+            **fields,
         }
         with app.test_request_context("/"):
             from flask import session
@@ -182,28 +184,40 @@ class TestBirthYearValidation:
 
             return validate_profile(form_data)
 
-    def test_accepts_blank_and_valid_years(self, app) -> None:
-        """Verify a blank birth year, a CE year, and a BCE year all pass."""
-        # When validating each / Then no errors are returned
-        assert self._validate(app, "") == {}
-        assert self._validate(app, "1967") == {}
-        assert self._validate(app, "-1250") == {}
+    @pytest.mark.parametrize(
+        "fields",
+        [{}, {"age": "0"}, {"age": "100000"}, {"date_of_birth": "1960-03-15"}],
+    )
+    def test_accepts_one_valid_value_or_none(self, app, fields: dict[str, str]) -> None:
+        """Verify a blank pair, an age in range, or a valid date of birth passes."""
+        assert self._validate(app, **fields) == {}
 
-    def test_rejects_out_of_range_or_non_numeric(self, app) -> None:
-        """Verify a year outside -9999 to 9999 or a non-number is rejected."""
-        # When validating each / Then a birth_year error is returned
-        assert "birth_year" in self._validate(app, "10000")
-        assert "birth_year" in self._validate(app, "nineteen")
-        assert "birth_year" in self._validate(app, "1967.5")
+    @pytest.mark.parametrize(
+        ("fields", "error_field"),
+        [
+            ({"age": "100001"}, "age"),
+            ({"age": "-1"}, "age"),
+            ({"age": "old"}, "age"),
+            ({"date_of_birth": "1960-02-31"}, "date_of_birth"),
+            ({"age": "30", "date_of_birth": "1960-03-15"}, "date_of_birth"),
+        ],
+    )
+    def test_rejects_invalid_or_both(self, app, fields: dict[str, str], error_field: str) -> None:
+        """Verify an out-of-range age, a bad date, or both values together is rejected."""
+        assert error_field in self._validate(app, **fields)
 
-    def test_parse_birth_year(self) -> None:
-        """Verify parsing returns the year, or None for blank and invalid text."""
-        from vweb.routes.character_create.profile_form import parse_birth_year
+    def test_form_data_prefers_date_of_birth(self) -> None:
+        """Verify a character with a date of birth fills only that field, not its stored age."""
+        from datetime import date
 
-        assert parse_birth_year(" 1967 ") == 1967
-        assert parse_birth_year("-1250") == -1250
-        assert parse_birth_year("") is None
-        assert parse_birth_year("-10000") is None
+        from vweb.api_client.testing import CharacterFactory
+        from vweb.routes.character_create.profile_form import character_to_form_data
+
+        character = CharacterFactory.build(date_of_birth=date(1960, 3, 15), age=58)
+        data = character_to_form_data(character)
+
+        assert data["date_of_birth"] == "1960-03-15"
+        assert "age" not in data
 
 
 class TestCharacterToFormData:
@@ -241,7 +255,6 @@ class TestCharacterToFormData:
             name_last="Smith",
             name_nick="Ali",
             age=25,
-            birth_year=1967,
             biography="A brave soul.",
             demeanor="Caregiver",
             nature="Visionary",
@@ -253,7 +266,6 @@ class TestCharacterToFormData:
         # Then optional fields are present
         assert data["name_nick"] == "Ali"
         assert data["age"] == "25"
-        assert data["birth_year"] == "1967"
         assert data["biography"] == "A brave soul."
         assert data["demeanor"] == "Caregiver"
         assert data["nature"] == "Visionary"
