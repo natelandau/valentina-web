@@ -1,7 +1,7 @@
 """Shared validation helpers for image upload and delete handlers.
 
 Book, chapter, and character image routes run the same validation ladder
-(file presence, MIME check, size check, pixel check, vclient call, flash) and the same
+(file presence, MIME check, size check, pixel check, API call, flash) and the same
 delete-with-flash pattern. These helpers centralize that work so each view
 only needs to handle authentication, lookups, and re-rendering.
 """
@@ -28,7 +28,6 @@ from vweb.lib.api_errors import api_error_message
 if TYPE_CHECKING:
     from werkzeug.datastructures import FileStorage
 
-    from vweb.api_client.models import Asset
     from vweb.api_client.services import AssetsMixin
 
 
@@ -61,52 +60,35 @@ def handle_image_upload(
     svc: AssetsMixin,
     parent_id: str,
     file: FileStorage | None,
-) -> Asset | None:
+) -> bool:
     """Validate and persist an uploaded image, flashing the outcome.
 
-    Returns the newly-created Asset on success so callers can append it to a
-    pre-fetched asset list without re-querying — ``list_all_assets`` has been
-    observed to return stale results immediately after an upload.
+    Returns:
+        True when the image was uploaded, so callers re-render only when something changed.
     """
     if file is None or not file.filename:
         flash("No image selected.", "error")
-        return None
+        return False
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         flash("Invalid image type. Allowed: JPEG, PNG, WebP, GIF.", "error")
-        return None
+        return False
 
     content = file.read()
     if len(content) > MAX_IMAGE_SIZE:
         flash(f"Image is too large (max {MAX_IMAGE_SIZE_MB} MB).", "error")
-        return None
+        return False
     if dimensions_error := image_dimensions_error(content):
         flash(dimensions_error, "error")
-        return None
+        return False
 
     try:
-        asset = svc.upload_asset(parent_id, file.filename, content, file.content_type)
+        svc.upload_asset(parent_id, file.filename, content, file.content_type)
     except APIError as e:
         flash(api_error_message(e, fallback="Failed to upload image. Please try again."), "error")
-        return None
+        return False
 
     flash("Image uploaded successfully.", "success")
-    return asset
-
-
-def upload_and_append_asset(
-    *,
-    svc: AssetsMixin,
-    parent_id: str,
-    file: FileStorage | None,
-) -> list[Asset]:
-    """Snapshot the current asset list, upload, and return the combined list.
-
-    ``list_all_assets`` returns stale data immediately after an upload, so the
-    existing assets must be captured *before* calling ``upload_asset``.
-    """
-    existing = svc.list_all_assets(parent_id)
-    new_asset = handle_image_upload(svc=svc, parent_id=parent_id, file=file)
-    return [*existing, new_asset] if new_asset is not None else existing
+    return True
 
 
 def handle_image_delete(
