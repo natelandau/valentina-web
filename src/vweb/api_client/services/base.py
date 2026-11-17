@@ -961,3 +961,27 @@ class BaseService:
                 break
 
             offset = page.next_offset
+
+    def _iter_all_pages_as(
+        self,
+        path: str,
+        model_class: type[T],
+        *,
+        limit: int = MAX_PAGE_LIMIT,
+        params: dict[str, Any] | None = None,
+        max_limit: int = MAX_PAGE_LIMIT,
+    ) -> Iterator[T]:
+        """Iterate through all pages of a paginated endpoint, parsing items into a model.
+
+        Args:
+            path: API endpoint path.
+            model_class: Pydantic model class to validate each item into.
+            limit: Items per page (default 100 for efficiency).
+            params: Additional query parameters.
+            max_limit: Upper bound the per-page limit is clamped to (default 100).
+
+        Yields:
+            Validated model instances, one per item.
+        """
+        for item in self._iter_all_pages(path, limit=limit, params=params, max_limit=max_limit):
+            yield model_class.model_validate(item)

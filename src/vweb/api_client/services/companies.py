@@ -90,8 +90,7 @@ class CompaniesService(BaseService):
             for company in client.companies.iter_all():
                 print(company.name)
         """
-        for item in self._iter_all_pages(Endpoints.COMPANIES, limit=limit):
-            yield Company.model_validate(item)
+        yield from self._iter_all_pages_as(Endpoints.COMPANIES, Company, limit=limit)
 
     def get(self, company_id: str) -> Company:
         """Retrieve detailed information about a specific company.
@@ -439,9 +438,9 @@ class CompaniesService(BaseService):
             date_to=date_to,
             include=include,
         )
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             Endpoints.COMPANY_AUDIT_LOGS.format(company_id=company_id),
+            model,
             limit=limit,
             params=params,
-        ):
-            yield model.model_validate(item)
+        )

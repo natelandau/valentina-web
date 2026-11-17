@@ -109,11 +109,11 @@ class CampaignsService(BaseService):
             for campaign in campaigns.iter_all():
                 print(campaign.name)
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.CAMPAIGNS),
+            Campaign,
             limit=limit,
-        ):
-            yield Campaign.model_validate(item)
+        )
 
     def get(self, campaign_id: str) -> Campaign:
         """Retrieve detailed information about a specific campaign.
@@ -318,11 +318,11 @@ class CampaignsService(BaseService):
             for asset in campaigns.iter_all_assets("campaign_id"):
                 print(asset.original_filename)
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.CAMPAIGN_ASSETS, campaign_id=campaign_id),
+            Asset,
             limit=limit,
-        ):
-            yield Asset.model_validate(item)
+        )
 
     def get_asset(
         self,
@@ -489,11 +489,11 @@ class CampaignsService(BaseService):
             for note in campaigns.iter_all_notes("campaign_id"):
                 print(note.title)
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.CAMPAIGN_NOTES, campaign_id=campaign_id),
+            Note,
             limit=limit,
-        ):
-            yield Note.model_validate(item)
+        )
 
     def get_note(
         self,

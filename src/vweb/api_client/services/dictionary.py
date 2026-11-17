@@ -59,13 +59,13 @@ class DictionaryService(BaseService):
         self, *, term: str | None = None, limit: int = MAX_REFERENCE_PAGE_LIMIT
     ) -> Iterator[DictionaryTerm]:
         """Iterate through all dictionary terms."""
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.DICTIONARY_TERMS),
+            DictionaryTerm,
             limit=limit,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
             params=self._build_params(term=term),
-        ):
-            yield DictionaryTerm.model_validate(item)
+        )
 
     def get(self, term_id: str) -> DictionaryTerm:
         """Retrieve a specific dictionary term."""

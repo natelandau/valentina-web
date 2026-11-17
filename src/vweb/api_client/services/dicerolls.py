@@ -122,8 +122,9 @@ class DicerollService(BaseService):
         Yields:
             Individual Diceroll objects.
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.DICEROLLS),
+            Diceroll,
             limit=limit,
             params=self._build_params(
                 userid=userid,
@@ -131,8 +132,7 @@ class DicerollService(BaseService):
                 campaignid=campaignid,
                 character_type=character_type,
             ),
-        ):
-            yield Diceroll.model_validate(item)
+        )
 
     def get(self, diceroll_id: str) -> Diceroll:
         """Retrieve a specific dice roll."""

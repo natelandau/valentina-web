@@ -111,11 +111,11 @@ class UsersService(BaseService):
         Yields:
             Individual User objects.
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.USERS_UNAPPROVED_LIST),
+            User,
             limit=limit,
-        ):
-            yield User.model_validate(item)
+        )
 
     def approve_user(
         self,
@@ -348,12 +348,12 @@ class UsersService(BaseService):
             for user in users.iter_all():
                 print(user.name)
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.USERS),
+            User,
             limit=limit,
             params=self._build_params(user_role=user_role, email=email),
-        ):
-            yield User.model_validate(item)
+        )
 
     def get(
         self,
@@ -593,11 +593,11 @@ class UsersService(BaseService):
             for asset in users.iter_all_assets("user_id"):
                 print(asset.original_filename)
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.USER_ASSETS, user_id=user_id),
+            Asset,
             limit=limit,
-        ):
-            yield Asset.model_validate(item)
+        )
 
     def get_asset(
         self,
@@ -947,11 +947,11 @@ class UsersService(BaseService):
             for note in users.iter_all_notes("user_id"):
                 print(note.title)
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.USER_NOTES, user_id=user_id),
+            Note,
             limit=limit,
-        ):
-            yield Note.model_validate(item)
+        )
 
     def get_note(
         self,
@@ -1137,11 +1137,11 @@ class UsersService(BaseService):
             for qr in users.iter_all_quickrolls("user_id"):
                 print(qr.name)
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.USER_QUICKROLLS, user_id=user_id),
+            Quickroll,
             limit=limit,
-        ):
-            yield Quickroll.model_validate(item)
+        )
 
     def get_quickroll(
         self,

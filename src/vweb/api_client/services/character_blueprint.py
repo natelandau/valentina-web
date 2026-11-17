@@ -79,13 +79,13 @@ class CharacterBlueprintService(BaseService):
         character_class: CharacterClass | None = None,
     ) -> Iterator[SheetSection]:
         """Iterate through all character blueprint sections."""
-        for section in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.BLUEPRINT_SECTIONS),
+            SheetSection,
             limit=MAX_REFERENCE_PAGE_LIMIT,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
             params=self._build_params(game_version=game_version, character_class=character_class),
-        ):
-            yield SheetSection.model_validate(section)
+        )
 
     def get_section(self, *, section_id: str) -> SheetSection:
         """Get a character blueprint section by ID."""
@@ -146,8 +146,9 @@ class CharacterBlueprintService(BaseService):
         character_class: CharacterClass | None = None,
     ) -> Iterator[TraitCategory]:
         """Iterate through all character blueprint categories."""
-        for category in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.BLUEPRINT_CATEGORIES),
+            TraitCategory,
             limit=MAX_REFERENCE_PAGE_LIMIT,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
             params=self._build_params(
@@ -155,8 +156,7 @@ class CharacterBlueprintService(BaseService):
                 section_id=section_id,
                 character_class=character_class,
             ),
-        ):
-            yield TraitCategory.model_validate(category)
+        )
 
     def get_category(self, *, category_id: str) -> TraitCategory:
         """Get a character blueprint category by ID."""
@@ -217,8 +217,9 @@ class CharacterBlueprintService(BaseService):
         character_class: CharacterClass | None = None,
     ) -> Iterator[TraitSubcategory]:
         """Iterate through all character blueprint subcategories."""
-        for subcategory in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.BLUEPRINT_SUBCATEGORIES),
+            TraitSubcategory,
             limit=MAX_REFERENCE_PAGE_LIMIT,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
             params=self._build_params(
@@ -226,8 +227,7 @@ class CharacterBlueprintService(BaseService):
                 category_id=category_id,
                 character_class=character_class,
             ),
-        ):
-            yield TraitSubcategory.model_validate(subcategory)
+        )
 
     def get_subcategory(self, *, subcategory_id: str) -> TraitSubcategory:
         """Get a character blueprint subcategory by ID."""
@@ -308,8 +308,9 @@ class CharacterBlueprintService(BaseService):
         exclude_subcategory_traits: bool = False,
     ) -> Iterator[Trait]:
         """Iterate through all character blueprint traits."""
-        for trait in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.BLUEPRINT_TRAITS),
+            Trait,
             limit=MAX_REFERENCE_PAGE_LIMIT,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
             params=self._build_params(
@@ -321,8 +322,7 @@ class CharacterBlueprintService(BaseService):
                 game_version=game_version,
                 exclude_subcategory_traits=exclude_subcategory_traits or None,
             ),
-        ):
-            yield Trait.model_validate(trait)
+        )
 
     def get_trait(self, *, trait_id: str) -> Trait:
         """Get a character blueprint trait by ID."""
@@ -354,12 +354,12 @@ class CharacterBlueprintService(BaseService):
 
     def iter_all_concepts(self) -> Iterator[CharacterConcept]:
         """Iterate through all character concepts."""
-        for concept in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.CONCEPTS),
+            CharacterConcept,
             limit=MAX_REFERENCE_PAGE_LIMIT,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
-        ):
-            yield CharacterConcept.model_validate(concept)
+        )
 
     def get_concept(self, *, concept_id: str) -> CharacterConcept:
         """Get a character concept by ID."""
@@ -398,13 +398,13 @@ class CharacterBlueprintService(BaseService):
         self, *, game_version: GameVersion | None = None
     ) -> Iterator[VampireClan]:
         """Iterate through all vampire clans."""
-        for clan in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.VAMPIRE_CLANS),
+            VampireClan,
             limit=MAX_REFERENCE_PAGE_LIMIT,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
             params=self._build_params(game_version=game_version),
-        ):
-            yield VampireClan.model_validate(clan)
+        )
 
     def get_vampire_clan(self, *, vampire_clan_id: str) -> VampireClan:
         """Get a vampire clan by ID."""
@@ -443,13 +443,13 @@ class CharacterBlueprintService(BaseService):
         self, *, game_version: GameVersion | None = None
     ) -> Iterator[WerewolfAuspice]:
         """Iterate through all werewolf auspices."""
-        for auspice in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.WEREWOLF_AUSPICES),
+            WerewolfAuspice,
             limit=MAX_REFERENCE_PAGE_LIMIT,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
             params=self._build_params(game_version=game_version),
-        ):
-            yield WerewolfAuspice.model_validate(auspice)
+        )
 
     def get_werewolf_auspice(self, *, werewolf_auspice_id: str) -> WerewolfAuspice:
         """Get a werewolf auspice by ID."""
@@ -490,13 +490,13 @@ class CharacterBlueprintService(BaseService):
         self, *, game_version: GameVersion | None = None
     ) -> Iterator[WerewolfTribe]:
         """Iterate through all werewolf tribes."""
-        for tribe in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.WEREWOLF_TRIBES),
+            WerewolfTribe,
             limit=MAX_REFERENCE_PAGE_LIMIT,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
             params=self._build_params(game_version=game_version),
-        ):
-            yield WerewolfTribe.model_validate(tribe)
+        )
 
     def get_werewolf_tribe(self, *, werewolf_tribe_id: str) -> WerewolfTribe:
         """Get a werewolf tribe by ID."""

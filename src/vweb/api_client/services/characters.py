@@ -185,8 +185,9 @@ class CharactersService(BaseService):
             for character in characters.iter_all():
                 print(character.name)
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.CHARACTERS),
+            Character,
             limit=limit,
             params=self._build_params(
                 campaign_id=campaign_id,
@@ -197,8 +198,7 @@ class CharactersService(BaseService):
                 status=status,
                 is_temporary=is_temporary,
             ),
-        ):
-            yield Character.model_validate(item)
+        )
 
     def get(
         self,
@@ -495,11 +495,11 @@ class CharactersService(BaseService):
             for asset in characters.iter_all_assets("character_id"):
                 print(asset.original_filename)
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.CHARACTER_ASSETS, character_id=character_id),
+            Asset,
             limit=limit,
-        ):
-            yield Asset.model_validate(item)
+        )
 
     def get_asset(
         self,
@@ -664,11 +664,11 @@ class CharactersService(BaseService):
             for note in characters.iter_all_notes("character_id"):
                 print(note.title)
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.CHARACTER_NOTES, character_id=character_id),
+            Note,
             limit=limit,
-        ):
-            yield Note.model_validate(item)
+        )
 
     def get_note(
         self,
@@ -859,11 +859,11 @@ class CharactersService(BaseService):
             for item in characters.iter_all_inventory("character_id"):
                 print(item.name)
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.CHARACTER_INVENTORY, character_id=character_id),
+            InventoryItem,
             limit=limit,
-        ):
-            yield InventoryItem.model_validate(item)
+        )
 
     def get_inventory_item(
         self,

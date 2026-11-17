@@ -84,11 +84,11 @@ class ChaptersService(BaseService):
         limit: int = 100,
     ) -> Iterator[CampaignChapter]:
         """Iterate through all campaign book chapters."""
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.BOOK_CHAPTERS),
+            CampaignChapter,
             limit=limit,
-        ):
-            yield CampaignChapter.model_validate(item)
+        )
 
     def get(
         self,
@@ -248,11 +248,11 @@ class ChaptersService(BaseService):
             for note in chapters.iter_all_notes("chapter_id"):
                 print(note.title)
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.BOOK_CHAPTER_NOTES, chapter_id=chapter_id),
+            Note,
             limit=limit,
-        ):
-            yield Note.model_validate(item)
+        )
 
     def get_note(
         self,
@@ -445,11 +445,11 @@ class ChaptersService(BaseService):
             for asset in chapters.iter_all_assets("chapter_id"):
                 print(asset.original_filename)
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.BOOK_CHAPTER_ASSETS, chapter_id=chapter_id),
+            Asset,
             limit=limit,
-        ):
-            yield Asset.model_validate(item)
+        )
 
     def get_asset(
         self,

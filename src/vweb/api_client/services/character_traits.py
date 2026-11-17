@@ -127,12 +127,12 @@ class CharacterTraitsService(BaseService):
         if is_rollable is not None:
             params["is_rollable"] = is_rollable
 
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.CHARACTER_TRAITS),
+            CharacterTrait,
             limit=limit,
             params=params or None,
-        ):
-            yield CharacterTrait.model_validate(item)
+        )
 
     def get(self, character_trait_id: str) -> CharacterTrait:
         """Retrieve a specific character trait.

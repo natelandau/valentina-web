@@ -119,11 +119,11 @@ class BooksService(BaseService):
             for book in books.iter_all():
                 print(book.name)
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.CAMPAIGN_BOOKS),
+            CampaignBook,
             limit=limit,
-        ):
-            yield CampaignBook.model_validate(item)
+        )
 
     def get(
         self,
@@ -329,11 +329,11 @@ class BooksService(BaseService):
             for note in books.iter_all_notes("book_id"):
                 print(note.title)
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.BOOK_NOTES, book_id=book_id),
+            Note,
             limit=limit,
-        ):
-            yield Note.model_validate(item)
+        )
 
     def get_note(
         self,
@@ -518,11 +518,11 @@ class BooksService(BaseService):
             for asset in books.iter_all_assets("book_id"):
                 print(asset.original_filename)
         """
-        for item in self._iter_all_pages(
+        yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.BOOK_ASSETS, book_id=book_id),
+            Asset,
             limit=limit,
-        ):
-            yield Asset.model_validate(item)
+        )
 
     def get_asset(
         self,
