@@ -15,6 +15,7 @@ from vweb.api_client.exceptions import (
     AuthorizationError,
     ConflictError,
     NotFoundError,
+    PayloadTooLargeError,
     RateLimitError,
     RequestValidationError,
     ServerError,
@@ -96,7 +97,7 @@ def test_conflict_and_authorization_use_detail(cls):
 
 def test_413_names_the_upload_limit():
     """413 names the upload limit."""
-    message = api_error_message(APIError("too big", 413, None), fallback="fallback")
+    message = api_error_message(PayloadTooLargeError("too big", 413, None), fallback="fallback")
 
     assert "Upload is too large (max " in message
 

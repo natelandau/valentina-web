@@ -31,6 +31,7 @@ from vweb.api_client.exceptions import (
     AuthorizationError,
     ConflictError,
     NotFoundError,
+    PayloadTooLargeError,
     RateLimitError,
     RequestValidationError,
     ServerError,
@@ -458,6 +459,7 @@ class BaseService:
             NotFoundError: For 404 responses.
             ValidationError: For 400 responses.
             ConflictError: For 409 responses.
+            PayloadTooLargeError: For 413 responses.
             UnprocessableEntityError: For 422 responses.
             RateLimitError: For 429 responses.
             ServerError: For 5xx responses.
@@ -526,6 +528,10 @@ class BaseService:
             )
             log_conflict("Return 409 conflict")
             raise conflict
+
+        if status_code == 413:  # noqa: PLR2004
+            error_logger.warning("Reject request body as too large")
+            raise PayloadTooLargeError(message, status_code, response_data)
 
         if status_code == 422:  # noqa: PLR2004
             error_logger.warning("Reject with unprocessable entity error")

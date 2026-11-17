@@ -1,7 +1,7 @@
 """Tests for vweb.api_client.api.exceptions."""
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from pydantic import ValidationError as PydanticValidationError
 
 from vweb.api_client.exceptions import (
@@ -10,7 +10,9 @@ from vweb.api_client.exceptions import (
     AuthenticationError,
     AuthorizationError,
     ConflictError,
+    FieldError,
     NotFoundError,
+    PayloadTooLargeError,
     RateLimitError,
     RequestValidationError,
     ServerError,
@@ -703,3 +705,77 @@ class TestAPIConnectionError:
 
         # Then: Its text is the message alone
         assert str(error) == "Could not reach the API: Connection refused"
+
+
+class TestFieldErrors:
+    """Tests for the field_errors view on validation exceptions."""
+
+    def test_validation_error_field_errors_from_invalid_parameters(self):
+        """Verify server validation parameters become FieldError items."""
+        # Given: A 400 with invalid parameters, including blank and missing values
+        error = ValidationError(
+            "Bad input",
+            400,
+            {
+                "invalid_parameters": [
+                    {"field": "[0].trait_id", "message": "  Not found  "},
+                    {"field": "name", "message": ""},
+                    {"message": "Body is malformed"},
+                ]
+            },
+        )
+
+        # When/Then: Each parameter maps to one field error, field text kept as sent
+        assert error.field_errors == [
+            FieldError(field="[0].trait_id", message="Not found"),
+            FieldError(field="name", message=""),
+            FieldError(field="", message="Body is malformed"),
+        ]
+
+    def test_validation_error_without_parameters_has_no_field_errors(self):
+        """Verify a 400 without invalid parameters has an empty list."""
+        # Given/When/Then: A bare validation error has no field errors
+        assert ValidationError("Bad input", 400, {}).field_errors == []
+
+    def test_request_validation_error_joins_named_location_parts(self):
+        """Verify a nested pydantic location becomes a dotted path without list indexes."""
+
+        # Given: A model with a nested list field and a custom validator
+        class Item(BaseModel):
+            trait_id: str = Field(min_length=3)
+
+        class Payload(BaseModel):
+            items: list[Item]
+            name: str
+
+            @field_validator("name")
+            @classmethod
+            def _no_admin(cls, value: str) -> str:
+                if value == "admin":
+                    msg = "Name is reserved."
+                    raise ValueError(msg)
+                return value
+
+        with pytest.raises(PydanticValidationError) as exc_info:
+            Payload(items=[{"trait_id": "x"}], name="admin")
+
+        # When: Wrapping the pydantic error
+        error = RequestValidationError(exc_info.value)
+
+        # Then: Paths skip list indexes and the validator prefix is removed
+        fields = {fe.field: fe.message for fe in error.field_errors}
+        assert fields["items.trait_id"].startswith("String should have at least 3 characters")
+        assert fields["name"] == "Name is reserved."
+
+
+class TestPayloadTooLargeError:
+    """Tests for PayloadTooLargeError."""
+
+    def test_is_an_api_error(self):
+        """Verify a 413 error is an APIError carrying its status."""
+        # When: Creating the error
+        error = PayloadTooLargeError("Request body too large", 413, {})
+
+        # Then: It is an APIError with the 413 status
+        assert isinstance(error, APIError)
+        assert error.status_code == 413

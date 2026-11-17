@@ -4,6 +4,7 @@ Exceptions follow RFC 9457 Problem Details format for HTTP APIs.
 See: https://docs.valentina-noir.com/technical/errors/
 """
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from pydantic_core import ErrorDetails
@@ -12,6 +13,24 @@ from vweb.api_client.constants import IDEMPOTENCY_IN_PROGRESS_CODE
 
 if TYPE_CHECKING:
     from pydantic import ValidationError as PydanticValidationError
+
+# Pydantic prefixes failures raised by custom validators; the prefix is noise to users.
+_PYDANTIC_VALUE_ERROR_PREFIX = "Value error, "
+
+
+@dataclass(frozen=True)
+class FieldError:
+    """One field that failed validation, in the same shape for API and client-side errors.
+
+    Attributes:
+        field: Path to the field. Server errors use the API's ``field`` text as is.
+            Client-side errors join the named parts of pydantic's location with dots,
+            so a nested field reads ``settings.xp_cost``. Empty when no field applies.
+        message: Why the field failed, with surrounding whitespace removed.
+    """
+
+    field: str
+    message: str
 
 
 class APIError(Exception):
@@ -218,6 +237,21 @@ class ValidationError(APIError):
         """
         return self.response_data.get("invalid_parameters", [])
 
+    @property
+    def field_errors(self) -> list[FieldError]:
+        """Get the invalid parameters as `FieldError` items, one per parameter.
+
+        Returns:
+            Field errors in the order the API listed them.
+        """
+        return [
+            FieldError(
+                field=str(param.get("field") or ""),
+                message=str(param.get("message") or "").strip(),
+            )
+            for param in self.invalid_parameters
+        ]
+
     def __str__(self) -> str:
         """Return string representation including validation field errors."""
         base = super().__str__()
@@ -264,6 +298,30 @@ class RequestValidationError(APIError):
             List of error dictionaries with 'type', 'loc', 'msg', and 'input' keys.
         """
         return self._pydantic_error.errors()
+
+    @property
+    def field_errors(self) -> list[FieldError]:
+        """Get the validation failures as `FieldError` items, one per pydantic error.
+
+        List indexes in a location name no field, so they are left out of the path.
+
+        Returns:
+            Field errors in the order pydantic reported them.
+        """
+        return [
+            FieldError(
+                field=".".join(part for part in err["loc"] if isinstance(part, str)),
+                message=str(err["msg"] or "")
+                .strip()
+                .removeprefix(_PYDANTIC_VALUE_ERROR_PREFIX)
+                .strip(),
+            )
+            for err in self.errors
+        ]
+
+
+class PayloadTooLargeError(APIError):
+    """Raised when the API rejects a request body as too large (413 Content Too Large)."""
 
 
 class RateLimitError(APIError):
