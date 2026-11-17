@@ -149,8 +149,9 @@ class CharactersService(NotesMixin, AssetsMixin):
         Returns:
             A list of all Character objects.
         """
-        return list(
-            self.iter_all(
+        return self._list_all(
+            Routes.CHARACTERS_LIST,
+            params=self._build_params(
                 campaign_id=campaign_id,
                 user_player_id=user_player_id,
                 user_creator_id=user_creator_id,
@@ -158,7 +159,7 @@ class CharactersService(NotesMixin, AssetsMixin):
                 character_type=character_type,
                 status=status,
                 is_temporary=is_temporary,
-            )
+            ),
         )
 
     def iter_all(
@@ -465,7 +466,7 @@ class CharactersService(NotesMixin, AssetsMixin):
             NotFoundError: If the character does not exist.
             AuthorizationError: If you don't have access.
         """
-        return list(self.iter_all_inventory(character_id))
+        return self._list_all(Routes.CHARACTERS_INVENTORY_LIST, character_id=character_id)
 
     def iter_all_inventory(
         self,

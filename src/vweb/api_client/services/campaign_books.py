@@ -103,7 +103,7 @@ class BooksService(NotesMixin, AssetsMixin):
         Returns:
             A list of all CampaignBook objects.
         """
-        return list(self.iter_all())
+        return self._list_all(Routes.BOOKS_LIST)
 
     def iter_all(
         self,

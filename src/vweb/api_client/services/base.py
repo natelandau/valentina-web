@@ -5,6 +5,7 @@ import random
 import time
 import uuid
 from collections.abc import Iterator, Mapping
+from functools import partial
 from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar
 
 import httpx2
@@ -1089,6 +1090,54 @@ class BaseService:
             max_limit=max_limit,
         ):
             yield route.parse(item)
+
+    def _list_all[M: BaseModel](
+        self,
+        route: RouteSpec[M],
+        *,
+        limit: int = MAX_PAGE_LIMIT,
+        params: dict[str, Any] | None = None,
+        max_limit: int = MAX_PAGE_LIMIT,
+        path_ids: Mapping[str, str] | None = None,
+        **path_params: str,
+    ) -> list[M]:
+        """Fetch every item of a paginated route, requesting the pages after the first at once.
+
+        Use for ``list_all`` methods, where the caller wants the whole collection and
+        waiting on each page in turn only adds latency. Use ``_iter`` to stream instead.
+
+        The first page's ``total`` fixes which offsets are requested. Items added
+        after that page is read are not returned, and items removed shift later pages,
+        as they would in one sequential pass over a changing collection.
+
+        Args:
+            route: A PAGINATED-style route.
+            limit: Items per page (default 100 for efficiency).
+            params: Additional query parameters.
+            max_limit: Upper bound the per-page limit is clamped to (default 100).
+            path_ids: Path parameters whose names are known only at runtime.
+            **path_params: Path parameters beyond the service's scope.
+
+        Returns:
+            Validated model instances for every item, in offset order.
+        """
+        self._require_style(route, ResponseStyle.PAGINATED)
+        fetch_page = partial(
+            self._get_paginated,
+            self._route_path(route, path_ids, path_params),
+            limit=limit,
+            params=params,
+            max_limit=max_limit,
+        )
+        first = fetch_page(offset=0)
+        pages = [first]
+        # Step by the limit the API applied, as sequential paging does via next_offset.
+        if first.has_more and first.limit > 0:
+            offsets = range(first.limit, first.total, first.limit)
+            pages.extend(
+                self._client.run_parallel(*(partial(fetch_page, offset=o) for o in offsets))
+            )
+        return [route.parse(item) for page in pages for item in page.items]
 
     # -------------------------------------------------------------------------
     # Pagination Methods

@@ -82,7 +82,7 @@ class ChaptersService(NotesMixin, AssetsMixin):
 
     def list_all(self) -> list[CampaignChapter]:
         """Retrieve all campaign book chapters."""
-        return list(self.iter_all())
+        return self._list_all(Routes.CHAPTERS_LIST)
 
     def iter_all(
         self,

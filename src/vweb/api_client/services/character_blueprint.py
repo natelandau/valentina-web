@@ -67,8 +67,11 @@ class CharacterBlueprintService(BaseService):
         character_class: CharacterClass | None = None,
     ) -> list[SheetSection]:
         """List all character blueprint sections."""
-        return list(
-            self.iter_all_sections(game_version=game_version, character_class=character_class)
+        return self._list_all(
+            Routes.BLUEPRINT_SECTIONS_LIST,
+            limit=MAX_REFERENCE_PAGE_LIMIT,
+            max_limit=MAX_REFERENCE_PAGE_LIMIT,
+            params=self._build_params(game_version=game_version, character_class=character_class),
         )
 
     def iter_all_sections(
@@ -121,12 +124,15 @@ class CharacterBlueprintService(BaseService):
         character_class: CharacterClass | None = None,
     ) -> list[TraitCategory]:
         """List all character blueprint categories."""
-        return list(
-            self.iter_all_categories(
+        return self._list_all(
+            Routes.BLUEPRINT_CATEGORIES_LIST,
+            limit=MAX_REFERENCE_PAGE_LIMIT,
+            max_limit=MAX_REFERENCE_PAGE_LIMIT,
+            params=self._build_params(
                 game_version=game_version,
                 section_id=section_id,
                 character_class=character_class,
-            )
+            ),
         )
 
     def iter_all_categories(
@@ -184,12 +190,15 @@ class CharacterBlueprintService(BaseService):
         character_class: CharacterClass | None = None,
     ) -> list[TraitSubcategory]:
         """List all character blueprint subcategories."""
-        return list(
-            self.iter_all_subcategories(
+        return self._list_all(
+            Routes.BLUEPRINT_SUBCATEGORIES_LIST,
+            limit=MAX_REFERENCE_PAGE_LIMIT,
+            max_limit=MAX_REFERENCE_PAGE_LIMIT,
+            params=self._build_params(
                 game_version=game_version,
                 category_id=category_id,
                 character_class=character_class,
-            )
+            ),
         )
 
     def iter_all_subcategories(
@@ -259,16 +268,19 @@ class CharacterBlueprintService(BaseService):
         exclude_subcategory_traits: bool = False,
     ) -> list[Trait]:
         """List all character blueprint traits."""
-        return list(
-            self.iter_all_traits(
-                game_version=game_version,
+        return self._list_all(
+            Routes.BLUEPRINT_TRAITS_LIST,
+            limit=MAX_REFERENCE_PAGE_LIMIT,
+            max_limit=MAX_REFERENCE_PAGE_LIMIT,
+            params=self._build_params(
                 character_class=character_class,
                 category_id=category_id,
                 subcategory_id=subcategory_id,
                 is_rollable=is_rollable,
                 order_by=order_by,
-                exclude_subcategory_traits=exclude_subcategory_traits,
-            )
+                game_version=game_version,
+                exclude_subcategory_traits=exclude_subcategory_traits or None,
+            ),
         )
 
     def iter_all_traits(
@@ -320,7 +332,11 @@ class CharacterBlueprintService(BaseService):
 
     def list_all_concepts(self) -> list[CharacterConcept]:
         """List all character concepts."""
-        return list(self.iter_all_concepts())
+        return self._list_all(
+            Routes.BLUEPRINT_CONCEPTS_LIST,
+            limit=MAX_REFERENCE_PAGE_LIMIT,
+            max_limit=MAX_REFERENCE_PAGE_LIMIT,
+        )
 
     def iter_all_concepts(self) -> Iterator[CharacterConcept]:
         """Iterate through all character concepts."""
@@ -357,7 +373,12 @@ class CharacterBlueprintService(BaseService):
         self, *, game_version: GameVersion | None = None
     ) -> list[VampireClan]:
         """List all vampire clans."""
-        return list(self.iter_all_vampire_clans(game_version=game_version))
+        return self._list_all(
+            Routes.BLUEPRINT_VAMPIRE_CLANS_LIST,
+            limit=MAX_REFERENCE_PAGE_LIMIT,
+            max_limit=MAX_REFERENCE_PAGE_LIMIT,
+            params=self._build_params(game_version=game_version),
+        )
 
     def iter_all_vampire_clans(
         self, *, game_version: GameVersion | None = None
@@ -397,7 +418,12 @@ class CharacterBlueprintService(BaseService):
         self, *, game_version: GameVersion | None = None
     ) -> list[WerewolfAuspice]:
         """List all werewolf auspices."""
-        return list(self.iter_all_werewolf_auspices(game_version=game_version))
+        return self._list_all(
+            Routes.BLUEPRINT_WEREWOLF_AUSPICES_LIST,
+            limit=MAX_REFERENCE_PAGE_LIMIT,
+            max_limit=MAX_REFERENCE_PAGE_LIMIT,
+            params=self._build_params(game_version=game_version),
+        )
 
     def iter_all_werewolf_auspices(
         self, *, game_version: GameVersion | None = None
@@ -439,7 +465,12 @@ class CharacterBlueprintService(BaseService):
         self, *, game_version: GameVersion | None = None
     ) -> list[WerewolfTribe]:
         """List all werewolf tribes."""
-        return list(self.iter_all_werewolf_tribes(game_version=game_version))
+        return self._list_all(
+            Routes.BLUEPRINT_WEREWOLF_TRIBES_LIST,
+            limit=MAX_REFERENCE_PAGE_LIMIT,
+            max_limit=MAX_REFERENCE_PAGE_LIMIT,
+            params=self._build_params(game_version=game_version),
+        )
 
     def iter_all_werewolf_tribes(
         self, *, game_version: GameVersion | None = None

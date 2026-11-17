@@ -90,7 +90,10 @@ class CharacterTraitsService(BaseService):
         Returns:
             A list of all CharacterTrait objects.
         """
-        return list(self.iter_all(category_id=category_id, is_rollable=is_rollable))
+        return self._list_all(
+            Routes.CHARACTER_TRAITS_LIST,
+            params=self._build_params(category_id=category_id, is_rollable=is_rollable),
+        )
 
     def iter_all(
         self,

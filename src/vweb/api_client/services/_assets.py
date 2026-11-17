@@ -72,7 +72,7 @@ class AssetsMixin(BaseService):
             NotFoundError: If the parent resource does not exist.
             AuthorizationError: If you don't have access.
         """
-        return list(self.iter_all_assets(parent_id))
+        return self._list_all(self._asset_routes.page, path_ids=self._asset_parent(parent_id))
 
     def iter_all_assets(self, parent_id: str, *, limit: int = 100) -> Iterator[Asset]:
         """Iterate through all assets for the parent resource, fetching pages as needed.

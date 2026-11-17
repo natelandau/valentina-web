@@ -99,7 +99,7 @@ class UsersService(NotesMixin, AssetsMixin):
         Returns:
             A list of all unapproved User objects.
         """
-        return list(self.iter_all_unapproved())
+        return self._list_all(Routes.USERS_UNAPPROVED_LIST)
 
     def iter_all_unapproved(
         self,
@@ -313,7 +313,10 @@ class UsersService(NotesMixin, AssetsMixin):
         Returns:
             A list of all User objects.
         """
-        return list(self.iter_all(user_role=user_role, email=email))
+        return self._list_all(
+            Routes.USERS_LIST,
+            params=self._build_params(user_role=user_role, email=email),
+        )
 
     def iter_all(
         self,
@@ -720,7 +723,7 @@ class UsersService(NotesMixin, AssetsMixin):
             NotFoundError: If the user does not exist.
             AuthorizationError: If you don't have access to the company.
         """
-        return list(self.iter_all_quickrolls(user_id))
+        return self._list_all(Routes.USERS_QUICKROLLS_LIST, user_id=user_id)
 
     def iter_all_quickrolls(
         self,

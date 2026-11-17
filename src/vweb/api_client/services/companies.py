@@ -97,7 +97,7 @@ class CompaniesService(BaseService):
         Returns:
             A list of all Company objects.
         """
-        return list(self.iter_all())
+        return self._list_all(Routes.COMPANIES_LIST)
 
     def iter_all(self, *, limit: int = 100) -> Iterator[Company]:
         """Iterate through all companies you have access to.
@@ -327,7 +327,7 @@ class CompaniesService(BaseService):
             AuthorizationError: If you don't have access to the company.
         """
         route, params = self._audit_log_query(filters)
-        return list(self._iter(route, params=params, company_id=company_id))
+        return self._list_all(route, params=params, company_id=company_id)
 
     def iter_all_audit_logs(
         self,

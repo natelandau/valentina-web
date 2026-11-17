@@ -93,7 +93,7 @@ class CampaignsService(NotesMixin, AssetsMixin):
         Returns:
             A list of all Campaign objects.
         """
-        return list(self.iter_all())
+        return self._list_all(Routes.CAMPAIGNS_LIST)
 
     def iter_all(
         self,

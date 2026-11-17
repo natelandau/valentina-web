@@ -52,7 +52,12 @@ class DictionaryService(BaseService):
 
     def list_all(self, *, term: str | None = None) -> list[DictionaryTerm]:
         """Retrieve all dictionary terms."""
-        return list(self.iter_all(term=term))
+        return self._list_all(
+            Routes.DICTIONARY_LIST,
+            limit=MAX_REFERENCE_PAGE_LIMIT,
+            max_limit=MAX_REFERENCE_PAGE_LIMIT,
+            params=self._build_params(term=term),
+        )
 
     def iter_all(
         self, *, term: str | None = None, limit: int = MAX_REFERENCE_PAGE_LIMIT

@@ -219,3 +219,31 @@ class TestAPIRetrySettings:
         assert config.retry_delay == 0.25
         assert config.max_retry_delay == 1.0
         assert config.retry_budget == 4.0
+
+    def test_create_app_passes_max_parallel_requests_to_vclient(self) -> None:
+        """Verify create_app sizes the API client's worker pool from settings."""
+        from vweb.app import create_app
+
+        # Given: Settings with a custom worker count
+        settings = Settings(
+            _env_file=None,
+            env="development",
+            secret_key="test-secret-key",
+            redis=RedisSettings(url=""),
+            api=APISettings(
+                base_url="http://localhost:8080",
+                api_key="test-api-key",
+                max_parallel_requests=2,
+            ),
+        )
+
+        # When: Creating the app
+        app = create_app(settings_override=settings)
+
+        # Then: The API client uses that worker count
+        assert app.extensions["vclient"]._config.max_parallel_requests == 2
+
+    def test_max_parallel_requests_defaults_to_four(self) -> None:
+        """Verify the default worker pool stays small enough to share across requests."""
+        api = APISettings(base_url="http://localhost:8080", api_key="test-api-key")
+        assert api.max_parallel_requests == 4

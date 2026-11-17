@@ -90,13 +90,14 @@ class DicerollService(BaseService):
         Returns:
             A list of all Diceroll objects.
         """
-        return list(
-            self.iter_all(
+        return self._list_all(
+            Routes.DICEROLLS_LIST,
+            params=self._build_params(
                 userid=userid,
                 characterid=characterid,
                 campaignid=campaignid,
                 character_type=character_type,
-            )
+            ),
         )
 
     def iter_all(

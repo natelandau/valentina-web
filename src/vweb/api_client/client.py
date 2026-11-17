@@ -1,8 +1,12 @@
 """Main API client for Valentina."""
 
+import contextvars
 import platform
+import threading
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from types import TracebackType
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Any, Self, overload
 
 import httpx2
 from loguru import logger
@@ -10,6 +14,7 @@ from loguru import logger
 from vweb.api_client.config import _APIConfig
 from vweb.api_client.constants import (
     API_KEY_HEADER,
+    DEFAULT_MAX_PARALLEL_REQUESTS,
     DEFAULT_MAX_RETRIES,
     DEFAULT_MAX_RETRY_DELAY,
     DEFAULT_RETRY_BUDGET,
@@ -36,6 +41,19 @@ if TYPE_CHECKING:
         UserLookupService,
         UsersService,
     )
+
+
+def _in_copied_context[R](call: Callable[[], R]) -> Callable[[], R]:
+    """Bind a call to a copy of the current context variables for another thread to run.
+
+    A Context can be entered by one thread at a time, so each call gets its own copy.
+    """
+    context = contextvars.copy_context()
+
+    def run() -> R:
+        return context.run(call)
+
+    return run
 
 
 class VClient:
@@ -80,6 +98,7 @@ class VClient:
         auto_retry_rate_limit: bool = True,
         auto_idempotency_keys: bool = False,
         default_company_id: str | None = None,
+        max_parallel_requests: int = DEFAULT_MAX_PARALLEL_REQUESTS,
         set_as_default: bool = True,
     ) -> None:
         """Initialize the API client.
@@ -99,18 +118,25 @@ class VClient:
                 POST/PUT/PATCH requests.
             default_company_id: Default company ID to use when not explicitly provided
                 to service factory methods.
+            max_parallel_requests: Worker threads in the pool that ``run_parallel`` and
+                ``list_all`` methods share. The calling thread also runs work, so one
+                call makes up to this many plus one requests at a time. Set to 0 to
+                run every request in the calling thread.
             set_as_default: If True, register this client as the default for factory
                 functions. Set to False when creating multiple clients or when using
                 the context manager pattern exclusively.
 
         Raises:
-            ValueError: If base_url or api_key is empty.
+            ValueError: If base_url or api_key is empty, or max_parallel_requests is negative.
         """
         if not base_url:
             msg = "base_url is required"
             raise ValueError(msg)
         if not api_key:
             msg = "api_key is required"
+            raise ValueError(msg)
+        if max_parallel_requests < 0:
+            msg = f"max_parallel_requests must be 0 or more, got {max_parallel_requests}"
             raise ValueError(msg)
 
         self._config = _APIConfig(
@@ -124,8 +150,12 @@ class VClient:
             auto_retry_rate_limit=auto_retry_rate_limit,
             auto_idempotency_keys=auto_idempotency_keys,
             default_company_id=default_company_id,
+            max_parallel_requests=max_parallel_requests,
         )
 
+        self._executor: ThreadPoolExecutor | None = None
+        self._executor_closed = False
+        self._executor_lock = threading.Lock()
         self._http: httpx2.Client = self._create_http_client()
         self._companies: CompaniesService | None = None
         self._system: SystemService | None = None
@@ -172,12 +202,100 @@ class VClient:
         self.close()
 
     def close(self) -> None:
-        """Close the HTTP client and release resources."""
+        """Close the HTTP client and the worker pool, and release resources.
+
+        Queued parallel work is cancelled. Work already running finishes first so it
+        never sends on a closed HTTP client.
+        """
         from vweb.api_client.registry import clear_default_client
 
         logger.bind(base_url=self._config.base_url).info("Close VClient")
+        with self._executor_lock:
+            executor, self._executor = self._executor, None
+            self._executor_closed = True
+        if executor is not None:
+            executor.shutdown(wait=True, cancel_futures=True)
         self._http.close()
         clear_default_client(self)
+
+    def _get_executor(self) -> ThreadPoolExecutor:
+        """Return the shared worker pool, creating it on first use.
+
+        Raises:
+            RuntimeError: If the client is closed.
+        """
+        with self._executor_lock:
+            if self._executor_closed:
+                msg = "Cannot run parallel requests on a closed VClient"
+                raise RuntimeError(msg)
+            if self._executor is None:
+                self._executor = ThreadPoolExecutor(
+                    max_workers=self._config.max_parallel_requests,
+                    thread_name_prefix="vclient",
+                )
+            return self._executor
+
+    @overload
+    def run_parallel[A, B](self, a: Callable[[], A], b: Callable[[], B], /) -> tuple[A, B]: ...
+
+    @overload
+    def run_parallel[A, B, C](
+        self, a: Callable[[], A], b: Callable[[], B], c: Callable[[], C], /
+    ) -> tuple[A, B, C]: ...
+
+    @overload
+    def run_parallel[A, B, C, D](
+        self,
+        a: Callable[[], A],
+        b: Callable[[], B],
+        c: Callable[[], C],
+        d: Callable[[], D],
+        /,
+    ) -> tuple[A, B, C, D]: ...
+
+    @overload
+    def run_parallel[R](self, *calls: Callable[[], R]) -> tuple[R, ...]: ...
+
+    def run_parallel(self, *calls: Callable[[], Any]) -> tuple[Any, ...]:
+        """Run independent API calls concurrently and return their results in call order.
+
+        Use to overlap the network wait of calls that do not depend on each other.
+        Build services in the calling thread and pass only the calls, such as
+        ``functools.partial(users.list_all)``. Each call runs in a copy of the
+        caller's context variables, so per-request logging context still applies.
+
+        The calling thread runs the first call itself and any call no worker has
+        started yet, so nested use (a parallel call that runs ``list_all``) cannot
+        deadlock on a busy pool.
+
+        The first error in call order propagates. Calls not yet started are cancelled,
+        and calls already running finish with their results dropped.
+
+        Args:
+            *calls: Zero-argument callables to run.
+
+        Returns:
+            Each call's result, in the order the calls were given.
+        """
+        if len(calls) <= 1 or self._config.max_parallel_requests == 0:
+            return tuple(call() for call in calls)
+
+        executor = self._get_executor()
+        head, *rest = calls
+        futures: list[Future[Any]] = [executor.submit(_in_copied_context(call)) for call in rest]
+        try:
+            results = [head()]
+            # cancel() succeeds only for work still queued; running it here keeps the
+            # caller busy instead of blocked behind other requests' work.
+            results.extend(
+                call() if future.cancel() else future.result()
+                for call, future in zip(rest, futures, strict=True)
+            )
+        except BaseException:
+            for future in futures:
+                future.cancel()
+            raise
+        return tuple(results)
 
     @property
     def is_closed(self) -> bool:
