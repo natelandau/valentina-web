@@ -1,11 +1,11 @@
 """Pydantic models for Company API responses."""
 
 from datetime import datetime
-from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from vweb.api_client.constants import (
+    DEFAULT_CUSTOM_FLAW_XP_COST,
     FreeTraitChangesPermission,
     GrantXPPermission,
     ManageCampaignPermission,
@@ -13,6 +13,7 @@ from vweb.api_client.constants import (
     PermissionLevel,
     RecoupXPPermission,
 )
+from vweb.api_client.models.request_types import CustomFlawXPCost, LongText3, Name3to50
 from vweb.api_client.models.users import User
 
 
@@ -33,6 +34,7 @@ class CompanySettings(BaseModel):
     permission_free_trait_changes: FreeTraitChangesPermission
     permission_recoup_xp: RecoupXPPermission
     specialty_xp_cost_enabled: bool = False
+    custom_flaw_xp_cost: int = DEFAULT_CUSTOM_FLAW_XP_COST
 
 
 class CompanySettingsCreate(BaseModel):
@@ -50,6 +52,7 @@ class CompanySettingsCreate(BaseModel):
     permission_free_trait_changes: FreeTraitChangesPermission | None = None
     permission_recoup_xp: RecoupXPPermission | None = None
     specialty_xp_cost_enabled: bool | None = None
+    custom_flaw_xp_cost: CustomFlawXPCost | None = None
 
 
 class CompanySettingsUpdate(BaseModel):
@@ -67,6 +70,7 @@ class CompanySettingsUpdate(BaseModel):
     permission_free_trait_changes: FreeTraitChangesPermission | None = None
     permission_recoup_xp: RecoupXPPermission | None = None
     specialty_xp_cost_enabled: bool | None = None
+    custom_flaw_xp_cost: CustomFlawXPCost | None = None
 
 
 class Company(BaseModel):
@@ -122,9 +126,9 @@ class CompanyCreate(BaseModel):
     Used to construct the JSON payload for company creation.
     """
 
-    name: str = Field(min_length=3, max_length=50)
+    name: Name3to50
     email: str
-    description: Annotated[str, Field(min_length=3)] | None = None
+    description: LongText3 | None = None
     settings: CompanySettingsCreate | None = None
 
 
@@ -134,9 +138,9 @@ class CompanyUpdate(BaseModel):
     Only include fields that need to be changed; omitted fields remain unchanged.
     """
 
-    name: Annotated[str, Field(min_length=3, max_length=50)] | None = None
+    name: Name3to50 | None = None
     email: str | None = None
-    description: Annotated[str, Field(min_length=3)] | None = None
+    description: LongText3 | None = None
     settings: CompanySettingsUpdate | None = None
 
 

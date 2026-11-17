@@ -1,7 +1,6 @@
 """Pydantic models for Character API responses and requests."""
 
 from datetime import date, datetime
-from typing import Annotated
 
 from pydantic import BaseModel, Field
 
@@ -14,7 +13,8 @@ from vweb.api_client.constants import (
 )
 
 from .character_trait import CharacterCreateTraitAssign, CharacterTrait, Health, HealthStateSet
-from .shared import Asset, CharacterSpecialty, NameDescriptionSubDocument, Note
+from .request_types import Generation, LongText, LongText3, Name3to50, NameMax50
+from .shared import Asset, CharacterSpecialty, Note
 
 # -----------------------------------------------------------------------------
 # Nested Models
@@ -28,9 +28,11 @@ class VampireAttributes(BaseModel):
     clan_name: str | None = Field(default=None, description="Name of the vampire clan.")
     generation: int | None = Field(default=None, description="Vampire generation.")
     sire: str | None = Field(default=None, description="Name of the vampire's sire.")
-    bane: NameDescriptionSubDocument | None = Field(default=None, description="Clan bane details.")
-    compulsion: NameDescriptionSubDocument | None = Field(
-        default=None, description="Clan compulsion details."
+    bane_name: str | None = Field(default=None, description="Clan bane name.")
+    bane_description: str | None = Field(default=None, description="Clan bane description.")
+    compulsion_name: str | None = Field(default=None, description="Clan compulsion name.")
+    compulsion_description: str | None = Field(
+        default=None, description="Clan compulsion description."
     )
 
 
@@ -38,20 +40,24 @@ class VampireAttributesCreate(BaseModel):
     """Vampire-specific character attributes create request."""
 
     clan_id: str
-    generation: int | None = None
-    sire: str | None = None
-    bane: NameDescriptionSubDocument | None = None
-    compulsion: NameDescriptionSubDocument | None = None
+    generation: Generation | None = None
+    sire: NameMax50 | None = None
+    bane_name: NameMax50 | None = None
+    bane_description: LongText | None = None
+    compulsion_name: NameMax50 | None = None
+    compulsion_description: LongText | None = None
 
 
 class VampireAttributesUpdate(BaseModel):
     """Vampire-specific character attributes update request."""
 
     clan_id: str | None = None
-    generation: int | None = None
-    sire: str | None = None
-    bane: NameDescriptionSubDocument | None = None
-    compulsion: NameDescriptionSubDocument | None = None
+    generation: Generation | None = None
+    sire: NameMax50 | None = None
+    bane_name: NameMax50 | None = None
+    bane_description: LongText | None = None
+    compulsion_name: NameMax50 | None = None
+    compulsion_description: LongText | None = None
 
 
 class WerewolfAttributes(BaseModel):
@@ -128,7 +134,7 @@ class InventoryItemCreate(BaseModel):
 
     name: str = Field(..., description="Name of the item.")
     type: CharacterInventoryType = Field(..., description="Type of the item.")
-    description: str | None = Field(default=None, description="Description of the item.")
+    description: LongText | None = Field(default=None, description="Description of the item.")
 
 
 class InventoryItemUpdate(BaseModel):
@@ -136,7 +142,7 @@ class InventoryItemUpdate(BaseModel):
 
     name: str | None = Field(default=None, description="Name of the item.")
     type: CharacterInventoryType | None = Field(default=None, description="Type of the item.")
-    description: str | None = Field(default=None, description="Description of the item.")
+    description: LongText | None = Field(default=None, description="Description of the item.")
 
 
 # -----------------------------------------------------------------------------
@@ -169,9 +175,7 @@ class Character(BaseModel):
     # Identity
     name_first: str = Field(..., min_length=3, description="Character's first name.")
     name_last: str = Field(..., min_length=3, description="Character's last name.")
-    name_nick: Annotated[str, Field(min_length=3, max_length=50)] | None = Field(
-        default=None, description="Character's nickname."
-    )
+    name_nick: str | None = Field(default=None, description="Character's nickname.")
     name: str = Field(..., description="Character's display name.")
     name_full: str = Field(..., description="Character's full name.")
 
@@ -180,15 +184,9 @@ class Character(BaseModel):
     date_of_birth: date | None = Field(
         default=None, description="Character's date of birth (ISO 8601 calendar date)."
     )
-    biography: Annotated[str, Field(min_length=3)] | None = Field(
-        default=None, description="Character biography."
-    )
-    demeanor: Annotated[str, Field(min_length=3, max_length=50)] | None = Field(
-        default=None, description="Character's demeanor."
-    )
-    nature: Annotated[str, Field(min_length=3, max_length=50)] | None = Field(
-        default=None, description="Character's nature."
-    )
+    biography: str | None = Field(default=None, description="Character biography.")
+    demeanor: str | None = Field(default=None, description="Character's demeanor.")
+    nature: str | None = Field(default=None, description="Character's nature.")
     concept_id: str | None = Field(default=None, description="ID of the character concept.")
     concept_name: str | None = Field(default=None, description="Name of the character concept.")
 
@@ -278,28 +276,20 @@ class CharacterCreate(BaseModel):
     campaign_id: str = Field(..., description="ID of the campaign this character belongs to.")
     character_class: CharacterClass = Field(..., description="Character class.")
     game_version: GameVersion = Field(..., description="Game version for character sheet.")
-    name_first: str = Field(..., min_length=3, description="Character's first name.")
-    name_last: str = Field(..., min_length=3, description="Character's last name.")
+    name_first: Name3to50 = Field(..., description="Character's first name.")
+    name_last: Name3to50 = Field(..., description="Character's last name.")
 
     # Optional fields
     type: CharacterType | None = Field(default=None, description="Character type.")
     is_temporary: bool = Field(default=False, description="Whether the character is temporary.")
-    name_nick: Annotated[str, Field(min_length=3, max_length=50)] | None = Field(
-        default=None, description="Character's nickname."
-    )
+    name_nick: Name3to50 | None = Field(default=None, description="Character's nickname.")
     age: int | None = Field(default=None, description="Character's age.")
     date_of_birth: date | None = Field(
         default=None, description="Character's date of birth (ISO 8601 calendar date)."
     )
-    biography: Annotated[str, Field(min_length=3)] | None = Field(
-        default=None, description="Character biography."
-    )
-    demeanor: Annotated[str, Field(min_length=3, max_length=50)] | None = Field(
-        default=None, description="Character's demeanor."
-    )
-    nature: Annotated[str, Field(min_length=3, max_length=50)] | None = Field(
-        default=None, description="Character's nature."
-    )
+    biography: LongText3 | None = Field(default=None, description="Character biography.")
+    demeanor: Name3to50 | None = Field(default=None, description="Character's demeanor.")
+    nature: Name3to50 | None = Field(default=None, description="Character's nature.")
     concept_id: str | None = Field(default=None, description="ID of the character concept.")
     user_player_id: str | None = Field(
         default=None, description="ID of the user who will play the character."
@@ -337,27 +327,15 @@ class CharacterUpdate(BaseModel):
     status: CharacterStatus | None = None
     is_temporary: bool | None = None
 
-    name_first: Annotated[str, Field(min_length=3)] | None = Field(
-        default=None, description="Character's first name."
-    )
-    name_last: Annotated[str, Field(min_length=3)] | None = Field(
-        default=None, description="Character's last name."
-    )
-    name_nick: Annotated[str, Field(min_length=3, max_length=50)] | None = Field(
-        default=None, description="Character's nickname."
-    )
+    name_first: Name3to50 | None = Field(default=None, description="Character's first name.")
+    name_last: Name3to50 | None = Field(default=None, description="Character's last name.")
+    name_nick: Name3to50 | None = Field(default=None, description="Character's nickname.")
 
     age: int | None = None
     date_of_birth: date | None = None
-    biography: Annotated[str, Field(min_length=3)] | None = Field(
-        default=None, description="Character biography."
-    )
-    demeanor: Annotated[str, Field(min_length=3, max_length=50)] | None = Field(
-        default=None, description="Character's demeanor."
-    )
-    nature: Annotated[str, Field(min_length=3, max_length=50)] | None = Field(
-        default=None, description="Character's nature."
-    )
+    biography: LongText3 | None = Field(default=None, description="Character biography.")
+    demeanor: Name3to50 | None = Field(default=None, description="Character's demeanor.")
+    nature: Name3to50 | None = Field(default=None, description="Character's nature.")
     concept_id: str | None = Field(default=None, description="ID of the character concept.")
 
     user_player_id: str | None = None

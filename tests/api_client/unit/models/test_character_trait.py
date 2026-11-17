@@ -292,7 +292,6 @@ class TestTraitCreate:
             is_rollable=False,
             initial_cost=3,
             upgrade_cost=2,
-            count_based_cost_multiplier=4,
         )
 
         # Then: All fields are set correctly
@@ -306,7 +305,6 @@ class TestTraitCreate:
         assert request.is_rollable is False
         assert request.initial_cost == 3
         assert request.upgrade_cost == 2
-        assert request.count_based_cost_multiplier == 4
 
     def test_create_request_model_dump(self) -> None:
         """Verify model_dump produces correct JSON payload."""

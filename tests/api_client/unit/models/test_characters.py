@@ -18,7 +18,6 @@ from vweb.api_client.models import (
     HealthStateSet,
     HunterAttributes,
     MageAttributes,
-    NameDescriptionSubDocument,
     VampireAttributes,
     WerewolfAttributes,
 )
@@ -622,19 +621,16 @@ class TestVampireAttributes:
             clan_name="Ventrue",
             generation=10,
             sire="Ancient One",
-            bane=NameDescriptionSubDocument(
-                name="Rarefied Tastes", description="Feeds only on specific blood"
-            ),
-            compulsion=NameDescriptionSubDocument(
-                name="Domineering", description="Must be in control"
-            ),
+            bane_name="Rarefied Tastes",
+            bane_description="Feeds only on specific blood",
+            compulsion_name="Domineering",
+            compulsion_description="Must be in control",
         )
 
         # Then: All fields are set
         assert attrs.clan_name == "Ventrue"
         assert attrs.generation == 10
-        assert attrs.bane is not None
-        assert attrs.bane.name == "Rarefied Tastes"
+        assert attrs.bane_name == "Rarefied Tastes"
 
 
 class TestWerewolfAttributes:

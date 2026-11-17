@@ -21,7 +21,6 @@ from vweb.api_client.models import (
     HunterAttributesCreate,
     HunterAttributesUpdate,
     InventoryItem,
-    NameDescriptionSubDocument,
     PaginatedResponse,
     RollStatistics,
     VampireAttributesCreate,
@@ -385,10 +384,8 @@ class TestCharactersServiceCreate:
             clan_id="clan123",
             generation=10,
             sire="Ancient One",
-            bane=NameDescriptionSubDocument(
-                name="Rarefied Tastes",
-                description="Feeds only on specific blood",
-            ),
+            bane_name="Rarefied Tastes",
+            bane_description="Feeds only on specific blood",
         )
 
         # When: Creating a character with vampire attributes
@@ -415,7 +412,8 @@ class TestCharactersServiceCreate:
         assert body["vampire_attributes"]["clan_id"] == "clan123"
         assert body["vampire_attributes"]["generation"] == 10
         assert body["vampire_attributes"]["sire"] == "Ancient One"
-        assert body["vampire_attributes"]["bane"]["name"] == "Rarefied Tastes"
+        assert body["vampire_attributes"]["bane_name"] == "Rarefied Tastes"
+        assert body["vampire_attributes"]["bane_description"] == "Feeds only on specific blood"
 
     @respx.mock
     def test_create_character_with_werewolf_attributes(
@@ -672,8 +670,10 @@ class TestCharactersServiceUpdate:
                 "clan_name": "Toreador",
                 "generation": 9,
                 "sire": "New Sire",
-                "bane": None,
-                "compulsion": {"name": "Obsession", "description": "Cannot resist beauty"},
+                "bane_name": None,
+                "bane_description": None,
+                "compulsion_name": "Obsession",
+                "compulsion_description": "Cannot resist beauty",
             },
         }
         route = respx.patch(
@@ -685,10 +685,8 @@ class TestCharactersServiceUpdate:
             clan_id="clan456",
             generation=9,
             sire="New Sire",
-            compulsion=NameDescriptionSubDocument(
-                name="Obsession",
-                description="Cannot resist beauty",
-            ),
+            compulsion_name="Obsession",
+            compulsion_description="Cannot resist beauty",
         )
 
         # When: Updating the character's vampire attributes
@@ -712,7 +710,7 @@ class TestCharactersServiceUpdate:
         assert body["vampire_attributes"]["clan_id"] == "clan456"
         assert body["vampire_attributes"]["generation"] == 9
         assert body["vampire_attributes"]["sire"] == "New Sire"
-        assert body["vampire_attributes"]["compulsion"]["name"] == "Obsession"
+        assert body["vampire_attributes"]["compulsion_name"] == "Obsession"
 
     @respx.mock
     def test_update_character_werewolf_attributes(

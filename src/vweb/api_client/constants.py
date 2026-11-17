@@ -24,6 +24,22 @@ MAX_PAGE_LIMIT = 100
 # Reference/catalog list endpoints serve bounded seed data and allow fetching a
 # full catalog in one request, so they accept a higher per-request limit.
 MAX_REFERENCE_PAGE_LIMIT = 1000
+MAX_PAGINATION_OFFSET = 100_000
+
+# Request field limits the API enforces with a 400
+MAX_NAME_LENGTH: Final[int] = 50
+MAX_LONG_TEXT_LENGTH: Final[int] = 20_000
+MAX_URL_LENGTH: Final[int] = 2048
+MAX_PROVIDER_TOKEN_LENGTH: Final[int] = 16_384
+MAX_DICTIONARY_SYNONYMS: Final[int] = 50
+MAX_SYNONYM_LENGTH: Final[int] = 50
+MIN_VAMPIRE_GENERATION: Final[int] = 1
+MAX_VAMPIRE_GENERATION: Final[int] = 16
+MAX_TRAIT_VALUE: Final[int] = 100
+MAX_EXTRA_HEALTH_LEVELS: Final[int] = 20
+MIN_CUSTOM_FLAW_XP_COST: Final[int] = 0
+MAX_CUSTOM_FLAW_XP_COST: Final[int] = 100
+DEFAULT_CUSTOM_FLAW_XP_COST: Final[int] = 2
 
 # HTTP Status Code Ranges (5xx Server Errors)
 HTTP_500_INTERNAL_SERVER_ERROR = 500

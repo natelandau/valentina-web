@@ -306,11 +306,7 @@ class CharactersService(NotesMixin, AssetsMixin):
             ValidationError: If the request data is invalid.
         """
         body = request if request is not None else self._validate_request(CharacterUpdate, **kwargs)
-        payload = body.model_dump(exclude_none=True, exclude_unset=True, mode="json")
-        # The API distinguishes an omitted key (leave unchanged) from an explicit null (clear).
-        # exclude_none drops None, so re-add date_of_birth when the caller set it to None to clear it.
-        if "date_of_birth" in body.model_fields_set and body.date_of_birth is None:
-            payload["date_of_birth"] = None
+        payload = self._update_payload(body, clearable={"date_of_birth"})
         return self._call(Routes.CHARACTERS_UPDATE, json=payload, character_id=character_id)
 
     def delete(self, character_id: str) -> None:

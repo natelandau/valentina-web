@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from vweb.api_client.models.chapters import CampaignChapter
+from vweb.api_client.models.request_types import LongText
 from vweb.api_client.models.shared import Asset, Note
 
 
@@ -57,7 +58,7 @@ class BookCreate(BaseModel):
     """
 
     name: str = Field(..., max_length=50, description="Book name (up to 50 characters).")
-    description: str | None = Field(default=None, description="Book description.")
+    description: LongText | None = Field(default=None, description="Book description.")
 
 
 class BookUpdate(BaseModel):
@@ -69,7 +70,7 @@ class BookUpdate(BaseModel):
     name: str | None = Field(
         default=None, max_length=50, description="New book name (up to 50 characters)."
     )
-    description: str | None = Field(
+    description: LongText | None = Field(
         default=None, description="New book description. An empty string clears it."
     )
 
