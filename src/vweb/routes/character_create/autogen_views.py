@@ -11,7 +11,7 @@ from flask.views import MethodView
 if TYPE_CHECKING:
     from werkzeug.wrappers.response import Response
 
-from vweb.api_client.exceptions import APIError, ValidationError
+from vweb.api_client.exceptions import APIError, NotFoundError, ValidationError
 from vweb.lib import cache
 from vweb.lib.api import fetch_campaign_or_404
 from vweb.lib.api_errors import api_error_message
@@ -110,6 +110,11 @@ class MultiAutogenFinalizeView(MethodView):
                     exc, fallback="Failed to finalize character. Please try again."
                 )
             flash(message, "error")
+            return hx_redirect(url_for("character_create.selection_page", campaign_id=campaign_id))
+        except NotFoundError:
+            # The session survives a failed finalize, so the user can pick another character.
+            logger.info("Chargen character %s was archived before finalize", selected_character_id)
+            flash("That character is no longer available. Please choose another one.", "error")
             return hx_redirect(url_for("character_create.selection_page", campaign_id=campaign_id))
         except APIError:
             logger.exception("Failed to finalize chargen session")

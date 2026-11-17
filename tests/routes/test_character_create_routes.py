@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 from tests.conftest import get_csrf
 from tests.helpers import assert_shows_error, build_global_context
-from vweb.api_client.exceptions import APIError, ServerError, ValidationError
+from vweb.api_client.exceptions import APIError, NotFoundError, ServerError, ValidationError
 from vweb.api_client.testing import (
     CharacterConceptFactory,
     CharacterFactory,
@@ -456,6 +456,23 @@ class TestMultiAutogenFinalizeView:
             "error",
             "This character generation session expired. Please start a new one.",
         ) in flashes
+
+    def test_archived_character_asks_for_another_choice(self, client, mocker, caplog) -> None:
+        """Verify a 404 for an archived character explains itself without logging an error."""
+        # Given the API reports the selected character no longer exists
+        error = NotFoundError("Character not found", 404)
+
+        # When finalizing
+        with caplog.at_level(logging.INFO, logger="vweb.routes.character_create.autogen_views"):
+            campaign, response, flashes = self._post_finalize(client, mocker, error)
+
+        # Then the user returns to selection with a message to pick another character
+        assert f"/campaign/{campaign.id}/characters/new" in response.headers.get("HX-Redirect", "")
+        assert ("error", "That character is no longer available. Please choose another one.") in (
+            flashes
+        )
+        levels = [r.levelno for r in caplog.records if r.name.endswith("autogen_views")]
+        assert levels == [logging.INFO]
 
     def test_other_validation_error_flashes_field_message(self, client, mocker) -> None:
         """Verify a validation error on another field is not shown as an expired session."""
