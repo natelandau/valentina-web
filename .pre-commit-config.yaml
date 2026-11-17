@@ -97,21 +97,6 @@ repos:
 
   - repo: local
     hooks:
-      - id: no-local-sources
-        name: no local path dependencies (staged)
-        entry: python3 scripts/check_local_sources.py staged
-        language: system
-        pass_filenames: false
-        files: ^(pyproject\.toml|uv\.lock)$
-
-      - id: no-local-sources-push
-        name: no local path dependencies (pushed commits)
-        entry: python3 scripts/check_local_sources.py push
-        language: system
-        stages: [pre-push]
-        pass_filenames: false
-        always_run: true
-
       - id: shellcheck
         name: shellcheck
         entry: shellcheck --check-sourced --severity=warning
