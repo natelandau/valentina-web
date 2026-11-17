@@ -151,10 +151,9 @@ class TestCampaignCreate:
         with pytest.raises(PydanticValidationError):
             CampaignCreate(name="a" * 51)
 
-    def test_description_min_length(self):
-        """Verify description minimum length validation."""
-        with pytest.raises(PydanticValidationError):
-            CampaignCreate(name="Valid", description="ab")
+    def test_short_description_allowed(self):
+        """Verify a short description is accepted, as the API sets no minimum."""
+        assert CampaignCreate(name="Valid", description="ab").description == "ab"
 
     def test_desperation_max_value(self):
         """Verify desperation maximum value validation."""
