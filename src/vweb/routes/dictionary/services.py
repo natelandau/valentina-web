@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from vweb.api_client.constants import MAX_NAME_LENGTH
 from vweb.api_client.models import DictionaryTermCreate, DictionaryTermUpdate
 from vweb.lib import api_services
 from vweb.lib.urls import is_http_url
@@ -16,7 +17,7 @@ if TYPE_CHECKING:
     from vweb.api_client.models import DictionaryTerm
 
 TERM_MIN_LENGTH = 3
-TERM_MAX_LENGTH = 50
+TERM_MAX_LENGTH = MAX_NAME_LENGTH
 
 
 def parse_synonyms(raw: str) -> list[str]:
@@ -56,6 +57,9 @@ def validate_term(form_data: dict[str, str]) -> dict[str, str]:
     link = form_data.get("link", "").strip()
     if link and not is_http_url(link):
         errors["link"] = "Link must be a valid URL (e.g. https://example.com)"
+
+    if not link and not form_data.get("definition", "").strip():
+        errors["definition"] = "Add a definition or a link"
 
     return errors
 

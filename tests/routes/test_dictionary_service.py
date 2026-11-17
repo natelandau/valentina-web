@@ -69,6 +69,11 @@ class TestValidateTerm:
         )
         assert "url" in errors["link"].lower()
 
+    def test_requires_definition_or_link(self) -> None:
+        """Verify a term with neither a definition nor a link returns an error, as the API requires one."""
+        errors = validate_term({"term": "Auspex", "definition": " ", "link": "", "synonyms": ""})
+        assert errors["definition"] == "Add a definition or a link"
+
     def test_valid_link(self) -> None:
         """Verify valid URL link returns no errors."""
         errors = validate_term(
@@ -91,8 +96,10 @@ class TestValidateTerm:
         assert "url" in errors["link"].lower()
 
     def test_empty_link_is_valid(self) -> None:
-        """Verify empty link field is accepted."""
-        errors = validate_term({"term": "Auspex", "definition": "", "link": "", "synonyms": ""})
+        """Verify an empty link is accepted when the term has a definition."""
+        errors = validate_term(
+            {"term": "Auspex", "definition": "A discipline", "link": "", "synonyms": ""}
+        )
         assert errors == {}
 
 
@@ -156,11 +163,28 @@ class TestUpdateTerm:
             seed_session()
             update_term("term-1", form_data)
 
-        # Then the API receives the update for term-1
+        # Then the API receives the update for term-1, with a null link that clears it
         fake_vclient.assert_called(
             Routes.DICTIONARY_UPDATE,
             params={"company_id": "test-company-id", "term_id": "term-1"},
-            json={"term": "Auspex", "definition": "Updated.", "synonyms": ["a", "b"]},
+            json={"term": "Auspex", "definition": "Updated.", "link": None, "synonyms": ["a", "b"]},
+            times=1,
+        )
+
+    def test_blank_definition_clears_it(self, app, fake_vclient) -> None:
+        """Verify blanking the definition sends null so the API clears the stored value."""
+        # Given an edited term form with the definition removed
+        form_data = {"term": "Auspex", "definition": "  ", "link": "", "synonyms": ""}
+
+        # When updating the term
+        with app.test_request_context("/"):
+            seed_session()
+            update_term("term-1", form_data)
+
+        # Then the API receives null for the definition and link
+        fake_vclient.assert_called(
+            Routes.DICTIONARY_UPDATE,
+            json={"term": "Auspex", "definition": None, "link": None, "synonyms": []},
             times=1,
         )
 

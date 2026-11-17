@@ -38,6 +38,7 @@
       <label class="label" for="term-definition">Definition</label>
       <textarea id="term-definition"
                 name="definition"
+                maxlength="{{ MAX_LONG_TEXT_LENGTH }}"
                 placeholder="Supports markdown"
                 rows="4"
                 class="textarea textarea-bordered w-full">{{ form_data.get('definition') or (term.definition if term and term.definition else '') }}</textarea>
@@ -48,6 +49,7 @@
       <input type="url"
              id="term-link"
              name="link"
+             maxlength="{{ MAX_URL_LENGTH }}"
              placeholder="https://example.com"
              value="{{ form_data.get('link') or (term.link if term and term.link else '') }}"
              class="input input-bordered w-full" />

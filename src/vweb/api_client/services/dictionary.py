@@ -106,14 +106,12 @@ class DictionaryService(BaseService):
             request: A DictionaryTermUpdate model, OR pass fields as keyword arguments.
             **kwargs: Fields for DictionaryTermUpdate if request is not provided.
                 Accepts: term (str | None), definition (str | None),
-                link (str | None), synonyms (list[str] | None).
+                link (str | None), synonyms (list[str] | None). Set definition or link
+                to None to clear it; omit a field to leave it unchanged.
         """
         body = request if request is not None else DictionaryTermUpdate(**kwargs)
-        return self._call(
-            Routes.DICTIONARY_UPDATE,
-            json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
-            term_id=term_id,
-        )
+        payload = self._update_payload(body, clearable={"definition", "link"})
+        return self._call(Routes.DICTIONARY_UPDATE, json=payload, term_id=term_id)
 
     def delete(self, term_id: str) -> None:
         """Delete a specific dictionary term."""

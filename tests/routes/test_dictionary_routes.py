@@ -327,7 +327,7 @@ class TestDictionaryCreate:
             "/dictionary/term",
             data={
                 "term": "Auspex",
-                "definition": "",
+                "definition": "A discipline.",
                 "link": "",
                 "synonyms": "",
                 "csrf_token": csrf,
@@ -363,7 +363,7 @@ class TestDictionaryUpdate:
             "/dictionary/term/t1",
             data={
                 "term": "Auspex Updated",
-                "definition": "",
+                "definition": "Updated definition.",
                 "link": "",
                 "synonyms": "",
                 "csrf_token": csrf,
@@ -390,7 +390,7 @@ class TestDictionaryUpdate:
             "/dictionary/term/t1",
             data={
                 "term": "Changed",
-                "definition": "",
+                "definition": "A discipline.",
                 "link": "",
                 "synonyms": "",
                 "csrf_token": csrf,
@@ -438,7 +438,7 @@ class TestDictionaryUpdate:
             "/dictionary/term/t1",
             data={
                 "term": "Auspex",
-                "definition": "",
+                "definition": "A discipline.",
                 "link": "",
                 "synonyms": "",
                 "csrf_token": csrf,
@@ -470,7 +470,7 @@ class TestDictionaryApiRefusals:
             "/dictionary/term",
             data={
                 "term": "Auspex",
-                "definition": "",
+                "definition": "A discipline.",
                 "link": "",
                 "synonyms": "",
                 "csrf_token": get_csrf(client),
@@ -499,7 +499,7 @@ class TestDictionaryApiRefusals:
             "/dictionary/term/t1",
             data={
                 "term": "Auspex",
-                "definition": "",
+                "definition": "A discipline.",
                 "link": "",
                 "synonyms": "",
                 "csrf_token": get_csrf(client),
