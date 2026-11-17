@@ -6,7 +6,7 @@ import pytest
 
 from tests.helpers import identify_resolving
 from vweb.api_client.models import IdentityResolution, UserLookupResult
-from vweb.api_client.testing import UserFactory
+from vweb.api_client.testing import Routes, UserFactory
 
 
 def _make_lookup_result(**kwargs) -> UserLookupResult:
@@ -788,19 +788,20 @@ class TestLoginIdentityBinding:
             assert "user_id" not in sess
         assert response.location == "/"
 
-    def test_discord_unverified_email_is_not_used_for_lookup(self, client, mocker):
+    def test_discord_unverified_email_is_not_used_for_lookup(self, client, mocker, fake_vclient):
         """Verify an unverified Discord email never reaches the email lookup fallback."""
-        # Given a Discord profile whose email is unverified
+        # Given a Discord profile whose email is unverified and no user with that Discord ID
         _discord_oauth(mocker, verified=False)
-        lookup = mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=[])
+        fake_vclient.set_response(Routes.USERS_LOOKUP, items=[])
 
         # When the callback completes
         client.get("/auth/discord/callback")
 
-        # Then the lookup gets no email
-        assert lookup.call_args.kwargs["email"] == ""
+        # Then the lookup searched by Discord ID and never by email
+        fake_vclient.assert_called(Routes.USERS_LOOKUP, query={"discord_id": "new-discord-id"})
+        fake_vclient.assert_not_called(Routes.USERS_LOOKUP, query={"email": "victim@example.com"})
 
-    def test_google_unverified_email_is_not_used_for_lookup(self, client, mocker):
+    def test_google_unverified_email_is_not_used_for_lookup(self, client, mocker, fake_vclient):
         """Verify an unverified Google email never reaches the email lookup fallback."""
         # Given a Google ID token whose email is unverified
         mock_google = MagicMock()
@@ -809,10 +810,11 @@ class TestLoginIdentityBinding:
             "userinfo": {"sub": "g-1", "email": "victim@example.com", "email_verified": False},
         }
         mocker.patch("vweb.routes.auth.views_oauth.oauth", google=mock_google)
-        lookup = mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=[])
+        fake_vclient.set_response(Routes.USERS_LOOKUP, items=[])
 
         # When the callback completes
         client.get("/auth/google/callback")
 
-        # Then the lookup gets no email
-        assert lookup.call_args.kwargs["email"] == ""
+        # Then the lookup searched by Google ID and never by email
+        fake_vclient.assert_called(Routes.USERS_LOOKUP, query={"google_id": "g-1"})
+        fake_vclient.assert_not_called(Routes.USERS_LOOKUP, query={"email": "victim@example.com"})

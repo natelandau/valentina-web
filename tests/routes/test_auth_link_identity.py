@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from vweb.api_client.exceptions import ConflictError, UnprocessableEntityError
+from vweb.api_client.testing import Routes
 
 
 class TestLinkIdentityView:
@@ -87,15 +87,13 @@ class TestLinkModeCallback:
         mocker.patch("vweb.routes.auth.views_oauth.oauth", github=mock_github)
         return mock_github
 
-    def test_link_callback_links_identity_and_redirects_to_profile(self, client, mocker):
+    def test_link_callback_links_identity_and_redirects_to_profile(
+        self, client, mocker, fake_vclient
+    ):
         """Verify a link-mode callback attaches the identity and returns to the profile."""
         # Given a link-mode session and a mock OAuth flow
         self._arm_link_mode(client)
         self._mock_github_oauth(mocker)
-
-        # Given a users service that links successfully
-        mock_users_svc = MagicMock()
-        mocker.patch("vweb.routes.auth.views_identity.users_service", return_value=mock_users_svc)
         mock_cache_clear = mocker.patch(
             "vweb.routes.auth.views_identity.cache.global_context.clear"
         )
@@ -104,9 +102,13 @@ class TestLinkModeCallback:
         response = client.get("/auth/github/callback")
 
         # Then the identity was linked for the active company and cache invalidated
-        mock_users_svc.link_identity.assert_called_once_with(
-            "test-user-id", provider="github", token="gh-cred"
+        (request,) = fake_vclient.assert_called(
+            Routes.USERS_IDENTITY_LINK,
+            params={"company_id": "test-company-id", "user_id": "test-user-id"},
+            json={"provider": "github", "token": "gh-cred"},
+            times=1,
         )
+        assert request.headers["on-behalf-of"] == "test-user-id"
         mock_cache_clear.assert_called_once_with("test-company-id", "test-user-id")
         assert response.status_code == 302
         assert response.location == "/profile/test-user-id"
@@ -115,47 +117,51 @@ class TestLinkModeCallback:
         with client.session_transaction() as sess:
             assert "oauth_link_mode" not in sess
 
-    def test_link_callback_conflict_flashes_error(self, client, mocker):
+    def test_link_callback_conflict_flashes_error(self, client, mocker, fake_vclient):
         """Verify IDENTITY_ALREADY_LINKED is reported without breaking the session."""
         # Given a link-mode session and a mock OAuth flow
         self._arm_link_mode(client)
         self._mock_github_oauth(mocker)
 
         # Given the identity belongs to another user
-        mock_users_svc = MagicMock()
-        mock_users_svc.link_identity.side_effect = ConflictError(
-            "conflict", 409, {"code": "IDENTITY_ALREADY_LINKED"}
+        fake_vclient.set_error(
+            Routes.USERS_IDENTITY_LINK, status_code=409, code="IDENTITY_ALREADY_LINKED"
         )
-        mocker.patch("vweb.routes.auth.views_identity.users_service", return_value=mock_users_svc)
+        mock_cache_clear = mocker.patch(
+            "vweb.routes.auth.views_identity.cache.global_context.clear"
+        )
 
         # When the callback is hit
         response = client.get("/auth/github/callback")
 
-        # Then redirected back to the profile and the session user is unchanged
+        # Then redirected back to the profile, the session user is unchanged, and the
+        # cached context is kept
         assert response.status_code == 302
         assert response.location == "/profile/test-user-id"
         with client.session_transaction() as sess:
             assert sess["user_id"] == "test-user-id"
+            assert "already linked to a different user" in str(sess["_flashes"])
+        mock_cache_clear.assert_not_called()
 
-    def test_link_callback_verification_failure_flashes_error(self, client, mocker):
+    def test_link_callback_verification_failure_flashes_error(self, client, mocker, fake_vclient):
         """Verify TOKEN_VERIFICATION_FAILED during linking redirects to the profile."""
         # Given a link-mode session and a mock OAuth flow
         self._arm_link_mode(client)
         self._mock_github_oauth(mocker)
 
         # Given token verification fails
-        mock_users_svc = MagicMock()
-        mock_users_svc.link_identity.side_effect = UnprocessableEntityError(
-            "bad", 422, {"code": "TOKEN_VERIFICATION_FAILED"}
+        fake_vclient.set_error(
+            Routes.USERS_IDENTITY_LINK, status_code=422, code="TOKEN_VERIFICATION_FAILED"
         )
-        mocker.patch("vweb.routes.auth.views_identity.users_service", return_value=mock_users_svc)
 
         # When the callback is hit
         response = client.get("/auth/github/callback")
 
-        # Then redirected back to the profile
+        # Then redirected back to the profile with a verification error
         assert response.status_code == 302
         assert response.location == "/profile/test-user-id"
+        with client.session_transaction() as sess:
+            assert "Could not verify your Github login" in str(sess["_flashes"])
 
     def test_link_callback_cancelled_oauth_redirects_to_profile(self, client, mocker):
         """Verify cancelling the provider consent screen returns to the profile."""
@@ -176,21 +182,21 @@ class TestLinkModeCallback:
         with client.session_transaction() as sess:
             assert "oauth_link_mode" not in sess
 
-    def test_link_callback_does_not_run_login_flow(self, client, mocker):
+    def test_link_callback_does_not_run_login_flow(self, client, mocker, fake_vclient):
         """Verify link mode skips lookup and identify entirely."""
         # Given a link-mode session and a mock OAuth flow
         self._arm_link_mode(client)
         self._mock_github_oauth(mocker)
-        mocker.patch("vweb.routes.auth.views_identity.users_service", return_value=MagicMock())
-        mock_lookup = mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies")
 
         # When the callback is hit
         client.get("/auth/github/callback")
 
-        # Then the login lookup never ran
-        mock_lookup.assert_not_called()
+        # Then the identity was linked and the login lookup and identify never ran
+        fake_vclient.assert_called(Routes.USERS_IDENTITY_LINK, times=1)
+        fake_vclient.assert_not_called(Routes.USERS_LOOKUP)
+        fake_vclient.assert_not_called(Routes.IDENTITY_IDENTIFY)
 
-    def test_link_callback_apple_uses_id_token(self, client, mocker):
+    def test_link_callback_apple_uses_id_token(self, client, mocker, fake_vclient):
         """Verify the Apple link callback (a form POST) links with the OIDC id_token."""
         # Given a link-mode session and an Apple OAuth flow returning an id_token
         self._arm_link_mode(client)
@@ -203,23 +209,24 @@ class TestLinkModeCallback:
         mocker.patch(
             "vweb.routes.auth.views_oauth.build_apple_client_secret", return_value="secret"
         )
-        mock_users_svc = MagicMock()
-        mocker.patch("vweb.routes.auth.views_identity.users_service", return_value=mock_users_svc)
         mocker.patch("vweb.routes.auth.views_identity.cache.global_context.clear")
 
         # When the callback is POSTed
         response = client.post("/auth/apple/callback", data={"code": "abc", "state": "xyz"})
 
         # Then the identity was linked with the id_token and routed back to the profile
-        mock_users_svc.link_identity.assert_called_once_with(
-            "test-user-id", provider="apple", token="apple-id-tok"
+        fake_vclient.assert_called(
+            Routes.USERS_IDENTITY_LINK,
+            params={"user_id": "test-user-id"},
+            json={"provider": "apple", "token": "apple-id-tok"},
+            times=1,
         )
         assert response.status_code == 302
         assert response.location == "/profile/test-user-id"
         with client.session_transaction() as sess:
             assert "oauth_link_mode" not in sess
 
-    def test_link_callback_google_uses_id_token(self, client, mocker):
+    def test_link_callback_google_uses_id_token(self, client, mocker, fake_vclient):
         """Verify the Google link callback links with the OIDC id_token, not the access token."""
         # Given a link-mode session and a Google OAuth flow returning both token types
         self._arm_link_mode(client)
@@ -230,16 +237,17 @@ class TestLinkModeCallback:
             "userinfo": {"sub": "g1", "name": "u", "email": "e@e.com"},
         }
         mocker.patch("vweb.routes.auth.views_oauth.oauth", google=mock_google)
-        mock_users_svc = MagicMock()
-        mocker.patch("vweb.routes.auth.views_identity.users_service", return_value=mock_users_svc)
         mocker.patch("vweb.routes.auth.views_identity.cache.global_context.clear")
 
         # When the callback is hit
         response = client.get("/auth/google/callback")
 
         # Then the identity was linked with the id_token and routed back to the profile
-        mock_users_svc.link_identity.assert_called_once_with(
-            "test-user-id", provider="google", token="google-id-tok"
+        fake_vclient.assert_called(
+            Routes.USERS_IDENTITY_LINK,
+            params={"user_id": "test-user-id"},
+            json={"provider": "google", "token": "google-id-tok"},
+            times=1,
         )
         assert response.status_code == 302
         assert response.location == "/profile/test-user-id"
