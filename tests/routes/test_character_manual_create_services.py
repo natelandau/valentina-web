@@ -204,3 +204,29 @@ class TestAgePayload:
         body = fake_vclient.requests_for(Routes.CHARACTERS_UPDATE)[0].json
         assert body["date_of_birth"] == "1960-03-15"
         assert "age" not in body
+
+
+def test_update_clears_blanked_profile_fields(app, fake_vclient) -> None:
+    """Verify blank optional fields on the profile form clear the stored values."""
+    # Given a profile form whose nickname, biography, demeanor, nature, and concept are blank
+    fake_vclient.set_response(Routes.CHARACTERS_UPDATE, model=CharacterFactory.build())
+    form = {**_FORM, "name_nick": "", "biography": "", "demeanor": "", "nature": ""}
+
+    # When updating the profile
+    with app.test_request_context():
+        session["user_id"] = "u1"
+        session["company_id"] = "company-1"
+        update_character_profile("char-1", form)
+
+    # Then each blank field is sent as null so the API clears it
+    fake_vclient.assert_called(
+        Routes.CHARACTERS_UPDATE,
+        json_subset={
+            "name_nick": None,
+            "biography": None,
+            "demeanor": None,
+            "nature": None,
+            "concept_id": None,
+        },
+        times=1,
+    )
