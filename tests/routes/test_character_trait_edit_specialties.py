@@ -28,7 +28,7 @@ from vweb.routes.character_trait_edit.services import specialty_help_text
 if TYPE_CHECKING:
     from vweb.api_client.models import Character
 
-SVC_PATH = "vweb.routes.character_trait_edit.views_specialties.character_traits_service"
+SVC_PATH = "vweb.routes.character_trait_edit.views_specialties.api_services.character_traits"
 
 
 def _specialty(specialty_id: str, name: str) -> CharacterTraitSpecialty:
@@ -284,9 +284,7 @@ class TestSpecialties(_Base):
         client.post(
             self._url(character, "XP"), data={"name": "Swords"}, headers=self._headers(client)
         )
-        self.sheet_get.assert_called_with(
-            character.id, "test-user-id", include_available_traits=True
-        )
+        self.sheet_get.assert_called_with(character.id, include_available_traits=True)
 
     def test_dialog_inputs_have_length_limits(self, client, mocker) -> None:
         """Verify the add and rename inputs carry the length bounds and disable on submit."""

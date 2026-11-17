@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -32,13 +31,7 @@ def _mock_audit_api(mocker, admin_context: GlobalContext, fake_vclient) -> None:
         Routes.COMPANIES_AUDIT_LOGS_LIST,
         items=AuditLogFactory.batch(3),
     )
-
-    users_svc = MagicMock()
-    users_svc.list_all_unapproved.return_value = []
-    mocker.patch(
-        "vweb.routes.admin.services.users_service",
-        return_value=users_svc,
-    )
+    fake_vclient.set_response(Routes.USERS_UNAPPROVED_LIST, items=[])
 
 
 class TestAuditLogRouteRegistered:

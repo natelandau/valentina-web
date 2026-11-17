@@ -2,24 +2,23 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from vweb.lib.guards import can_manage_campaign
 
 if TYPE_CHECKING:
     from vweb.api_client.models import Note
+    from vweb.api_client.services import NotesMixin
 
 
 class BaseNotesHandler:
     """Shared note CRUD operations for all note handler types.
 
     Subclasses must set ``_parent_id`` and ``_svc`` in their ``__init__``.
-    The service object must expose ``list_all_notes``, ``get_note``,
-    ``create_note``, ``update_note``, and ``delete_note`` methods.
     """
 
     _parent_id: str
-    _svc: Any
+    _svc: NotesMixin
 
     def can_mutate(self) -> bool:
         """Restrict create/update/delete to users allowed to manage campaign content.

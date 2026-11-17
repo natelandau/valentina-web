@@ -1,9 +1,11 @@
 """Base service class for API services."""
 
+import mimetypes
 import random
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
+from functools import partial
 from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar
 
 import httpx2
@@ -13,6 +15,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from vweb.api_client.constants import (
     DEFAULT_PAGE_LIMIT,
+    DEFAULT_RETRY_STATUSES,
     HTTP_500_INTERNAL_SERVER_ERROR,
     HTTP_600_UPPER_BOUND,
     IDEMPOTENCY_KEY_HEADER,
@@ -23,11 +26,13 @@ from vweb.api_client.constants import (
     REQUEST_ID_HEADER,
 )
 from vweb.api_client.exceptions import (
+    APIConnectionError,
     APIError,
     AuthenticationError,
     AuthorizationError,
     ConflictError,
     NotFoundError,
+    PayloadTooLargeError,
     RateLimitError,
     RequestValidationError,
     ServerError,
@@ -35,11 +40,21 @@ from vweb.api_client.exceptions import (
     ValidationError,
 )
 from vweb.api_client.models.pagination import PaginatedResponse
+from vweb.api_client.routes import ResponseStyle, RouteSpec
 
 T = TypeVar("T", bound=BaseModel)
 
 if TYPE_CHECKING:
     from vweb.api_client.client import VClient
+
+
+# Transient transport failures worth resending. A server that drops a pooled keep-alive
+# connection surfaces as RemoteProtocolError or ReadError, not ConnectError.
+_RETRYABLE_TRANSPORT_ERRORS = (
+    httpx2.NetworkError,
+    httpx2.RemoteProtocolError,
+    httpx2.TimeoutException,
+)
 
 
 class _RetryPlan(NamedTuple):
@@ -56,14 +71,34 @@ class BaseService:
     Provides common functionality for making HTTP requests and handling responses.
     """
 
-    def __init__(self, client: "VClient") -> None:
+    def __init__(self, client: "VClient", *, on_behalf_of: str | None = None, **scope: str) -> None:
         """Initialize the service.
 
         Args:
             client: The VClient instance to use for requests.
+            on_behalf_of: User ID to impersonate via the On-Behalf-Of header, or None.
+            **scope: Path IDs (such as ``company_id``) filled into every endpoint template.
         """
         self._client = client
-        self._on_behalf_of: str | None = None
+        self._on_behalf_of = on_behalf_of
+        self._scope = scope
+
+    @property
+    def _company_id(self) -> str | None:
+        """The company this service is scoped to, or None for unscoped services."""
+        return self._scope.get("company_id")
+
+    def _format_endpoint(self, endpoint: str, **kwargs: str) -> str:
+        """Fill an endpoint template with the service's scope IDs plus any extra params.
+
+        Args:
+            endpoint: The endpoint template from ``Endpoints``.
+            **kwargs: Path parameters beyond the service's scope.
+
+        Returns:
+            The formatted endpoint path.
+        """
+        return endpoint.format(**self._scope, **kwargs)
 
     @property
     def _http(self) -> httpx2.Client:
@@ -97,29 +132,42 @@ class BaseService:
         except PydanticValidationError as e:
             raise RequestValidationError(e) from e
 
-    def _calculate_backoff_delay(self, attempt: int, retry_after: int | None) -> float:
-        """Calculate the delay before the next retry attempt.
+    def _calculate_backoff_delay(
+        self, attempt: int, retry_after: int | None, *, started_at: float
+    ) -> float | None:
+        """Calculate the delay before the next retry attempt, or decide not to retry.
 
         Wait the server's ``retry_after`` when it gives one, since the server knows
         when capacity returns. Otherwise use exponential backoff:
         ``retry_delay * 2 ** attempt``. Either way, add up to 25% random jitter so
-        clients that were limited together do not retry together.
+        clients that were limited together do not retry together, and cap the result
+        at ``max_retry_delay``.
+
+        A caller holds a web worker while it waits, so a call never waits longer than
+        it can use: a server ``retry_after`` above ``max_retry_delay``, or a wait that
+        would overrun ``retry_budget``, ends the retries.
 
         Args:
             attempt: The current attempt number (0-indexed).
             retry_after: Seconds the server asked the client to wait, or None.
+            started_at: ``time.monotonic()`` reading taken when the call began.
 
         Returns:
-            Number of seconds to wait before retrying.
+            Number of seconds to wait before retrying, or None to stop retrying.
         """
+        config = self._client._config  # noqa: SLF001
         if retry_after is not None and retry_after > 0:
+            if retry_after > config.max_retry_delay:
+                return None
             delay = float(retry_after)
         else:
-            delay = self._client._config.retry_delay * (2**attempt)  # noqa: SLF001
+            delay = config.retry_delay * (2**attempt)
 
-        # Add jitter (up to 25% of the delay)
-        jitter = random.uniform(0, delay * 0.25)
-        return delay + jitter
+        delay = min(delay + random.uniform(0, delay * 0.25), config.max_retry_delay)
+
+        if time.monotonic() - started_at + delay > config.retry_budget:
+            return None
+        return delay
 
     @staticmethod
     def _is_retryable_method(method: str, headers: dict[str, str] | None) -> bool:
@@ -158,12 +206,11 @@ class BaseService:
         error: RateLimitError | ServerError | ConflictError,
         method: str,
         headers: dict[str, str] | None,
-        retry_statuses: frozenset[int],
     ) -> _RetryPlan | None:
         """Decide whether an error response is safe to retry, and how to log and wait.
 
         Rate limits always retry. Server errors retry only for a status in
-        `retry_statuses` on a request that is safe to resend. A 409 retries only when the
+        `DEFAULT_RETRY_STATUSES` on a request that is safe to resend. A 409 retries only when the
         API reports that a request with the same idempotency key is still in progress and
         this request carried that key: every other 409 means the request itself
         conflicts, so resending it cannot succeed.
@@ -172,7 +219,6 @@ class BaseService:
             error: The error raised for the response.
             method: The HTTP method (uppercase).
             headers: The request headers, or None.
-            retry_statuses: The 5xx status codes configured as retryable.
 
         Returns:
             The retry plan, or None if the error must be raised without a retry.
@@ -183,7 +229,9 @@ class BaseService:
             )
 
         if isinstance(error, ServerError):
-            if error.status_code in retry_statuses and cls._is_retryable_method(method, headers):
+            if error.status_code in DEFAULT_RETRY_STATUSES and cls._is_retryable_method(
+                method, headers
+            ):
                 return _RetryPlan(
                     message="Retry after server error",
                     retry_after=None,
@@ -207,8 +255,9 @@ class BaseService:
         attempt: int,
         max_attempts: int,
         retry_after: int | None,
+        started_at: float,
         **log_fields: Any,
-    ) -> None:
+    ) -> bool:
         """Log a retry at WARNING and sleep for the backoff delay before the next attempt.
 
         Args:
@@ -217,9 +266,22 @@ class BaseService:
             attempt: The current attempt number (0-indexed).
             max_attempts: The total number of attempts allowed.
             retry_after: Seconds the server asked the client to wait, or None to use backoff.
+            started_at: ``time.monotonic()`` reading taken when the call began.
             **log_fields: Extra structured fields to bind on the log record.
+
+        Returns:
+            True after waiting, or False when the call must stop retrying instead.
         """
-        delay = self._calculate_backoff_delay(attempt, retry_after)
+        if attempt >= max_attempts - 1:
+            return False
+
+        delay = self._calculate_backoff_delay(attempt, retry_after, started_at=started_at)
+        if delay is None:
+            request_logger.bind(**log_fields, attempt=attempt + 1, retry_after=retry_after).warning(
+                "Stop retrying to stay within the retry time limits"
+            )
+            return False
+
         request_logger.bind(
             **log_fields,
             attempt=attempt + 1,
@@ -227,6 +289,7 @@ class BaseService:
             delay=delay,
         ).warning(message)
         time.sleep(delay)
+        return True
 
     def _request(
         self,
@@ -241,10 +304,11 @@ class BaseService:
     ) -> httpx2.Response:
         """Make an HTTP request with automatic retry on transient errors.
 
-        Retries on rate limits (429), server errors (5xx in retry_statuses),
-        and network errors (ConnectError, TimeoutException). Non-idempotent
-        methods (POST, PATCH) only retry on 5xx/network errors when an
-        idempotency key header is present. Rate limit retries (429) always
+        Retries on rate limits (429), server errors (5xx in DEFAULT_RETRY_STATUSES),
+        and transient network errors (connect, read, write, protocol, timeout), within the
+        ``max_retry_delay`` and ``retry_budget`` limits described on
+        `_calculate_backoff_delay`. Non-idempotent methods (POST, PATCH) only
+        retry on 5xx/network errors when an idempotency key header is present. Rate limit retries (429) always
         apply regardless of method. A 409 is retried only when the API reports
         that a request with the same idempotency key is still in progress
         (code IDEMPOTENCY_IN_PROGRESS) and this request carried that key.
@@ -266,15 +330,14 @@ class BaseService:
             ServerError: When server error occurs and max retries are exhausted.
             ConflictError: For a 409 response, or when an idempotent request is
                 still in progress after max retries are exhausted.
-            httpx2.ConnectError: When connection fails and max retries are exhausted.
-            httpx2.TimeoutException: When request times out and max retries are exhausted.
+            APIConnectionError: When no response arrives, such as a refused connection or
+                a timeout, and retries are exhausted or not allowed.
             APIError: For other API error responses.
         """
         headers = self._merge_on_behalf_of_header(headers)
 
         config = self._client._config  # noqa: SLF001
         max_attempts = config.max_retries + 1 if config.auto_retry_rate_limit else 1
-        retry_statuses = config.retry_statuses
         # Bind params so paginated requests are distinguishable in logs; without
         # limit/offset, identical paths look like duplicate (thundering-herd) calls.
         request_logger = logger.bind(method=method, url=path, params=params)
@@ -284,8 +347,11 @@ class BaseService:
         request_logger.trace("Send request")
 
         last_error: RateLimitError | ServerError | ConflictError | None = None
+        attempts_made = 0
+        started_at = time.monotonic()
 
         for attempt in range(max_attempts):
+            attempts_made = attempt + 1
             try:
                 response = self._http.request(
                     method=method,
@@ -296,48 +362,51 @@ class BaseService:
                     headers=headers,
                     files=files,
                 )
-            except (httpx2.ConnectError, httpx2.TimeoutException) as exc:
-                if not self._is_retryable_method(method, headers) or attempt >= max_attempts - 1:
-                    raise
-
-                self._wait_before_retry(
+            except httpx2.HTTPError as exc:
+                retryable = isinstance(exc, _RETRYABLE_TRANSPORT_ERRORS) and (
+                    self._is_retryable_method(method, headers)
+                )
+                if retryable and self._wait_before_retry(
                     request_logger,
                     "Retry after network error",
                     attempt=attempt,
                     max_attempts=max_attempts,
                     retry_after=None,
+                    started_at=started_at,
                     error_type=type(exc).__name__,
+                ):
+                    continue
+                request_logger.bind(attempts=attempts_made, error_type=type(exc).__name__).error(
+                    "Fail to reach the API"
                 )
-                continue
+                msg = f"Could not reach the API: {str(exc) or type(exc).__name__}"
+                raise APIConnectionError(msg) from exc
 
             try:
                 self._raise_for_status(response, method, path, params=params)
                 self._log_success_response(response, request_logger)
                 return response  # noqa: TRY300
             except (RateLimitError, ServerError, ConflictError) as e:
-                retry_plan = self._plan_error_retry(
-                    error=e, method=method, headers=headers, retry_statuses=retry_statuses
-                )
+                retry_plan = self._plan_error_retry(error=e, method=method, headers=headers)
                 if retry_plan is None:
                     raise
 
                 last_error = e
 
-                if attempt >= max_attempts - 1:
-                    break
-
-                self._wait_before_retry(
+                if not self._wait_before_retry(
                     request_logger,
                     retry_plan.message,
                     attempt=attempt,
                     max_attempts=max_attempts,
                     retry_after=retry_plan.retry_after,
+                    started_at=started_at,
                     **retry_plan.log_fields,
-                )
+                ):
+                    break
 
         if last_error is not None:
             if max_attempts > 1:
-                request_logger.bind(attempts=max_attempts).error("Exhaust retries")
+                request_logger.bind(attempts=attempts_made).error("Exhaust retries")
             else:
                 request_logger.warning("Fail with automatic retries off")
             raise last_error
@@ -400,6 +469,7 @@ class BaseService:
             NotFoundError: For 404 responses.
             ValidationError: For 400 responses.
             ConflictError: For 409 responses.
+            PayloadTooLargeError: For 413 responses.
             UnprocessableEntityError: For 422 responses.
             RateLimitError: For 429 responses.
             ServerError: For 5xx responses.
@@ -468,6 +538,10 @@ class BaseService:
             )
             log_conflict("Return 409 conflict")
             raise conflict
+
+        if status_code == 413:  # noqa: PLR2004
+            error_logger.warning("Reject request body as too large")
+            raise PayloadTooLargeError(message, status_code, response_data)
 
         if status_code == 422:  # noqa: PLR2004
             error_logger.warning("Reject with unprocessable entity error")
@@ -607,15 +681,24 @@ class BaseService:
     def _build_idempotency_headers(
         self,
         idempotency_key: str | None,
+        *,
+        auto_generate: bool = False,
     ) -> dict[str, str] | None:
-        """Build headers dict with idempotency key if provided.
+        """Build the idempotency-key header, generating a key when asked and configured.
 
         Args:
-            idempotency_key: Optional idempotency key for the request.
+            idempotency_key: Explicit idempotency key, always sent when given.
+            auto_generate: Generate a key when none is given and ``auto_idempotency_keys``
+                is on. A key makes POST and PATCH safe to retry after network and server
+                errors.
 
         Returns:
-            Headers dict with idempotency key, or None if no key provided.
+            Headers dict with the idempotency key, or None if there is no key.
         """
+        if (
+            idempotency_key is None and auto_generate and self._client._config.auto_idempotency_keys  # noqa: SLF001
+        ):
+            idempotency_key = self._generate_idempotency_key()
         if idempotency_key is None:
             return None
         return {IDEMPOTENCY_KEY_HEADER: idempotency_key}
@@ -659,20 +742,15 @@ class BaseService:
         Returns:
             The HTTP response.
         """
-        if (
-            idempotency_key is None
-            and auto_idempotency_key
-            and self._client._config.auto_idempotency_keys  # noqa: SLF001
-        ):
-            idempotency_key = self._generate_idempotency_key()
-
         return self._request(
             "POST",
             path,
             json=json,
             data=data,
             params=params,
-            headers=self._build_idempotency_headers(idempotency_key),
+            headers=self._build_idempotency_headers(
+                idempotency_key, auto_generate=auto_idempotency_key
+            ),
         )
 
     def _put(
@@ -696,16 +774,13 @@ class BaseService:
         Returns:
             The HTTP response.
         """
-        if idempotency_key is None and self._client._config.auto_idempotency_keys:  # noqa: SLF001
-            idempotency_key = self._generate_idempotency_key()
-
         return self._request(
             "PUT",
             path,
             json=json,
             data=data,
             params=params,
-            headers=self._build_idempotency_headers(idempotency_key),
+            headers=self._build_idempotency_headers(idempotency_key, auto_generate=True),
         )
 
     def _patch(
@@ -729,16 +804,13 @@ class BaseService:
         Returns:
             The HTTP response.
         """
-        if idempotency_key is None and self._client._config.auto_idempotency_keys:  # noqa: SLF001
-            idempotency_key = self._generate_idempotency_key()
-
         return self._request(
             "PATCH",
             path,
             json=json,
             data=data,
             params=params,
-            headers=self._build_idempotency_headers(idempotency_key),
+            headers=self._build_idempotency_headers(idempotency_key, auto_generate=True),
         )
 
     def _delete(
@@ -758,73 +830,324 @@ class BaseService:
         """
         return self._request("DELETE", path, params=params)
 
-    def _post_file(
-        self,
-        path: str,
-        *,
-        file: tuple[str, bytes, str],
-        idempotency_key: str | None = None,
-    ) -> httpx2.Response:
-        """Make a POST request with a file upload (multipart/form-data).
+    @staticmethod
+    def _multipart_file(file: tuple[str, bytes, str | None]) -> dict[str, tuple[str, bytes, str]]:
+        """Build the multipart ``files`` mapping, guessing a missing content type.
 
         Args:
-            path: API endpoint path.
-            file: Tuple of (filename, content, content_type) for the file to upload.
-            idempotency_key: Optional idempotency key for safe retries.
+            file: Tuple of (filename, content, content_type).
+
+        Returns:
+            The ``files`` mapping with the upload under the ``data`` field.
+        """
+        filename, content, content_type = file
+        if content_type is None:
+            content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        return {"data": (filename, content, content_type)}
+
+    # -------------------------------------------------------------------------
+    # Route Methods
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    def _require_style(route: RouteSpec[Any], *styles: ResponseStyle) -> None:
+        """Reject a route whose response style does not fit the helper reading it.
+
+        Args:
+            route: The route a helper was asked to call.
+            *styles: The styles that helper reads.
+
+        Raises:
+            TypeError: If the route's style is not one of ``styles``.
+        """
+        if route.style not in styles:
+            expected = " or ".join(styles)
+            msg = f"Route {route.method} {route.pattern} returns {route.style}, not {expected}"
+            raise TypeError(msg)
+
+    def _route_path(
+        self,
+        route: RouteSpec[Any],
+        path_ids: Mapping[str, str] | None,
+        path_params: Mapping[str, str],
+    ) -> str:
+        """Fill a route's path template with the service scope and the call's path IDs.
+
+        Args:
+            route: The route to call.
+            path_ids: Path parameters whose names are known only at runtime.
+            path_params: Path parameters passed by keyword.
+
+        Returns:
+            The formatted path.
+        """
+        return self._format_endpoint(route.pattern, **(path_ids or {}), **path_params)
+
+    def _send(
+        self,
+        route: RouteSpec[Any],
+        *,
+        params: dict[str, Any] | None = None,
+        json: dict[str, Any] | list[Any] | None = None,
+        file: tuple[str, bytes, str | None] | None = None,
+        idempotency_key: str | None = None,
+        path_ids: Mapping[str, str] | None = None,
+        **path_params: str,
+    ) -> httpx2.Response:
+        """Call a route and return the raw response.
+
+        Use for routes with no body to parse (NO_CONTENT) or a body the caller reads
+        itself (RAW_JSON). The route's path is filled with the service's scope IDs plus
+        ``path_params``. POST, PUT, and PATCH get an idempotency key as ``_post``,
+        ``_put``, and ``_patch`` do. A file upload sends the key only when given.
+
+        Args:
+            route: The route to call.
+            params: Query parameters.
+            json: JSON body.
+            file: Tuple of (filename, content, content_type) to upload as multipart
+                form data. A None content_type is guessed from the filename.
+            idempotency_key: Explicit idempotency key for safe retries.
+            path_ids: Path parameters whose names are known only at runtime.
+            **path_params: Path parameters beyond the service's scope.
 
         Returns:
             The HTTP response.
-
-        Raises:
-            ServerError: When server error occurs and max retries are exhausted.
-            ConflictError: For a 409 response, or when an idempotent request is
-                still in progress after max retries are exhausted.
-            RateLimitError: When rate limit is exceeded and max retries are exhausted.
-            APIError: For other API error responses.
         """
-        filename, content, content_type = file
-
-        return self._request(
-            "POST",
-            path,
-            files={"data": (filename, content, content_type)},
-            headers=self._build_idempotency_headers(idempotency_key),
+        self._require_style(route, ResponseStyle.NO_CONTENT, ResponseStyle.RAW_JSON)
+        return self._dispatch(
+            route,
+            self._route_path(route, path_ids, path_params),
+            params=params,
+            json=json,
+            file=file,
+            idempotency_key=idempotency_key,
         )
 
-    def _put_file(
+    def _dispatch(
         self,
+        route: RouteSpec[Any],
         path: str,
         *,
-        file: tuple[str, bytes, str],
+        params: dict[str, Any] | None,
+        json: dict[str, Any] | list[Any] | None = None,
+        file: tuple[str, bytes, str | None] | None = None,
         idempotency_key: str | None = None,
     ) -> httpx2.Response:
-        """Make a PUT request with a file upload (multipart/form-data).
-
-        Mirrors ``_post_file``: an idempotency key is sent only when supplied.
+        """Send a request to a formatted route path with the route's HTTP method.
 
         Args:
-            path: API endpoint path.
-            file: Tuple of (filename, content, content_type) for the file to upload.
-            idempotency_key: Optional idempotency key for safe retries.
+            route: The route to call.
+            path: The route's path with every parameter filled in.
+            params: Query parameters.
+            json: JSON body.
+            file: Tuple of (filename, content, content_type) to upload.
+            idempotency_key: Explicit idempotency key for safe retries.
 
         Returns:
             The HTTP response.
-
-        Raises:
-            ServerError: When server error occurs and max retries are exhausted.
-            ConflictError: For a 409 response, or when an idempotent request is
-                still in progress after max retries are exhausted.
-            RateLimitError: When rate limit is exceeded and max retries are exhausted.
-            APIError: For other API error responses.
         """
-        filename, content, content_type = file
+        if file is not None:
+            return self._request(
+                route.method,
+                path,
+                params=params,
+                files=self._multipart_file(file),
+                headers=self._build_idempotency_headers(idempotency_key),
+            )
+        match route.method:
+            case "GET":
+                return self._get(path, params=params)
+            case "POST":
+                return self._post(path, json=json, params=params, idempotency_key=idempotency_key)
+            case "PUT":
+                return self._put(path, json=json, params=params, idempotency_key=idempotency_key)
+            case "PATCH":
+                return self._patch(path, json=json, params=params, idempotency_key=idempotency_key)
+            case "DELETE":
+                return self._delete(path, params=params)
 
-        return self._request(
-            "PUT",
-            path,
-            files={"data": (filename, content, content_type)},
-            headers=self._build_idempotency_headers(idempotency_key),
+    def _call[M: BaseModel](
+        self,
+        route: RouteSpec[M],
+        *,
+        params: dict[str, Any] | None = None,
+        json: dict[str, Any] | list[Any] | None = None,
+        file: tuple[str, bytes, str | None] | None = None,
+        idempotency_key: str | None = None,
+        path_ids: Mapping[str, str] | None = None,
+        **path_params: str,
+    ) -> M:
+        """Call a route that returns one object and parse it into the route's model.
+
+        Args:
+            route: A SINGLE-style route.
+            params: Query parameters.
+            json: JSON body.
+            file: Tuple of (filename, content, content_type) to upload.
+            idempotency_key: Explicit idempotency key for safe retries.
+            path_ids: Path parameters whose names are known only at runtime.
+            **path_params: Path parameters beyond the service's scope.
+
+        Returns:
+            The parsed response model.
+        """
+        self._require_style(route, ResponseStyle.SINGLE)
+        response = self._dispatch(
+            route,
+            self._route_path(route, path_ids, path_params),
+            params=params,
+            json=json,
+            file=file,
+            idempotency_key=idempotency_key,
         )
+        return route.parse(response.json())
+
+    def _list[M: BaseModel](
+        self,
+        route: RouteSpec[M],
+        *,
+        params: dict[str, Any] | None = None,
+        path_ids: Mapping[str, str] | None = None,
+        **path_params: str,
+    ) -> list[M]:
+        """Call a route that returns a bare JSON array and parse each item.
+
+        Args:
+            route: A LIST-style route.
+            params: Query parameters.
+            path_ids: Path parameters whose names are known only at runtime.
+            **path_params: Path parameters beyond the service's scope.
+
+        Returns:
+            The parsed items.
+        """
+        self._require_style(route, ResponseStyle.LIST)
+        response = self._dispatch(
+            route, self._route_path(route, path_ids, path_params), params=params
+        )
+        return [route.parse(item) for item in response.json()]
+
+    def _page[M: BaseModel](
+        self,
+        route: RouteSpec[M],
+        *,
+        limit: int = DEFAULT_PAGE_LIMIT,
+        offset: int = 0,
+        params: dict[str, Any] | None = None,
+        max_limit: int = MAX_PAGE_LIMIT,
+        path_ids: Mapping[str, str] | None = None,
+        **path_params: str,
+    ) -> PaginatedResponse[M]:
+        """Fetch one page of a paginated route and parse its items.
+
+        Args:
+            route: A PAGINATED-style route.
+            limit: Maximum number of items to return (default 10).
+            offset: Number of items to skip from the beginning (default 0).
+            params: Additional query parameters.
+            max_limit: Upper bound the limit is clamped to (default 100). Reference/catalog
+                endpoints pass a higher bound (MAX_REFERENCE_PAGE_LIMIT).
+            path_ids: Path parameters whose names are known only at runtime.
+            **path_params: Path parameters beyond the service's scope.
+
+        Returns:
+            A PaginatedResponse containing validated model instances.
+        """
+        self._require_style(route, ResponseStyle.PAGINATED)
+        page = self._get_paginated(
+            self._route_path(route, path_ids, path_params),
+            limit=limit,
+            offset=offset,
+            params=params,
+            max_limit=max_limit,
+        )
+        return PaginatedResponse(
+            items=[route.parse(item) for item in page.items],
+            limit=page.limit,
+            offset=page.offset,
+            total=page.total,
+        )
+
+    def _iter[M: BaseModel](
+        self,
+        route: RouteSpec[M],
+        *,
+        limit: int = MAX_PAGE_LIMIT,
+        params: dict[str, Any] | None = None,
+        max_limit: int = MAX_PAGE_LIMIT,
+        path_ids: Mapping[str, str] | None = None,
+        **path_params: str,
+    ) -> Iterator[M]:
+        """Iterate through every page of a paginated route, parsing each item.
+
+        Args:
+            route: A PAGINATED-style route.
+            limit: Items per page (default 100 for efficiency).
+            params: Additional query parameters.
+            max_limit: Upper bound the per-page limit is clamped to (default 100).
+            path_ids: Path parameters whose names are known only at runtime.
+            **path_params: Path parameters beyond the service's scope.
+
+        Yields:
+            Validated model instances, one per item.
+        """
+        self._require_style(route, ResponseStyle.PAGINATED)
+        for item in self._iter_all_pages(
+            self._route_path(route, path_ids, path_params),
+            limit=limit,
+            params=params,
+            max_limit=max_limit,
+        ):
+            yield route.parse(item)
+
+    def _list_all[M: BaseModel](
+        self,
+        route: RouteSpec[M],
+        *,
+        limit: int = MAX_PAGE_LIMIT,
+        params: dict[str, Any] | None = None,
+        max_limit: int = MAX_PAGE_LIMIT,
+        path_ids: Mapping[str, str] | None = None,
+        **path_params: str,
+    ) -> list[M]:
+        """Fetch every item of a paginated route, requesting the pages after the first at once.
+
+        Use for ``list_all`` methods, where the caller wants the whole collection and
+        waiting on each page in turn only adds latency. Use ``_iter`` to stream instead.
+
+        The first page's ``total`` fixes which offsets are requested. Items added
+        after that page is read are not returned, and items removed shift later pages,
+        as they would in one sequential pass over a changing collection.
+
+        Args:
+            route: A PAGINATED-style route.
+            limit: Items per page (default 100 for efficiency).
+            params: Additional query parameters.
+            max_limit: Upper bound the per-page limit is clamped to (default 100).
+            path_ids: Path parameters whose names are known only at runtime.
+            **path_params: Path parameters beyond the service's scope.
+
+        Returns:
+            Validated model instances for every item, in offset order.
+        """
+        self._require_style(route, ResponseStyle.PAGINATED)
+        fetch_page = partial(
+            self._get_paginated,
+            self._route_path(route, path_ids, path_params),
+            limit=limit,
+            params=params,
+            max_limit=max_limit,
+        )
+        first = fetch_page(offset=0)
+        pages = [first]
+        # Step by the limit the API applied, as sequential paging does via next_offset.
+        if first.has_more and first.limit > 0:
+            offsets = range(first.limit, first.total, first.limit)
+            pages.extend(
+                self._client.run_parallel(*(partial(fetch_page, offset=o) for o in offsets))
+            )
+        return [route.parse(item) for page in pages for item in page.items]
 
     # -------------------------------------------------------------------------
     # Pagination Methods
@@ -860,40 +1183,6 @@ class BaseService:
 
         response = self._get(path, params=request_params)
         return PaginatedResponse.from_dict(response.json())
-
-    def _get_paginated_as(
-        self,
-        path: str,
-        model_class: type[T],
-        *,
-        limit: int = DEFAULT_PAGE_LIMIT,
-        offset: int = 0,
-        params: dict[str, Any] | None = None,
-        max_limit: int = MAX_PAGE_LIMIT,
-    ) -> PaginatedResponse[T]:
-        """Make a paginated GET request and parse items into the given model class.
-
-        Args:
-            path: API endpoint path.
-            model_class: Pydantic model class to validate each item into.
-            limit: Maximum number of items to return (default 10).
-            offset: Number of items to skip from the beginning (default 0).
-            params: Additional query parameters.
-            max_limit: Upper bound the limit is clamped to (default 100). Reference/catalog
-                endpoints pass a higher bound (MAX_REFERENCE_PAGE_LIMIT).
-
-        Returns:
-            A PaginatedResponse containing validated model instances.
-        """
-        response = self._get_paginated(
-            path, limit=limit, offset=offset, params=params, max_limit=max_limit
-        )
-        return PaginatedResponse(
-            items=[model_class.model_validate(item) for item in response.items],
-            limit=response.limit,
-            offset=response.offset,
-            total=response.total,
-        )
 
     def _iter_all_pages(
         self,

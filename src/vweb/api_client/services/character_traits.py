@@ -4,9 +4,7 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 from vweb.api_client.constants import DEFAULT_PAGE_LIMIT, TrackerAction, TraitModifyCurrency
-from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import (
-    _TRACKER_ADAPTER,
     BulkAssignTraitResponse,
     CharacterTrait,
     CharacterTraitAdd,
@@ -20,6 +18,7 @@ from vweb.api_client.models import (
     _TrackerAction,
     _TraitModify,
 )
+from vweb.api_client.routes import Routes
 from vweb.api_client.services.base import BaseService
 
 if TYPE_CHECKING:
@@ -44,17 +43,8 @@ class CharacterTraitsService(BaseService):
             character_id: The ID of the character to operate within.
             on_behalf_of: User ID to impersonate via On-Behalf-Of header.
         """
-        super().__init__(client)
-        self._company_id = company_id
-        self._character_id = character_id
-        self._on_behalf_of = on_behalf_of
-
-    def _format_endpoint(self, endpoint: str, **kwargs: str) -> str:
-        """Format an endpoint with the scoped company_id and character_id plus any extra params."""
-        return endpoint.format(
-            company_id=self._company_id,
-            character_id=self._character_id,
-            **kwargs,
+        super().__init__(
+            client, on_behalf_of=on_behalf_of, company_id=company_id, character_id=character_id
         )
 
     # Character Trait CRUD Methods
@@ -78,18 +68,11 @@ class CharacterTraitsService(BaseService):
         Returns:
             A PaginatedResponse containing CharacterTrait objects and pagination metadata.
         """
-        params: dict[str, str | int] = {}
-        if category_id is not None:
-            params["category_id"] = category_id
-        if is_rollable is not None:
-            params["is_rollable"] = is_rollable
-
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.CHARACTER_TRAITS),
-            CharacterTrait,
+        return self._page(
+            Routes.CHARACTER_TRAITS_LIST,
             limit=limit,
             offset=offset,
-            params=params or None,
+            params=self._build_params(category_id=category_id, is_rollable=is_rollable),
         )
 
     def list_all(
@@ -107,7 +90,10 @@ class CharacterTraitsService(BaseService):
         Returns:
             A list of all CharacterTrait objects.
         """
-        return list(self.iter_all(category_id=category_id, is_rollable=is_rollable))
+        return self._list_all(
+            Routes.CHARACTER_TRAITS_LIST,
+            params=self._build_params(category_id=category_id, is_rollable=is_rollable),
+        )
 
     def iter_all(
         self,
@@ -130,18 +116,11 @@ class CharacterTraitsService(BaseService):
             for trait in character_traits.iter_all():
                 print(trait.name)
         """
-        params: dict[str, str | int] = {}
-        if category_id is not None:
-            params["category_id"] = category_id
-        if is_rollable is not None:
-            params["is_rollable"] = is_rollable
-
-        for item in self._iter_all_pages(
-            self._format_endpoint(Endpoints.CHARACTER_TRAITS),
+        yield from self._iter(
+            Routes.CHARACTER_TRAITS_LIST,
             limit=limit,
-            params=params or None,
-        ):
-            yield CharacterTrait.model_validate(item)
+            params=self._build_params(category_id=category_id, is_rollable=is_rollable),
+        )
 
     def get(self, character_trait_id: str) -> CharacterTrait:
         """Retrieve a specific character trait.
@@ -156,10 +135,7 @@ class CharacterTraitsService(BaseService):
             NotFoundError: If the character trait does not exist.
             AuthorizationError: If you don't have access to the character.
         """
-        response = self._get(
-            self._format_endpoint(Endpoints.CHARACTER_TRAIT, character_trait_id=character_trait_id)
-        )
-        return CharacterTrait.model_validate(response.json())
+        return self._call(Routes.CHARACTER_TRAITS_GET, character_trait_id=character_trait_id)
 
     def delete(self, character_trait_id: str, currency: TraitModifyCurrency | None = None) -> None:
         """Delete a character trait.
@@ -181,13 +157,10 @@ class CharacterTraitsService(BaseService):
             ConflictError: If recouping ``XP`` or ``STARTING_POINTS`` and another request
                 changed the trait's value first. Refetch the trait and retry.
         """
-        params: dict[str, str | int] = {}
-        if currency is not None:
-            params["currency"] = currency
-
-        self._delete(
-            self._format_endpoint(Endpoints.CHARACTER_TRAIT, character_trait_id=character_trait_id),
-            params=params or None,
+        self._send(
+            Routes.CHARACTER_TRAITS_DELETE,
+            params=self._build_params(currency=currency),
+            character_trait_id=character_trait_id,
         )
 
     def assign(self, trait_id: str, value: int, currency: TraitModifyCurrency) -> CharacterTrait:
@@ -215,11 +188,10 @@ class CharacterTraitsService(BaseService):
             value=value,
             currency=currency,
         )
-        response = self._post(
-            self._format_endpoint(Endpoints.CHARACTER_TRAIT_ASSIGN),
+        return self._call(
+            Routes.CHARACTER_TRAITS_ASSIGN,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
         )
-        return CharacterTrait.model_validate(response.json())
 
     def bulk_assign(self, items: list[CharacterTraitAdd]) -> BulkAssignTraitResponse:
         """Assign multiple traits to a character in a single request.
@@ -235,14 +207,13 @@ class CharacterTraitsService(BaseService):
         Returns:
             BulkAssignTraitResponse with succeeded and failed lists.
         """
-        response = self._post(
-            self._format_endpoint(Endpoints.CHARACTER_TRAIT_BULK_ASSIGN),
+        return self._call(
+            Routes.CHARACTER_TRAITS_BULK_ASSIGN,
             json=[
                 item.model_dump(exclude_none=True, exclude_unset=True, mode="json")
                 for item in items
             ],
         )
-        return BulkAssignTraitResponse.model_validate(response.json())
 
     def create(
         self,
@@ -272,11 +243,10 @@ class CharacterTraitsService(BaseService):
                 changed the trait's value first. Refetch the trait and retry.
         """
         body = request if request is not None else self._validate_request(TraitCreate, **kwargs)
-        response = self._post(
-            self._format_endpoint(Endpoints.CHARACTER_TRAIT_CREATE),
+        return self._call(
+            Routes.CHARACTER_TRAITS_CREATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
         )
-        return CharacterTrait.model_validate(response.json())
 
     # Trait Value Modification Methods
     def get_value_options(self, character_trait_id: str) -> CharacterTraitValueOptionsResponse:
@@ -294,12 +264,9 @@ class CharacterTraitsService(BaseService):
             RequestValidationError: If the input parameters fail client-side validation.
             ValidationError: If the request data is invalid.
         """
-        response = self._get(
-            self._format_endpoint(
-                Endpoints.CHARACTER_TRAIT_VALUE_OPTIONS, character_trait_id=character_trait_id
-            ),
+        return self._call(
+            Routes.CHARACTER_TRAITS_VALUE_OPTIONS, character_trait_id=character_trait_id
         )
-        return CharacterTraitValueOptionsResponse.model_validate(response.json())
 
     def change_value(
         self,
@@ -329,13 +296,11 @@ class CharacterTraitsService(BaseService):
             target_value=new_value,
             currency=currency,
         )
-        response = self._put(
-            self._format_endpoint(
-                Endpoints.CHARACTER_TRAIT_VALUE, character_trait_id=character_trait_id
-            ),
+        return self._call(
+            Routes.CHARACTER_TRAITS_VALUE_UPDATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            character_trait_id=character_trait_id,
         )
-        return CharacterTrait.model_validate(response.json())
 
     # Specialty Methods
 
@@ -373,13 +338,11 @@ class CharacterTraitsService(BaseService):
             name=name,
             currency=currency,
         )
-        response = self._post(
-            self._format_endpoint(
-                Endpoints.CHARACTER_TRAIT_SPECIALTIES, character_trait_id=character_trait_id
-            ),
+        return self._call(
+            Routes.CHARACTER_TRAITS_SPECIALTY_ADD,
             json=body.model_dump(exclude_none=True, mode="json"),
+            character_trait_id=character_trait_id,
         )
-        return CharacterTrait.model_validate(response.json())
 
     def update_specialty(
         self,
@@ -407,15 +370,12 @@ class CharacterTraitsService(BaseService):
             ValidationError: If the trait already has a specialty with this name.
         """
         body = self._validate_request(CharacterTraitSpecialtyUpdate, name=name)
-        response = self._patch(
-            self._format_endpoint(
-                Endpoints.CHARACTER_TRAIT_SPECIALTY,
-                character_trait_id=character_trait_id,
-                specialty_id=specialty_id,
-            ),
+        return self._call(
+            Routes.CHARACTER_TRAITS_SPECIALTY_UPDATE,
             json=body.model_dump(exclude_none=True, mode="json"),
+            character_trait_id=character_trait_id,
+            specialty_id=specialty_id,
         )
-        return CharacterTrait.model_validate(response.json())
 
     def delete_specialty(self, character_trait_id: str, specialty_id: str) -> None:
         """Remove a specialty from an ability trait.
@@ -435,12 +395,10 @@ class CharacterTraitsService(BaseService):
                 belongs to a different trait.
             AuthorizationError: If you don't have access to the character.
         """
-        self._delete(
-            self._format_endpoint(
-                Endpoints.CHARACTER_TRAIT_SPECIALTY,
-                character_trait_id=character_trait_id,
-                specialty_id=specialty_id,
-            ),
+        self._send(
+            Routes.CHARACTER_TRAITS_SPECIALTY_DELETE,
+            character_trait_id=character_trait_id,
+            specialty_id=specialty_id,
         )
 
     # Tracker Methods
@@ -461,12 +419,9 @@ class CharacterTraitsService(BaseService):
             NotFoundError: If the trait has no tracker for the character's game version.
             AuthorizationError: If you don't have access to the character.
         """
-        response = self._get(
-            self._format_endpoint(
-                Endpoints.CHARACTER_TRAIT_TRACKER, character_trait_id=character_trait_id
-            ),
+        return self._call(
+            Routes.CHARACTER_TRAITS_TRACKER_GET, character_trait_id=character_trait_id
         )
-        return _TRACKER_ADAPTER.validate_python(response.json())
 
     def set_tracker(
         self,
@@ -497,13 +452,11 @@ class CharacterTraitsService(BaseService):
                 ``current``, or a value exceeds the tracker size.
         """
         body = request if request is not None else self._validate_request(TrackerStateSet, **kwargs)
-        response = self._put(
-            self._format_endpoint(
-                Endpoints.CHARACTER_TRAIT_TRACKER, character_trait_id=character_trait_id
-            ),
+        return self._call(
+            Routes.CHARACTER_TRAITS_TRACKER_SET,
             json=body.model_dump(exclude_none=True, mode="json"),
+            character_trait_id=character_trait_id,
         )
-        return _TRACKER_ADAPTER.validate_python(response.json())
 
     def apply_tracker_action(
         self,
@@ -533,10 +486,8 @@ class CharacterTraitsService(BaseService):
                 current value.
         """
         body = self._validate_request(_TrackerAction, action=action, amount=amount)
-        response = self._post(
-            self._format_endpoint(
-                Endpoints.CHARACTER_TRAIT_TRACKER_ACTIONS, character_trait_id=character_trait_id
-            ),
+        return self._call(
+            Routes.CHARACTER_TRAITS_TRACKER_ACTION,
             json=body.model_dump(exclude_none=True, mode="json"),
+            character_trait_id=character_trait_id,
         )
-        return _TRACKER_ADAPTER.validate_python(response.json())

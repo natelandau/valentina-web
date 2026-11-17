@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 
 from tests.conftest import get_csrf
 from vweb.api_client.models.users import AppleProfile, DiscordProfile
-from vweb.api_client.testing import UserFactory
+from vweb.api_client.testing import Routes, UserFactory
 
 if TYPE_CHECKING:
     from flask.testing import FlaskClient
@@ -34,19 +33,6 @@ def admin_context(mock_global_context: GlobalContext) -> GlobalContext:
     """Promote the test user to ADMIN."""
     mock_global_context.users[0].role = "ADMIN"
     return mock_global_context
-
-
-@pytest.fixture
-def patch_users_service(mocker):
-    """Return a callable that patches users_service in services + views."""
-
-    def _patch(svc: MagicMock) -> None:
-        mocker.patch(
-            "vweb.routes.admin.services.users_service",
-            return_value=svc,
-        )
-
-    return _patch
 
 
 class TestUsersPageAccessControl:
@@ -79,22 +65,26 @@ class TestUsersPageGet:
         client: FlaskClient,
         admin_context: GlobalContext,
         mocker,
-        patch_users_service,
+        fake_vclient,
     ) -> None:
         """Verify pending and approved users render and the admin's own row is hidden."""
         # Given an admin and a mix of pending + approved users (one is the admin)
         admin_id = admin_context.users[0].id
         mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
 
-        svc = MagicMock()
-        svc.list_all_unapproved.return_value = [
-            UserFactory.build(id="pending-1", name_first="Ada", name_last="Lovelace"),
-        ]
-        svc.list_all.return_value = [
-            UserFactory.build(id=admin_id, name_first="Self", name_last="Admin"),
-            UserFactory.build(id="approved-1", name_first="Grace", name_last="Hopper"),
-        ]
-        patch_users_service(svc)
+        fake_vclient.set_response(
+            Routes.USERS_UNAPPROVED_LIST,
+            items=[
+                UserFactory.build(id="pending-1", name_first="Ada", name_last="Lovelace"),
+            ],
+        )
+        fake_vclient.set_response(
+            Routes.USERS_LIST,
+            items=[
+                UserFactory.build(id=admin_id, name_first="Self", name_last="Admin"),
+                UserFactory.build(id="approved-1", name_first="Grace", name_last="Hopper"),
+            ],
+        )
 
         # When loading the users page
         response = client.get("/admin/users")
@@ -113,25 +103,26 @@ class TestUsersPageGet:
         client: FlaskClient,
         admin_context: GlobalContext,
         mocker,
-        patch_users_service,
+        fake_vclient,
     ) -> None:
         """Verify a nameless apple user shows their apple fullname and provider badge."""
         # Given a pending apple user with no top-level names and a discord user
         admin_id = admin_context.users[0].id
         mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
 
-        svc = MagicMock()
-        svc.list_all_unapproved.return_value = [_pending_apple_user()]
-        svc.list_all.return_value = [
-            UserFactory.build(id=admin_id),
-            UserFactory.build(
-                id="approved-1",
-                name_first="Grace",
-                name_last="Hopper",
-                discord_profile=DiscordProfile(id="discord-1", username="grace"),
-            ),
-        ]
-        patch_users_service(svc)
+        fake_vclient.set_response(Routes.USERS_UNAPPROVED_LIST, items=[_pending_apple_user()])
+        fake_vclient.set_response(
+            Routes.USERS_LIST,
+            items=[
+                UserFactory.build(id=admin_id),
+                UserFactory.build(
+                    id="approved-1",
+                    name_first="Grace",
+                    name_last="Hopper",
+                    discord_profile=DiscordProfile(id="discord-1", username="grace"),
+                ),
+            ],
+        )
 
         # When loading the users page
         response = client.get("/admin/users")
@@ -170,7 +161,7 @@ class TestApproveUserEndpoint:
         )
 
         # Then the service was called
-        approve.assert_called_once_with("pending-1", "PLAYER", admin_context.users[0].id)
+        approve.assert_called_once_with("pending-1", "PLAYER")
         assert response.status_code == 200
 
     def test_approve_self_returns_403(
@@ -315,7 +306,7 @@ class TestDenyUserEndpoint:
         )
 
         # Then the service is called and the response is 200
-        deny.assert_called_once_with("pending-1", admin_context.users[0].id)
+        deny.assert_called_once_with("pending-1")
         assert response.status_code == 200
 
     def test_deny_self_returns_403(
@@ -348,19 +339,23 @@ class TestMergeForm:
         client: FlaskClient,
         admin_context: GlobalContext,
         mocker,
-        patch_users_service,
+        fake_vclient,
     ) -> None:
         """Verify the modal shows the pending user and a picker of candidates."""
         # Given a pending user and approved candidates
         mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
-        svc = MagicMock()
-        svc.list_all_unapproved.return_value = [
-            UserFactory.build(id="pending-1", name_first="Ada", name_last="Lovelace"),
-        ]
-        svc.list_all.return_value = [
-            UserFactory.build(id="approved-1", name_first="Grace", name_last="Hopper"),
-        ]
-        patch_users_service(svc)
+        fake_vclient.set_response(
+            Routes.USERS_UNAPPROVED_LIST,
+            items=[
+                UserFactory.build(id="pending-1", name_first="Ada", name_last="Lovelace"),
+            ],
+        )
+        fake_vclient.set_response(
+            Routes.USERS_LIST,
+            items=[
+                UserFactory.build(id="approved-1", name_first="Grace", name_last="Hopper"),
+            ],
+        )
 
         # When requesting the merge form
         response = client.get("/admin/users/pending-1/merge")
@@ -377,22 +372,23 @@ class TestMergeForm:
         client: FlaskClient,
         admin_context: GlobalContext,
         mocker,
-        patch_users_service,
+        fake_vclient,
     ) -> None:
         """Verify the modal never renders 'None' for nameless users and shows provider badges."""
         # Given a nameless pending apple user and a nameless approved candidate
         mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
-        svc = MagicMock()
-        svc.list_all_unapproved.return_value = [_pending_apple_user()]
-        svc.list_all.return_value = [
-            UserFactory.build(
-                id="approved-1",
-                name_first=None,
-                name_last=None,
-                username="grace",
-            ),
-        ]
-        patch_users_service(svc)
+        fake_vclient.set_response(Routes.USERS_UNAPPROVED_LIST, items=[_pending_apple_user()])
+        fake_vclient.set_response(
+            Routes.USERS_LIST,
+            items=[
+                UserFactory.build(
+                    id="approved-1",
+                    name_first=None,
+                    name_last=None,
+                    username="grace",
+                ),
+            ],
+        )
 
         # When requesting the merge form
         response = client.get("/admin/users/pending-apple/merge")
@@ -427,11 +423,7 @@ class TestMergePost:
         )
 
         # Then merge is called with (target, pending, admin) and HX-Redirect is returned
-        merge.assert_called_once_with(
-            "approved-1",
-            "pending-1",
-            admin_context.users[0].id,
-        )
+        merge.assert_called_once_with("approved-1", "pending-1")
         assert response.status_code == 200
         assert response.headers["HX-Redirect"] == "/admin/users"
 

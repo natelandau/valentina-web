@@ -6,17 +6,14 @@ from typing import TYPE_CHECKING
 
 from flask import (
     Blueprint,
-    g,
     make_response,
     redirect,
     request,
-    session,
     url_for,
 )
 from flask.views import MethodView
 
-from vweb.api_client import character_blueprint_service, characters_service
-from vweb.lib import cache
+from vweb.lib import api_services, cache
 from vweb.lib.api import get_character_and_campaign
 from vweb.lib.catalog import catalog
 from vweb.lib.crud.routing import register_crud_table_routes
@@ -57,7 +54,6 @@ class CharacterView(MethodView):
             Template variables dict including character, campaign, and section-specific data.
             The dict is ready to be passed to the template renderer.
         """
-        user = g.requesting_user
         data: dict = {
             "character": character,
             "campaign": campaign,
@@ -65,14 +61,12 @@ class CharacterView(MethodView):
 
         match section:
             case "sheet":
-                full_sheet = cache.character_sheet.get(character.id, user.id)
+                full_sheet = cache.character_sheet.get(character.id)
                 data["full_sheet"] = full_sheet
                 data["dictionary_terms"] = cache.dictionary.terms()
             case "profile":
                 data["concept"] = (
-                    character_blueprint_service(company_id=session["company_id"]).get_concept(
-                        concept_id=character.concept_id
-                    )
+                    api_services.character_blueprint().get_concept(concept_id=character.concept_id)
                     if character.concept_id
                     else None
                 )
@@ -81,10 +75,7 @@ class CharacterView(MethodView):
                 # Both are CRUD-table tabs; the table fetches its own data lazily.
                 pass
             case "images":
-                char_svc = characters_service(
-                    on_behalf_of=user.id,
-                    company_id=session["company_id"],
-                )
+                char_svc = api_services.characters()
                 data["assets"] = char_svc.list_all_assets(character.id)
         return data
 
@@ -201,8 +192,7 @@ class CharacterDeleteView(MethodView):
         if not character or not can_edit_character(character):
             return make_response("", 403)
 
-        user = g.requesting_user
-        char_svc = characters_service(on_behalf_of=user.id, company_id=session["company_id"])
+        char_svc = api_services.characters()
         char_svc.delete(character_id)
         cache.global_context.clear_current()
 
@@ -235,8 +225,7 @@ class ImageUploadView(MethodView):
         if not can_edit_character(character):
             return make_response("", 403)
 
-        user = g.requesting_user
-        char_svc = characters_service(on_behalf_of=user.id, company_id=session["company_id"])
+        char_svc = api_services.characters()
 
         assets = upload_and_append_asset(
             svc=char_svc, parent_id=character_id, file=request.files.get("image")
@@ -276,8 +265,7 @@ class ImageDeleteView(MethodView):
         if not can_edit_character(character):
             return make_response("", 403)
 
-        user = g.requesting_user
-        char_svc = characters_service(on_behalf_of=user.id, company_id=session["company_id"])
+        char_svc = api_services.characters()
 
         handle_image_delete(svc=char_svc, parent_id=character_id, asset_id=asset_id)
 

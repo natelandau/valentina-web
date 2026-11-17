@@ -10,7 +10,7 @@ from flask import get_flashed_messages
 from werkzeug.datastructures import FileStorage
 
 from tests.helpers import make_image_bytes
-from vweb.api_client.exceptions import APIError
+from vweb.api_client.exceptions import PayloadTooLargeError
 from vweb.lib.image_uploads import handle_image_upload, image_dimensions_error
 
 
@@ -65,7 +65,7 @@ def test_413_from_api_flashes_upload_limit(app) -> None:
     """Verify a 413 from the API flashes the upload size limit instead of a generic failure."""
     # Given an upload service whose API call is rejected as too large
     svc = MagicMock()
-    svc.upload_asset.side_effect = APIError("Request body too large", 413, {})
+    svc.upload_asset.side_effect = PayloadTooLargeError("Request body too large", 413, {})
     file = FileStorage(
         stream=io.BytesIO(make_image_bytes()), filename="a.png", content_type="image/png"
     )

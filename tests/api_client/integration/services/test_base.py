@@ -1,6 +1,5 @@
 """Tests for vweb.api_client.services.base."""
 
-import httpx
 import httpx2
 import pytest
 import respx
@@ -8,11 +7,13 @@ import respx
 from vweb.api_client import VClient
 from vweb.api_client.constants import API_KEY_HEADER, IDEMPOTENCY_KEY_HEADER, ON_BEHALF_OF_HEADER
 from vweb.api_client.exceptions import (
+    APIConnectionError,
     APIError,
     AuthenticationError,
     AuthorizationError,
     ConflictError,
     NotFoundError,
+    PayloadTooLargeError,
     RateLimitError,
     ServerError,
     UnprocessableEntityError,
@@ -78,6 +79,7 @@ class TestBaseServiceErrorHandling:
             (403, AuthorizationError),
             (404, NotFoundError),
             (409, ConflictError),
+            (413, PayloadTooLargeError),
             (422, UnprocessableEntityError),
             (429, RateLimitError),
             (500, ServerError),
@@ -624,12 +626,12 @@ class TestBaseServiceRateLimitRetry:
         # Given: An endpoint that returns 429 once then succeeds
         route = respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(
+                respx.MockResponse(
                     429,
                     json={"detail": "Rate limited"},
                     headers={"RateLimit": '"default";r=0;t=0'},
                 ),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -669,8 +671,7 @@ class TestBaseServiceRateLimitRetry:
             service._get("/test")
 
         # Then: Request was attempted max_retries + 1 times (initial + retries)
-        # Default max_retries is 3, so 4 total attempts
-        assert route.call_count == 4
+        assert route.call_count == vclient._config.max_retries + 1
 
     @respx.mock
     def test_auto_retry_disabled_via_config(self, base_url, api_key):
@@ -697,15 +698,15 @@ class TestBaseServiceRateLimitRetry:
     @respx.mock
     def test_auto_retry_respects_retry_after_from_header(self, vclient, base_url, mocker):
         """Verify retry delay uses the 't' value from RateLimit header."""
-        # Given: An endpoint that returns 429 with t=5 then succeeds
+        # Given: An endpoint that returns 429 with t=1 then succeeds
         respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(
+                respx.MockResponse(
                     429,
                     json={"detail": "Rate limited"},
-                    headers={"RateLimit": '"default";r=0;t=5'},
+                    headers={"RateLimit": '"default";r=0;t=1'},
                 ),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -718,23 +719,22 @@ class TestBaseServiceRateLimitRetry:
         service = BaseService(vclient)
         service._get("/test")
 
-        # Then: Sleep waited the header's 5 seconds plus at most 25% jitter
+        # Then: Sleep waited the header's 1 second plus at most 25% jitter
         mock_sleep.assert_called_once()
-        assert 5.0 <= mock_sleep.call_args[0][0] <= 6.25
+        assert 1.0 <= mock_sleep.call_args[0][0] <= 1.25
 
     @respx.mock
     def test_auto_retry_does_not_double_retry_after(self, vclient, base_url, mocker):
         """Verify every retry waits the server's Retry-After plus jitter, without doubling."""
-        # Given: An endpoint that returns 429 with Retry-After: 5 three times then succeeds
-        rate_limited = httpx.Response(
-            429, json={"detail": "Rate limited"}, headers={"Retry-After": "5"}
+        # Given: An endpoint that returns 429 with Retry-After: 1 twice then succeeds
+        rate_limited = respx.MockResponse(
+            429, json={"detail": "Rate limited"}, headers={"Retry-After": "1"}
         )
         respx.get(f"{base_url}/test").mock(
             side_effect=[
                 rate_limited,
                 rate_limited,
-                rate_limited,
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
         mock_sleep = mocker.patch("vweb.api_client.services.base.time.sleep")
@@ -744,33 +744,28 @@ class TestBaseServiceRateLimitRetry:
 
         BaseService(vclient)._get("/test")
 
-        # Then: Each wait is 5s plus at most 25% jitter
+        # Then: Each wait is 1s plus at most 25% jitter
         delays = [call[0][0] for call in mock_sleep.call_args_list]
-        assert len(delays) == 3
-        assert all(5.0 <= delay <= 6.25 for delay in delays)
+        assert len(delays) == 2
+        assert all(1.0 <= delay <= 1.25 for delay in delays)
 
     @respx.mock
     def test_auto_retry_exponential_backoff(self, vclient, base_url, mocker):
         """Verify retry delay increases exponentially."""
-        # Given: An endpoint that returns 429 three times then succeeds
+        # Given: An endpoint that returns 429 twice then succeeds
         respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(
+                respx.MockResponse(
                     429,
                     json={"detail": "Rate limited"},
                     headers={"RateLimit": '"default";r=0;t=0'},
                 ),
-                httpx.Response(
+                respx.MockResponse(
                     429,
                     json={"detail": "Rate limited"},
                     headers={"RateLimit": '"default";r=0;t=0'},
                 ),
-                httpx.Response(
-                    429,
-                    json={"detail": "Rate limited"},
-                    headers={"RateLimit": '"default";r=0;t=0'},
-                ),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -783,18 +778,11 @@ class TestBaseServiceRateLimitRetry:
         service = BaseService(vclient)
         service._get("/test")
 
-        # Then: Sleep was called 3 times with increasing delays
-        assert mock_sleep.call_count == 3
-
-        # Get the base delays (before jitter)
+        # Then: Sleep was called twice, doubling from the 0.5s default plus jitter
         delays = [call[0][0] for call in mock_sleep.call_args_list]
-
-        # Each delay should be roughly double the previous (exponential backoff)
-        # With default retry_delay=1.0: attempt 0 -> ~1s, attempt 1 -> ~2s, attempt 2 -> ~4s
-        # Account for jitter (up to 25%)
-        assert delays[0] >= 1.0  # 1 * 2^0 = 1
-        assert delays[1] >= 2.0  # 1 * 2^1 = 2
-        assert delays[2] >= 4.0  # 1 * 2^2 = 4
+        assert len(delays) == 2
+        assert 0.5 <= delays[0] <= 0.625
+        assert 1.0 <= delays[1] <= 1.25
 
 
 class TestBaseServiceTransientRetry:
@@ -809,8 +797,8 @@ class TestBaseServiceTransientRetry:
         # Given: An endpoint that returns 500 once then succeeds
         route = respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(500, json={"detail": "Server error"}),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(500, json={"detail": "Server error"}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -831,8 +819,8 @@ class TestBaseServiceTransientRetry:
         # Given: An endpoint that returns 502 once then succeeds
         route = respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(502, json={"detail": "Bad Gateway"}),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(502, json={"detail": "Bad Gateway"}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -853,8 +841,8 @@ class TestBaseServiceTransientRetry:
         # Given: An endpoint that returns 503 once then succeeds
         route = respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(503, json={"detail": "Service Unavailable"}),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(503, json={"detail": "Service Unavailable"}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -875,8 +863,8 @@ class TestBaseServiceTransientRetry:
         # Given: An endpoint that returns 504 once then succeeds
         route = respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(504, json={"detail": "Gateway Timeout"}),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(504, json={"detail": "Gateway Timeout"}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -903,11 +891,11 @@ class TestBaseServiceTransientRetry:
             service._get("/test")
 
         # Then: Request was attempted max_retries + 1 times (initial + retries)
-        assert route.call_count == 4
+        assert route.call_count == vclient._config.max_retries + 1
 
     @respx.mock
     def test_5xx_not_retried_for_non_retryable_status(self, vclient, base_url, mocker):
-        """Verify 501 is not retried because it is not in default retry_statuses."""
+        """Verify 501 is not retried because it is not in DEFAULT_RETRY_STATUSES."""
         # Given: Mock time.sleep to avoid actual delays
         mock_sleep = mocker.patch("vweb.api_client.services.base.time.sleep")
 
@@ -950,8 +938,8 @@ class TestBaseServiceTransientRetry:
         # Given: An endpoint that returns 500 once then succeeds
         route = respx.post(f"{base_url}/items").mock(
             side_effect=[
-                httpx.Response(500, json={"detail": "Server error"}),
-                httpx.Response(201, json={"id": 1}),
+                respx.MockResponse(500, json={"detail": "Server error"}),
+                respx.MockResponse(201, json={"id": 1}),
             ]
         )
 
@@ -974,8 +962,8 @@ class TestBaseServiceTransientRetry:
         # Given: An endpoint that returns 500 once then succeeds
         route = respx.post(f"{base_url}/items").mock(
             side_effect=[
-                httpx.Response(500, json={"detail": "Server error"}),
-                httpx.Response(201, json={"id": 1}),
+                respx.MockResponse(500, json={"detail": "Server error"}),
+                respx.MockResponse(201, json={"id": 1}),
             ]
         )
 
@@ -996,8 +984,8 @@ class TestBaseServiceTransientRetry:
         # Given: An endpoint that returns 500 once then succeeds
         route = respx.put(f"{base_url}/items/1").mock(
             side_effect=[
-                httpx.Response(500, json={"detail": "Server error"}),
-                httpx.Response(200, json={"id": 1}),
+                respx.MockResponse(500, json={"detail": "Server error"}),
+                respx.MockResponse(200, json={"id": 1}),
             ]
         )
 
@@ -1018,8 +1006,8 @@ class TestBaseServiceTransientRetry:
         # Given: An endpoint that returns 500 once then succeeds
         route = respx.delete(f"{base_url}/items/1").mock(
             side_effect=[
-                httpx.Response(500, json={"detail": "Server error"}),
-                httpx.Response(204),
+                respx.MockResponse(500, json={"detail": "Server error"}),
+                respx.MockResponse(204),
             ]
         )
 
@@ -1069,41 +1057,17 @@ class TestBaseServiceTransientRetry:
         mock_sleep.assert_not_called()
 
     @respx.mock
-    def test_custom_retry_statuses(self, base_url, api_key, mocker):
-        """Verify custom retry_statuses are respected for retry decisions."""
-        # Given: Mock time.sleep to avoid actual delays
-        mocker.patch("vweb.api_client.services.base.time.sleep")
-
-        # Given: An endpoint that returns 501 once then succeeds
-        route = respx.get(f"{base_url}/test").mock(
-            side_effect=[
-                httpx.Response(501, json={"detail": "Not Implemented"}),
-                httpx.Response(200, json={"success": True}),
-            ]
-        )
-
-        # When: Making a request with custom retry_statuses that includes 501
-        with VClient(base_url=base_url, api_key=api_key, retry_statuses={501}) as client:
-            service = BaseService(client)
-            response = service._get("/test")
-
-        # Then: Request was retried and succeeded
-        assert route.call_count == 2
-        assert response.status_code == 200
-
-    @respx.mock
     def test_5xx_uses_exponential_backoff(self, vclient, base_url, mocker):
         """Verify 5xx retries use exponential backoff with increasing delays."""
         # Given: Mock time.sleep to capture the delays
         mock_sleep = mocker.patch("vweb.api_client.services.base.time.sleep")
 
-        # Given: An endpoint that returns 500 three times then succeeds
+        # Given: An endpoint that returns 500 twice then succeeds
         respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(500, json={"detail": "Server error"}),
-                httpx.Response(500, json={"detail": "Server error"}),
-                httpx.Response(500, json={"detail": "Server error"}),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(500, json={"detail": "Server error"}),
+                respx.MockResponse(500, json={"detail": "Server error"}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -1111,14 +1075,11 @@ class TestBaseServiceTransientRetry:
         service = BaseService(vclient)
         service._get("/test")
 
-        # Then: Sleep was called 3 times with increasing delays
-        assert mock_sleep.call_count == 3
+        # Then: Sleep was called twice, doubling from the 0.5s default plus jitter
         delays = [call[0][0] for call in mock_sleep.call_args_list]
-
-        # Each delay should be roughly double the previous (exponential backoff)
-        assert delays[0] >= 1.0  # 1 * 2^0 = 1
-        assert delays[1] >= 2.0  # 1 * 2^1 = 2
-        assert delays[2] >= 4.0  # 1 * 2^2 = 4
+        assert len(delays) == 2
+        assert 0.5 <= delays[0] <= 0.625
+        assert 1.0 <= delays[1] <= 1.25
 
 
 IN_PROGRESS = {
@@ -1143,12 +1104,12 @@ class TestBaseServiceIdempotencyInProgressRetry:
         # Given: An endpoint that reports in progress once, then succeeds
         route = respx.post(f"{base_url}/items").mock(
             side_effect=[
-                httpx.Response(
+                respx.MockResponse(
                     409,
                     json=IN_PROGRESS,
-                    headers={"Retry-After": "3", "RateLimit": '"default";r=5;t=30'},
+                    headers={"Retry-After": "1", "RateLimit": '"default";r=5;t=30'},
                 ),
-                httpx.Response(201, json={"id": 1}),
+                respx.MockResponse(201, json={"id": 1}),
             ]
         )
 
@@ -1164,7 +1125,7 @@ class TestBaseServiceIdempotencyInProgressRetry:
         # Then: The wait came from Retry-After, not the RateLimit t= value
         mock_sleep.assert_called_once()
         delay = mock_sleep.call_args[0][0]
-        assert 3.0 <= delay <= 3.75
+        assert 1.0 <= delay <= 1.25
 
     @respx.mock
     def test_in_progress_409_without_retry_after_uses_backoff(
@@ -1177,8 +1138,10 @@ class TestBaseServiceIdempotencyInProgressRetry:
         # Given: An endpoint that reports in progress without Retry-After, then succeeds
         route = respx.post(f"{base_url}/items").mock(
             side_effect=[
-                httpx.Response(409, json=IN_PROGRESS, headers={"RateLimit": '"default";r=5;t=30'}),
-                httpx.Response(201, json={"id": 1}),
+                respx.MockResponse(
+                    409, json=IN_PROGRESS, headers={"RateLimit": '"default";r=5;t=30'}
+                ),
+                respx.MockResponse(201, json={"id": 1}),
             ]
         )
 
@@ -1202,12 +1165,12 @@ class TestBaseServiceIdempotencyInProgressRetry:
         # Given: An endpoint that reports in progress with a non-integer Retry-After
         route = respx.post(f"{base_url}/items").mock(
             side_effect=[
-                httpx.Response(
+                respx.MockResponse(
                     409,
                     json=IN_PROGRESS,
                     headers={"Retry-After": "soon", "RateLimit": '"default";r=5;t=30'},
                 ),
-                httpx.Response(201, json={"id": 1}),
+                respx.MockResponse(201, json={"id": 1}),
             ]
         )
 
@@ -1230,7 +1193,7 @@ class TestBaseServiceIdempotencyInProgressRetry:
 
         # Given: An endpoint that always reports in progress
         route = respx.post(f"{base_url}/items").mock(
-            return_value=httpx.Response(409, json=IN_PROGRESS, headers={"Retry-After": "1"})
+            return_value=respx.MockResponse(409, json=IN_PROGRESS, headers={"Retry-After": "1"})
         )
 
         # When: Making a POST request
@@ -1258,7 +1221,7 @@ class TestBaseServiceIdempotencyInProgressRetry:
 
         # Given: An endpoint that reports a reused idempotency key
         route = respx.post(f"{base_url}/items").mock(
-            return_value=httpx.Response(
+            return_value=respx.MockResponse(
                 409, json={"detail": "Idempotency key reused with a different request body"}
             )
         )
@@ -1282,7 +1245,7 @@ class TestBaseServiceIdempotencyInProgressRetry:
 
         # Given: An endpoint that reports in progress
         route = respx.post(f"{base_url}/items").mock(
-            return_value=httpx.Response(409, json=IN_PROGRESS, headers={"Retry-After": "1"})
+            return_value=respx.MockResponse(409, json=IN_PROGRESS, headers={"Retry-After": "1"})
         )
 
         # When: Making a POST request without an idempotency key
@@ -1302,8 +1265,8 @@ class TestBaseServiceIdempotencyInProgressRetry:
         # Given: An endpoint that reports in progress once, then succeeds
         route = respx.put(f"{base_url}/items/1").mock(
             side_effect=[
-                httpx.Response(409, json=IN_PROGRESS, headers={"Retry-After": "3"}),
-                httpx.Response(200, json={"id": 1}),
+                respx.MockResponse(409, json=IN_PROGRESS, headers={"Retry-After": "1"}),
+                respx.MockResponse(200, json={"id": 1}),
             ]
         )
 
@@ -1315,9 +1278,9 @@ class TestBaseServiceIdempotencyInProgressRetry:
         assert route.call_count == 2
         assert [c.request.headers[IDEMPOTENCY_KEY_HEADER] for c in route.calls] == ["k-1", "k-1"]
 
-        # Then: The wait was the 3 second Retry-After plus at most 25% jitter
+        # Then: The wait was the 1 second Retry-After plus at most 25% jitter
         mock_sleep.assert_called_once()
-        assert 3.0 <= mock_sleep.call_args[0][0] <= 3.75
+        assert 1.0 <= mock_sleep.call_args[0][0] <= 1.25
 
     @respx.mock
     def test_in_progress_409_is_not_retried_for_unkeyed_delete(
@@ -1329,7 +1292,7 @@ class TestBaseServiceIdempotencyInProgressRetry:
 
         # Given: An endpoint that reports in progress
         route = respx.delete(f"{base_url}/items/1").mock(
-            return_value=httpx.Response(409, json=IN_PROGRESS, headers={"Retry-After": "1"})
+            return_value=respx.MockResponse(409, json=IN_PROGRESS, headers={"Retry-After": "1"})
         )
 
         # When/Then: The conflict surfaces after a single call
@@ -1346,7 +1309,7 @@ class TestBaseServiceIdempotencyInProgressRetry:
 
         # Given: An endpoint that reports in progress
         route = respx.post(f"{base_url}/items").mock(
-            return_value=httpx.Response(409, json=IN_PROGRESS, headers={"Retry-After": "1"})
+            return_value=respx.MockResponse(409, json=IN_PROGRESS, headers={"Retry-After": "1"})
         )
 
         # When: Making a POST request with retries disabled
@@ -1378,7 +1341,7 @@ class TestBaseServiceNetworkErrorRetry:
         route = respx.get(f"{base_url}/test").mock(
             side_effect=[
                 httpx2.ConnectError("Connection refused"),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -1400,8 +1363,34 @@ class TestBaseServiceNetworkErrorRetry:
         route = respx.get(f"{base_url}/test").mock(
             side_effect=[
                 httpx2.ReadTimeout("Read timed out"),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(200, json={"success": True}),
             ]
+        )
+
+        # When: Making a GET request
+        service = BaseService(vclient)
+        response = service._get("/test")
+
+        # Then: Request was retried and succeeded
+        assert route.call_count == 2
+        assert response.status_code == 200
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            httpx2.RemoteProtocolError("Server disconnected without sending a response."),
+            httpx2.ReadError("Connection reset by peer"),
+        ],
+    )
+    @respx.mock
+    def test_get_retries_on_dropped_connection(self, vclient, base_url, mocker, error):
+        """Verify GET request is retried when the server drops a pooled connection."""
+        # Given: Mock time.sleep to avoid actual delays
+        mocker.patch("vweb.api_client.services.base.time.sleep")
+
+        # Given: An endpoint whose first response is lost to a dropped connection
+        route = respx.get(f"{base_url}/test").mock(
+            side_effect=[error, respx.MockResponse(200, json={"success": True})]
         )
 
         # When: Making a GET request
@@ -1414,31 +1403,42 @@ class TestBaseServiceNetworkErrorRetry:
 
     @respx.mock
     def test_connect_error_max_retries_exhausted(self, vclient, base_url, mocker):
-        """Verify ConnectError is raised after max retries are exhausted."""
+        """Verify APIConnectionError wraps the ConnectError once retries are exhausted."""
         # Given: Mock time.sleep to avoid actual delays
         mocker.patch("vweb.api_client.services.base.time.sleep")
 
         # Given: An endpoint that always raises ConnectError
-        respx.get(f"{base_url}/test").mock(side_effect=httpx2.ConnectError("Connection refused"))
+        route = respx.get(f"{base_url}/test").mock(
+            side_effect=httpx2.ConnectError("Connection refused")
+        )
 
-        # When/Then: Making a request raises ConnectError after max retries
+        # When/Then: Making a request raises APIConnectionError after max retries
         service = BaseService(vclient)
-        with pytest.raises(httpx2.ConnectError):
+        with pytest.raises(APIConnectionError) as exc_info:
             service._get("/test")
+
+        # Then: Every attempt was used and the transport error is kept as the cause
+        assert route.call_count == vclient._config.max_retries + 1
+        assert isinstance(exc_info.value.__cause__, httpx2.ConnectError)
+        assert exc_info.value.status_code is None
+        assert str(exc_info.value) == "Could not reach the API: Connection refused"
 
     @respx.mock
     def test_timeout_max_retries_exhausted(self, vclient, base_url, mocker):
-        """Verify TimeoutException is raised after max retries are exhausted."""
+        """Verify APIConnectionError wraps a timeout once retries are exhausted."""
         # Given: Mock time.sleep to avoid actual delays
         mocker.patch("vweb.api_client.services.base.time.sleep")
 
         # Given: An endpoint that always raises ReadTimeout
         respx.get(f"{base_url}/test").mock(side_effect=httpx2.ReadTimeout("Read timed out"))
 
-        # When/Then: Making a request raises TimeoutException after max retries
+        # When/Then: Making a request raises APIConnectionError after max retries
         service = BaseService(vclient)
-        with pytest.raises(httpx2.TimeoutException):
+        with pytest.raises(APIConnectionError) as exc_info:
             service._get("/test")
+
+        # Then: The timeout is kept as the cause
+        assert isinstance(exc_info.value.__cause__, httpx2.TimeoutException)
 
     @respx.mock
     def test_post_without_idempotency_key_not_retried_on_connect_error(
@@ -1453,7 +1453,7 @@ class TestBaseServiceNetworkErrorRetry:
 
         # When/Then: Making a POST request without idempotency key raises immediately
         service = BaseService(vclient)
-        with pytest.raises(httpx2.ConnectError):
+        with pytest.raises(APIConnectionError):
             service._post("/items", json={"name": "test"})
 
         # Then: No retries were attempted
@@ -1469,7 +1469,7 @@ class TestBaseServiceNetworkErrorRetry:
         route = respx.post(f"{base_url}/items").mock(
             side_effect=[
                 httpx2.ConnectError("Connection refused"),
-                httpx.Response(201, json={"id": 1}),
+                respx.MockResponse(201, json={"id": 1}),
             ]
         )
 
@@ -1493,7 +1493,7 @@ class TestBaseServiceNetworkErrorRetry:
         # When/Then: Making a request with retry disabled raises immediately
         with VClient(base_url=base_url, api_key=api_key, auto_retry_rate_limit=False) as client:
             service = BaseService(client)
-            with pytest.raises(httpx2.ConnectError):
+            with pytest.raises(APIConnectionError):
                 service._get("/test")
 
         # Then: No retries were attempted
@@ -1505,13 +1505,12 @@ class TestBaseServiceNetworkErrorRetry:
         # Given: Mock time.sleep to capture the delays
         mock_sleep = mocker.patch("vweb.api_client.services.base.time.sleep")
 
-        # Given: An endpoint that raises ConnectError three times then succeeds
+        # Given: An endpoint that raises ConnectError twice then succeeds
         respx.get(f"{base_url}/test").mock(
             side_effect=[
                 httpx2.ConnectError("Connection refused"),
                 httpx2.ConnectError("Connection refused"),
-                httpx2.ConnectError("Connection refused"),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -1519,14 +1518,47 @@ class TestBaseServiceNetworkErrorRetry:
         service = BaseService(vclient)
         service._get("/test")
 
-        # Then: Sleep was called 3 times with increasing delays
-        assert mock_sleep.call_count == 3
+        # Then: Sleep was called twice, doubling from the 0.5s default plus jitter
         delays = [call[0][0] for call in mock_sleep.call_args_list]
+        assert len(delays) == 2
+        assert 0.5 <= delays[0] <= 0.625
+        assert 1.0 <= delays[1] <= 1.25
 
-        # Each delay should be roughly double the previous (exponential backoff)
-        assert delays[0] >= 1.0  # 1 * 2^0 = 1
-        assert delays[1] >= 2.0  # 1 * 2^1 = 2
-        assert delays[2] >= 4.0  # 1 * 2^2 = 4
+    @respx.mock
+    def test_other_transport_error_is_wrapped_without_retry(self, vclient, base_url, mocker):
+        """Verify a non-transient transport error is raised at once, wrapped."""
+        # Given: Mock time.sleep to detect any retry
+        mock_sleep = mocker.patch("vweb.api_client.services.base.time.sleep")
+
+        # Given: An endpoint that fails with a configuration-level transport error
+        route = respx.get(f"{base_url}/test").mock(
+            side_effect=httpx2.UnsupportedProtocol("Request URL has an unsupported protocol")
+        )
+
+        # When/Then: The failure surfaces as APIConnectionError after one call
+        with pytest.raises(APIConnectionError) as exc_info:
+            BaseService(vclient)._get("/test")
+
+        # Then: No retry was made and the original error is the cause
+        assert route.call_count == 1
+        mock_sleep.assert_not_called()
+        assert isinstance(exc_info.value.__cause__, httpx2.UnsupportedProtocol)
+
+    @respx.mock
+    def test_connection_error_without_message_names_the_error_type(self, base_url, api_key, mocker):
+        """Verify a transport error with no text still gives a readable message."""
+        # Given: Mock time.sleep to avoid actual delays
+        mocker.patch("vweb.api_client.services.base.time.sleep")
+
+        # Given: An endpoint that times out with an empty message
+        respx.get(f"{base_url}/test").mock(side_effect=httpx2.ReadTimeout(""))
+
+        # When/Then: The error message names the transport error type
+        with (
+            VClient(base_url=base_url, api_key=api_key, auto_retry_rate_limit=False) as client,
+            pytest.raises(APIConnectionError, match="Could not reach the API: ReadTimeout"),
+        ):
+            BaseService(client)._get("/test")
 
 
 class ConcreteServiceWithOnBehalfOf(BaseService):
@@ -1602,3 +1634,130 @@ class TestGetCustomHeaders:
         # Then: The request carried the custom Accept header
         assert route.called
         assert route.calls.last.request.headers["accept"] == "application/zip"
+
+
+class TestBaseServiceRetryLimits:
+    """Tests for the per-wait cap and total time budget on retries."""
+
+    @respx.mock
+    def test_backoff_is_capped_at_max_retry_delay(self, base_url, api_key, mocker):
+        """Verify a backoff longer than max_retry_delay waits only max_retry_delay."""
+        # Given: Mock time.sleep to capture the delay
+        mock_sleep = mocker.patch("vweb.api_client.services.base.time.sleep")
+
+        # Given: An endpoint that returns 503 once then succeeds
+        respx.get(f"{base_url}/test").mock(
+            side_effect=[
+                respx.MockResponse(503, json={"detail": "Unavailable"}),
+                respx.MockResponse(200, json={"success": True}),
+            ]
+        )
+
+        # When: Making a GET with a base delay longer than the cap
+        with VClient(
+            base_url=base_url, api_key=api_key, retry_delay=5.0, max_retry_delay=1.5
+        ) as client:
+            BaseService(client)._get("/test")
+
+        # Then: The wait was exactly the cap, jitter included
+        mock_sleep.assert_called_once_with(1.5)
+
+    @respx.mock
+    def test_retry_after_above_cap_raises_without_waiting(self, vclient, base_url, mocker):
+        """Verify a server Retry-After longer than max_retry_delay raises at once."""
+        # Given: Mock time.sleep to detect any wait
+        mock_sleep = mocker.patch("vweb.api_client.services.base.time.sleep")
+
+        # Given: An endpoint that asks the client to wait 30 seconds
+        route = respx.get(f"{base_url}/test").respond(
+            429, json={"detail": "Rate limited"}, headers={"Retry-After": "30"}
+        )
+
+        # When/Then: The rate limit error is raised after one call
+        with pytest.raises(RateLimitError) as exc_info:
+            BaseService(vclient)._get("/test")
+
+        # Then: No wait and no retry happened
+        assert exc_info.value.retry_after == 30
+        assert route.call_count == 1
+        mock_sleep.assert_not_called()
+
+    @respx.mock
+    def test_in_progress_409_retry_after_above_cap_raises(
+        self, base_service_with_auto_idempotency, base_url, mocker
+    ):
+        """Verify an in-progress 409 asking for a long wait raises without retrying."""
+        # Given: Mock time.sleep to detect any wait
+        mock_sleep = mocker.patch("vweb.api_client.services.base.time.sleep")
+
+        # Given: An endpoint that reports in progress and asks for a 10 second wait
+        route = respx.post(f"{base_url}/items").respond(
+            409, json=IN_PROGRESS, headers={"Retry-After": "10"}
+        )
+
+        # When/Then: The conflict is raised after one call
+        with pytest.raises(ConflictError):
+            base_service_with_auto_idempotency._post("/items", json={"name": "x"})
+
+        # Then: No wait and no retry happened
+        assert route.call_count == 1
+        mock_sleep.assert_not_called()
+
+    @respx.mock
+    def test_retry_stops_when_budget_would_be_exceeded(self, base_url, api_key, mocker):
+        """Verify the last error is raised when the next wait would overrun the budget."""
+        # Given: Mock time.sleep to detect any wait
+        mock_sleep = mocker.patch("vweb.api_client.services.base.time.sleep")
+
+        # Given: A clock where the first attempt takes 9.8 of the 10 second budget
+        mocker.patch("vweb.api_client.services.base.time.monotonic", side_effect=[100.0, 109.8])
+
+        # Given: An endpoint that always returns 503
+        route = respx.get(f"{base_url}/test").respond(503, json={"detail": "Unavailable"})
+
+        # When/Then: The server error is raised without a retry
+        with (
+            VClient(base_url=base_url, api_key=api_key, retry_budget=10.0) as client,
+            pytest.raises(ServerError),
+        ):
+            BaseService(client)._get("/test")
+
+        # Then: Only the first attempt was made
+        assert route.call_count == 1
+        mock_sleep.assert_not_called()
+
+    @respx.mock
+    def test_network_error_retry_stops_at_budget(self, base_url, api_key, mocker):
+        """Verify a network error is raised when the next wait would overrun the budget."""
+        # Given: Mock time.sleep to detect any wait
+        mock_sleep = mocker.patch("vweb.api_client.services.base.time.sleep")
+
+        # Given: A clock where the first attempt uses the whole budget
+        mocker.patch("vweb.api_client.services.base.time.monotonic", side_effect=[0.0, 10.0])
+
+        # Given: An endpoint that refuses connections
+        route = respx.get(f"{base_url}/test").mock(
+            side_effect=httpx2.ConnectError("Connection refused")
+        )
+
+        # When/Then: The network error surfaces after one call
+        with (
+            VClient(base_url=base_url, api_key=api_key, retry_budget=10.0) as client,
+            pytest.raises(APIConnectionError),
+        ):
+            BaseService(client)._get("/test")
+
+        # Then: No retry was made
+        assert route.call_count == 1
+        mock_sleep.assert_not_called()
+
+    def test_vclient_defaults_suit_a_web_request(self, vclient):
+        """Verify the default retry settings keep a call short enough for a web worker."""
+        # Given/When: A client built with default retry settings
+        config = vclient._config
+
+        # Then: The defaults are a few short retries inside a 10 second budget
+        assert config.max_retries == 2
+        assert config.retry_delay == 0.5
+        assert config.max_retry_delay == 2.0
+        assert config.retry_budget == 10.0

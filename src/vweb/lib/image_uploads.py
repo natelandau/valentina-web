@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from werkzeug.datastructures import FileStorage
 
     from vweb.api_client.models import Asset
+    from vweb.api_client.services import AssetsMixin
 
 
 MAX_IMAGE_MEGAPIXELS: int = MAX_IMAGE_PIXELS // 1_000_000
@@ -55,34 +56,9 @@ def image_dimensions_error(content: bytes) -> str | None:
     return None
 
 
-class AssetService(Protocol):
-    """Structural type of any vclient sync service that manages image assets.
-
-    The parent-id parameter is positional-only because concrete sync services
-    name it differently (``book_id``, ``chapter_id``, ``character_id``), and
-    structural matching on parameter names would otherwise fail.
-    """
-
-    def upload_asset(
-        self,
-        parent_id: str,
-        filename: str,
-        content: bytes,
-        content_type: str | None = ...,
-        /,
-    ) -> Asset:
-        """Upload a new image asset for the given parent resource."""
-
-    def delete_asset(self, parent_id: str, asset_id: str, /) -> None:
-        """Delete an image asset owned by the given parent resource."""
-
-    def list_all_assets(self, parent_id: str, /) -> list[Asset]:
-        """List all image assets for the given parent resource."""
-
-
 def handle_image_upload(
     *,
-    svc: AssetService,
+    svc: AssetsMixin,
     parent_id: str,
     file: FileStorage | None,
 ) -> Asset | None:
@@ -119,7 +95,7 @@ def handle_image_upload(
 
 def upload_and_append_asset(
     *,
-    svc: AssetService,
+    svc: AssetsMixin,
     parent_id: str,
     file: FileStorage | None,
 ) -> list[Asset]:
@@ -135,7 +111,7 @@ def upload_and_append_asset(
 
 def handle_image_delete(
     *,
-    svc: AssetService,
+    svc: AssetsMixin,
     parent_id: str,
     asset_id: str,
 ) -> None:

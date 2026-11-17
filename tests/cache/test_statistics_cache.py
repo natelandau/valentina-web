@@ -23,7 +23,9 @@ class TestGetStatistics:
         stats = RollStatisticsFactory.build()
         svc = MagicMock()
         svc.get_statistics.return_value = stats
-        mock_factory = mocker.patch("vweb.lib.cache.statistics.campaigns_service", autospec=True)
+        mock_factory = mocker.patch(
+            "vweb.lib.cache.statistics.api_services.campaigns", autospec=True
+        )
         mock_factory.return_value = svc
 
         # When requesting campaign-scoped statistics
@@ -44,7 +46,7 @@ class TestGetStatistics:
         stats = RollStatisticsFactory.build()
         svc = MagicMock()
         svc.get_statistics.return_value = stats
-        mock_factory = mocker.patch("vweb.lib.cache.statistics.users_service", autospec=True)
+        mock_factory = mocker.patch("vweb.lib.cache.statistics.api_services.users", autospec=True)
         mock_factory.return_value = svc
 
         # When requesting user-scoped statistics
@@ -65,7 +67,9 @@ class TestGetStatistics:
         stats = RollStatisticsFactory.build()
         svc = MagicMock()
         svc.get_statistics.return_value = stats
-        mock_factory = mocker.patch("vweb.lib.cache.statistics.characters_service", autospec=True)
+        mock_factory = mocker.patch(
+            "vweb.lib.cache.statistics.api_services.characters", autospec=True
+        )
         mock_factory.return_value = svc
 
         # When requesting character-scoped statistics
@@ -86,7 +90,9 @@ class TestGetStatistics:
         stats = RollStatisticsFactory.build()
         mocker.patch("vweb.lib.cache.base.cache.get", return_value=stats)
         svc = MagicMock()
-        mock_factory = mocker.patch("vweb.lib.cache.statistics.campaigns_service", autospec=True)
+        mock_factory = mocker.patch(
+            "vweb.lib.cache.statistics.api_services.campaigns", autospec=True
+        )
         mock_factory.return_value = svc
 
         # When requesting statistics (cache hit happens before Flask state needed)

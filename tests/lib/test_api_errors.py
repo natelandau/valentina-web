@@ -9,11 +9,13 @@ from pydantic import BaseModel, Field, field_validator
 from pydantic import ValidationError as PydanticValidationError
 
 from vweb.api_client.exceptions import (
+    APIConnectionError,
     APIError,
     AuthenticationError,
     AuthorizationError,
     ConflictError,
     NotFoundError,
+    PayloadTooLargeError,
     RateLimitError,
     RequestValidationError,
     ServerError,
@@ -95,7 +97,7 @@ def test_conflict_and_authorization_use_detail(cls):
 
 def test_413_names_the_upload_limit():
     """413 names the upload limit."""
-    message = api_error_message(APIError("too big", 413, None), fallback="fallback")
+    message = api_error_message(PayloadTooLargeError("too big", 413, None), fallback="fallback")
 
     assert "Upload is too large (max " in message
 
@@ -109,6 +111,21 @@ def test_server_error_falls_back():
         api_error_message(error, fallback="Roll failed - please try again.")
         == "Roll failed - please try again."
     )
+
+
+def test_connection_error_falls_back_and_is_not_user_facing(caplog):
+    """A connection failure shows the fallback, logs at error, and is not user-facing."""
+    # Given: An API call that got no response
+    error = APIConnectionError("Could not reach the API: Connection refused")
+
+    # When: Turning it into a user message
+    with caplog.at_level(logging.WARNING, logger="vweb.lib.api_errors"):
+        message = api_error_message(error, fallback="Please try again.")
+
+    # Then: The user sees the fallback and the failure is logged as an error
+    assert message == "Please try again."
+    assert [r.levelno for r in caplog.records] == [logging.ERROR]
+    assert not isinstance(error, USER_FACING_API_ERRORS)
 
 
 def test_unclassified_api_error_never_shows_detail():

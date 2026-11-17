@@ -18,6 +18,8 @@ duty worktree-teardown branch=<name>  # Remove a worktree and flush its Redis da
 uv run duty validate_constants company_id=<id>  # Check client constants against a running API
 ```
 
+Do feature, fix, and refactor work in a worktree (`duty worktree branch=<name>`), not in the main checkout. It gives the work its own Redis database and dev server port, and keeps the main checkout on `main`.
+
 `duty ruff/format/ty/typos/test` and `duty precommit` run through gate-cache: a gate that already passed on the same files is skipped ("already passed on tree ..."). A skip is a valid pass. Force a rerun with `GATE_CACHE_DISABLE=1`.
 
 ## Stack
@@ -48,7 +50,7 @@ Character routes split into `character_view`, `character_trait_edit` (spend type
 
 ## Key Helpers
 
-- **VClient:** `VClient` is created once in `create_app()` and stored in `app.extensions["vclient"]`. Call the `<name>_service()` factories and pass `company_id` and `on_behalf_of` per call, such as `users_service(on_behalf_of=user_id, company_id=session["company_id"])`. For model shapes, service methods, exceptions, and testing helpers, read `src/vweb/api_client/` (models, services, exceptions, testing) directly.
+- **VClient:** `VClient` is created once in `create_app()` and stored in `app.extensions["vclient"]`. In request code, get services from `lib/api_services.py`: `api_services.users()`, `api_services.books(campaign_id)`, `api_services.character_traits(character_id)`, and so on. Each one takes the company and the On-Behalf-Of user from the session, and raises `NoRequestScopeError` when either is missing. Never pass `company_id` or `on_behalf_of` by hand in request code. `options()`, `dictionary()`, and `character_blueprint()` send no On-Behalf-Of user. Use the explicit `<name>_service()` factories from `vweb.api_client` only before a session exists or for another company or user: auth flows, company selection, `cache.global_context.load(company_id, user_id)`, and the unscoped `companies_service()`, `system_service()`, and `user_lookup_service()`. For model shapes, service methods, exceptions, and testing helpers, read `src/vweb/api_client/` (models, services, exceptions, testing) directly.
 - **Data access:** `lib/api.get_character_and_campaign(character_id)` (reads `g.global_context`, no API call). Campaigns via `g.global_context.campaigns`. Requesting user via `g.requesting_user`.
 - **Permission guards (`lib/guards.py`):** `is_admin`, `is_storyteller`, `is_self`, `can_manage_campaign`, `can_grant_experience`, `can_edit_traits_free`, `can_edit_character`, `can_edit_trackers`, etc. **Never inline `g.requesting_user.role in (...)` or ownership checks — always call a guard** (Python and templates). Don't pass a guard result as a prop if the child already has the parent object in scope. New check? Add to `lib/guards.py`, register in `lib/jinja.py`'s `jinja_globals`, test in `tests/lib/test_guards.py`.
 - **Trait rules (`lib/trait_rules.py`):** `is_derived_trait` (V5 Willpower is read-only) and `accepts_specialties` (abilities at 1+ dots). Registered as Jinja globals in `lib/jinja.py`. Call these instead of comparing trait names or sections inline.
@@ -154,7 +156,7 @@ Use `uv run duty test` for every check except iterating on a single test. Pick t
     fake_vclient.set_error(Routes.USERS_GET, status_code=404)
     ```
 
-- **When to use which:** factories for data; `fake_vclient` for code calling `<name>_service()` factories; `MagicMock()` only for service objects needing `side_effect` or handler/cache mocks.
+- **When to use which:** factories for data; `fake_vclient` for code that calls API services (`api_services.*()` or `<name>_service()`); `MagicMock()` only for service objects needing `side_effect` or handler/cache mocks.
 - Other shared fixtures: `mock_global_context` (factory-built `GlobalContext`), `get_csrf(client)`. Don't duplicate in test files.
 - **OAuth tests:** patch `oauth`, `lookup_user_companies`, and `identify_in_companies` where used (`routes.auth.views_oauth` for login/callback, `views_identity` for link/unlink, `views` for company selection); pre-seed `user_id` via `client.session_transaction()`.
 

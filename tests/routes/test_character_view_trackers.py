@@ -8,11 +8,11 @@ import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-import httpx2
 import pytest
 
 from tests.conftest import get_csrf
 from tests.helpers import build_mock_options_service
+from vweb.api_client.exceptions import APIConnectionError
 from vweb.api_client.models import CharacterTraitSpecialty, StainsTracker
 from vweb.api_client.testing import (
     CharacterFullSheetFactory,
@@ -60,7 +60,7 @@ def tracker_rules(mocker) -> dict:
     rules = json.loads(json.dumps(TRACKER_RULES))
     service = build_mock_options_service()
     service.get_options.return_value["characters"]["TrackerRules"] = rules
-    mocker.patch("vweb.lib.cache.options.options_service", return_value=service)
+    mocker.patch("vweb.lib.cache.options.api_services.options", return_value=service)
     return rules
 
 
@@ -988,7 +988,7 @@ def test_connection_error_on_change_flashes_without_swap(
     suffix, service, data = endpoint
     mocker.patch(
         f"vweb.routes.character_view.views_trackers.{service}",
-        side_effect=httpx2.ConnectError("unreachable"),
+        side_effect=APIConnectionError("Could not reach the API: unreachable"),
     )
     trait = _trait(CounterTrackerFactory.build(size=4, current=1), value=4)
 
@@ -1009,7 +1009,7 @@ def test_refetch_connection_error_falls_back_to_sheet_tracker(
     fake_vclient.set_error(Routes.CHARACTER_TRAITS_TRACKER_SET, status_code=400)
     mocker.patch(
         "vweb.routes.character_view.views_trackers.fetch_trait_tracker",
-        side_effect=httpx2.ConnectError("unreachable"),
+        side_effect=APIConnectionError("Could not reach the API: unreachable"),
     )
     trait = _trait(CounterTrackerFactory.build(size=4, current=1), value=4)
 

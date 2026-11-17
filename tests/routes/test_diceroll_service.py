@@ -168,6 +168,7 @@ class TestPerformCustomRoll:
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = user.id
             g.requesting_user = user
             result = perform_custom_roll(
                 character=character,
@@ -200,6 +201,7 @@ class TestPerformCustomRoll:
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = user.id
             g.requesting_user = user
             result = perform_custom_roll(
                 character=character,
@@ -240,6 +242,7 @@ class TestPerformTraitRoll:
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = user.id
             g.requesting_user = user
             result = perform_trait_roll(
                 character=character,
@@ -275,6 +278,7 @@ class TestPerformTraitRoll:
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = user.id
             g.requesting_user = user
             result = perform_trait_roll(
                 character=character,
@@ -306,6 +310,7 @@ class TestPerformTraitRoll:
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = user.id
             g.requesting_user = user
             with pytest.raises(ValueError, match="trait-missing"):
                 perform_trait_roll(
@@ -334,6 +339,7 @@ class TestPerformTraitRoll:
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = user.id
             g.requesting_user = user
             with pytest.raises(ValueError, match="trait-missing-two"):
                 perform_trait_roll(
@@ -362,13 +368,14 @@ class TestPerformTraitRoll:
         # Mock the service to capture the request object
         mock_svc = mocker.MagicMock()
         mock_svc.create.return_value = diceroll
-        mocker.patch("vweb.routes.diceroll.services.dicerolls_service", return_value=mock_svc)
+        mocker.patch("vweb.routes.diceroll.services.api_services.dicerolls", return_value=mock_svc)
 
         # When perform_trait_roll is called
         with app.test_request_context("/"):
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = user.id
             g.requesting_user = user
             perform_trait_roll(
                 character=character,
@@ -399,13 +406,14 @@ class TestPerformTraitRoll:
         # Mock the service to capture the request object
         mock_svc = mocker.MagicMock()
         mock_svc.create.return_value = diceroll
-        mocker.patch("vweb.routes.diceroll.services.dicerolls_service", return_value=mock_svc)
+        mocker.patch("vweb.routes.diceroll.services.api_services.dicerolls", return_value=mock_svc)
 
         # When perform_trait_roll is called with desperation dice
         with app.test_request_context("/"):
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = user.id
             g.requesting_user = user
             perform_trait_roll(
                 character=character,
@@ -446,6 +454,7 @@ class TestPerformQuickroll:
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = user.id
             g.requesting_user = user
             result = perform_quickroll(
                 character=character,
@@ -473,13 +482,14 @@ class TestPerformQuickroll:
         # Spy on create_from_quickroll to inspect kwargs
         mock_svc = mocker.MagicMock()
         mock_svc.create_from_quickroll.return_value = diceroll
-        mocker.patch("vweb.routes.diceroll.services.dicerolls_service", return_value=mock_svc)
+        mocker.patch("vweb.routes.diceroll.services.api_services.dicerolls", return_value=mock_svc)
 
         # When perform_quickroll is called with extra parameters
         with app.test_request_context("/"):
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = user.id
             g.requesting_user = user
             result = perform_quickroll(
                 character=character,
@@ -519,7 +529,7 @@ class TestDiceModifier:
         ]
         mock_svc = mocker.MagicMock()
         mock_svc.create.return_value = DicerollFactory.build(result=make_dice_roll_result())
-        mocker.patch("vweb.routes.diceroll.services.dicerolls_service", return_value=mock_svc)
+        mocker.patch("vweb.routes.diceroll.services.api_services.dicerolls", return_value=mock_svc)
 
         # When rolling with dice_modifier=1
         with app.test_request_context("/"):
@@ -553,7 +563,7 @@ class TestDiceModifier:
         mock_svc.create_from_quickroll.return_value = DicerollFactory.build(
             result=make_dice_roll_result()
         )
-        mocker.patch("vweb.routes.diceroll.services.dicerolls_service", return_value=mock_svc)
+        mocker.patch("vweb.routes.diceroll.services.api_services.dicerolls", return_value=mock_svc)
 
         # When rolling with dice_modifier=-2
         with app.test_request_context("/"):

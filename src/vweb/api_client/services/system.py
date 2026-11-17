@@ -1,7 +1,7 @@
 """Service for interacting with the System API."""
 
-from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models.system import SystemHealth
+from vweb.api_client.routes import Routes
 from vweb.api_client.services.base import BaseService
 
 
@@ -12,7 +12,7 @@ class SystemService(BaseService):
     designed to grow with additional system endpoints over time.
 
     Example:
-        with VClient() as client:
+        with VClient(base_url=url, api_key=key) as client:
             health = client.system.health()
             print(health.database_status)
     """
@@ -32,5 +32,4 @@ class SystemService(BaseService):
             if health.database_status == "online":
                 print("Database is healthy")
         """
-        response = self._get(Endpoints.HEALTH)
-        return SystemHealth.model_validate(response.json())
+        return self._call(Routes.HEALTH_GET)

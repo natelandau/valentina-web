@@ -3,7 +3,7 @@
 import json
 from typing import TYPE_CHECKING, Any
 
-from vweb.api_client.endpoints import Endpoints
+from vweb.api_client.routes import Routes
 from vweb.api_client.services.base import BaseService
 
 if TYPE_CHECKING:
@@ -21,13 +21,7 @@ class OptionsService(BaseService):
             company_id: The ID of the company to operate within.
             on_behalf_of: User ID to impersonate via On-Behalf-Of header.
         """
-        super().__init__(client)
-        self._company_id = company_id
-        self._on_behalf_of = on_behalf_of
-
-    def _format_endpoint(self, endpoint: str, **kwargs: str) -> str:
-        """Format an endpoint with the scoped company_id plus any extra params."""
-        return endpoint.format(company_id=self._company_id, **kwargs)
+        super().__init__(client, on_behalf_of=on_behalf_of, company_id=company_id)
 
     # -------------------------------------------------------------------------
     # Options and Enumerations Methods
@@ -44,5 +38,5 @@ class OptionsService(BaseService):
         Returns:
             A dictionary of options and enumerations for the api.
         """
-        response = self._get(self._format_endpoint(Endpoints.OPTIONS))
+        response = self._send(Routes.OPTIONS_GET)
         return json.loads(response.content)

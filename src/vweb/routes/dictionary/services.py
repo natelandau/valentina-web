@@ -8,10 +8,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from flask import session
-
-from vweb.api_client import dictionary_service
 from vweb.api_client.models import DictionaryTermCreate, DictionaryTermUpdate
+from vweb.lib import api_services
 from vweb.lib.urls import is_http_url
 
 if TYPE_CHECKING:
@@ -77,7 +75,7 @@ def create_term(form_data: dict[str, str]) -> DictionaryTerm:
         link=form_data.get("link", "").strip() or None,
         synonyms=parse_synonyms(form_data.get("synonyms", "")),
     )
-    return dictionary_service(company_id=session["company_id"]).create(request=request_body)
+    return api_services.dictionary().create(request=request_body)
 
 
 def update_term(term_id: str, form_data: dict[str, str]) -> DictionaryTerm:
@@ -96,9 +94,7 @@ def update_term(term_id: str, form_data: dict[str, str]) -> DictionaryTerm:
         link=form_data.get("link", "").strip() or None,
         synonyms=parse_synonyms(form_data.get("synonyms", "")),
     )
-    return dictionary_service(company_id=session["company_id"]).update(
-        term_id, request=request_body
-    )
+    return api_services.dictionary().update(term_id, request=request_body)
 
 
 def delete_term(term_id: str) -> None:
@@ -107,4 +103,4 @@ def delete_term(term_id: str) -> None:
     Args:
         term_id: The ID of the term to delete.
     """
-    dictionary_service(company_id=session["company_id"]).delete(term_id)
+    api_services.dictionary().delete(term_id)

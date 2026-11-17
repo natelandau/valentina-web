@@ -69,7 +69,7 @@ def _mock_profile_api(mocker, profile_context) -> MagicMock:
 
     mock_svc = MagicMock()
     mock_svc.list_all_quickrolls.return_value = []
-    mocker.patch("vweb.routes.profile.views.users_service", return_value=mock_svc)
+    mocker.patch("vweb.routes.profile.views.api_services.users", return_value=mock_svc)
 
     return mock_svc
 

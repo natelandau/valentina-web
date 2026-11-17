@@ -12,7 +12,6 @@ from werkzeug.wrappers.response import Response
 
 from vweb.api_client.exceptions import APIError, ServerError, UnprocessableEntityError
 from vweb.extensions import oauth
-from vweb.lib.api import API_UNAVAILABLE_ERRORS
 from vweb.lib.guards import is_active_role
 from vweb.routes.auth.apple_oauth import build_apple_client_secret
 from vweb.routes.auth.services import (
@@ -46,7 +45,7 @@ def _safe_lookup(
             provider_id=provider_id,
             email=email,
         )
-    except API_UNAVAILABLE_ERRORS:
+    except APIError:
         logger.exception("%s OAuth callback failed: API unreachable", provider)
         flash(
             f"We couldn't reach the Valentina API to complete your {provider} login. "

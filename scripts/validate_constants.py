@@ -16,7 +16,6 @@ from __future__ import annotations
 import argparse
 import sys
 
-import httpx2
 from loguru import logger
 from pydantic import BaseModel, Field, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -114,7 +113,7 @@ def cli() -> int:
 
     try:
         return main(api_url, api_key, args.company_id)
-    except (APIError, httpx2.HTTPError) as error:
+    except APIError as error:
         print(f"Error: {type(error).__name__}: {error}", file=sys.stderr)
         return 2
 

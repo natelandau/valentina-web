@@ -361,7 +361,6 @@ class TestMultiAutogenFinalizeView:
 
         # Then finalize is called and redirect is set
         mock_finalize.assert_called_once_with(
-            user_id="test-user-id",
             campaign_id=campaign.id,
             session_id="sess-1",
             selected_character_id="selected-char-id",

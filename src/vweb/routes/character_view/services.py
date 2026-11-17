@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, cast
 
-from vweb.api_client import character_traits_service, characters_service
 from vweb.api_client.constants import TrackerAction
+from vweb.lib import api_services
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -57,44 +57,33 @@ def parse_tracker_request(
     return TrackerRequest(action=action, current=current)
 
 
-def fetch_trait_tracker(
-    character_id: str, character_trait_id: str, *, user_id: str, company_id: str
-) -> Tracker:
+def fetch_trait_tracker(character_id: str, character_trait_id: str) -> Tracker:
     """Fetch the current state of a trait tracker."""
-    return character_traits_service(
-        character_id=character_id, on_behalf_of=user_id, company_id=company_id
-    ).get_tracker(character_trait_id)
+    return api_services.character_traits(character_id).get_tracker(character_trait_id)
 
 
 def update_trait_tracker(
     character_id: str,
     character_trait_id: str,
     request: TrackerRequest,
-    *,
-    user_id: str,
-    company_id: str,
 ) -> Tracker:
     """Apply a request to a trait tracker through the API.
 
     Returns:
         The tracker as stored after the change.
     """
-    service = character_traits_service(
-        character_id=character_id, on_behalf_of=user_id, company_id=company_id
-    )
+    service = api_services.character_traits(character_id)
     if request.action == "set":
         return service.set_tracker(character_trait_id, current=request.current)
     return service.apply_tracker_action(character_trait_id, request.action, amount=1)
 
 
-def fetch_health(character_id: str, *, user_id: str, company_id: str) -> Health:
+def fetch_health(character_id: str) -> Health:
     """Fetch the current health of a character."""
-    return characters_service(on_behalf_of=user_id, company_id=company_id).get_health(character_id)
+    return api_services.characters().get_health(character_id)
 
 
-def update_health(
-    character_id: str, request: TrackerRequest, *, user_id: str, company_id: str
-) -> Health:
+def update_health(character_id: str, request: TrackerRequest) -> Health:
     """Apply a damage or heal request to a character's health through the API.
 
     Returns:
@@ -102,6 +91,4 @@ def update_health(
     """
     # The health endpoint's allowed actions never include "set".
     action = cast("TrackerAction", request.action)
-    return characters_service(on_behalf_of=user_id, company_id=company_id).apply_health_action(
-        character_id, action, amount=1
-    )
+    return api_services.characters().apply_health_action(character_id, action, amount=1)

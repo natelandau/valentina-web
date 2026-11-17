@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from flask import flash, g, request, session, url_for
+from flask import flash, g, request, url_for
 from flask.views import MethodView
 
-from vweb.api_client import character_traits_service
-from vweb.lib import cache
+from vweb.lib import api_services, cache
 from vweb.lib.api import get_character_and_campaign
 from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog
@@ -69,9 +68,7 @@ class _SpecialtyBaseView(MethodView):
             f"character_trait_edit.{self.spend_type}", character_id=character_id
         )
 
-        full_sheet = cache.character_sheet.get(
-            character.id, g.requesting_user.id, include_available_traits=True
-        )
+        full_sheet = cache.character_sheet.get(character.id, include_available_traits=True)
         character_trait = find_character_trait(full_sheet, character_trait_id)
         if character_trait is None:
             flash("Trait not found", "error")
@@ -81,11 +78,7 @@ class _SpecialtyBaseView(MethodView):
         return None
 
     def _service(self) -> CharacterTraitsService:
-        return character_traits_service(
-            on_behalf_of=g.requesting_user.id,
-            character_id=self.character.id,
-            company_id=session["company_id"],
-        )
+        return api_services.character_traits(self.character.id)
 
     def _finish(self, message: str) -> Response:
         """Flash success, invalidate caches, and reload the edit page."""

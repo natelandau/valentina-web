@@ -5,6 +5,7 @@ import json
 import pytest
 import respx
 
+from tests.api_client.payloads import page, wire
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.exceptions import (
     AuthorizationError,
@@ -13,60 +14,31 @@ from vweb.api_client.exceptions import (
     RequestValidationError,
 )
 from vweb.api_client.models import (
-    Asset,
     CampaignExperience,
-    Note,
     PaginatedResponse,
     Quickroll,
     RollStatistics,
     User,
 )
+from vweb.api_client.testing import CampaignExperienceFactory, QuickrollFactory
 
 
 @pytest.fixture
 def paginated_users_response(user_response_data) -> dict:
-    """Return sample paginated users response."""
-    return {
-        "items": [user_response_data],
-        "limit": 10,
-        "offset": 0,
-        "total": 1,
-    }
-
-
-@pytest.fixture
-def asset_response_data(asset_response_data_factory) -> dict:
-    """Return sample asset response data for a user."""
-    return asset_response_data_factory(
-        original_filename="avatar.png",
-        public_url="https://example.com/avatar.png",
-        user_parent_id="user123",
-    )
+    """Return a one-item paginated users response."""
+    return page(user_response_data)
 
 
 @pytest.fixture
 def experience_response_data() -> dict:
-    """Return sample experience response data."""
-    return {
-        "campaign_id": "campaign123",
-        "xp_current": 50,
-        "xp_total": 100,
-        "cool_points": 5,
-    }
+    """Return campaign experience response data."""
+    return wire(CampaignExperienceFactory.build(campaign_id="campaign123"))
 
 
 @pytest.fixture
 def quickroll_response_data() -> dict:
-    """Return sample quickroll response data."""
-    return {
-        "id": "quickroll123",
-        "date_created": "2024-01-15T10:30:00Z",
-        "date_modified": "2024-01-15T10:30:00Z",
-        "name": "Test Quickroll",
-        "description": "A test quickroll",
-        "user_id": "user123",
-        "trait_ids": ["trait1", "trait2"],
-    }
+    """Return quickroll response data."""
+    return wire(QuickrollFactory.build(id="quickroll123", name="Test Quickroll"))
 
 
 class TestUsersServiceGetPage:
@@ -123,12 +95,7 @@ class TestUsersServiceGetPage:
             params={"limit": "25", "offset": "50"},
         ).respond(
             200,
-            json={
-                "items": [user_response_data],
-                "limit": 25,
-                "offset": 50,
-                "total": 100,
-            },
+            json=page(user_response_data, limit=25, offset=50, total=100),
         )
 
         # When: Getting a page with custom pagination
@@ -155,12 +122,7 @@ class TestUsersServiceListAll:
             params={"limit": "100", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [user_response_data],
-                "limit": 100,
-                "offset": 0,
-                "total": 1,
-            },
+            json=page(user_response_data, limit=100),
         )
 
         # When: Calling list_all
@@ -186,24 +148,14 @@ class TestUsersServiceIterAll:
             params={"limit": "1", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [user_response_data],
-                "limit": 1,
-                "offset": 0,
-                "total": 2,
-            },
+            json=page(user_response_data, limit=1, total=2),
         )
         respx.get(
             f"{base_url}{Endpoints.USERS.format(company_id=company_id)}",
             params={"limit": "1", "offset": "1"},
         ).respond(
             200,
-            json={
-                "items": [user2],
-                "limit": 1,
-                "offset": 1,
-                "total": 2,
-            },
+            json=page(user2, limit=1, offset=1, total=2),
         )
 
         # When: Iterating through all users
@@ -589,12 +541,7 @@ class TestUsersServiceGetUnapprovedPage:
             params={"limit": "25", "offset": "50"},
         ).respond(
             200,
-            json={
-                "items": [user_response_data],
-                "limit": 25,
-                "offset": 50,
-                "total": 100,
-            },
+            json=page(user_response_data, limit=25, offset=50, total=100),
         )
 
         # When: Getting a page with custom pagination
@@ -621,12 +568,7 @@ class TestUsersServiceListAllUnapproved:
             params={"limit": "100", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [user_response_data],
-                "limit": 100,
-                "offset": 0,
-                "total": 1,
-            },
+            json=page(user_response_data, limit=100),
         )
 
         # When: Calling list_all_unapproved
@@ -652,24 +594,14 @@ class TestUsersServiceIterAllUnapproved:
             params={"limit": "1", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [user_response_data],
-                "limit": 1,
-                "offset": 0,
-                "total": 2,
-            },
+            json=page(user_response_data, limit=1, total=2),
         )
         respx.get(
             f"{base_url}{Endpoints.USERS_UNAPPROVED_LIST.format(company_id=company_id)}",
             params={"limit": "1", "offset": "1"},
         ).respond(
             200,
-            json={
-                "items": [user2],
-                "limit": 1,
-                "offset": 1,
-                "total": 2,
-            },
+            json=page(user2, limit=1, offset=1, total=2),
         )
 
         # When: Iterating through all unapproved users
@@ -762,126 +694,6 @@ class TestUsersServiceDenyUser:
         # When/Then: Denying raises NotFoundError
         with pytest.raises(NotFoundError):
             vclient.users("on-behalf-of-user", company_id=company_id).deny_user(user_id)
-
-
-class TestUsersServiceAssets:
-    """Tests for UsersService asset methods."""
-
-    @respx.mock
-    def test_get_assets_page(self, vclient, base_url, asset_response_data):
-        """Verify getting a page of user assets."""
-        # Given: A mocked assets endpoint
-        company_id = "company123"
-        user_id = "user123"
-        route = respx.get(
-            f"{base_url}{Endpoints.USER_ASSETS.format(company_id=company_id, user_id=user_id)}",
-            params={"limit": "10", "offset": "0"},
-        ).respond(
-            200,
-            json={
-                "items": [asset_response_data],
-                "limit": 10,
-                "offset": 0,
-                "total": 1,
-            },
-        )
-
-        # When: Getting a page of assets
-        result = vclient.users("on-behalf-of-user", company_id=company_id).get_assets_page(user_id)
-
-        # Then: Returns PaginatedResponse with Asset objects
-        assert route.called
-        assert isinstance(result, PaginatedResponse)
-        assert len(result.items) == 1
-        assert isinstance(result.items[0], Asset)
-
-    @respx.mock
-    def test_list_all_assets(self, vclient, base_url, asset_response_data):
-        """Verify list_all_assets returns all assets."""
-        # Given: A mocked assets endpoint
-        company_id = "company123"
-        user_id = "user123"
-        respx.get(
-            f"{base_url}{Endpoints.USER_ASSETS.format(company_id=company_id, user_id=user_id)}",
-            params={"limit": "100", "offset": "0"},
-        ).respond(
-            200,
-            json={
-                "items": [asset_response_data],
-                "limit": 100,
-                "offset": 0,
-                "total": 1,
-            },
-        )
-
-        # When: Calling list_all_assets
-        result = vclient.users("on-behalf-of-user", company_id=company_id).list_all_assets(user_id)
-
-        # Then: Returns list of Asset objects
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert isinstance(result[0], Asset)
-
-    @respx.mock
-    def test_get_asset(self, vclient, base_url, asset_response_data):
-        """Verify getting a specific asset."""
-        # Given: A mocked asset endpoint
-        company_id = "company123"
-        user_id = "user123"
-        asset_id = "asset123"
-        route = respx.get(
-            f"{base_url}{Endpoints.USER_ASSET.format(company_id=company_id, user_id=user_id, asset_id=asset_id)}"
-        ).respond(200, json=asset_response_data)
-
-        # When: Getting the asset
-        result = vclient.users("on-behalf-of-user", company_id=company_id).get_asset(
-            user_id, asset_id
-        )
-
-        # Then: Returns Asset object
-        assert route.called
-        assert isinstance(result, Asset)
-        assert result.id == "asset123"
-
-    @respx.mock
-    def test_delete_asset(self, vclient, base_url):
-        """Verify deleting an asset."""
-        # Given: A mocked delete endpoint
-        company_id = "company123"
-        user_id = "user123"
-        asset_id = "asset123"
-        route = respx.delete(
-            f"{base_url}{Endpoints.USER_ASSET.format(company_id=company_id, user_id=user_id, asset_id=asset_id)}"
-        ).respond(204)
-
-        # When: Deleting the asset
-        vclient.users("on-behalf-of-user", company_id=company_id).delete_asset(user_id, asset_id)
-
-        # Then: Request was made
-        assert route.called
-
-    @respx.mock
-    def test_upload_asset(self, vclient, base_url, asset_response_data):
-        """Verify uploading an asset."""
-        # Given: A mocked upload endpoint
-        company_id = "company123"
-        user_id = "user123"
-        route = respx.post(
-            f"{base_url}{Endpoints.USER_ASSET_UPLOAD.format(company_id=company_id, user_id=user_id)}"
-        ).respond(201, json=asset_response_data)
-
-        # When: Uploading an asset
-        result = vclient.users("on-behalf-of-user", company_id=company_id).upload_asset(
-            user_id,
-            filename="test.png",
-            content=b"fake image content",
-            content_type="image/png",
-        )
-
-        # Then: Returns Asset object
-        assert route.called
-        assert isinstance(result, Asset)
-        assert result.id == "asset123"
 
 
 class TestUsersServiceExperience:
@@ -990,122 +802,6 @@ class TestUsersServiceExperience:
         assert not respx.calls
 
 
-class TestUsersServiceNotes:
-    """Tests for UsersService note methods."""
-
-    @respx.mock
-    def test_get_notes_page(self, vclient, base_url, note_response_data):
-        """Verify get_notes_page returns paginated Note objects."""
-        # Given: A mocked notes list endpoint
-        company_id = "company123"
-        user_id = "user123"
-        route = respx.get(
-            f"{base_url}{Endpoints.USER_NOTES.format(company_id=company_id, user_id=user_id)}",
-            params={"limit": "10", "offset": "0"},
-        ).respond(
-            200,
-            json={
-                "items": [note_response_data],
-                "limit": 10,
-                "offset": 0,
-                "total": 1,
-            },
-        )
-
-        # When: Getting a page of notes
-        result = vclient.users("on-behalf-of-user", company_id=company_id).get_notes_page(user_id)
-
-        # Then: Returns PaginatedResponse with Note objects
-        assert route.called
-        assert isinstance(result, PaginatedResponse)
-        assert len(result.items) == 1
-        assert isinstance(result.items[0], Note)
-
-    @respx.mock
-    def test_get_note(self, vclient, base_url, note_response_data):
-        """Verify getting a specific note returns Note object."""
-        # Given: A mocked note endpoint
-        company_id = "company123"
-        user_id = "user123"
-        note_id = "note123"
-        route = respx.get(
-            f"{base_url}{Endpoints.USER_NOTE.format(company_id=company_id, user_id=user_id, note_id=note_id)}"
-        ).respond(200, json=note_response_data)
-
-        # When: Getting the note
-        result = vclient.users("on-behalf-of-user", company_id=company_id).get_note(
-            user_id, note_id
-        )
-
-        # Then: Returns Note object
-        assert route.called
-        assert isinstance(result, Note)
-        assert result.id == "note123"
-
-    @respx.mock
-    def test_create_note(self, vclient, base_url, note_response_data):
-        """Verify creating a note returns Note object."""
-        # Given: A mocked create endpoint
-        company_id = "company123"
-        user_id = "user123"
-        route = respx.post(
-            f"{base_url}{Endpoints.USER_NOTES.format(company_id=company_id, user_id=user_id)}"
-        ).respond(201, json=note_response_data)
-
-        # When: Creating a note
-        result = vclient.users("on-behalf-of-user", company_id=company_id).create_note(
-            user_id,
-            title="Test Note",
-            content="This is test content",
-        )
-
-        # Then: Returns created Note object
-        assert route.called
-        assert isinstance(result, Note)
-        assert result.title == "Test Note"
-
-    @respx.mock
-    def test_update_note(self, vclient, base_url, note_response_data):
-        """Verify updating a note returns Note object."""
-        # Given: A mocked update endpoint
-        company_id = "company123"
-        user_id = "user123"
-        note_id = "note123"
-        updated_data = {**note_response_data, "title": "Updated Title"}
-        route = respx.patch(
-            f"{base_url}{Endpoints.USER_NOTE.format(company_id=company_id, user_id=user_id, note_id=note_id)}"
-        ).respond(200, json=updated_data)
-
-        # When: Updating the note
-        result = vclient.users("on-behalf-of-user", company_id=company_id).update_note(
-            user_id,
-            note_id,
-            title="Updated Title",
-        )
-
-        # Then: Returns updated Note object
-        assert route.called
-        assert isinstance(result, Note)
-        assert result.title == "Updated Title"
-
-    @respx.mock
-    def test_delete_note(self, vclient, base_url):
-        """Verify deleting a note."""
-        # Given: A mocked delete endpoint
-        company_id = "company123"
-        user_id = "user123"
-        note_id = "note123"
-        route = respx.delete(
-            f"{base_url}{Endpoints.USER_NOTE.format(company_id=company_id, user_id=user_id, note_id=note_id)}"
-        ).respond(204)
-
-        # When: Deleting the note
-        vclient.users("on-behalf-of-user", company_id=company_id).delete_note(user_id, note_id)
-
-        # Then: Request was made
-        assert route.called
-
-
 class TestUsersServiceQuickrolls:
     """Tests for UsersService quickroll methods."""
 
@@ -1120,12 +816,7 @@ class TestUsersServiceQuickrolls:
             params={"limit": "10", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [quickroll_response_data],
-                "limit": 10,
-                "offset": 0,
-                "total": 1,
-            },
+            json=page(quickroll_response_data),
         )
 
         # When: Getting a page of quickrolls

@@ -2,8 +2,8 @@
 
 from typing import TYPE_CHECKING
 
-from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import IdentityResolution, UserIdentifyDTO
+from vweb.api_client.routes import Routes
 from vweb.api_client.services.base import BaseService
 
 if TYPE_CHECKING:
@@ -26,7 +26,7 @@ class IdentityService(BaseService):
     Authentication is via developer API key only.
 
     Example:
-        with VClient() as client:
+        with VClient(base_url=url, api_key=key) as client:
             identity = client.identity()
             result = identity.identify(provider="google", token="<id-token>")
             print(result.resolution, result.user.id)
@@ -39,12 +39,7 @@ class IdentityService(BaseService):
             client: The VClient instance to use for requests.
             company_id: The ID of the company to resolve identities in.
         """
-        super().__init__(client)
-        self._company_id = company_id
-
-    def _format_endpoint(self, endpoint: str, **kwargs: str) -> str:
-        """Format an endpoint with the scoped company_id plus any extra params."""
-        return endpoint.format(company_id=self._company_id, **kwargs)
+        super().__init__(client, company_id=company_id)
 
     def identify(
         self,
@@ -79,8 +74,7 @@ class IdentityService(BaseService):
             ServerError: If the provider is unreachable (503, code PROVIDER_UNAVAILABLE).
         """
         body = request if request is not None else self._validate_request(UserIdentifyDTO, **kwargs)
-        response = self._post(
-            self._format_endpoint(Endpoints.AUTH_IDENTIFY),
+        return self._call(
+            Routes.IDENTITY_IDENTIFY,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
         )
-        return IdentityResolution.model_validate(response.json())

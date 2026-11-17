@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock
 
+import pytest
 from flask import Flask
 
 from tests.helpers import make_cache_store_mock
@@ -9,6 +10,7 @@ from vweb.api_client.testing import (
     CharacterConceptFactory,
     CharacterFactory,
     ChargenSessionResponseFactory,
+    Routes,
     VampireClanFactory,
     WerewolfAuspiceFactory,
     WerewolfTribeFactory,
@@ -25,7 +27,7 @@ class TestGenerateSingle:
         expected_character = CharacterFactory.build()
         mock_service.generate_character.return_value = expected_character
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.character_autogen_service",
+            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
             return_value=mock_service,
         )
 
@@ -36,8 +38,8 @@ class TestGenerateSingle:
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = "u1"
             result = generate_single(
-                user_id="u1",
                 campaign_id="c1",
                 character_type="PLAYER",
             )
@@ -63,7 +65,7 @@ class TestGenerateSingle:
         expected_character = CharacterFactory.build()
         mock_service.generate_character.return_value = expected_character
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.character_autogen_service",
+            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
             return_value=mock_service,
         )
 
@@ -74,8 +76,8 @@ class TestGenerateSingle:
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = "u1"
             result = generate_single(
-                user_id="u1",
                 campaign_id="c1",
                 character_type="NPC",
                 character_class="VAMPIRE",
@@ -110,7 +112,7 @@ class TestStartSession:
         expected_response = ChargenSessionResponseFactory.build()
         mock_service.start_chargen_session.return_value = expected_response
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.character_autogen_service",
+            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
             return_value=mock_service,
         )
 
@@ -121,7 +123,8 @@ class TestStartSession:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            result = start_session(user_id="u1", campaign_id="c1")
+            session["user_id"] = "u1"
+            result = start_session(campaign_id="c1")
 
         # Then the session response is returned
         mock_service.start_chargen_session.assert_called_once()
@@ -138,7 +141,7 @@ class TestFinalizeSession:
         expected_character = CharacterFactory.build()
         mock_service.finalize_chargen_session.return_value = expected_character
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.character_autogen_service",
+            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
             return_value=mock_service,
         )
 
@@ -149,8 +152,8 @@ class TestFinalizeSession:
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = "u1"
             result = finalize_session(
-                user_id="u1",
                 campaign_id="c1",
                 session_id="sess-1",
                 selected_character_id="char-2",
@@ -167,24 +170,19 @@ class TestFinalizeSession:
 class TestFetchFormOptions:
     """Tests for fetch_form_options()."""
 
-    def test_returns_all_dropdown_data(self, app, mocker) -> None:
+    def test_returns_all_dropdown_data(self, app, mocker, fake_vclient) -> None:
         """Verify fetch_form_options returns enum lists and blueprint data."""
         # Given mocked blueprint service, base cache store, and options
         make_cache_store_mock(mocker, "vweb.lib.cache.base.cache")
 
-        mock_bp_service = MagicMock()
         concepts = CharacterConceptFactory.batch(2)
         clans = VampireClanFactory.batch(3)
         tribes = WerewolfTribeFactory.batch(2)
         auspices = WerewolfAuspiceFactory.batch(2)
-        mock_bp_service.list_all_concepts.return_value = concepts
-        mock_bp_service.list_all_vampire_clans.return_value = clans
-        mock_bp_service.list_all_werewolf_tribes.return_value = tribes
-        mock_bp_service.list_all_werewolf_auspices.return_value = auspices
-        mocker.patch(
-            "vweb.routes.character_create.autogen_services.character_blueprint_service",
-            return_value=mock_bp_service,
-        )
+        fake_vclient.set_response(Routes.BLUEPRINT_CONCEPTS_LIST, items=concepts)
+        fake_vclient.set_response(Routes.BLUEPRINT_VAMPIRE_CLANS_LIST, items=clans)
+        fake_vclient.set_response(Routes.BLUEPRINT_WEREWOLF_TRIBES_LIST, items=tribes)
+        fake_vclient.set_response(Routes.BLUEPRINT_WEREWOLF_AUSPICES_LIST, items=auspices)
 
         from vweb.lib.cache.options import ApiOptions, CharacterOptions
 
@@ -205,6 +203,7 @@ class TestFetchFormOptions:
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = "u1"
             result = fetch_form_options()
 
         # Then enum lists and blueprint data are returned
@@ -220,15 +219,13 @@ class TestFetchFormOptions:
 class TestListSessions:
     """Tests for list_sessions."""
 
-    def test_returns_sessions_from_api(self, app: Flask, mocker) -> None:
+    def test_returns_sessions_from_api(self, app: Flask, fake_vclient) -> None:
         """Verify list_sessions returns sessions from the API."""
-        # Given a mocked autogen service with two sessions
-        mock_service = MagicMock()
-        sessions = ChargenSessionResponseFactory.batch(2)
-        mock_service.list_all.return_value = sessions
-        mocker.patch(
-            "vweb.routes.character_create.autogen_services.character_autogen_service",
-            return_value=mock_service,
+        # Given an API with two chargen sessions in this campaign and one in another
+        sessions = ChargenSessionResponseFactory.batch(2, campaign_id="c1")
+        other = ChargenSessionResponseFactory.build(campaign_id="c2")
+        fake_vclient.set_response(
+            Routes.CHARACTERS_CHARGEN_SESSIONS_LIST, items=[sessions[0], other, sessions[1]]
         )
 
         from vweb.routes.character_create.autogen_services import list_sessions
@@ -238,21 +235,16 @@ class TestListSessions:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            result = list_sessions(user_id="u1", campaign_id="c1")
+            session["user_id"] = "u1"
+            result = list_sessions(campaign_id="c1")
 
-        # Then both sessions are returned
-        assert len(result) == 2
-        mock_service.list_all.assert_called_once()
+        # Then only this campaign's sessions are returned
+        assert result == sessions
 
-    def test_returns_empty_list_when_no_sessions(self, app: Flask, mocker) -> None:
+    def test_returns_empty_list_when_no_sessions(self, app: Flask, fake_vclient) -> None:
         """Verify list_sessions returns empty list when no sessions exist."""
-        # Given a mocked autogen service with no sessions
-        mock_service = MagicMock()
-        mock_service.list_all.return_value = []
-        mocker.patch(
-            "vweb.routes.character_create.autogen_services.character_autogen_service",
-            return_value=mock_service,
-        )
+        # Given an API with no chargen sessions
+        fake_vclient.set_response(Routes.CHARACTERS_CHARGEN_SESSIONS_LIST, items=[])
 
         from vweb.routes.character_create.autogen_services import list_sessions
 
@@ -261,7 +253,8 @@ class TestListSessions:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            result = list_sessions(user_id="u1", campaign_id="c1")
+            session["user_id"] = "u1"
+            result = list_sessions(campaign_id="c1")
 
         # Then empty list is returned
         assert result == []
@@ -274,10 +267,10 @@ class TestGetSession:
         """Verify get_session returns the requested session."""
         # Given a mocked autogen service
         mock_service = MagicMock()
-        expected = ChargenSessionResponseFactory.build(id="sess-123")
+        expected = ChargenSessionResponseFactory.build(id="sess-123", campaign_id="c1")
         mock_service.get.return_value = expected
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.character_autogen_service",
+            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
             return_value=mock_service,
         )
 
@@ -288,8 +281,35 @@ class TestGetSession:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            result = get_session(user_id="u1", campaign_id="c1", session_id="sess-123")
+            session["user_id"] = "u1"
+            result = get_session(campaign_id="c1", session_id="sess-123")
 
         # Then the session is returned
         assert result.id == "sess-123"
         mock_service.get.assert_called_once_with("sess-123")
+
+    def test_rejects_session_from_another_campaign(self, app: Flask, mocker) -> None:
+        """Verify get_session raises NotFoundError for a session in a different campaign."""
+        # Given a session that belongs to another campaign
+        mock_service = MagicMock()
+        mock_service.get.return_value = ChargenSessionResponseFactory.build(
+            id="sess-123", campaign_id="c2"
+        )
+        mocker.patch(
+            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
+            return_value=mock_service,
+        )
+
+        from vweb.api_client.exceptions import NotFoundError
+        from vweb.routes.character_create.autogen_services import get_session
+
+        # When getting it under campaign c1
+        with app.test_request_context():
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            session["user_id"] = "u1"
+
+            # Then it is refused as not found
+            with pytest.raises(NotFoundError):
+                get_session(campaign_id="c1", session_id="sess-123")

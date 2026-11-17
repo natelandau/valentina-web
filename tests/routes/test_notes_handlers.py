@@ -10,7 +10,7 @@ import pytest
 
 from tests.conftest import get_csrf
 from tests.helpers import build_global_context, seed_session
-from vweb.api_client.testing import CampaignFactory, CharacterFactory, NoteFactory
+from vweb.api_client.testing import CampaignFactory, CharacterFactory, NoteFactory, Routes
 from vweb.routes.book.handlers import BookNotesHandler
 from vweb.routes.campaign_notes.handlers import CampaignNotesHandler
 from vweb.routes.chapter.handlers import ChapterNotesHandler
@@ -36,19 +36,19 @@ class NotesHandlerCase:
 NOTES_HANDLER_CASES: dict[str, NotesHandlerCase] = {
     "book": NotesHandlerCase(
         handler_class=BookNotesHandler,
-        service_path="vweb.routes.book.handlers.books_service",
+        service_path="vweb.routes.book.handlers.api_services.books",
         parent_id="book-123",
         handler_kwargs={"campaign_id": "camp-456"},
     ),
     "chapter": NotesHandlerCase(
         handler_class=ChapterNotesHandler,
-        service_path="vweb.routes.chapter.handlers.chapters_service",
+        service_path="vweb.routes.chapter.handlers.api_services.chapters",
         parent_id="chapter-123",
         handler_kwargs={"campaign_id": "camp-456", "book_id": "book-789"},
     ),
     "character": NotesHandlerCase(
         handler_class=CharacterNotesHandler,
-        service_path="vweb.routes.character_view.handlers_notes.characters_service",
+        service_path="vweb.routes.character_view.handlers_notes.api_services.characters",
         parent_id="char-123",
         needs_character_in_context=True,
     ),
@@ -190,24 +190,16 @@ class TestNotesHandlerOperations:
         mock_svc.delete_note.assert_called_once_with(handler_case.parent_id, "note-789")
 
 
-@pytest.fixture
-def mock_book_svc(mocker: MockerFixture) -> MagicMock:
-    """Mock the books_service for the book handler module."""
-    svc = MagicMock()
-    mocker.patch("vweb.routes.book.handlers.books_service", return_value=svc)
-    return svc
-
-
 class TestBookNotesHandlerSpecific:
     """Tests for behavior unique to BookNotesHandler."""
 
-    def test_list_items_returns_notes(self, app, mock_book_svc) -> None:
+    def test_list_items_returns_notes(self, app, fake_vclient) -> None:
         """Verify list_items returns the notes from the service."""
         with app.test_request_context():
             seed_session()
 
             notes = NoteFactory.batch(3)
-            mock_book_svc.list_all_notes.return_value = notes
+            fake_vclient.set_response(Routes.BOOKS_NOTES_LIST, items=notes)
 
             handler = BookNotesHandler("book-123", campaign_id="camp-456")
 
@@ -215,7 +207,7 @@ class TestBookNotesHandlerSpecific:
 
             assert result == notes
 
-    def test_init_raises_without_campaign_id(self, app, mock_book_svc) -> None:
+    def test_init_raises_without_campaign_id(self, app, fake_vclient) -> None:
         """Verify constructor raises ValueError when campaign_id is missing."""
         with app.test_request_context():
             seed_session()
@@ -223,7 +215,7 @@ class TestBookNotesHandlerSpecific:
             with pytest.raises(ValueError, match="campaign_id is required"):
                 BookNotesHandler("book-123")
 
-    def test_init_uses_campaign_id_kwarg(self, app, mock_book_svc) -> None:
+    def test_init_uses_campaign_id_kwarg(self, app, fake_vclient) -> None:
         """Verify constructor uses campaign_id kwarg to create the service."""
         with app.test_request_context():
             seed_session()
@@ -233,18 +225,10 @@ class TestBookNotesHandlerSpecific:
             assert handler._parent_id == "book-999"
 
 
-@pytest.fixture
-def mock_chapter_svc(mocker: MockerFixture) -> MagicMock:
-    """Mock the chapters_service for the chapter handler module."""
-    svc = MagicMock()
-    mocker.patch("vweb.routes.chapter.handlers.chapters_service", return_value=svc)
-    return svc
-
-
 class TestChapterNotesHandlerInit:
     """Tests for ChapterNotesHandler constructor validation."""
 
-    def test_missing_campaign_id_raises_value_error(self, app, mock_chapter_svc) -> None:
+    def test_missing_campaign_id_raises_value_error(self, app, fake_vclient) -> None:
         """Verify constructor raises ValueError when campaign_id is missing."""
         with app.test_request_context():
             seed_session()
@@ -252,7 +236,7 @@ class TestChapterNotesHandlerInit:
             with pytest.raises(ValueError, match="campaign_id and book_id are required"):
                 ChapterNotesHandler("chapter-123", book_id="book-456")
 
-    def test_missing_book_id_raises_value_error(self, app, mock_chapter_svc) -> None:
+    def test_missing_book_id_raises_value_error(self, app, fake_vclient) -> None:
         """Verify constructor raises ValueError when book_id is missing."""
         with app.test_request_context():
             seed_session()
@@ -260,7 +244,7 @@ class TestChapterNotesHandlerInit:
             with pytest.raises(ValueError, match="campaign_id and book_id are required"):
                 ChapterNotesHandler("chapter-123", campaign_id="camp-456")
 
-    def test_missing_both_raises_value_error(self, app, mock_chapter_svc) -> None:
+    def test_missing_both_raises_value_error(self, app, fake_vclient) -> None:
         """Verify constructor raises ValueError when both campaign_id and book_id are missing."""
         with app.test_request_context():
             seed_session()
@@ -268,7 +252,7 @@ class TestChapterNotesHandlerInit:
             with pytest.raises(ValueError, match="campaign_id and book_id are required"):
                 ChapterNotesHandler("chapter-123")
 
-    def test_init_calls_service_with_correct_args(self, app, mock_chapter_svc) -> None:
+    def test_init_calls_service_with_correct_args(self, app, fake_vclient) -> None:
         """Verify constructor passes campaign_id and book_id to chapters_service."""
         with app.test_request_context():
             from unittest.mock import patch
@@ -276,7 +260,7 @@ class TestChapterNotesHandlerInit:
             seed_session()
 
             with patch(
-                "vweb.routes.chapter.handlers.chapters_service", return_value=MagicMock()
+                "vweb.lib.api_services.chapters_service", return_value=MagicMock()
             ) as patched_svc:
                 ChapterNotesHandler("chapter-123", campaign_id="camp-456", book_id="book-789")
 
@@ -288,19 +272,11 @@ class TestChapterNotesHandlerInit:
                 )
 
 
-@pytest.fixture
-def mock_character_svc(mocker: MockerFixture) -> MagicMock:
-    """Mock the characters_service for the character notes handler module."""
-    svc = MagicMock()
-    mocker.patch("vweb.routes.character_view.handlers_notes.characters_service", return_value=svc)
-    return svc
-
-
 class TestCharacterNotesHandlerInit:
     """Tests for CharacterNotesHandler constructor validation."""
 
     def test_init_raises_for_unknown_character(
-        self, app, mock_global_context, mock_character_svc
+        self, app, mock_global_context, fake_vclient
     ) -> None:
         """Verify constructor raises ValueError for a character not in global context."""
         with app.test_request_context():
@@ -319,17 +295,17 @@ class TestCharacterNotesHandlerInit:
 CAMPAIGN_CONTENT_HANDLERS: dict[str, tuple[type, str, dict[str, str]]] = {
     "campaign": (
         CampaignNotesHandler,
-        "vweb.routes.campaign_notes.handlers.campaigns_service",
+        "vweb.routes.campaign_notes.handlers.api_services.campaigns",
         {},
     ),
     "book": (
         BookNotesHandler,
-        "vweb.routes.book.handlers.books_service",
+        "vweb.routes.book.handlers.api_services.books",
         {"campaign_id": "camp-456"},
     ),
     "chapter": (
         ChapterNotesHandler,
-        "vweb.routes.chapter.handlers.chapters_service",
+        "vweb.routes.chapter.handlers.api_services.chapters",
         {"campaign_id": "camp-456", "book_id": "book-789"},
     ),
 }
@@ -382,7 +358,7 @@ class TestCampaignNotesRouteGuard:
         context = build_global_context(user_role="PLAYER", campaign=campaign)
         mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
         svc = MagicMock()
-        mocker.patch("vweb.routes.campaign_notes.handlers.campaigns_service", return_value=svc)
+        mocker.patch("vweb.routes.campaign_notes.handlers.api_services.campaigns", return_value=svc)
 
         # When the player sends the write directly
         response = getattr(client, method)(
@@ -400,15 +376,13 @@ class TestCampaignNotesRouteGuard:
     @pytest.mark.parametrize(
         "path", ["/campaign/camp-1/notes/items/form", "/campaign/camp-1/notes/items/form/note-1"]
     )
+    @pytest.mark.usefixtures("fake_vclient")
     def test_player_form_is_forbidden(self, client, mocker: MockerFixture, path) -> None:
         """Verify a player cannot load the add or edit note form."""
         # Given a player in a company that restricts campaign management
         campaign = CampaignFactory.build(id="camp-1")
         context = build_global_context(user_role="PLAYER", campaign=campaign)
         mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
-        mocker.patch(
-            "vweb.routes.campaign_notes.handlers.campaigns_service", return_value=MagicMock()
-        )
 
         # When the player requests the form directly
         response = client.get(path, headers={"HX-Request": "true"})
@@ -416,15 +390,17 @@ class TestCampaignNotesRouteGuard:
         # Then the request is refused
         assert response.status_code == 403
 
-    def test_player_table_ignores_editable_flag(self, client, mocker: MockerFixture) -> None:
+    def test_player_table_ignores_editable_flag(
+        self, client, mocker: MockerFixture, fake_vclient
+    ) -> None:
         """Verify a player gets a read-only table even when the URL asks for an editable one."""
         # Given a player in a company that restricts campaign management
         campaign = CampaignFactory.build(id="camp-1")
         context = build_global_context(user_role="PLAYER", campaign=campaign)
         mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
-        svc = MagicMock()
-        svc.list_all_notes.return_value = [NoteFactory.build(id="note-1")]
-        mocker.patch("vweb.routes.campaign_notes.handlers.campaigns_service", return_value=svc)
+        fake_vclient.set_response(
+            Routes.CAMPAIGNS_NOTES_LIST, items=[NoteFactory.build(id="note-1")]
+        )
 
         # When the player requests the table with editable=true
         response = client.get(

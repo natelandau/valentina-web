@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from flask import abort, flash, request, session, url_for
+from flask import abort, flash, request, url_for
 from flask.views import MethodView
 
 from vweb.api_client.exceptions import APIError
@@ -138,7 +138,6 @@ class SingleAutogenFormView(MethodView):
 
         try:
             new_char = generate_single(
-                user_id=session["user_id"],
                 campaign_id=campaign_id,
                 character_type=character_type,
                 character_class=form_data.get("character_class") or None,

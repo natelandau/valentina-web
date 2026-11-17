@@ -174,3 +174,76 @@ class TestSettingsValidation:
         )
         assert oauth.discord.client_id == "my-client-id"
         assert oauth.discord.client_secret == "my-client-secret"
+
+
+class TestAPIRetrySettings:
+    """Verify the API retry settings reach the API client."""
+
+    def test_retry_defaults_fit_a_web_request(self) -> None:
+        """Verify the retry defaults keep one API call short enough for a web request."""
+        # Given/When: API settings with only the required fields
+        api = APISettings(base_url="http://localhost:8080", api_key="test-api-key")
+
+        # Then: Retries are few, short, and inside a 10 second budget
+        assert api.max_retries == 2
+        assert api.retry_delay == 0.5
+        assert api.max_retry_delay == 2.0
+        assert api.retry_budget == 10.0
+
+    def test_create_app_passes_retry_settings_to_vclient(self) -> None:
+        """Verify create_app configures the API client with every retry setting."""
+        from vweb.app import create_app
+
+        # Given: Settings with custom retry values
+        settings = Settings(
+            _env_file=None,
+            env="development",
+            secret_key="test-secret-key",
+            redis=RedisSettings(url=""),
+            api=APISettings(
+                base_url="http://localhost:8080",
+                api_key="test-api-key",
+                max_retries=1,
+                retry_delay=0.25,
+                max_retry_delay=1.0,
+                retry_budget=4.0,
+            ),
+        )
+
+        # When: Creating the app
+        app = create_app(settings_override=settings)
+
+        # Then: The API client carries the configured retry values
+        config = app.extensions["vclient"]._config
+        assert config.max_retries == 1
+        assert config.retry_delay == 0.25
+        assert config.max_retry_delay == 1.0
+        assert config.retry_budget == 4.0
+
+    def test_create_app_passes_max_parallel_requests_to_vclient(self) -> None:
+        """Verify create_app sizes the API client's worker pool from settings."""
+        from vweb.app import create_app
+
+        # Given: Settings with a custom worker count
+        settings = Settings(
+            _env_file=None,
+            env="development",
+            secret_key="test-secret-key",
+            redis=RedisSettings(url=""),
+            api=APISettings(
+                base_url="http://localhost:8080",
+                api_key="test-api-key",
+                max_parallel_requests=2,
+            ),
+        )
+
+        # When: Creating the app
+        app = create_app(settings_override=settings)
+
+        # Then: The API client uses that worker count
+        assert app.extensions["vclient"]._config.max_parallel_requests == 2
+
+    def test_max_parallel_requests_defaults_to_four(self) -> None:
+        """Verify the default worker pool stays small enough to share across requests."""
+        api = APISettings(base_url="http://localhost:8080", api_key="test-api-key")
+        assert api.max_parallel_requests == 4

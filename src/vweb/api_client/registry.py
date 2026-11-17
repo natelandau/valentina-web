@@ -9,7 +9,7 @@ Example:
     from vweb.api_client import VClient, companies_service
 
     # Client auto-registers as default
-    client = VClient(api_key="...")
+    client = VClient(base_url="https://api.example.com", api_key="...")
 
     # Use services anywhere
     def some_function():
@@ -56,7 +56,7 @@ def configure_default_client(client: "VClient") -> None:
     Example:
         ```python
         # Switch to a different client
-        client2 = VClient(api_key="other-key", set_as_default=False)
+        client2 = VClient(base_url=url, api_key="other-key", set_as_default=False)
         configure_default_client(client2)
         ```
     """
@@ -98,126 +98,33 @@ def default_client() -> "VClient":
 
 
 def companies_service() -> "CompaniesService":
-    """Create a CompaniesService using the default client.
-
-    Provides access to company management operations (list, get, create, update, delete)
-    without needing to pass a client instance.
-
-    Returns:
-        CompaniesService: A service instance for company operations.
-
-    Raises:
-        RuntimeError: If no default client has been configured.
-
-    Example:
-        ```python
-        companies = companies_service()
-        all_companies = companies.list_all()
-        ```
-    """
+    """Create a fresh ``VClient.companies`` service on the default client."""
     from vweb.api_client.services.companies import CompaniesService
 
     return CompaniesService(default_client())
 
 
 def system_service() -> "SystemService":
-    """Create a SystemService using the default client.
-
-    Provides access to system-level operations (health checks, status)
-    without needing to pass a client instance.
-
-    Returns:
-        SystemService: A service instance for system operations.
-
-    Raises:
-        RuntimeError: If no default client has been configured.
-
-    Example:
-        ```python
-        system = system_service()
-        health = system.health()
-        ```
-    """
+    """Create a fresh ``VClient.system`` service on the default client."""
     from vweb.api_client.services.system import SystemService
 
     return SystemService(default_client())
 
 
 def user_lookup_service() -> "UserLookupService":
-    """Create a UserLookupService using the default client.
-
-    Discover which companies a person has a user record in by searching
-    via email, Discord ID, Google ID, GitHub ID, or Apple ID.
-
-    Returns:
-        UserLookupService: A service instance for cross-company user lookup.
-
-    Raises:
-        RuntimeError: If no default client has been configured.
-
-    Example:
-        ```python
-        lookup = user_lookup_service()
-        results = lookup.by_email("alice@example.com")
-        ```
-    """
+    """Create a fresh ``VClient.user_lookup`` service on the default client."""
     from vweb.api_client.services.user_lookup import UserLookupService
 
     return UserLookupService(default_client())
 
 
 def users_service(on_behalf_of: str, *, company_id: str | None = None) -> "UsersService":
-    """Create a UsersService scoped to a specific company using the default client.
-
-    Provides access to user management operations (list, get, create, update, delete)
-    within a specific company without needing to pass a client instance.
-
-    Args:
-        on_behalf_of: User ID to impersonate via On-Behalf-Of header.
-        company_id: The ID of the company to operate within. If not provided,
-            uses the default_company_id from the client config.
-
-    Returns:
-        UsersService: A service instance scoped to the specified company.
-
-    Raises:
-        RuntimeError: If no default client has been configured.
-        ValueError: If no company_id provided and no default configured.
-
-    Example:
-        ```python
-        users = users_service("user_id", "company_id")
-        all_users = users.list_all()
-        user = users.get("user_id")
-        ```
-    """
+    """Return ``VClient.users`` from the default client."""
     return default_client().users(on_behalf_of, company_id=company_id)
 
 
 def identity_service(*, company_id: str | None = None) -> "IdentityService":
-    """Create a company-scoped IdentityService using the default client.
-
-    Resolves verified provider logins (Apple/Google ID tokens, Discord/GitHub
-    access tokens) to canonical users. Does not require an acting user, only
-    developer API key authentication.
-
-    Args:
-        company_id: The ID of the company to resolve identities in. If not
-            provided, uses the default_company_id from the client config.
-
-    Returns:
-        IdentityService: A service instance for identity resolution.
-
-    Raises:
-        RuntimeError: If no default client has been configured.
-        ValueError: If no company_id provided and no default configured.
-
-    Example:
-        ```python
-        identity = identity_service()
-        result = identity.identify(provider="google", token="<id-token>")
-        ```
-    """
+    """Return ``VClient.identity`` from the default client."""
     return default_client().identity(company_id=company_id)
 
 
@@ -226,30 +133,7 @@ def campaigns_service(
     *,
     company_id: str | None = None,
 ) -> "CampaignsService":
-    """Create a CampaignsService scoped to a specific company.
-
-    Provides access to campaign management operations (list, get, create, update, delete)
-    within a specific company context without needing to pass a client instance.
-
-    Args:
-        on_behalf_of: User ID to impersonate via On-Behalf-Of header.
-        company_id: The ID of the company to operate within. If not provided,
-            uses the default_company_id from the client config.
-
-    Returns:
-        CampaignsService: A service instance scoped to the specified company.
-
-    Raises:
-        RuntimeError: If no default client has been configured.
-        ValueError: If no company_id provided and no default configured.
-
-    Example:
-        ```python
-        campaigns = campaigns_service("user_id")
-        all_campaigns = campaigns.list_all()
-        campaign = campaigns.get("campaign_id")
-        ```
-    """
+    """Return ``VClient.campaigns`` from the default client."""
     return default_client().campaigns(on_behalf_of, company_id=company_id)
 
 
@@ -259,31 +143,7 @@ def books_service(
     *,
     company_id: str | None = None,
 ) -> "BooksService":
-    """Create a BooksService scoped to a specific company and campaign.
-
-    Provides access to campaign book management operations (list, get, create, update, delete)
-    within a specific company and campaign context without needing to pass a client instance.
-
-    Args:
-        campaign_id: The ID of the campaign to operate within.
-        on_behalf_of: User ID to impersonate via On-Behalf-Of header.
-        company_id: The ID of the company to operate within. If not provided,
-            uses the default_company_id from the client config.
-
-    Returns:
-        BooksService: A service instance scoped to the specified context.
-
-    Raises:
-        RuntimeError: If no default client has been configured.
-        ValueError: If no company_id provided and no default configured.
-
-    Example:
-        ```python
-        books = books_service("campaign_id", "user_id")
-        all_books = books.list_all()
-        book = books.get("book_id")
-        ```
-    """
+    """Return ``VClient.books`` from the default client."""
     return default_client().books(
         campaign_id=campaign_id, on_behalf_of=on_behalf_of, company_id=company_id
     )
@@ -296,22 +156,7 @@ def chapters_service(
     *,
     company_id: str | None = None,
 ) -> "ChaptersService":
-    """Create a ChaptersService scoped to a specific company, campaign, and book.
-
-    Provides access to campaign book chapter management operations (list, get, create, update, delete)
-    within a specific company, campaign, and book context without needing to pass a client instance.
-
-    Args:
-        campaign_id: The ID of the campaign to operate within.
-        book_id: The ID of the book to operate within.
-        on_behalf_of: User ID to impersonate via On-Behalf-Of header.
-        company_id: The ID of the company to operate within. If not provided,
-            uses the default_company_id from the client config.
-
-    Raises:
-        RuntimeError: If no default client has been configured.
-        ValueError: If no company_id provided and no default configured.
-    """
+    """Return ``VClient.chapters`` from the default client."""
     return default_client().chapters(
         campaign_id=campaign_id, book_id=book_id, on_behalf_of=on_behalf_of, company_id=company_id
     )
@@ -322,20 +167,7 @@ def characters_service(
     *,
     company_id: str | None = None,
 ) -> "CharactersService":
-    """Create a CharactersService scoped to a specific company.
-
-    Provides access to character management operations (list, get, create, update, delete)
-    within a specific company context without needing to pass a client instance.
-
-    Args:
-        on_behalf_of: User ID to impersonate via On-Behalf-Of header.
-        company_id: The ID of the company to operate within. If not provided,
-            uses the default_company_id from the client config.
-
-    Raises:
-        RuntimeError: If no default client has been configured.
-        ValueError: If no company_id provided and no default configured.
-    """
+    """Return ``VClient.characters`` from the default client."""
     return default_client().characters(on_behalf_of=on_behalf_of, company_id=company_id)
 
 
@@ -345,21 +177,7 @@ def character_traits_service(
     *,
     company_id: str | None = None,
 ) -> "CharacterTraitsService":
-    """Create a CharacterTraitsService scoped to a specific company and character.
-
-    Provides access to character trait management operations (list, get, create, update, delete)
-    within a specific company and character context without needing to pass a client instance.
-
-    Args:
-        character_id: The ID of the character to operate within.
-        on_behalf_of: User ID to impersonate via On-Behalf-Of header.
-        company_id: The ID of the company to operate within. If not provided,
-            uses the default_company_id from the client config.
-
-    Raises:
-        RuntimeError: If no default client has been configured.
-        ValueError: If no company_id provided and no default configured.
-    """
+    """Return ``VClient.character_traits`` from the default client."""
     return default_client().character_traits(
         character_id=character_id, on_behalf_of=on_behalf_of, company_id=company_id
     )
@@ -370,20 +188,7 @@ def character_blueprint_service(
     *,
     company_id: str | None = None,
 ) -> "CharacterBlueprintService":
-    """Create a CharacterBlueprintService scoped to a specific company.
-
-    Provides access to character blueprint management operations (list, get, create, update, delete)
-    within a specific company context without needing to pass a client instance.
-
-    Args:
-        on_behalf_of: User ID to impersonate via On-Behalf-Of header.
-        company_id: The ID of the company to operate within. If not provided,
-            uses the default_company_id from the client config.
-
-    Raises:
-        RuntimeError: If no default client has been configured.
-        ValueError: If no company_id provided and no default configured.
-    """
+    """Return ``VClient.character_blueprint`` from the default client."""
     return default_client().character_blueprint(on_behalf_of=on_behalf_of, company_id=company_id)
 
 
@@ -392,20 +197,7 @@ def dictionary_service(
     *,
     company_id: str | None = None,
 ) -> "DictionaryService":
-    """Create a DictionaryService scoped to a specific company.
-
-    Provides access to dictionary term management operations (list, get, create, update, delete)
-    within a specific company context without needing to pass a client instance.
-
-    Args:
-        on_behalf_of: User ID to impersonate via On-Behalf-Of header.
-        company_id: The ID of the company to operate within. If not provided,
-            uses the default_company_id from the client config.
-
-    Raises:
-        RuntimeError: If no default client has been configured.
-        ValueError: If no company_id provided and no default configured.
-    """
+    """Return ``VClient.dictionary`` from the default client."""
     return default_client().dictionary(on_behalf_of=on_behalf_of, company_id=company_id)
 
 
@@ -414,20 +206,7 @@ def dicerolls_service(
     *,
     company_id: str | None = None,
 ) -> "DicerollService":
-    """Create a DicerollService scoped to a specific company.
-
-    Provides access to dice roll management operations (list, get, create)
-    within a specific company context without needing to pass a client instance.
-
-    Args:
-        on_behalf_of: User ID to impersonate via On-Behalf-Of header.
-        company_id: The ID of the company to operate within. If not provided,
-            uses the default_company_id from the client config.
-
-    Raises:
-        RuntimeError: If no default client has been configured.
-        ValueError: If no company_id provided and no default configured.
-    """
+    """Return ``VClient.dicerolls`` from the default client."""
     return default_client().dicerolls(on_behalf_of=on_behalf_of, company_id=company_id)
 
 
@@ -436,20 +215,7 @@ def options_service(
     *,
     company_id: str | None = None,
 ) -> "OptionsService":
-    """Create a OptionsService scoped to a specific company.
-
-    Provides access to options and enumerations management operations (list, get, create, update, delete)
-    within a specific company context without needing to pass a client instance.
-
-    Args:
-        on_behalf_of: User ID to impersonate via On-Behalf-Of header.
-        company_id: The ID of the company to operate within. If not provided,
-            uses the default_company_id from the client config.
-
-    Raises:
-        RuntimeError: If no default client has been configured.
-        ValueError: If no company_id provided and no default configured.
-    """
+    """Return ``VClient.options`` from the default client."""
     return default_client().options(on_behalf_of=on_behalf_of, company_id=company_id)
 
 
@@ -458,19 +224,5 @@ def character_autogen_service(
     *,
     company_id: str | None = None,
 ) -> "CharacterAutogenService":
-    """Create a CharacterAutogenService scoped to a specific company.
-
-    Provides access to character autogeneration and chargen session operations
-    without needing to pass a client instance. Pass ``campaign_id`` directly to
-    ``generate_character()`` and ``start_chargen_session()`` to scope each call.
-
-    Args:
-        on_behalf_of: User ID to impersonate via On-Behalf-Of header.
-        company_id: The ID of the company to operate within. If not provided,
-            uses the default_company_id from the client config.
-
-    Raises:
-        RuntimeError: If no default client has been configured.
-        ValueError: If no company_id provided and no default configured.
-    """
+    """Return ``VClient.character_autogen`` from the default client."""
     return default_client().character_autogen(on_behalf_of=on_behalf_of, company_id=company_id)

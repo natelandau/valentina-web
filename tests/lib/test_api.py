@@ -5,14 +5,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-import httpx2
 import pytest
 from flask import g, session
 from werkzeug.exceptions import NotFound
 
 from tests.conftest import make_dice_roll_result
 from tests.helpers import build_global_context
-from vweb.api_client.exceptions import ServerError, ValidationError
+from vweb.api_client import campaigns_service
+from vweb.api_client.exceptions import APIConnectionError, ServerError, ValidationError
 from vweb.api_client.testing import (
     CampaignBookFactory,
     CampaignChapterFactory,
@@ -20,11 +20,13 @@ from vweb.api_client.testing import (
     CharacterFactory,
     CompanyFactory,
     DicerollFactory,
+    NoteFactory,
     Routes,
     TraitFactory,
     UserFactory,
 )
 from vweb.lib.api import (
+    count_notes,
     fetch_book_or_404,
     fetch_chapter_or_404,
     get_active_campaign,
@@ -277,6 +279,7 @@ class TestRecentDicerolls:
 
         with app.test_request_context("/"):
             session["company_id"] = "test-company-id"
+            session["user_id"] = user.id
             g.global_context = ctx
             g.requesting_user = user
 
@@ -299,13 +302,14 @@ class TestRecentDicerolls:
         fake_service = mocker.MagicMock()
         fake_service.get_page.return_value = page
         service_factory = mocker.patch(
-            "vweb.lib.cache.dicerolls.dicerolls_service", return_value=fake_service
+            "vweb.lib.api_services.dicerolls_service", return_value=fake_service
         )
 
         ctx = self._make_context(user=user, characters=[], campaign=campaign)
 
         with app.test_request_context("/"):
             session["company_id"] = "test-company-id"
+            session["user_id"] = user.id
             g.global_context = ctx
             g.requesting_user = user
 
@@ -330,13 +334,14 @@ class TestRecentDicerolls:
         # Given a request context with a requesting user and company
         with app.test_request_context("/"):
             session["company_id"] = "comp-1"
+            session["user_id"] = "user-1"
             g.requesting_user = mocker.MagicMock(id="user-1")
             g.global_context = mocker.MagicMock(characters=[])
             from vweb.extensions import cache
 
             cache.clear()
 
-            svc = mocker.patch("vweb.lib.cache.dicerolls.dicerolls_service")
+            svc = mocker.patch("vweb.lib.cache.dicerolls.api_services.dicerolls")
             page = mocker.MagicMock()
             page.items = []
             svc.return_value.get_page.return_value = page
@@ -354,13 +359,14 @@ class TestRecentDicerolls:
         # Given a request context with a requesting user and company
         with app.test_request_context("/"):
             session["company_id"] = "comp-1"
+            session["user_id"] = "user-1"
             g.requesting_user = mocker.MagicMock(id="user-1")
             g.global_context = mocker.MagicMock(characters=[])
             from vweb.extensions import cache
 
             cache.clear()
 
-            svc = mocker.patch("vweb.lib.cache.dicerolls.dicerolls_service")
+            svc = mocker.patch("vweb.lib.cache.dicerolls.api_services.dicerolls")
             page = mocker.MagicMock()
             page.items = []
             svc.return_value.get_page.return_value = page
@@ -368,7 +374,7 @@ class TestRecentDicerolls:
 
             # When called for two different requesting users in the same scope
             recent(campaign_id="camp-1", limit=25)
-            g.requesting_user.id = "user-2"
+            session["user_id"] = "user-2"
             recent(campaign_id="camp-1", limit=25)
 
             # Then each user triggers its own service call
@@ -404,6 +410,7 @@ class TestRecentDicerollsScopes:
 
         with app.test_request_context("/"):
             session["company_id"] = "test-company-id"
+            session["user_id"] = user.id
             g.global_context = ctx
             g.requesting_user = user
 
@@ -422,7 +429,7 @@ class TestRecentDicerollsScopes:
         fake_service = MagicMock()
         fake_service.get_page.return_value = MagicMock(items=[])
         mocker.patch(
-            "vweb.lib.cache.dicerolls.dicerolls_service",
+            "vweb.lib.cache.dicerolls.api_services.dicerolls",
             autospec=True,
         ).return_value = fake_service
         mocker.patch("vweb.lib.cache.blueprint.traits", return_value={})
@@ -432,6 +439,7 @@ class TestRecentDicerollsScopes:
             g.requesting_user = mock_global_context.users[0]
             g.global_context = mock_global_context
             session["company_id"] = mock_global_context.company.id
+            session["user_id"] = mock_global_context.users[0].id
             recent(campaign_id="", user_id="u-42")
 
         # Then userid="u-42" is forwarded to get_page, and character_type is unset
@@ -578,14 +586,13 @@ class TestValidateAndSubmitExperience:
     ) -> None:
         """Verify zero and negative amounts return an error and send nothing."""
         # Given a mocked users service
-        users_service = mocker.patch("vweb.api_client.users_service")
+        users_service = mocker.patch("vweb.lib.api_services.users_service")
 
         # When submitting the form data
         with app.test_request_context():
             session["company_id"] = "company-1"
-            errors = validate_and_submit_experience(
-                form_data, user_id="u1", campaign_id="c1", on_behalf_of="st1"
-            )
+            session["user_id"] = "st1"
+            errors = validate_and_submit_experience(form_data, user_id="u1", campaign_id="c1")
 
         # Then the error is returned and the API is not called
         assert errors == [expected_error]
@@ -594,14 +601,15 @@ class TestValidateAndSubmitExperience:
     def test_submits_only_positive_amounts(self, app, mocker) -> None:
         """Verify a positive XP amount is sent and a zero cool point amount is skipped."""
         # Given a mocked users service
-        users_service = mocker.patch("vweb.api_client.users_service").return_value
+        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
         mocker.patch("vweb.lib.api.cache.global_context.clear_current")
 
         # When submitting 3 XP and no cool points
         with app.test_request_context():
             session["company_id"] = "company-1"
+            session["user_id"] = "st1"
             errors = validate_and_submit_experience(
-                {"xp": "3", "cool_points": "0"}, user_id="u1", campaign_id="c1", on_behalf_of="st1"
+                {"xp": "3", "cool_points": "0"}, user_id="u1", campaign_id="c1"
             )
 
         # Then only XP is added
@@ -612,7 +620,7 @@ class TestValidateAndSubmitExperience:
     def test_refused_xp_returns_field_error_and_skips_cool_points(self, app, mocker) -> None:
         """Verify an API field error on XP is returned and cool points are not sent."""
         # Given an XP grant the API refuses
-        users_service = mocker.patch("vweb.api_client.users_service").return_value
+        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
         users_service.add_xp.side_effect = ValidationError(
             "bad",
             400,
@@ -626,11 +634,11 @@ class TestValidateAndSubmitExperience:
         # When submitting both amounts
         with app.test_request_context():
             session["company_id"] = "company-1"
+            session["user_id"] = "st1"
             errors = validate_and_submit_experience(
                 {"xp": "99999", "cool_points": "1"},
                 user_id="u1",
                 campaign_id="c1",
-                on_behalf_of="st1",
             )
 
         # Then the field error is returned and cool points are not granted
@@ -640,7 +648,7 @@ class TestValidateAndSubmitExperience:
     def test_refused_cool_points_after_xp_reports_partial_grant(self, app, mocker) -> None:
         """Verify a cool point failure after XP succeeds resets XP and clears the cache."""
         # Given XP that succeeds and cool points the API refuses
-        users_service = mocker.patch("vweb.api_client.users_service").return_value
+        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
         users_service.add_cool_points.side_effect = ValidationError(
             "bad",
             400,
@@ -652,9 +660,8 @@ class TestValidateAndSubmitExperience:
         # When submitting both amounts
         with app.test_request_context():
             session["company_id"] = "company-1"
-            errors = validate_and_submit_experience(
-                form_data, user_id="u1", campaign_id="c1", on_behalf_of="st1"
-            )
+            session["user_id"] = "st1"
+            errors = validate_and_submit_experience(form_data, user_id="u1", campaign_id="c1")
 
         # Then the partial grant is reported, XP is reset, and the cache is cleared
         assert errors == ["XP was granted, but cool points were not. Cool points: Too many"]
@@ -664,7 +671,7 @@ class TestValidateAndSubmitExperience:
     def test_refused_xp_bound_reads_as_xp_sentence(self, app, mocker) -> None:
         """Verify an API bound on the XP amount names XP instead of the amount field."""
         # Given an XP grant the API refuses with its constraint text
-        users_service = mocker.patch("vweb.api_client.users_service").return_value
+        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
         users_service.add_xp.side_effect = ValidationError(
             "bad",
             400,
@@ -677,11 +684,11 @@ class TestValidateAndSubmitExperience:
         # When submitting XP
         with app.test_request_context():
             session["company_id"] = "company-1"
+            session["user_id"] = "st1"
             errors = validate_and_submit_experience(
                 {"xp": "99999", "cool_points": "0"},
                 user_id="u1",
                 campaign_id="c1",
-                on_behalf_of="st1",
             )
 
         # Then the message names XP and the bound from the API
@@ -692,17 +699,18 @@ class TestValidateAndSubmitExperience:
     ) -> None:
         """Verify a network failure on cool points after XP succeeds is reported, not raised."""
         # Given XP that succeeds and a cool point call that cannot reach the API
-        users_service = mocker.patch("vweb.api_client.users_service").return_value
-        users_service.add_cool_points.side_effect = httpx2.ConnectError("down")
+        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
+        users_service.add_cool_points.side_effect = APIConnectionError(
+            "Could not reach the API: down"
+        )
         clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
         form_data = {"xp": "5", "cool_points": "2"}
 
         # When submitting both amounts
         with app.test_request_context():
             session["company_id"] = "company-1"
-            errors = validate_and_submit_experience(
-                form_data, user_id="u1", campaign_id="c1", on_behalf_of="st1"
-            )
+            session["user_id"] = "st1"
+            errors = validate_and_submit_experience(form_data, user_id="u1", campaign_id="c1")
 
         # Then the unknown outcome is reported and XP is reset so a retry cannot grant it twice
         assert errors == [_COOL_POINTS_UNCONFIRMED_AFTER_XP]
@@ -714,15 +722,18 @@ class TestValidateAndSubmitExperience:
     ) -> None:
         """Verify a network failure on cool points says the outcome is unknown."""
         # Given a cool point call that cannot reach the API and no XP requested
-        users_service = mocker.patch("vweb.api_client.users_service").return_value
-        users_service.add_cool_points.side_effect = httpx2.ConnectError("down")
+        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
+        users_service.add_cool_points.side_effect = APIConnectionError(
+            "Could not reach the API: down"
+        )
         clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
 
         # When submitting only cool points
         with app.test_request_context():
             session["company_id"] = "company-1"
+            session["user_id"] = "st1"
             errors = validate_and_submit_experience(
-                {"xp": "0", "cool_points": "2"}, user_id="u1", campaign_id="c1", on_behalf_of="st1"
+                {"xp": "0", "cool_points": "2"}, user_id="u1", campaign_id="c1"
             )
 
         # Then the user is told to check before resubmitting
@@ -732,17 +743,16 @@ class TestValidateAndSubmitExperience:
     def test_unreachable_api_on_xp_reports_unknown_outcome(self, app, mocker) -> None:
         """Verify a network failure on XP is reported, not raised, and skips cool points."""
         # Given an XP call that cannot reach the API
-        users_service = mocker.patch("vweb.api_client.users_service").return_value
-        users_service.add_xp.side_effect = httpx2.ReadTimeout("slow")
+        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
+        users_service.add_xp.side_effect = APIConnectionError("Could not reach the API: timed out")
         clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
         form_data = {"xp": "5", "cool_points": "2"}
 
         # When submitting both amounts
         with app.test_request_context():
             session["company_id"] = "company-1"
-            errors = validate_and_submit_experience(
-                form_data, user_id="u1", campaign_id="c1", on_behalf_of="st1"
-            )
+            session["user_id"] = "st1"
+            errors = validate_and_submit_experience(form_data, user_id="u1", campaign_id="c1")
 
         # Then the user is told to check XP and cool points are not attempted
         assert errors == [
@@ -755,7 +765,7 @@ class TestValidateAndSubmitExperience:
     def test_server_error_on_xp_reports_unknown_outcome(self, app, mocker) -> None:
         """Verify a 500 on XP is treated as an unknown outcome without the API detail."""
         # Given an XP grant that fails server-side, possibly after the grant was applied
-        users_service = mocker.patch("vweb.api_client.users_service").return_value
+        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
         users_service.add_xp.side_effect = ServerError("boom", 500, {"detail": "db exploded"})
         clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
         form_data = {"xp": "3", "cool_points": "0"}
@@ -763,9 +773,8 @@ class TestValidateAndSubmitExperience:
         # When submitting XP
         with app.test_request_context():
             session["company_id"] = "company-1"
-            errors = validate_and_submit_experience(
-                form_data, user_id="u1", campaign_id="c1", on_behalf_of="st1"
-            )
+            session["user_id"] = "st1"
+            errors = validate_and_submit_experience(form_data, user_id="u1", campaign_id="c1")
 
         # Then the user is told to check XP, and XP is reset so a retry cannot grant it twice
         assert errors == [
@@ -779,7 +788,7 @@ class TestValidateAndSubmitExperience:
     ) -> None:
         """Verify a 500 on cool points after XP succeeds is treated as an unknown outcome."""
         # Given XP that succeeds and a cool point grant that fails server-side
-        users_service = mocker.patch("vweb.api_client.users_service").return_value
+        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
         users_service.add_cool_points.side_effect = ServerError("boom", 502, {})
         mocker.patch("vweb.lib.api.cache.global_context.clear_current")
         form_data = {"xp": "5", "cool_points": "2"}
@@ -787,9 +796,8 @@ class TestValidateAndSubmitExperience:
         # When submitting both amounts
         with app.test_request_context():
             session["company_id"] = "company-1"
-            errors = validate_and_submit_experience(
-                form_data, user_id="u1", campaign_id="c1", on_behalf_of="st1"
-            )
+            session["user_id"] = "st1"
+            errors = validate_and_submit_experience(form_data, user_id="u1", campaign_id="c1")
 
         # Then the user is told to check cool points and XP is reset
         assert errors == [_COOL_POINTS_UNCONFIRMED_AFTER_XP]
@@ -798,7 +806,7 @@ class TestValidateAndSubmitExperience:
     def test_refused_cool_points_alone_returns_field_error(self, app, mocker) -> None:
         """Verify a cool point refusal with no XP returns the field message and keeps the cache."""
         # Given cool points the API refuses and no XP requested
-        users_service = mocker.patch("vweb.api_client.users_service").return_value
+        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
         users_service.add_cool_points.side_effect = ValidationError(
             "bad",
             400,
@@ -809,11 +817,40 @@ class TestValidateAndSubmitExperience:
         # When submitting only cool points
         with app.test_request_context():
             session["company_id"] = "company-1"
+            session["user_id"] = "st1"
             errors = validate_and_submit_experience(
-                {"xp": "0", "cool_points": "5"}, user_id="u1", campaign_id="c1", on_behalf_of="st1"
+                {"xp": "0", "cool_points": "5"}, user_id="u1", campaign_id="c1"
             )
 
         # Then the field message is returned and nothing else happens
         assert errors == ["Cool points: Too many"]
         users_service.add_xp.assert_not_called()
         clear.assert_not_called()
+
+
+def test_count_notes_returns_api_total(app, fake_vclient) -> None:
+    """Verify count_notes reports the API's total, not the size of the first page."""
+    # Given a campaign whose notes span more than one page
+    fake_vclient.set_response(Routes.CAMPAIGNS_NOTES_LIST, items=NoteFactory.batch(3))
+
+    # When counting the campaign's notes
+    with app.app_context():
+        svc = campaigns_service(on_behalf_of="user-1", company_id="company-1")
+        count = count_notes(svc, "campaign-1")
+
+    # Then the count is the paginated total
+    assert count == 3
+
+
+def test_count_notes_returns_zero_on_api_error(app, fake_vclient) -> None:
+    """Verify count_notes falls back to zero when the notes endpoint fails."""
+    # Given a notes endpoint that errors
+    fake_vclient.set_error(Routes.CAMPAIGNS_NOTES_LIST, status_code=500)
+
+    # When counting the campaign's notes
+    with app.app_context():
+        svc = campaigns_service(on_behalf_of="user-1", company_id="company-1")
+        count = count_notes(svc, "campaign-1")
+
+    # Then the count is zero
+    assert count == 0

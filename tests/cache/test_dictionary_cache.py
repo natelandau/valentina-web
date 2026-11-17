@@ -20,7 +20,7 @@ from vweb.lib.cache.dictionary import (
 def mock_dict_svc(mocker):
     """Mock the dictionary_service factory."""
     svc = MagicMock()
-    mocker.patch("vweb.lib.cache.dictionary.dictionary_service", return_value=svc)
+    mocker.patch("vweb.lib.cache.dictionary.api_services.dictionary", return_value=svc)
     return svc
 
 

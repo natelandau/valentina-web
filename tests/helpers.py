@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from io import BytesIO
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_args
 from unittest.mock import MagicMock
 
 from flask import session
 from PIL import Image
 
+from vweb.api_client import constants
 from vweb.api_client.models import IdentityResolution
 from vweb.api_client.testing import (
     CampaignFactory,
@@ -16,6 +17,7 @@ from vweb.api_client.testing import (
     SystemHealthFactory,
     UserFactory,
 )
+from vweb.api_client.validate_constants import CONSTANT_MAP
 from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
@@ -178,56 +180,28 @@ def seed_session(user_id: str = "test-user-id", company_id: str = "test-company-
     session["user_id"] = user_id
 
 
-def build_mock_options_service() -> MagicMock:
-    """Build an options-service mock returning the canned API enumerations.
+def build_options_payload() -> dict:
+    """Build the options payload the API sends, with every enumeration taken from the client's constants.
 
     Returns:
-        MagicMock: A service mock whose get_options() returns the raw options payload.
+        dict: The raw options response, keyed by API category and option name.
     """
-    return MagicMock(
-        get_options=MagicMock(
-            return_value={
-                "companies": {},
-                "characters": {
-                    "CharacterClass": [
-                        "VAMPIRE",
-                        "WEREWOLF",
-                        "MAGE",
-                        "HUNTER",
-                        "GHOUL",
-                        "MORTAL",
-                    ],
-                    "CharacterType": ["PLAYER", "NPC", "STORYTELLER"],
-                    "AutoGenExperienceLevel": ["NEW", "INTERMEDIATE", "ADVANCED", "ELITE"],
-                    "AbilityFocus": ["JACK_OF_ALL_TRADES", "BALANCED", "SPECIALIST"],
-                    "InventoryItemType": [
-                        "BOOK",
-                        "CONSUMABLE",
-                        "ENCHANTED",
-                        "EQUIPMENT",
-                        "OTHER",
-                        "WEAPON",
-                    ],
-                    "GameVersion": ["V4", "V5"],
-                    "HunterCreed": [
-                        "JUDGE",
-                        "DEFENDER",
-                        "INNOCENT",
-                        "MARTYR",
-                        "REDEEMER",
-                        "VISIONARY",
-                    ],
-                    "TraitModifyCurrency": ["NO_COST", "XP", "STARTING_POINTS"],
-                },
-                "users": {"UserRole": ["ADMIN", "STORYTELLER", "PLAYER", "UNAPPROVED"]},
-                "gameplay": {
-                    "DiceSize": [4, 6, 8, 10, 20, 100],
-                    "RollResultType": ["SUCCESS", "FAILURE", "BOTCH", "CRITICAL", "OTHER"],
-                },
-                "assets": {},
-            }
-        )
-    )
+    payload: dict[str, dict[str, list]] = {}
+    for constant_name, mapping in CONSTANT_MAP.items():
+        values = list(get_args(getattr(constants, constant_name)))
+        payload.setdefault(mapping.api_category, {})[mapping.api_option] = values
+    return payload
+
+
+def build_mock_options_service() -> MagicMock:
+    """Build an options-service mock whose get_options() returns a fresh options payload.
+
+    Returns:
+        MagicMock: A service mock with a canned get_options() response.
+    """
+    service = MagicMock()
+    service.get_options.return_value = build_options_payload()
+    return service
 
 
 def build_mock_system_service() -> MagicMock:

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, NoReturn
 
-from flask import Response, abort, flash, g, request, session
+from flask import Response, abort, flash, request
 from flask.views import MethodView
 
+from vweb.api_client.exceptions import APIError
 from vweb.lib import cache
-from vweb.lib.api import API_UNAVAILABLE_ERRORS, get_character_and_campaign
+from vweb.lib.api import get_character_and_campaign
 from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog
 from vweb.lib.character_profile import TRAIT_API_ERRORS, find_character_trait
@@ -63,10 +64,6 @@ def _parse_or_abort(allowed_actions: tuple[str, ...]) -> TrackerRequest:
         return parse_tracker_request(request.form, allowed_actions=allowed_actions)
     except ValueError:
         abort(400)
-
-
-def _api_ids() -> dict[str, str]:
-    return {"user_id": g.requesting_user.id, "company_id": session["company_id"]}
 
 
 def _render_tracker(character: Character, character_trait: CharacterTrait, tracker: Tracker) -> str:
@@ -125,7 +122,7 @@ def _recover[T](
     state: T | None
     try:
         state = refetch()
-    except API_UNAVAILABLE_ERRORS:
+    except APIError:
         state = fallback
     else:
         store(state)
@@ -154,24 +151,22 @@ class TraitTrackerView(MethodView):
         character = _authorized_character(character_id)
         tracker_request = _parse_or_abort(TRAIT_ACTIONS)
 
-        full_sheet = cache.character_sheet.get(character_id, g.requesting_user.id)
+        full_sheet = cache.character_sheet.get(character_id)
         character_trait = find_character_trait(full_sheet, character_trait_id)
         if character_trait is None:
             _refuse("That trait is no longer on the sheet. Reload the page.", 404)
 
         try:
-            tracker = update_trait_tracker(
-                character_id, character_trait_id, tracker_request, **_api_ids()
-            )
+            tracker = update_trait_tracker(character_id, character_trait_id, tracker_request)
         except TRAIT_API_ERRORS as error:
             return _recover(
                 api_error_message(error, fallback="Could not update"),
-                refetch=lambda: fetch_trait_tracker(character_id, character_trait_id, **_api_ids()),
+                refetch=lambda: fetch_trait_tracker(character_id, character_trait_id),
                 store=lambda fresh: _store_tracker(character_id, character_trait_id, fresh),
                 render=lambda fresh: _render_tracker(character, character_trait, fresh),
                 fallback=character_trait.tracker,
             )
-        except API_UNAVAILABLE_ERRORS:
+        except APIError:
             return _save_failed(character_id)
 
         _store_tracker(character_id, character_trait_id, tracker)
@@ -191,16 +186,16 @@ class HealthView(MethodView):
         tracker_request = _parse_or_abort(HEALTH_ACTIONS)
 
         try:
-            health = update_health(character_id, tracker_request, **_api_ids())
+            health = update_health(character_id, tracker_request)
         except TRAIT_API_ERRORS as error:
             return _recover(
                 api_error_message(error, fallback="Could not update"),
-                refetch=lambda: fetch_health(character_id, **_api_ids()),
+                refetch=lambda: fetch_health(character_id),
                 store=lambda fresh: _store_health(character_id, fresh),
                 render=lambda fresh: _render_health(character, fresh),
                 fallback=None,
             )
-        except API_UNAVAILABLE_ERRORS:
+        except APIError:
             return _save_failed(character_id)
 
         _store_health(character_id, health)

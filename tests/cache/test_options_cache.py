@@ -60,7 +60,7 @@ def mock_options_svc(mocker):
     """Mock the options_service factory."""
     svc = MagicMock()
     svc.get_options.return_value = SAMPLE_RAW
-    mocker.patch("vweb.lib.cache.options.options_service", return_value=svc)
+    mocker.patch("vweb.lib.cache.options.api_services.options", return_value=svc)
     return svc
 
 

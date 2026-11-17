@@ -15,7 +15,7 @@ from vweb.routes.profile.handlers import QuickrollDisplay, QuickrollHandler
 def mock_user_svc(mocker):
     """Mock the users_service for the handler module."""
     svc = MagicMock()
-    mocker.patch("vweb.routes.profile.handlers.users_service", return_value=svc)
+    mocker.patch("vweb.routes.profile.handlers.api_services.users", return_value=svc)
     return svc
 
 

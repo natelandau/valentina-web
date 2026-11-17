@@ -1,172 +1,99 @@
 """Integration tests for CharactersService."""
 
-import copy
 import json
 from datetime import UTC, date, datetime
 
 import pytest
 import respx
-from httpx import Response
+from respx import MockResponse
 
+from tests.api_client.payloads import page, wire
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.exceptions import NotFoundError, RequestValidationError, ValidationError
 from vweb.api_client.models import (
-    Asset,
     Character,
     CharacterDetail,
     CharacterFullSheet,
     FullSheetTraitCategory,
     Health,
     HealthStateSet,
+    HunterAttributes,
     HunterAttributesCreate,
     HunterAttributesUpdate,
     InventoryItem,
     NameDescriptionSubDocument,
-    Note,
     PaginatedResponse,
     RollStatistics,
     VampireAttributesCreate,
     VampireAttributesUpdate,
+    WerewolfAttributes,
     WerewolfAttributesCreate,
     WerewolfAttributesUpdate,
+)
+from vweb.api_client.testing import (
+    AssetFactory,
+    CharacterFactory,
+    CharacterFullSheetFactory,
+    CharacterTraitFactory,
+    FullSheetTraitCategoryFactory,
+    FullSheetTraitSectionFactory,
+    NoteFactory,
+    TraitFactory,
 )
 
 
 @pytest.fixture
 def paginated_character_response(character_response_data: dict) -> dict:
-    """Return a paginated response with characters."""
-    return {
-        "items": [character_response_data],
-        "limit": 10,
-        "offset": 0,
-        "total": 1,
-    }
+    """Return a one-item paginated characters response."""
+    return page(character_response_data)
 
 
 @pytest.fixture
-def full_sheet_response_data() -> dict:
-    """Return sample full sheet response data."""
-    return {
-        "character": {
-            "id": "char123",
-            "date_created": "2024-01-15T10:30:00Z",
-            "date_modified": "2024-01-15T10:30:00Z",
-            "character_class": "VAMPIRE",
-            "game_version": "V5",
-            "name_first": "Marcus",
-            "name_last": "Blackwood",
-            "name": "Marcus",
-            "name_full": "Marcus Blackwood",
-            "user_creator_id": "user123",
-            "user_player_id": "user123",
-            "company_id": "company123",
-            "campaign_id": "507f1f77bcf86cd799439011",
-        },
-        "sections": [
-            {
-                "id": "sec1",
-                "name": "Physical",
-                "order": 1,
-                "show_when_empty": True,
-                "categories": [
-                    {
-                        "id": "cat1",
-                        "name": "Attributes",
-                        "initial_cost": 1,
-                        "upgrade_cost": 2,
-                        "show_when_empty": True,
-                        "order": 1,
-                        "subcategories": [],
-                        "character_traits": [
-                            {
-                                "id": "ct1",
-                                "character_id": "char123",
-                                "value": 3,
-                                "trait": {
-                                    "id": "t1",
-                                    "name": "Strength",
-                                    "date_created": "2024-01-01T00:00:00Z",
-                                    "date_modified": "2024-01-01T00:00:00Z",
-                                    "sheet_section_id": "sec1",
-                                    "category_id": "cat1",
-                                },
-                            }
-                        ],
-                    }
-                ],
-            }
-        ],
-    }
+def full_sheet_response_data(full_sheet_category_response_data: dict) -> dict:
+    """Return full sheet response data with one section and category."""
+    return _full_sheet(full_sheet_category_response_data)
 
 
 @pytest.fixture
 def full_sheet_category_response_data() -> dict:
-    """Return sample full sheet category response data."""
-    return {
-        "id": "cat1",
-        "name": "Attributes",
-        "initial_cost": 1,
-        "upgrade_cost": 2,
-        "show_when_empty": True,
-        "order": 1,
-        "subcategories": [],
-        "character_traits": [
-            {
-                "id": "ct1",
-                "character_id": "char123",
-                "value": 3,
-                "trait": {
-                    "id": "t1",
-                    "name": "Strength",
-                    "date_created": "2024-01-01T00:00:00Z",
-                    "date_modified": "2024-01-01T00:00:00Z",
-                    "sheet_section_id": "sec1",
-                    "category_id": "cat1",
-                },
-            }
-        ],
-        "available_traits": [],
-    }
+    """Return full sheet category response data holding one trait at value 3."""
+    return wire(
+        FullSheetTraitCategoryFactory.build(
+            id="cat1",
+            name="Attributes",
+            subcategories=[],
+            character_traits=[CharacterTraitFactory.build(value=3)],
+            available_traits=[],
+        )
+    )
 
 
 @pytest.fixture
 def full_sheet_category_response_data_with_available_traits(
     full_sheet_category_response_data: dict,
 ) -> dict:
-    """Return sample full sheet category response data with available traits."""
-    data = copy.deepcopy(full_sheet_category_response_data)
-    data["character_traits"] = []
-    data["available_traits"] = [
-        {
-            "id": "t2",
-            "name": "Dexterity",
-            "date_created": "2024-01-01T00:00:00Z",
-            "date_modified": "2024-01-01T00:00:00Z",
-            "sheet_section_id": "sec1",
-            "category_id": "cat1",
-        }
-    ]
-    return data
+    """Return full sheet category response data offering one available trait."""
+    return {
+        **full_sheet_category_response_data,
+        "character_traits": [],
+        "available_traits": [wire(TraitFactory.build(name="Dexterity"))],
+    }
 
 
 @pytest.fixture
 def full_sheet_response_data_with_available_traits(
-    full_sheet_response_data: dict,
     full_sheet_category_response_data_with_available_traits: dict,
 ) -> dict:
-    """Return sample full sheet response data with available traits."""
-    data = copy.deepcopy(full_sheet_response_data)
-    data["sections"][0]["categories"][0] = full_sheet_category_response_data_with_available_traits
-    return data
+    """Return full sheet response data whose category offers available traits."""
+    return _full_sheet(full_sheet_category_response_data_with_available_traits)
 
 
-@pytest.fixture
-def asset_response_data(asset_response_data_factory) -> dict:
-    """Return sample asset response data for a character."""
-    return asset_response_data_factory(
-        original_filename="character.png",
-        public_url="https://example.com/character.png",
-        character_id="character123",
+def _full_sheet(category: dict) -> dict:
+    return wire(
+        CharacterFullSheetFactory.build(
+            character=CharacterFactory.build(name_first="Marcus"),
+            sections=[FullSheetTraitSectionFactory.build(name="Physical", categories=[category])],
+        )
     )
 
 
@@ -186,84 +113,28 @@ def inventory_item_response_data() -> dict:
 
 @pytest.fixture
 def werewolf_character_response_data() -> dict:
-    """Return sample werewolf character response data."""
-    return {
-        "id": "char456",
-        "date_created": "2024-01-15T10:30:00Z",
-        "date_modified": "2024-01-15T10:30:00Z",
-        "date_killed": None,
-        "character_class": "WEREWOLF",
-        "type": "PLAYER",
-        "game_version": "V5",
-        "status": "ALIVE",
-        "starting_points": 0,
-        "name_first": "Wolf",
-        "name_last": "Runner",
-        "name_nick": "Howler",
-        "name": "Howler",
-        "name_full": "Wolf Runner",
-        "age": 28,
-        "biography": "A fierce werewolf.",
-        "demeanor": "Aggressive",
-        "nature": "Survivor",
-        "concept_id": "concept456",
-        "user_creator_id": "user123",
-        "user_player_id": "user456",
-        "company_id": "company123",
-        "campaign_id": "campaign123",
-        "asset_ids": [],
-        "character_trait_ids": [],
-        "specialties": [],
-        "vampire_attributes": None,
-        "werewolf_attributes": {
-            "tribe_id": "tribe123",
-            "tribe_name": "Shadow Lords",
-            "auspice_id": "auspice123",
-            "auspice_name": "Ahroun",
-            "pack_name": "Moon Runners",
-        },
-        "mage_attributes": None,
-        "hunter_attributes": None,
-    }
+    """Return werewolf character response data."""
+    return wire(
+        CharacterFactory.build(
+            id="char456",
+            character_class="WEREWOLF",
+            werewolf_attributes=WerewolfAttributes(
+                tribe_name="Shadow Lords", auspice_name="Ahroun"
+            ),
+        )
+    )
 
 
 @pytest.fixture
 def hunter_character_response_data() -> dict:
-    """Return sample hunter character response data."""
-    return {
-        "id": "char789",
-        "date_created": "2024-01-15T10:30:00Z",
-        "date_modified": "2024-01-15T10:30:00Z",
-        "date_killed": None,
-        "character_class": "HUNTER",
-        "type": "PLAYER",
-        "game_version": "V5",
-        "status": "ALIVE",
-        "starting_points": 0,
-        "name_first": "John",
-        "name_last": "Hunter",
-        "name_nick": "Slayer",
-        "name": "Slayer",
-        "name_full": "John Hunter",
-        "age": 40,
-        "biography": "A veteran hunter.",
-        "demeanor": "Determined",
-        "nature": "Avenger",
-        "concept_id": "concept789",
-        "user_creator_id": "user123",
-        "user_player_id": "user456",
-        "company_id": "company123",
-        "campaign_id": "campaign123",
-        "asset_ids": [],
-        "character_trait_ids": [],
-        "specialties": [],
-        "vampire_attributes": None,
-        "werewolf_attributes": None,
-        "mage_attributes": None,
-        "hunter_attributes": {
-            "creed": "Avenger",
-        },
-    }
+    """Return hunter character response data."""
+    return wire(
+        CharacterFactory.build(
+            id="char789",
+            character_class="HUNTER",
+            hunter_attributes=HunterAttributes(creed="Avenger"),
+        )
+    )
 
 
 class TestCharactersServiceGetPage:
@@ -275,7 +146,7 @@ class TestCharactersServiceGetPage:
         # Given: A mocked characters list endpoint
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(200, json=paginated_character_response))
+        ).mock(return_value=MockResponse(200, json=paginated_character_response))
 
         # When: Requesting a page of characters
         result = vclient.characters("on-behalf-of-user", company_id="company123").get_page()
@@ -300,7 +171,7 @@ class TestCharactersServiceGetPage:
                 "status": "ALIVE",
                 "is_temporary": "true",
             },
-        ).mock(return_value=Response(200, json=paginated_character_response))
+        ).mock(return_value=MockResponse(200, json=paginated_character_response))
 
         # When: Requesting with filters
         result = vclient.characters("on-behalf-of-user", company_id="company123").get_page(
@@ -321,7 +192,7 @@ class TestCharactersServiceGet:
         # Given: A mocked character endpoint
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=character_response_data))
+        ).mock(return_value=MockResponse(200, json=character_response_data))
 
         # When: Requesting a character
         result = vclient.characters("on-behalf-of-user", company_id="company123").get("char123")
@@ -343,7 +214,9 @@ class TestCharactersServiceGet:
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='nonexistent')}"
         ).mock(
-            return_value=Response(404, json={"detail": "Character not found", "status_code": 404})
+            return_value=MockResponse(
+                404, json={"detail": "Character not found", "status_code": 404}
+            )
         )
 
         # When/Then: Requesting raises NotFoundError
@@ -358,16 +231,14 @@ def character_detail_response_data(
     character_response_data: dict,
     character_trait_response_data: dict,
     inventory_item_response_data: dict,
-    note_response_data: dict,
-    asset_response_data: dict,
 ) -> dict:
     """Return sample character detail response with embedded resources."""
     return {
         **character_response_data,
         "traits": [character_trait_response_data],
         "inventory": [inventory_item_response_data],
-        "notes": [note_response_data],
-        "assets": [asset_response_data],
+        "notes": [wire(NoteFactory.build())],
+        "assets": [wire(AssetFactory.build(character_id="char123"))],
     }
 
 
@@ -383,7 +254,7 @@ class TestCharactersServiceGetWithInclude:
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}",
             params=[("include", "traits"), ("include", "notes")],
-        ).mock(return_value=Response(200, json=character_detail_response_data))
+        ).mock(return_value=MockResponse(200, json=character_detail_response_data))
 
         # When: Requesting a character with include
         result = vclient.characters("on-behalf-of-user", company_id="company123").get(
@@ -408,7 +279,7 @@ class TestCharactersServiceGetWithInclude:
         # Given: A mocked character endpoint with no include params
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=character_response_data))
+        ).mock(return_value=MockResponse(200, json=character_response_data))
 
         # When: Requesting a character without include
         result = vclient.characters("on-behalf-of-user", company_id="company123").get("char123")
@@ -431,7 +302,7 @@ class TestCharactersServiceCreate:
         # Given: A mocked create endpoint
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(201, json=character_response_data))
+        ).mock(return_value=MockResponse(201, json=character_response_data))
 
         # When: Creating a character with required fields only
         result = vclient.characters("on-behalf-of-user", company_id="company123").create(
@@ -465,7 +336,7 @@ class TestCharactersServiceCreate:
         # Given: A mocked create endpoint
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(201, json=character_response_data))
+        ).mock(return_value=MockResponse(201, json=character_response_data))
 
         # When: Creating a character with all fields
         result = vclient.characters("on-behalf-of-user", company_id="company123").create(
@@ -507,7 +378,7 @@ class TestCharactersServiceCreate:
         # Given: A mocked create endpoint
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(201, json=character_response_data))
+        ).mock(return_value=MockResponse(201, json=character_response_data))
 
         # Given: Vampire attributes to create
         vampire_attrs = VampireAttributesCreate(
@@ -554,7 +425,7 @@ class TestCharactersServiceCreate:
         # Given: A mocked create endpoint
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(201, json=werewolf_character_response_data))
+        ).mock(return_value=MockResponse(201, json=werewolf_character_response_data))
 
         # Given: Werewolf attributes to create
         werewolf_attrs = WerewolfAttributesCreate(
@@ -597,7 +468,7 @@ class TestCharactersServiceCreate:
         # Given: A mocked create endpoint
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(201, json=hunter_character_response_data))
+        ).mock(return_value=MockResponse(201, json=hunter_character_response_data))
 
         # Given: Hunter attributes to create
         hunter_attrs = HunterAttributesCreate(
@@ -637,7 +508,7 @@ class TestCharactersServiceCreate:
         }
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(201, json=response_data))
+        ).mock(return_value=MockResponse(201, json=response_data))
 
         # Given: Traits to assign
         from vweb.api_client.models.character_trait import CharacterCreateTraitAssign
@@ -684,7 +555,7 @@ class TestCharactersServiceUpdate:
         updated_data = {**character_response_data, "name_first": "Jane"}
         route = respx.patch(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=updated_data))
+        ).mock(return_value=MockResponse(200, json=updated_data))
 
         # When: Updating the character's name
         result = vclient.characters("on-behalf-of-user", company_id="company123").update(
@@ -713,7 +584,7 @@ class TestCharactersServiceUpdate:
         }
         route = respx.patch(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=updated_data))
+        ).mock(return_value=MockResponse(200, json=updated_data))
 
         # When: Updating the character's status
         result = vclient.characters("on-behalf-of-user", company_id="company123").update(
@@ -732,7 +603,7 @@ class TestCharactersServiceUpdate:
         # Given: A mocked update endpoint
         route = respx.patch(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=character_response_data))
+        ).mock(return_value=MockResponse(200, json=character_response_data))
 
         # When: Updating the date_of_birth
         vclient.characters("on-behalf-of-user", company_id="company123").update(
@@ -754,7 +625,7 @@ class TestCharactersServiceUpdate:
         cleared_data = {**character_response_data, "date_of_birth": None}
         route = respx.patch(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=cleared_data))
+        ).mock(return_value=MockResponse(200, json=cleared_data))
 
         # When: Clearing the date_of_birth with an explicit None
         result = vclient.characters("on-behalf-of-user", company_id="company123").update(
@@ -775,7 +646,9 @@ class TestCharactersServiceUpdate:
         route = respx.patch(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='nonexistent')}"
         ).mock(
-            return_value=Response(404, json={"detail": "Character not found", "status_code": 404})
+            return_value=MockResponse(
+                404, json={"detail": "Character not found", "status_code": 404}
+            )
         )
 
         # When/Then: Updating raises NotFoundError
@@ -805,7 +678,7 @@ class TestCharactersServiceUpdate:
         }
         route = respx.patch(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=updated_data))
+        ).mock(return_value=MockResponse(200, json=updated_data))
 
         # Given: Vampire attributes to update
         vampire_attrs = VampireAttributesUpdate(
@@ -859,7 +732,7 @@ class TestCharactersServiceUpdate:
         }
         route = respx.patch(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char456')}"
-        ).mock(return_value=Response(200, json=updated_data))
+        ).mock(return_value=MockResponse(200, json=updated_data))
 
         # Given: Werewolf attributes to update
         werewolf_attrs = WerewolfAttributesUpdate(
@@ -904,7 +777,7 @@ class TestCharactersServiceUpdate:
         }
         route = respx.patch(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char789')}"
-        ).mock(return_value=Response(200, json=updated_data))
+        ).mock(return_value=MockResponse(200, json=updated_data))
 
         # Given: Hunter attributes to update
         hunter_attrs = HunterAttributesUpdate(
@@ -939,7 +812,7 @@ class TestCharactersServiceDelete:
         # Given: A mocked delete endpoint
         route = respx.delete(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(204))
+        ).mock(return_value=MockResponse(204))
 
         # When: Deleting the character
         result = vclient.characters("on-behalf-of-user", company_id="company123").delete("char123")
@@ -955,7 +828,9 @@ class TestCharactersServiceDelete:
         route = respx.delete(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='nonexistent')}"
         ).mock(
-            return_value=Response(404, json={"detail": "Character not found", "status_code": 404})
+            return_value=MockResponse(
+                404, json={"detail": "Character not found", "status_code": 404}
+            )
         )
 
         # When/Then: Deleting raises NotFoundError
@@ -972,15 +847,10 @@ class TestCharactersServiceListAll:
     def test_list_all_characters(self, vclient, base_url, character_response_data) -> None:
         """Verify list_all returns all characters across pages."""
         # Given: A mocked endpoint that returns paginated results
-        paginated_response = {
-            "items": [character_response_data],
-            "limit": 100,
-            "offset": 0,
-            "total": 1,
-        }
+        paginated_response = page(character_response_data, limit=100)
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Requesting all characters
         result = vclient.characters("on-behalf-of-user", company_id="company123").list_all()
@@ -999,15 +869,10 @@ class TestCharactersServiceIterAll:
     def test_iter_all_characters(self, vclient, base_url, character_response_data) -> None:
         """Verify iter_all yields characters across pages."""
         # Given: A mocked endpoint
-        paginated_response = {
-            "items": [character_response_data],
-            "limit": 100,
-            "offset": 0,
-            "total": 1,
-        }
+        paginated_response = page(character_response_data, limit=100)
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Iterating through all characters
         characters = list(
@@ -1031,7 +896,7 @@ class TestCharactersServiceVampireAttributes:
         # Given: A mocked character endpoint
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=character_response_data))
+        ).mock(return_value=MockResponse(200, json=character_response_data))
 
         # When: Requesting the character
         result = vclient.characters("on-behalf-of-user", company_id="company123").get("char123")
@@ -1042,262 +907,6 @@ class TestCharactersServiceVampireAttributes:
         assert result.vampire_attributes.clan_name == "Ventrue"
         assert result.vampire_attributes.generation == 10
         assert result.vampire_attributes.sire == "Ancient One"
-
-
-class TestCharactersServiceAssets:
-    """Tests for CharactersService asset methods."""
-
-    @respx.mock
-    def test_get_assets_page(self, vclient, base_url, asset_response_data):
-        """Verify getting a page of character assets."""
-        # Given: A mocked assets endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        route = respx.get(
-            f"{base_url}{Endpoints.CHARACTER_ASSETS.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id='char123')}",
-            params={"limit": "10", "offset": "0"},
-        ).respond(
-            200,
-            json={
-                "items": [asset_response_data],
-                "limit": 10,
-                "offset": 0,
-                "total": 1,
-            },
-        )
-
-        # When: Getting a page of assets
-        result = vclient.characters("on-behalf-of-user", company_id=company_id).get_assets_page(
-            "char123"
-        )
-
-        # Then: Returns paginated Asset objects
-        assert route.called
-        assert isinstance(result, PaginatedResponse)
-        assert len(result.items) == 1
-        assert isinstance(result.items[0], Asset)
-
-    @respx.mock
-    def test_list_all_assets(self, vclient, base_url, asset_response_data):
-        """Verify list_all_assets returns all assets."""
-        # Given: A mocked assets endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        character_id = "character123"
-        respx.get(
-            f"{base_url}{Endpoints.CHARACTER_ASSETS.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id=character_id)}",
-            params={"limit": "100", "offset": "0"},
-        ).respond(
-            200,
-            json={
-                "items": [asset_response_data],
-                "limit": 100,
-                "offset": 0,
-                "total": 1,
-            },
-        )
-
-        # When: Calling list_all_assets
-        result = vclient.characters("on-behalf-of-user", company_id=company_id).list_all_assets(
-            character_id
-        )
-
-        # Then: Returns list of Asset objects
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert isinstance(result[0], Asset)
-
-    @respx.mock
-    def test_get_asset(self, vclient, base_url, asset_response_data):
-        """Verify getting a specific asset."""
-        # Given: A mocked asset endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        asset_id = "asset123"
-        route = respx.get(
-            f"{base_url}{Endpoints.CHARACTER_ASSET.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id='char123', asset_id=asset_id)}"
-        ).respond(200, json=asset_response_data)
-
-        # When: Getting the asset
-        result = vclient.characters("on-behalf-of-user", company_id=company_id).get_asset(
-            "char123", asset_id
-        )
-
-        # Then: Returns Asset object
-        assert route.called
-        assert isinstance(result, Asset)
-        assert result.id == "asset123"
-
-    @respx.mock
-    def test_delete_asset(self, vclient, base_url):
-        """Verify deleting an asset."""
-        # Given: A mocked delete endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        asset_id = "asset123"
-        route = respx.delete(
-            f"{base_url}{Endpoints.CHARACTER_ASSET.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id='char123', asset_id=asset_id)}"
-        ).respond(204)
-
-        # When: Deleting the asset
-        vclient.characters("on-behalf-of-user", company_id=company_id).delete_asset(
-            "char123", asset_id
-        )
-
-        # Then: Request was made
-        assert route.called
-
-    @respx.mock
-    def test_upload_asset(self, vclient, base_url, asset_response_data):
-        """Verify uploading an asset."""
-        # Given: A mocked upload endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        route = respx.post(
-            f"{base_url}{Endpoints.CHARACTER_ASSET_UPLOAD.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id='char123')}"
-        ).respond(201, json=asset_response_data)
-
-        # When: Uploading an asset
-        result = vclient.characters("on-behalf-of-user", company_id=company_id).upload_asset(
-            "char123",
-            filename="test.png",
-            content=b"test content",
-            content_type="image/png",
-        )
-
-        # Then: Returns Asset object
-        assert route.called
-        assert isinstance(result, Asset)
-        assert result.id == "asset123"
-
-
-class TestCharactersServiceNotes:
-    """Tests for CharactersService note methods."""
-
-    @respx.mock
-    def test_get_notes_page(self, vclient, base_url, note_response_data):
-        """Verify getting a page of notes."""
-        # Given: A mocked notes endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        route = respx.get(
-            f"{base_url}{Endpoints.CHARACTER_NOTES.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id='char123')}",
-            params={"limit": "10", "offset": "0"},
-        ).respond(
-            200,
-            json={
-                "items": [note_response_data],
-                "limit": 10,
-                "offset": 0,
-                "total": 1,
-            },
-        )
-
-        # When: Getting a page of notes
-        result = vclient.characters("on-behalf-of-user", company_id=company_id).get_notes_page(
-            "char123"
-        )
-
-        # Then: Returns paginated Note objects
-        assert route.called
-        assert isinstance(result, PaginatedResponse)
-        assert len(result.items) == 1
-        assert isinstance(result.items[0], Note)
-
-    @respx.mock
-    def test_get_note(self, vclient, base_url, note_response_data):
-        """Verify getting a specific note."""
-        # Given: A mocked note endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        note_id = "note123"
-        route = respx.get(
-            f"{base_url}{Endpoints.CHARACTER_NOTE.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id='char123', note_id=note_id)}"
-        ).respond(200, json=note_response_data)
-
-        # When: Getting the note
-        result = vclient.characters("on-behalf-of-user", company_id=company_id).get_note(
-            "char123", note_id
-        )
-
-        # Then: Returns Note object
-        assert route.called
-        assert isinstance(result, Note)
-        assert result.id == "note123"
-        assert result.title == "Test Note"
-
-    @respx.mock
-    def test_create_note(self, vclient, base_url, note_response_data):
-        """Verify creating a note."""
-        # Given: A mocked create endpoint
-        company_id = "company123"
-        user_id = "user123"
-        character_id = "char123"
-        campaign_id = "campaign123"
-        route = respx.post(
-            f"{base_url}{Endpoints.CHARACTER_NOTES.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id=character_id)}"
-        ).respond(201, json=note_response_data)
-
-        # When: Creating a note
-        result = vclient.characters("on-behalf-of-user", company_id=company_id).create_note(
-            character_id, title="Test Note", content="This is test content"
-        )
-
-        # Then: Returns Note object
-        assert route.called
-        assert isinstance(result, Note)
-        assert result.title == "Test Note"
-
-    @respx.mock
-    def test_update_note(self, vclient, base_url, note_response_data):
-        """Verify updating a note."""
-        # Given: A mocked update endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        character_id = "char123"
-        note_id = "note123"
-        updated_data = {**note_response_data, "title": "Updated Title"}
-        route = respx.patch(
-            f"{base_url}{Endpoints.CHARACTER_NOTE.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id=character_id, note_id=note_id)}"
-        ).respond(200, json=updated_data)
-
-        # When: Updating the note
-        result = vclient.characters("on-behalf-of-user", company_id=company_id).update_note(
-            character_id, note_id, title="Updated Title"
-        )
-
-        # Then: Returns updated Note object
-        assert route.called
-        assert isinstance(result, Note)
-        assert result.title == "Updated Title"
-
-    @respx.mock
-    def test_delete_note(self, vclient, base_url):
-        """Verify deleting a note."""
-        # Given: A mocked delete endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        note_id = "note123"
-        route = respx.delete(
-            f"{base_url}{Endpoints.CHARACTER_NOTE.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id='char123', note_id=note_id)}"
-        ).respond(204)
-
-        # When: Deleting the note
-        vclient.characters("on-behalf-of-user", company_id=company_id).delete_note(
-            "char123", note_id
-        )
-
-        # Then: Request was made
-        assert route.called
 
 
 class TestCharactersServiceGetStatistics:
@@ -1456,12 +1065,7 @@ class TestCharactersServiceInventory:
             params={"limit": "10", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [inventory_item_response_data],
-                "limit": 10,
-                "offset": 0,
-                "total": 1,
-            },
+            json=page(inventory_item_response_data),
         )
 
         # When: Getting a page of inventory items
@@ -1664,7 +1268,7 @@ class TestCharactersServiceHealth:
         """Verify get_health returns V5 health with no levels."""
         # Given: A mocked health endpoint
         respx.get(_health_url(base_url, Endpoints.CHARACTER_HEALTH)).mock(
-            return_value=Response(200, json=V5_HEALTH)
+            return_value=MockResponse(200, json=V5_HEALTH)
         )
 
         # When: Getting health
@@ -1680,7 +1284,7 @@ class TestCharactersServiceHealth:
         """Verify a character without health raises NotFoundError."""
         # Given: The endpoint returns 404
         respx.get(_health_url(base_url, Endpoints.CHARACTER_HEALTH)).mock(
-            return_value=Response(
+            return_value=MockResponse(
                 404,
                 json={"status": 404, "title": "Not Found", "detail": "Character health not found"},
             )
@@ -1695,7 +1299,7 @@ class TestCharactersServiceHealth:
         """Verify set_health sends every field so omitted ones reset to zero."""
         # Given: A mocked set health endpoint
         route = respx.put(_health_url(base_url, Endpoints.CHARACTER_HEALTH)).mock(
-            return_value=Response(200, json=V5_HEALTH)
+            return_value=MockResponse(200, json=V5_HEALTH)
         )
 
         # When: Setting only damage
@@ -1709,7 +1313,7 @@ class TestCharactersServiceHealth:
         """Verify set_health accepts a HealthStateSet and parses V4 levels."""
         # Given: A mocked set health endpoint returning V4 health
         route = respx.put(_health_url(base_url, Endpoints.CHARACTER_HEALTH)).mock(
-            return_value=Response(200, json=V4_HEALTH)
+            return_value=MockResponse(200, json=V4_HEALTH)
         )
 
         # When: Setting damage with a request model
@@ -1736,7 +1340,7 @@ class TestCharactersServiceHealth:
         """Verify a damage action sends only action and amount."""
         # Given: A mocked health action endpoint
         route = respx.post(_health_url(base_url, Endpoints.CHARACTER_HEALTH_ACTIONS)).mock(
-            return_value=Response(200, json=V5_HEALTH)
+            return_value=MockResponse(200, json=V5_HEALTH)
         )
 
         # When: Applying two damage
@@ -1757,7 +1361,7 @@ class TestCharactersServiceHealth:
         """Verify a 400 from the server raises ValidationError."""
         # Given: The endpoint rejects the action
         respx.post(_health_url(base_url, Endpoints.CHARACTER_HEALTH_ACTIONS)).mock(
-            return_value=Response(
+            return_value=MockResponse(
                 400, json={"status": 400, "title": "Bad Request", "detail": "Invalid action"}
             )
         )

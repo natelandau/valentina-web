@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from pydantic import ValidationError as PydanticValidationError
 
@@ -19,6 +19,7 @@ from vweb.api_client.exceptions import (
     AuthorizationError,
     ConflictError,
     NotFoundError,
+    PayloadTooLargeError,
     RateLimitError,
     RequestValidationError,
     ValidationError,
@@ -26,7 +27,7 @@ from vweb.api_client.exceptions import (
 from vweb.constants import MAX_IMAGE_SIZE_MB
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Iterable, Mapping
+    from collections.abc import Collection, Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,6 @@ USER_FACING_API_ERRORS: tuple[type[Exception], ...] = (
 )
 
 _PAYLOAD_FIELDS = frozenset({"body", ""})
-_HTTP_PAYLOAD_TOO_LARGE = 413
 _GENERAL = "_general"
 _PATH_SEGMENT = re.compile(r"[.\[\]]+")
 
@@ -71,27 +71,20 @@ def _label(field: str) -> str:
     return text[:1].upper() + text[1:]
 
 
-def _field_entries(error: Exception) -> list[_Entry]:
+def _field_entries(
+    error: ValidationError | RequestValidationError | PydanticValidationError,
+) -> list[_Entry]:
     """Return the field messages of a validation-style error, dropping blank messages."""
-    entries: list[_Entry]
-    if isinstance(error, ValidationError):
-        entries = []
-        for param in error.invalid_parameters:
-            field = str(param.get("field") or "")
-            entries.append(_Entry(field, field, _text(param.get("message"))))
-    else:
-        details: Iterable[Any] = (
-            error.errors if isinstance(error, RequestValidationError) else error.errors()  # ty:ignore[unresolved-attribute]
-        )
-        entries = []
-        for d in details:
-            loc = [str(part) for part in d.get("loc") or () if isinstance(part, str)]
-            # Pydantic prefixes validator failures with "Value error, ", which is noise to users.
-            message = _text(d.get("msg")).removeprefix("Value error, ").strip()
-            # Forms submit top-level fields, so a nested error belongs to its outer field,
-            # while the innermost name reads best in a label.
-            entries.append(_Entry(loc[0] if loc else "", loc[-1] if loc else "", message))
-    return [entry for entry in entries if entry.message]
+    if isinstance(error, PydanticValidationError):
+        error = RequestValidationError(error)
+    # Forms submit top-level fields, so a client-side error on a nested field belongs to its
+    # outer field. The API names the submitted field itself.
+    nested = isinstance(error, RequestValidationError)
+    return [
+        _Entry(fe.field.split(".", 1)[0] if nested else fe.field, fe.field, fe.message)
+        for fe in error.field_errors
+        if fe.message
+    ]
 
 
 def _format_entry(
@@ -141,7 +134,7 @@ def api_error_messages(error: Exception, *, labels: Mapping[str, str] | None = N
     if isinstance(error, RateLimitError):
         message = _rate_limit_message(error)
         return [message] if message else []
-    if isinstance(error, APIError) and error.status_code == _HTTP_PAYLOAD_TOO_LARGE:
+    if isinstance(error, PayloadTooLargeError):
         return [f"Upload is too large (max {MAX_IMAGE_SIZE_MB} MB)."]
     return []
 

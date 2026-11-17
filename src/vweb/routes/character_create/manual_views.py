@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from flask import flash, g, request, session, url_for
+from flask import flash, request, session, url_for
 from flask.views import MethodView
 
 from vweb.api_client.exceptions import APIError
@@ -234,9 +234,7 @@ class ManualProfileView(MethodView):
             return self._render_create_form(campaign, form_data, errors)
 
         character = fetch_character(session["temp_character_id"])
-        full_sheet = cache.character_sheet.get(
-            character.id, g.requesting_user.id, include_available_traits=True
-        )
+        full_sheet = cache.character_sheet.get(character.id, include_available_traits=True)
 
         back_url = url_for("character_create.manual_profile", campaign_id=campaign.id, resume="1")
         return catalog.render(
@@ -318,9 +316,7 @@ class ManualFinalizeView(MethodView):
             )
             flash(message, "error")
 
-            full_sheet = cache.character_sheet.get(
-                temp_char_id, g.requesting_user.id, include_available_traits=True
-            )
+            full_sheet = cache.character_sheet.get(temp_char_id, include_available_traits=True)
             back_url = url_for(
                 "character_create.manual_profile", campaign_id=campaign_id, resume="1"
             )

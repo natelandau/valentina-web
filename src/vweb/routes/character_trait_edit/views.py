@@ -10,16 +10,14 @@ from flask import (
     g,
     redirect,
     request,
-    session,
     url_for,
 )
 from flask.views import MethodView
 
-from vweb.api_client import character_traits_service
 from vweb.api_client.constants import TraitModifyCurrency
 from vweb.api_client.exceptions import APIError
 from vweb.api_client.models import TraitCreate
-from vweb.lib import cache
+from vweb.lib import api_services, cache
 from vweb.lib.api import get_character_and_campaign
 from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog
@@ -223,7 +221,6 @@ class CharacterTraitsView(MethodView):
 
     def get(self, character_id: str) -> str | Response:
         """Get the character traits form."""
-        requesting_user = g.requesting_user
         character, campaign = get_character_and_campaign(character_id)
 
         if not character or not campaign:
@@ -258,9 +255,7 @@ class CharacterTraitsView(MethodView):
             self.xp_current = campaign_experience.xp_current if campaign_experience else 0
             self.xp_total = campaign_experience.xp_total if campaign_experience else 0
 
-        full_sheet = cache.character_sheet.get(
-            character.id, requesting_user.id, include_available_traits=True
-        )
+        full_sheet = cache.character_sheet.get(character.id, include_available_traits=True)
 
         return catalog.render(
             "character_trait_edit.Main",
@@ -274,15 +269,14 @@ class CharacterTraitsView(MethodView):
         )
 
     @staticmethod
-    def _had_specialties(character_id: str, user_id: str, trait_id: str) -> bool:
+    def _had_specialties(character_id: str, trait_id: str) -> bool:
         """Report whether a character trait currently has specialties."""
-        sheet = cache.character_sheet.get(character_id, user_id, include_available_traits=True)
+        sheet = cache.character_sheet.get(character_id, include_available_traits=True)
         trait = find_character_trait(sheet, trait_id)
         return bool(trait and trait.specialties)
 
     def post(self, character_id: str) -> str | Response:  # noqa: C901, PLR0911
         """Post the character traits form."""
-        requesting_user = g.requesting_user
         character, campaign = get_character_and_campaign(character_id)
         if not character or not campaign:
             return hx_redirect(url_for("index.index"))
@@ -299,20 +293,14 @@ class CharacterTraitsView(MethodView):
             f"character_trait_edit.{self.spend_type}", character_id=character_id
         )
 
-        api_svc = character_traits_service(
-            on_behalf_of=requesting_user.id,
-            character_id=character.id,
-            company_id=session["company_id"],
-        )
+        api_svc = api_services.character_traits(character.id)
         for trait_id, value in request.form.items():
             if value == "DELETE":
                 result = self._delete_trait(
                     svc=api_svc,
                     trait_id=trait_id,
                     get_method_url=get_method_url,
-                    had_specialties=self._had_specialties(
-                        character.id, requesting_user.id, trait_id
-                    ),
+                    had_specialties=self._had_specialties(character.id, trait_id),
                 )
                 cache.character_sheet.clear(character.id)
                 cache.global_context.clear_current()
@@ -346,9 +334,7 @@ class CharacterTraitsView(MethodView):
                 # A name already on the sheet falls through to create, which reports the
                 # conflict; assigning a same-named trait from elsewhere would duplicate it.
                 if standard_trait is not None and not has_trait_named(
-                    cache.character_sheet.get(
-                        character.id, requesting_user.id, include_available_traits=True
-                    ),
+                    cache.character_sheet.get(character.id, include_available_traits=True),
                     new_trait_name,
                 ):
                     return self._assign_trait(
@@ -385,8 +371,7 @@ class CharacterTraitsView(MethodView):
                 trait_id=trait_id,
                 value=value,
                 get_method_url=get_method_url,
-                removes_specialties=value == "0"
-                and self._had_specialties(character.id, requesting_user.id, trait_id),
+                removes_specialties=value == "0" and self._had_specialties(character.id, trait_id),
             )
             cache.character_sheet.clear(character.id)
             cache.global_context.clear_current()

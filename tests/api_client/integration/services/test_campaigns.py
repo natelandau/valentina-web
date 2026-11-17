@@ -5,47 +5,27 @@ from datetime import date
 import pytest
 import respx
 
+from tests.api_client.payloads import page, wire
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.exceptions import NotFoundError, RequestValidationError
-from vweb.api_client.models import Asset, Campaign, Note, PaginatedResponse, RollStatistics
+from vweb.api_client.models import Campaign, PaginatedResponse, RollStatistics
+from vweb.api_client.testing import CampaignFactory
 
 
 @pytest.fixture
 def campaign_response_data() -> dict:
-    """Return sample campaign response data."""
-    return {
-        "id": "507f1f77bcf86cd799439011",
-        "date_created": "2024-01-15T10:30:00Z",
-        "date_modified": "2024-01-15T10:30:00Z",
-        "name": "Test Campaign",
-        "description": "A test campaign description",
-        "in_game_date": "1924-03-15",
-        "asset_ids": ["asset1", "asset2"],
-        "desperation": 2,
-        "danger": 3,
-        "company_id": "company123",
-    }
+    """Return campaign response data."""
+    return wire(
+        CampaignFactory.build(
+            id="507f1f77bcf86cd799439011", name="Test Campaign", desperation=2, danger=3
+        )
+    )
 
 
 @pytest.fixture
 def paginated_campaigns_response(campaign_response_data) -> dict:
-    """Return sample paginated campaigns response."""
-    return {
-        "items": [campaign_response_data],
-        "limit": 10,
-        "offset": 0,
-        "total": 1,
-    }
-
-
-@pytest.fixture
-def asset_response_data(asset_response_data_factory) -> dict:
-    """Return sample asset response data for a campaign."""
-    return asset_response_data_factory(
-        original_filename="campaign.png",
-        public_url="https://example.com/campaign.png",
-        campaign_id="campaign123",
-    )
+    """Return a one-item paginated campaigns response."""
+    return page(campaign_response_data)
 
 
 class TestCampaignsServiceGetPage:
@@ -84,12 +64,7 @@ class TestCampaignsServiceGetPage:
             params={"limit": "25", "offset": "50"},
         ).respond(
             200,
-            json={
-                "items": [campaign_response_data],
-                "limit": 25,
-                "offset": 50,
-                "total": 100,
-            },
+            json=page(campaign_response_data, limit=25, offset=50, total=100),
         )
 
         # When: Getting a page with custom pagination
@@ -117,12 +92,7 @@ class TestCampaignsServiceListAll:
             params={"limit": "100", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [campaign_response_data],
-                "limit": 100,
-                "offset": 0,
-                "total": 1,
-            },
+            json=page(campaign_response_data, limit=100),
         )
 
         # When: Calling list_all
@@ -153,24 +123,14 @@ class TestCampaignsServiceIterAll:
             params={"limit": "1", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [campaign_response_data],
-                "limit": 1,
-                "offset": 0,
-                "total": 2,
-            },
+            json=page(campaign_response_data, limit=1, total=2),
         )
         respx.get(
             f"{base_url}{Endpoints.CAMPAIGNS.format(company_id=company_id, user_id=user_id)}",
             params={"limit": "1", "offset": "1"},
         ).respond(
             200,
-            json={
-                "items": [campaign2],
-                "limit": 1,
-                "offset": 1,
-                "total": 2,
-            },
+            json=page(campaign2, limit=1, offset=1, total=2),
         )
 
         # When: Iterating through all campaigns
@@ -452,256 +412,3 @@ class TestCampaignsServiceGetStatistics:
         assert isinstance(result, RollStatistics)
         assert result.total_rolls == 100
         assert result.success_percentage == 50.0
-
-
-class TestCampaignsServiceAssets:
-    """Tests for CampaignsService asset methods."""
-
-    @respx.mock
-    def test_get_assets_page(self, vclient, base_url, asset_response_data):
-        """Verify getting a page of campaign assets."""
-        # Given: A mocked assets endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        route = respx.get(
-            f"{base_url}{Endpoints.CAMPAIGN_ASSETS.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id)}",
-            params={"limit": "10", "offset": "0"},
-        ).respond(
-            200,
-            json={
-                "items": [asset_response_data],
-                "limit": 10,
-                "offset": 0,
-                "total": 1,
-            },
-        )
-
-        # When: Getting a page of assets
-        result = vclient.campaigns("on-behalf-of-user", company_id=company_id).get_assets_page(
-            campaign_id
-        )
-
-        # Then: Returns paginated Asset objects
-        assert route.called
-        assert isinstance(result, PaginatedResponse)
-        assert len(result.items) == 1
-        assert isinstance(result.items[0], Asset)
-
-    @respx.mock
-    def test_list_all_assets(self, vclient, base_url, asset_response_data):
-        """Verify list_all_assets returns all assets."""
-        # Given: A mocked assets endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        respx.get(
-            f"{base_url}{Endpoints.CAMPAIGN_ASSETS.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id)}",
-            params={"limit": "100", "offset": "0"},
-        ).respond(
-            200,
-            json={
-                "items": [asset_response_data],
-                "limit": 100,
-                "offset": 0,
-                "total": 1,
-            },
-        )
-
-        # When: Calling list_all_assets
-        result = vclient.campaigns("on-behalf-of-user", company_id=company_id).list_all_assets(
-            campaign_id
-        )
-
-        # Then: Returns list of Asset objects
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert isinstance(result[0], Asset)
-
-    @respx.mock
-    def test_get_asset(self, vclient, base_url, asset_response_data):
-        """Verify getting a specific asset."""
-        # Given: A mocked asset endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        asset_id = "asset123"
-        route = respx.get(
-            f"{base_url}{Endpoints.CAMPAIGN_ASSET.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, asset_id=asset_id)}"
-        ).respond(200, json=asset_response_data)
-
-        # When: Getting the asset
-        result = vclient.campaigns("on-behalf-of-user", company_id=company_id).get_asset(
-            campaign_id, asset_id
-        )
-
-        # Then: Returns Asset object
-        assert route.called
-        assert isinstance(result, Asset)
-        assert result.id == "asset123"
-
-    @respx.mock
-    def test_delete_asset(self, vclient, base_url):
-        """Verify deleting an asset."""
-        # Given: A mocked delete endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        asset_id = "asset123"
-        route = respx.delete(
-            f"{base_url}{Endpoints.CAMPAIGN_ASSET.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, asset_id=asset_id)}"
-        ).respond(204)
-
-        # When: Deleting the asset
-        vclient.campaigns("on-behalf-of-user", company_id=company_id).delete_asset(
-            campaign_id, asset_id
-        )
-
-        # Then: Request was made
-        assert route.called
-
-    @respx.mock
-    def test_upload_asset(self, vclient, base_url, asset_response_data):
-        """Verify uploading an asset."""
-        # Given: A mocked upload endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        route = respx.post(
-            f"{base_url}{Endpoints.CAMPAIGN_ASSET_UPLOAD.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id)}"
-        ).respond(201, json=asset_response_data)
-
-        # When: Uploading an asset
-        result = vclient.campaigns("on-behalf-of-user", company_id=company_id).upload_asset(
-            campaign_id,
-            filename="test.png",
-            content=b"test content",
-            content_type="image/png",
-        )
-
-        # Then: Returns Asset object
-        assert route.called
-        assert isinstance(result, Asset)
-        assert result.id == "asset123"
-
-
-class TestCampaignsServiceNotes:
-    """Tests for CampaignsService note methods."""
-
-    @respx.mock
-    def test_get_notes_page(self, vclient, base_url, note_response_data):
-        """Verify getting a page of notes."""
-        # Given: A mocked notes endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        route = respx.get(
-            f"{base_url}{Endpoints.CAMPAIGN_NOTES.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id)}",
-            params={"limit": "10", "offset": "0"},
-        ).respond(
-            200,
-            json={
-                "items": [note_response_data],
-                "limit": 10,
-                "offset": 0,
-                "total": 1,
-            },
-        )
-
-        # When: Getting a page of notes
-        result = vclient.campaigns("on-behalf-of-user", company_id=company_id).get_notes_page(
-            campaign_id
-        )
-
-        # Then: Returns paginated Note objects
-        assert route.called
-        assert isinstance(result, PaginatedResponse)
-        assert len(result.items) == 1
-        assert isinstance(result.items[0], Note)
-
-    @respx.mock
-    def test_get_note(self, vclient, base_url, note_response_data):
-        """Verify getting a specific note."""
-        # Given: A mocked note endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        note_id = "note123"
-        route = respx.get(
-            f"{base_url}{Endpoints.CAMPAIGN_NOTE.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, note_id=note_id)}"
-        ).respond(200, json=note_response_data)
-
-        # When: Getting the note
-        result = vclient.campaigns("on-behalf-of-user", company_id=company_id).get_note(
-            campaign_id, note_id
-        )
-
-        # Then: Returns Note object
-        assert route.called
-        assert isinstance(result, Note)
-        assert result.id == "note123"
-        assert result.title == "Test Note"
-
-    @respx.mock
-    def test_create_note(self, vclient, base_url, note_response_data):
-        """Verify creating a note."""
-        # Given: A mocked create endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        route = respx.post(
-            f"{base_url}{Endpoints.CAMPAIGN_NOTES.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id)}"
-        ).respond(201, json=note_response_data)
-
-        # When: Creating a note
-        result = vclient.campaigns("on-behalf-of-user", company_id=company_id).create_note(
-            campaign_id, title="Test Note", content="This is test content"
-        )
-
-        # Then: Returns Note object
-        assert route.called
-        assert isinstance(result, Note)
-        assert result.title == "Test Note"
-
-    @respx.mock
-    def test_update_note(self, vclient, base_url, note_response_data):
-        """Verify updating a note."""
-        # Given: A mocked update endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        note_id = "note123"
-        updated_data = {**note_response_data, "title": "Updated Title"}
-        route = respx.patch(
-            f"{base_url}{Endpoints.CAMPAIGN_NOTE.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, note_id=note_id)}"
-        ).respond(200, json=updated_data)
-
-        # When: Updating the note
-        result = vclient.campaigns("on-behalf-of-user", company_id=company_id).update_note(
-            campaign_id, note_id, title="Updated Title"
-        )
-
-        # Then: Returns updated Note object
-        assert route.called
-        assert isinstance(result, Note)
-        assert result.title == "Updated Title"
-
-    @respx.mock
-    def test_delete_note(self, vclient, base_url):
-        """Verify deleting a note."""
-        # Given: A mocked delete endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        note_id = "note123"
-        route = respx.delete(
-            f"{base_url}{Endpoints.CAMPAIGN_NOTE.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, note_id=note_id)}"
-        ).respond(204)
-
-        # When: Deleting the note
-        vclient.campaigns("on-behalf-of-user", company_id=company_id).delete_note(
-            campaign_id, note_id
-        )
-
-        # Then: Request was made
-        assert route.called

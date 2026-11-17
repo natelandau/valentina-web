@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from tests.helpers import seed_session
-from vweb.api_client.testing import UserFactory
+from vweb.api_client.testing import Routes, UserFactory
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -17,11 +17,7 @@ if TYPE_CHECKING:
 class TestListPendingAndApproved:
     """list_pending_and_approved partitions users via two service calls."""
 
-    def test_list_pending_and_approved_excludes_self(
-        self,
-        app: Flask,
-        mocker,
-    ) -> None:
+    def test_list_pending_and_approved_excludes_self(self, app: Flask, fake_vclient) -> None:
         """Verify the current admin is filtered from both lists."""
         # Given two unapproved users (one is "self") and three approved (one is "self")
         self_id = "self-id"
@@ -34,13 +30,8 @@ class TestListPendingAndApproved:
             UserFactory.build(id="user-1", role="PLAYER"),
             UserFactory.build(id="user-2", role="STORYTELLER"),
         ]
-        svc = MagicMock()
-        svc.list_all_unapproved.return_value = pending
-        svc.list_all.return_value = approved
-        mocker.patch(
-            "vweb.routes.admin.services.users_service",
-            return_value=svc,
-        )
+        fake_vclient.set_response(Routes.USERS_UNAPPROVED_LIST, items=pending)
+        fake_vclient.set_response(Routes.USERS_LIST, items=approved)
 
         # When partitioning with the self id excluded
         from vweb.routes.admin.services import list_pending_and_approved
@@ -67,7 +58,7 @@ class TestApprove:
         svc = MagicMock()
         svc.approve_user.return_value = UserFactory.build(id="u1", role="PLAYER")
         mocker.patch(
-            "vweb.routes.admin.services.users_service",
+            "vweb.routes.admin.services.api_services.users",
             return_value=svc,
         )
         clear_cache = mocker.patch(
@@ -79,7 +70,7 @@ class TestApprove:
 
         with app.test_request_context():
             seed_session(user_id="admin-id")
-            result = approve("u1", "PLAYER", "admin-id")
+            result = approve("u1", "PLAYER")
 
         # Then users_svc.approve_user is called with the right args
         svc.approve_user.assert_called_once_with("u1", "PLAYER")
@@ -92,7 +83,7 @@ class TestApprove:
 
         # When approving with UNAPPROVED, then ValueError is raised
         with app.test_request_context(), pytest.raises(ValueError, match="UNAPPROVED"):
-            approve("u1", "UNAPPROVED", "admin-id")
+            approve("u1", "UNAPPROVED")
 
 
 class TestChangeRole:
@@ -108,7 +99,7 @@ class TestChangeRole:
         svc = MagicMock()
         svc.update.return_value = UserFactory.build(id="u1", role="STORYTELLER")
         mocker.patch(
-            "vweb.routes.admin.services.users_service",
+            "vweb.routes.admin.services.api_services.users",
             return_value=svc,
         )
         clear_cache = mocker.patch(
@@ -120,7 +111,7 @@ class TestChangeRole:
 
         with app.test_request_context():
             seed_session(user_id="admin-id")
-            result = change_role("u1", "STORYTELLER", "admin-id")
+            result = change_role("u1", "STORYTELLER")
 
         # Then users_svc.update is called with keyword args and cache is cleared
         svc.update.assert_called_once_with("u1", role="STORYTELLER")
@@ -133,7 +124,7 @@ class TestChangeRole:
 
         # When changing role to UNAPPROVED, then ValueError is raised
         with app.test_request_context(), pytest.raises(ValueError, match="UNAPPROVED"):
-            change_role("u1", "UNAPPROVED", "admin-id")
+            change_role("u1", "UNAPPROVED")
 
 
 class TestDeny:
@@ -144,7 +135,7 @@ class TestDeny:
         # Given a mocked users service and cache clearer
         svc = MagicMock()
         mocker.patch(
-            "vweb.routes.admin.services.users_service",
+            "vweb.routes.admin.services.api_services.users",
             return_value=svc,
         )
         clear_cache = mocker.patch(
@@ -156,7 +147,7 @@ class TestDeny:
         # When denying a user
         with app.test_request_context():
             seed_session(user_id="admin-id")
-            deny("u1", "admin-id")
+            deny("u1")
 
         # Then deny_user is called and cache is cleared
         svc.deny_user.assert_called_once_with("u1")
@@ -171,12 +162,12 @@ class TestMerge:
         app: Flask,
         mocker,
     ) -> None:
-        """Verify merge() calls users_svc.merge with primary, secondary, requesting."""
+        """Verify merge() calls users_svc.merge with the primary and secondary users."""
         # Given a mocked users service
         svc = MagicMock()
         svc.merge.return_value = UserFactory.build(id="primary")
         mocker.patch(
-            "vweb.routes.admin.services.users_service",
+            "vweb.routes.admin.services.api_services.users",
             return_value=svc,
         )
         clear_cache = mocker.patch(
@@ -188,7 +179,7 @@ class TestMerge:
         # When calling merge
         with app.test_request_context():
             seed_session(user_id="admin-id")
-            result = merge("primary", "pending-1", "admin-id")
+            result = merge("primary", "pending-1")
 
         # Then the service is called and cache cleared
         svc.merge.assert_called_once_with(

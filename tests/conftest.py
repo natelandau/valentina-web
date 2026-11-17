@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 import subprocess
-from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -17,6 +16,7 @@ from tests.helpers import (
 from vweb.api_client.models.companies import CompanySettings
 from vweb.api_client.models.diceroll import DiceRollResultSchema
 from vweb.api_client.testing import (
+    AssetFactory,
     CampaignBookFactory,
     CampaignChapterFactory,
     CampaignFactory,
@@ -56,14 +56,12 @@ def _build_company_with_settings(**kwargs):  # noqa: ANN202
 
 CompanyFactory.build = staticmethod(_build_company_with_settings)  # type: ignore[method-assign]  # ty:ignore[invalid-assignment]
 
-pytest_plugins = ("tests.api_client.shared_response_fixtures",)
-
 if TYPE_CHECKING:
     from flask import Flask
     from flask.testing import FlaskClient
     from pytest_mock import MockerFixture
 
-    from vweb.api_client.models import Campaign, CampaignBook, CampaignChapter, Character
+    from vweb.api_client.models import Asset, Campaign, CampaignBook, CampaignChapter, Character
 
 
 @pytest.fixture
@@ -188,10 +186,11 @@ def mock_character() -> Character:
 
 
 @pytest.fixture
-def mock_asset() -> SimpleNamespace:
-    """Build a stand-in asset object."""
-    return SimpleNamespace(
+def mock_asset() -> Asset:
+    """Build an image asset."""
+    return AssetFactory.build(
         id="asset-1",
+        asset_type="image",
         public_url="https://cdn.example.com/img.jpg",
         original_filename="img.jpg",
     )
@@ -239,15 +238,14 @@ def _mock_api(mocker, mock_global_context) -> None:
     mocker.patch("vweb.lib.cache.global_context.load", return_value=mock_global_context)
     mocker.patch("vweb.lib.cache.global_context.clear")
 
-    mock_dict_svc = mocker.patch("vweb.lib.cache.dictionary.dictionary_service")
-    mock_dict_svc.return_value.list_all.return_value = []
+    mock_dict_api = mocker.patch("vweb.lib.cache.dictionary.api_services")
+    mock_dict_api.dictionary.return_value.list_all.return_value = []
 
     # Pages now fetch books/chapters lazily via campaign_content_cache; default to
     # empty lists so full-page renders don't reach for the real API.
-    mock_books_svc = mocker.patch("vweb.lib.cache.campaign_content.books_service")
-    mock_books_svc.return_value.list_all.return_value = []
-    mock_chapters_svc = mocker.patch("vweb.lib.cache.campaign_content.chapters_service")
-    mock_chapters_svc.return_value.list_all.return_value = []
+    mock_content_api = mocker.patch("vweb.lib.cache.campaign_content.api_services")
+    mock_content_api.books.return_value.list_all.return_value = []
+    mock_content_api.chapters.return_value.list_all.return_value = []
 
     # The footer renders system health for approved users, so every page render
     # would otherwise hit the live health endpoint.
@@ -256,10 +254,8 @@ def _mock_api(mocker, mock_global_context) -> None:
         return_value=build_mock_system_service(),
     )
 
-    mocker.patch(
-        "vweb.lib.cache.options.options_service",
-        return_value=build_mock_options_service(),
-    )
+    mock_options_api = mocker.patch("vweb.lib.cache.options.api_services")
+    mock_options_api.options.return_value = build_mock_options_service()
 
 
 def get_csrf(client) -> str:

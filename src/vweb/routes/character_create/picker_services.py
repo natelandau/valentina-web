@@ -14,24 +14,23 @@ from vweb.lib.api import get_user_campaign_experience
 from vweb.routes.character_create.autogen_services import list_sessions
 
 if TYPE_CHECKING:
-    from vweb.api_client.models import ChargenSessionResponse, User
+    from vweb.api_client.models import ChargenSessionResponse
 
 logger = logging.getLogger(__name__)
 
 
-def build_characters_data(session_response: ChargenSessionResponse, user: User) -> list[dict]:
+def build_characters_data(session_response: ChargenSessionResponse) -> list[dict]:
     """Build the character sheet data list for the comparison template.
 
     Args:
         session_response: The chargen session containing characters.
-        user: The requesting user (needed for sheet rendering permissions).
 
     Returns:
         List of dicts with character, sheet_top, and sheet_sections keys.
     """
     characters_data = []
     for char in session_response.characters:
-        full_sheet = cache.character_sheet.get(char.id, user.id)
+        full_sheet = cache.character_sheet.get(char.id)
         characters_data.append(
             {
                 "character": char,
@@ -55,7 +54,7 @@ def selection_card_context(campaign_id: str) -> dict:
 
     now = datetime.now(tz=UTC)
     try:
-        all_sessions = list_sessions(user_id=session["user_id"], campaign_id=campaign_id)
+        all_sessions = list_sessions(campaign_id=campaign_id)
         pending_sessions = [s for s in all_sessions if s.expires_at > now]
     except APIError:
         logger.exception("Failed to list chargen sessions")

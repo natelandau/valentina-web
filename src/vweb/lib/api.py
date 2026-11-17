@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any
 
-import httpx2
 from flask import abort, g, session
 
-from vweb.api_client.exceptions import APIError, ServerError
-from vweb.lib import cache
+from vweb.api_client.exceptions import APIConnectionError, APIError, ServerError
+from vweb.lib import api_services, cache
 from vweb.lib.api_errors import api_error_message
 
 if TYPE_CHECKING:
@@ -20,9 +19,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# vclient raises httpx2 connection and timeout errors as-is once its retries run out.
-API_UNAVAILABLE_ERRORS: Final = (httpx2.HTTPError, APIError)
-
 
 def count_notes(service: Any, parent_id: str) -> int:
     """Return the number of notes on an entity via the given service, 0 on API error.
@@ -31,7 +27,7 @@ def count_notes(service: Any, parent_id: str) -> int:
     surrounding page render.
     """
     try:
-        return len(service.list_all_notes(parent_id))
+        return service.get_notes_page(parent_id, limit=1).total
     except APIError:
         return 0
 
@@ -261,10 +257,10 @@ _COOL_POINTS_UNCONFIRMED_AFTER_XP = (
 def _outcome_unknown(error: Exception) -> bool:
     """Return True when a grant may have been applied despite the error.
 
-    vclient sends experience grants without an idempotency key and never retries them, so a
-    network failure or a 5xx can arrive after the API has already committed the grant.
+    A network failure or a 5xx that outlasts the client's retries can arrive after the API has
+    already committed the grant.
     """
-    return isinstance(error, (httpx2.HTTPError, ServerError))
+    return isinstance(error, (APIConnectionError, ServerError))
 
 
 def _grant_xp(
@@ -273,7 +269,7 @@ def _grant_xp(
     """Send the XP grant, returning a user-facing error on failure."""
     try:
         svc.add_xp(user_id, campaign_id, amount=amount)
-    except API_UNAVAILABLE_ERRORS as error:
+    except APIError as error:
         if not _outcome_unknown(error):
             return api_error_message(
                 error,
@@ -301,7 +297,7 @@ def _grant_cool_points(
     """Send the cool point grant, returning a user-facing error on failure."""
     try:
         svc.add_cool_points(user_id, campaign_id, amount=amount)
-    except API_UNAVAILABLE_ERRORS as error:
+    except APIError as error:
         outcome_unknown = _outcome_unknown(error)
         if outcome_unknown:
             logger.warning("Cool point grant outcome unknown", exc_info=True)
@@ -357,7 +353,6 @@ def validate_and_submit_experience(
     form_data: dict,
     user_id: str,
     campaign_id: str,
-    on_behalf_of: str,
 ) -> list[str]:
     """Validate experience form data and submit to the API if valid.
 
@@ -367,13 +362,10 @@ def validate_and_submit_experience(
             or when XP was granted but the cool point grant failed.
         user_id: The user receiving the experience.
         campaign_id: The campaign to award experience in.
-        on_behalf_of: The user making the request (On-Behalf-Of header).
 
     Returns:
         A list of validation error strings (empty on success).
     """
-    from vweb.api_client import users_service
-
     errors: list[str] = []
 
     try:
@@ -399,7 +391,7 @@ def validate_and_submit_experience(
     if errors:
         return errors
 
-    svc = users_service(on_behalf_of=on_behalf_of, company_id=session["company_id"])
+    svc = api_services.users()
 
     grant_errors = _grant_experience(
         svc=svc,

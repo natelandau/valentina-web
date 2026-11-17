@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 from tests.conftest import get_csrf
 from tests.helpers import identify_resolving
 from vweb.api_client.models import UserLookupResult
-from vweb.api_client.testing import CompanyFactory, UserFactory
+from vweb.api_client.testing import CompanyFactory, Routes, UserFactory
 
 
 def _make_lookup_result(**kwargs) -> UserLookupResult:
@@ -229,13 +229,10 @@ class TestMultipleCompaniesAllUnapproved:
 class TestSelectCompaniesView:
     """Tests for GET/POST /select-companies."""
 
-    def test_get_shows_companies(self, client, mocker):
+    def test_get_shows_companies(self, client, fake_vclient):
         """Verify GET /select-companies renders available companies."""
         # Given available companies from the API
-        companies = CompanyFactory.batch(2)
-        mocker.patch(
-            "vweb.routes.auth.views.companies_service"
-        ).return_value.list_all.return_value = companies
+        fake_vclient.set_response(Routes.COMPANIES_LIST, items=CompanyFactory.batch(2))
 
         # When the page is requested
         response = client.get("/select-companies")

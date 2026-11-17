@@ -70,7 +70,7 @@ class TestCharacterTraitsViewPermissions:
 
         traits_svc = MagicMock()
         mocker.patch(
-            "vweb.routes.character_trait_edit.views.character_traits_service",
+            "vweb.routes.character_trait_edit.views.api_services.character_traits",
             return_value=traits_svc,
         )
         csrf = get_csrf(client)
@@ -122,7 +122,7 @@ class TestCharacterTraitsViewPermissions:
 
         traits_svc = MagicMock()
         mocker.patch(
-            "vweb.routes.character_trait_edit.views.character_traits_service",
+            "vweb.routes.character_trait_edit.views.api_services.character_traits",
             return_value=traits_svc,
         )
         csrf = get_csrf(client)
@@ -177,7 +177,7 @@ class TestCustomTraitCreation:
         options.options = {"DELETE": MagicMock(point_change=1)}
         traits_svc.get_value_options.return_value = options
         mocker.patch(
-            "vweb.routes.character_trait_edit.views.character_traits_service",
+            "vweb.routes.character_trait_edit.views.api_services.character_traits",
             return_value=traits_svc,
         )
         self.blueprint_traits = mocker.patch(
@@ -520,7 +520,7 @@ class TestTraitDeletePost:
         traits_svc.get_value_options.return_value = options
         traits_svc.delete.return_value = None
         mocker.patch(
-            "vweb.routes.character_trait_edit.views.character_traits_service",
+            "vweb.routes.character_trait_edit.views.api_services.character_traits",
             return_value=traits_svc,
         )
         return character, traits_svc
@@ -634,7 +634,7 @@ class TestChangeValuePost:
         }
         traits_svc.get_value_options.return_value = options
         mocker.patch(
-            "vweb.routes.character_trait_edit.views.character_traits_service",
+            "vweb.routes.character_trait_edit.views.api_services.character_traits",
             return_value=traits_svc,
         )
         return character, traits_svc
@@ -750,7 +750,7 @@ class TestSpecialtyLossWarnings:
         }
         traits_svc.get_value_options.return_value = options
         mocker.patch(
-            "vweb.routes.character_trait_edit.views.character_traits_service",
+            "vweb.routes.character_trait_edit.views.api_services.character_traits",
             return_value=traits_svc,
         )
         return character

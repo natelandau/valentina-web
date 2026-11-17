@@ -1,7 +1,7 @@
 """Service for cross-company user lookup."""
 
-from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import UserLookupResult
+from vweb.api_client.routes import Routes
 from vweb.api_client.services.base import BaseService
 
 
@@ -12,11 +12,14 @@ class UserLookupService(BaseService):
     via email, Discord ID, Google ID, GitHub ID, or Apple ID.
 
     Example:
-        with VClient() as client:
+        with VClient(base_url=url, api_key=key) as client:
             results = client.user_lookup.by_email("alice@example.com")
             for r in results:
                 print(f"{r.company_name}: {r.role}")
     """
+
+    def _lookup(self, **params: str) -> list[UserLookupResult]:
+        return self._list(Routes.USERS_LOOKUP, params=params)
 
     def by_email(self, email: str) -> list[UserLookupResult]:
         """Look up a user by email address.
@@ -27,8 +30,7 @@ class UserLookupService(BaseService):
         Returns:
             List of companies where a matching user was found. Empty list if no matches.
         """
-        response = self._get(Endpoints.USERS_LOOKUP, params={"email": email})
-        return [UserLookupResult.model_validate(item) for item in response.json()]
+        return self._lookup(email=email)
 
     def by_discord_id(self, discord_id: str) -> list[UserLookupResult]:
         """Look up a user by Discord profile ID.
@@ -39,8 +41,7 @@ class UserLookupService(BaseService):
         Returns:
             List of companies where a matching user was found. Empty list if no matches.
         """
-        response = self._get(Endpoints.USERS_LOOKUP, params={"discord_id": discord_id})
-        return [UserLookupResult.model_validate(item) for item in response.json()]
+        return self._lookup(discord_id=discord_id)
 
     def by_google_id(self, google_id: str) -> list[UserLookupResult]:
         """Look up a user by Google profile ID.
@@ -51,8 +52,7 @@ class UserLookupService(BaseService):
         Returns:
             List of companies where a matching user was found. Empty list if no matches.
         """
-        response = self._get(Endpoints.USERS_LOOKUP, params={"google_id": google_id})
-        return [UserLookupResult.model_validate(item) for item in response.json()]
+        return self._lookup(google_id=google_id)
 
     def by_github_id(self, github_id: str) -> list[UserLookupResult]:
         """Look up a user by GitHub profile ID.
@@ -63,8 +63,7 @@ class UserLookupService(BaseService):
         Returns:
             List of companies where a matching user was found. Empty list if no matches.
         """
-        response = self._get(Endpoints.USERS_LOOKUP, params={"github_id": github_id})
-        return [UserLookupResult.model_validate(item) for item in response.json()]
+        return self._lookup(github_id=github_id)
 
     def by_apple_id(self, apple_id: str) -> list[UserLookupResult]:
         """Look up a user by Apple profile ID.
@@ -75,5 +74,4 @@ class UserLookupService(BaseService):
         Returns:
             List of companies where a matching user was found. Empty list if no matches.
         """
-        response = self._get(Endpoints.USERS_LOOKUP, params={"apple_id": apple_id})
-        return [UserLookupResult.model_validate(item) for item in response.json()]
+        return self._lookup(apple_id=apple_id)

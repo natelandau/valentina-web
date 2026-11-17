@@ -9,16 +9,14 @@ from flask import (
     abort,
     g,
     request,
-    session,
     url_for,
 )
 from flask.views import MethodView
 
 if TYPE_CHECKING:
     from werkzeug.wrappers.response import Response
-from vweb.api_client import users_service
 from vweb.api_client.models.users import UserUpdate
-from vweb.lib import cache
+from vweb.lib import api_services, cache
 from vweb.lib.api import get_campaign_name, validate_and_submit_experience
 from vweb.lib.api_errors import USER_FACING_API_ERRORS, api_error_message
 from vweb.lib.catalog import catalog
@@ -76,7 +74,7 @@ class ProfileView(MethodView):
         if errors:
             return _render_edit_form(user_id, form_data=form_data, errors=errors)
 
-        svc = users_service(on_behalf_of=session["user_id"], company_id=session["company_id"])
+        svc = api_services.users()
 
         # A newly chosen file replaces the avatar; only when no file was supplied
         # does an explicit remove revert to the identity-provider avatar. Keying
@@ -190,9 +188,7 @@ class AddExperienceView(MethodView):
         if not can_grant_experience(user_id):
             abort(403)
         form_data = request.form.to_dict()
-        errors = validate_and_submit_experience(
-            form_data, user_id, campaign_id, on_behalf_of=session["user_id"]
-        )
+        errors = validate_and_submit_experience(form_data, user_id, campaign_id)
 
         if errors:
             return catalog.render(

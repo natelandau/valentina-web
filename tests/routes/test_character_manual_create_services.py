@@ -39,7 +39,7 @@ def _field_error() -> ValidationError:
 def characters_service(mocker):
     """Patch the characters service used by the manual create flow."""
     return mocker.patch(
-        "vweb.routes.character_create.manual_services.characters_service"
+        "vweb.routes.character_create.manual_services.api_services.characters"
     ).return_value
 
 

@@ -5,6 +5,7 @@ import json
 import pytest
 import respx
 
+from tests.api_client.payloads import page
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.exceptions import NotFoundError
 from vweb.api_client.models import Diceroll, PaginatedResponse
@@ -49,13 +50,8 @@ def diceroll_response_data() -> dict:
 
 @pytest.fixture
 def paginated_dicerolls_response(diceroll_response_data) -> dict:
-    """Return sample paginated dicerolls response."""
-    return {
-        "items": [diceroll_response_data],
-        "limit": 10,
-        "offset": 0,
-        "total": 1,
-    }
+    """Return a one-item paginated dicerolls response."""
+    return page(diceroll_response_data)
 
 
 class TestDicerollServiceGetPage:

@@ -10,6 +10,7 @@ from flask.views import MethodView
 
 from vweb.api_client import users_service
 from vweb.api_client.exceptions import (
+    APIError,
     AuthorizationError,
     ConflictError,
     NotFoundError,
@@ -18,7 +19,6 @@ from vweb.api_client.exceptions import (
 )
 from vweb.extensions import oauth
 from vweb.lib import cache
-from vweb.lib.api import API_UNAVAILABLE_ERRORS
 from vweb.lib.catalog import catalog
 from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
 
@@ -69,7 +69,7 @@ def handle_link(provider: IdentityProvider, credential: str) -> Response:
         else:
             flash(f"Could not verify your {provider.title()} login. Please try again.", "error")
         return redirect(profile_url)
-    except API_UNAVAILABLE_ERRORS:
+    except APIError:
         logger.exception("Failed to link %s identity", provider)
         flash(
             f"Connecting your {provider.title()} account failed. Please try again later.",
@@ -163,7 +163,7 @@ class UnlinkIdentityView(MethodView):
         except AuthorizationError:
             flash("You are not allowed to change these connections.", "error")
             return _current_connections_card(user_id, company_id)
-        except API_UNAVAILABLE_ERRORS:
+        except APIError:
             logger.exception("Failed to unlink %s identity", provider)
             flash(
                 f"Disconnecting your {provider.title()} account failed. Please try again later.",

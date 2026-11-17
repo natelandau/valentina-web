@@ -4,13 +4,13 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 from vweb.api_client.constants import DEFAULT_PAGE_LIMIT, MAX_REFERENCE_PAGE_LIMIT
-from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import (
     DictionaryTerm,
     DictionaryTermCreate,
     DictionaryTermUpdate,
     PaginatedResponse,
 )
+from vweb.api_client.routes import Routes
 from vweb.api_client.services.base import BaseService
 
 if TYPE_CHECKING:
@@ -28,13 +28,7 @@ class DictionaryService(BaseService):
             company_id: The ID of the company to operate within.
             on_behalf_of: User ID to impersonate via On-Behalf-Of header.
         """
-        super().__init__(client)
-        self._company_id = company_id
-        self._on_behalf_of = on_behalf_of
-
-    def _format_endpoint(self, endpoint: str, **kwargs: str) -> str:
-        """Format an endpoint with the scoped company_id plus any extra params."""
-        return endpoint.format(company_id=self._company_id, **kwargs)
+        super().__init__(client, on_behalf_of=on_behalf_of, company_id=company_id)
 
     # -------------------------------------------------------------------------
     # Dictionary Term CRUD Methods
@@ -48,9 +42,8 @@ class DictionaryService(BaseService):
         term: str | None = None,
     ) -> PaginatedResponse[DictionaryTerm]:
         """Retrieve a paginated page of dictionary terms."""
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.DICTIONARY_TERMS),
-            DictionaryTerm,
+        return self._page(
+            Routes.DICTIONARY_LIST,
             limit=limit,
             offset=offset,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
@@ -59,24 +52,27 @@ class DictionaryService(BaseService):
 
     def list_all(self, *, term: str | None = None) -> list[DictionaryTerm]:
         """Retrieve all dictionary terms."""
-        return list(self.iter_all(term=term))
+        return self._list_all(
+            Routes.DICTIONARY_LIST,
+            limit=MAX_REFERENCE_PAGE_LIMIT,
+            max_limit=MAX_REFERENCE_PAGE_LIMIT,
+            params=self._build_params(term=term),
+        )
 
     def iter_all(
         self, *, term: str | None = None, limit: int = MAX_REFERENCE_PAGE_LIMIT
     ) -> Iterator[DictionaryTerm]:
         """Iterate through all dictionary terms."""
-        for item in self._iter_all_pages(
-            self._format_endpoint(Endpoints.DICTIONARY_TERMS),
+        yield from self._iter(
+            Routes.DICTIONARY_LIST,
             limit=limit,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
             params=self._build_params(term=term),
-        ):
-            yield DictionaryTerm.model_validate(item)
+        )
 
     def get(self, term_id: str) -> DictionaryTerm:
         """Retrieve a specific dictionary term."""
-        response = self._get(self._format_endpoint(Endpoints.DICTIONARY_TERM, term_id=term_id))
-        return DictionaryTerm.model_validate(response.json())
+        return self._call(Routes.DICTIONARY_GET, term_id=term_id)
 
     def create(
         self,
@@ -92,11 +88,10 @@ class DictionaryService(BaseService):
                 link (str | None), synonyms (list[str]).
         """
         body = request if request is not None else DictionaryTermCreate(**kwargs)
-        response = self._post(
-            self._format_endpoint(Endpoints.DICTIONARY_TERMS),
+        return self._call(
+            Routes.DICTIONARY_CREATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
         )
-        return DictionaryTerm.model_validate(response.json())
 
     def update(
         self,
@@ -114,12 +109,12 @@ class DictionaryService(BaseService):
                 link (str | None), synonyms (list[str] | None).
         """
         body = request if request is not None else DictionaryTermUpdate(**kwargs)
-        response = self._patch(
-            self._format_endpoint(Endpoints.DICTIONARY_TERM, term_id=term_id),
+        return self._call(
+            Routes.DICTIONARY_UPDATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            term_id=term_id,
         )
-        return DictionaryTerm.model_validate(response.json())
 
     def delete(self, term_id: str) -> None:
         """Delete a specific dictionary term."""
-        self._delete(self._format_endpoint(Endpoints.DICTIONARY_TERM, term_id=term_id))
+        self._send(Routes.DICTIONARY_DELETE, term_id=term_id)
