@@ -33,7 +33,7 @@ class BooksService(NotesMixin, AssetsMixin):
     UNAPPROVED or DEACTIVATED.
 
     Example:
-        with VClient() as client:
+        with VClient(base_url=url, api_key=key) as client:
             books = client.books("company_id", "campaign_id")
             all_books = books.list_all()
             book = books.get("book_id")

@@ -32,7 +32,7 @@ class CampaignsService(NotesMixin, AssetsMixin):
     UNAPPROVED or DEACTIVATED.
 
     Example:
-        with VClient() as client:
+        with VClient(base_url=url, api_key=key) as client:
             campaigns = client.campaigns("company_id")
             all_campaigns = campaigns.list_all()
             campaign = campaigns.get("campaign_id")

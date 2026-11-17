@@ -12,7 +12,7 @@ class SystemService(BaseService):
     designed to grow with additional system endpoints over time.
 
     Example:
-        with VClient() as client:
+        with VClient(base_url=url, api_key=key) as client:
             health = client.system.health()
             print(health.database_status)
     """

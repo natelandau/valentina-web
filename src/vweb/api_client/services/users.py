@@ -38,7 +38,7 @@ class UsersService(NotesMixin, AssetsMixin):
     as well as access user statistics and assets.
 
     Example:
-        with VClient() as client:
+        with VClient(base_url=url, api_key=key) as client:
             users = client.users("company_id")
             all_users = users.list_all()
             user = users.get("user_id")

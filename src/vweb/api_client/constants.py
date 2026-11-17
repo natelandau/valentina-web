@@ -8,11 +8,6 @@ API_KEY_HEADER = "X-API-KEY"
 # The API identifies clients by this User-Agent product token
 USER_AGENT_PRODUCT = "vclient/3.7.0"
 
-# Environment variable names
-ENV_BASE_URL = "VALENTINA_CLIENT_BASE_URL"
-ENV_API_KEY = "VALENTINA_CLIENT_API_KEY"
-ENV_DEFAULT_COMPANY_ID = "VALENTINA_CLIENT_DEFAULT_COMPANY_ID"
-
 # Request defaults
 DEFAULT_TIMEOUT = 30.0
 DEFAULT_MAX_RETRIES = 3
@@ -39,7 +34,6 @@ ON_BEHALF_OF_HEADER = "On-Behalf-Of"
 
 # Rate Limiting Headers
 RATE_LIMIT_HEADER = "RateLimit"
-RATE_LIMIT_POLICY_HEADER = "RateLimit-Policy"
 
 # Valentina API Constants
 AbilityFocus = Literal["JACK_OF_ALL_TRADES", "BALANCED", "SPECIALIST"]

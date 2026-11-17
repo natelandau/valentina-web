@@ -14,6 +14,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from vweb.api_client.constants import (
     DEFAULT_PAGE_LIMIT,
+    DEFAULT_RETRY_STATUSES,
     HTTP_500_INTERNAL_SERVER_ERROR,
     HTTP_600_UPPER_BOUND,
     IDEMPOTENCY_KEY_HEADER,
@@ -180,12 +181,11 @@ class BaseService:
         error: RateLimitError | ServerError | ConflictError,
         method: str,
         headers: dict[str, str] | None,
-        retry_statuses: frozenset[int],
     ) -> _RetryPlan | None:
         """Decide whether an error response is safe to retry, and how to log and wait.
 
         Rate limits always retry. Server errors retry only for a status in
-        `retry_statuses` on a request that is safe to resend. A 409 retries only when the
+        `DEFAULT_RETRY_STATUSES` on a request that is safe to resend. A 409 retries only when the
         API reports that a request with the same idempotency key is still in progress and
         this request carried that key: every other 409 means the request itself
         conflicts, so resending it cannot succeed.
@@ -194,7 +194,6 @@ class BaseService:
             error: The error raised for the response.
             method: The HTTP method (uppercase).
             headers: The request headers, or None.
-            retry_statuses: The 5xx status codes configured as retryable.
 
         Returns:
             The retry plan, or None if the error must be raised without a retry.
@@ -205,7 +204,9 @@ class BaseService:
             )
 
         if isinstance(error, ServerError):
-            if error.status_code in retry_statuses and cls._is_retryable_method(method, headers):
+            if error.status_code in DEFAULT_RETRY_STATUSES and cls._is_retryable_method(
+                method, headers
+            ):
                 return _RetryPlan(
                     message="Retry after server error",
                     retry_after=None,
@@ -263,7 +264,7 @@ class BaseService:
     ) -> httpx2.Response:
         """Make an HTTP request with automatic retry on transient errors.
 
-        Retries on rate limits (429), server errors (5xx in retry_statuses),
+        Retries on rate limits (429), server errors (5xx in DEFAULT_RETRY_STATUSES),
         and network errors (ConnectError, TimeoutException). Non-idempotent
         methods (POST, PATCH) only retry on 5xx/network errors when an
         idempotency key header is present. Rate limit retries (429) always
@@ -296,7 +297,6 @@ class BaseService:
 
         config = self._client._config  # noqa: SLF001
         max_attempts = config.max_retries + 1 if config.auto_retry_rate_limit else 1
-        retry_statuses = config.retry_statuses
         # Bind params so paginated requests are distinguishable in logs; without
         # limit/offset, identical paths look like duplicate (thundering-herd) calls.
         request_logger = logger.bind(method=method, url=path, params=params)
@@ -337,9 +337,7 @@ class BaseService:
                 self._log_success_response(response, request_logger)
                 return response  # noqa: TRY300
             except (RateLimitError, ServerError, ConflictError) as e:
-                retry_plan = self._plan_error_retry(
-                    error=e, method=method, headers=headers, retry_statuses=retry_statuses
-                )
+                retry_plan = self._plan_error_retry(error=e, method=method, headers=headers)
                 if retry_plan is None:
                     raise
 

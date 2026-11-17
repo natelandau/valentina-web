@@ -9,7 +9,7 @@ Example:
     from vweb.api_client import VClient, companies_service
 
     # Client auto-registers as default
-    client = VClient(api_key="...")
+    client = VClient(base_url="https://api.example.com", api_key="...")
 
     # Use services anywhere
     def some_function():
@@ -56,7 +56,7 @@ def configure_default_client(client: "VClient") -> None:
     Example:
         ```python
         # Switch to a different client
-        client2 = VClient(api_key="other-key", set_as_default=False)
+        client2 = VClient(base_url=url, api_key="other-key", set_as_default=False)
         configure_default_client(client2)
         ```
     """

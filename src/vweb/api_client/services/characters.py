@@ -44,7 +44,7 @@ class CharactersService(NotesMixin, AssetsMixin):
     Provides methods to create, retrieve, update, and delete characters.
 
     Example:
-        with VClient() as client:
+        with VClient(base_url=url, api_key=key) as client:
             characters = client.characters("company_id")
             all_characters = characters.list_all()
             character = characters.get("character_id")

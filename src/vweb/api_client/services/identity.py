@@ -26,7 +26,7 @@ class IdentityService(BaseService):
     Authentication is via developer API key only.
 
     Example:
-        with VClient() as client:
+        with VClient(base_url=url, api_key=key) as client:
             identity = client.identity()
             result = identity.identify(provider="google", token="<id-token>")
             print(result.resolution, result.user.id)

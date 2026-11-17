@@ -64,7 +64,7 @@ class CompaniesService(BaseService):
     as well as manage developer access permissions.
 
     Example:
-        with VClient() as client:
+        with VClient(base_url=url, api_key=key) as client:
             companies = client.companies.list()
             company = client.companies.get("company_id")
     """

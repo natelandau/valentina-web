@@ -9,9 +9,6 @@ from vweb.api_client.constants import (
     DEFAULT_MAX_RETRIES,
     DEFAULT_RETRY_DELAY,
     DEFAULT_TIMEOUT,
-    ENV_API_KEY,
-    ENV_BASE_URL,
-    ENV_DEFAULT_COMPANY_ID,
 )
 
 
@@ -39,7 +36,6 @@ class TestVClientInit:
             auto_retry_rate_limit=False,
             auto_idempotency_keys=True,
             default_company_id="company-123",
-            headers={"X-Custom": "value"},
         )
 
         # Then: All values are stored correctly
@@ -49,7 +45,6 @@ class TestVClientInit:
         assert client._config.auto_retry_rate_limit is False
         assert client._config.auto_idempotency_keys is True
         assert client._config.default_company_id == "company-123"
-        assert client._config.headers == {"X-Custom": "value"}
 
     def test_default_values(self):
         """Verify default values are applied when not specified."""
@@ -63,7 +58,6 @@ class TestVClientInit:
         assert client._config.auto_retry_rate_limit is True
         assert client._config.auto_idempotency_keys is False
         assert client._config.default_company_id is None
-        assert client._config.headers == {}
 
     def test_auto_idempotency_keys_passed_to_config(self):
         """Verify auto_idempotency_keys parameter is passed to config."""
@@ -111,19 +105,10 @@ class TestVClientHTTPClient:
         # And: HTTP client has Accept header (Content-Type is set per-request by httpx2)
         assert client._http.headers.get("Accept") == "application/json"
 
-    def test_http_client_includes_custom_headers(self):
-        """Verify custom headers are included in HTTP client."""
-        # When: Creating a client with custom headers
-        client = VClient(
-            base_url="https://test.api.com",
-            api_key="my-key",
-            headers={"X-Custom": "custom-value"},
-        )
+    def test_http_client_includes_default_headers(self):
+        """Verify the HTTP client sends the Accept and API key headers."""
+        client = VClient(base_url="https://test.api.com", api_key="my-key")
 
-        # Then: HTTP client includes custom headers
-        assert client._http.headers.get("X-Custom") == "custom-value"
-
-        # And: Default headers are still present
         assert client._http.headers.get("Accept") == "application/json"
         assert client._http.headers.get(API_KEY_HEADER) == "my-key"
 
@@ -186,111 +171,15 @@ class TestVClientContextManager:
         assert client.is_closed is True
 
 
-class TestVClientEnvVars:
-    """Tests for VClient environment variable configuration."""
+class TestVClientRequiredArgs:
+    """Tests for VClient's required connection arguments."""
 
-    def test_base_url_from_env_var(self, monkeypatch):
-        """Verify base_url falls back to VALENTINA_CLIENT_BASE_URL env var."""
-        # Given: The env var is set
-        monkeypatch.setenv(ENV_BASE_URL, "https://env.api.com")
-
-        # When: Creating a client without explicit base_url
-        client = VClient(api_key="my-key")
-
-        # Then: base_url is read from env
-        assert client._config.base_url == "https://env.api.com"
-
-    def test_api_key_from_env_var(self, monkeypatch):
-        """Verify api_key falls back to VALENTINA_CLIENT_API_KEY env var."""
-        # Given: The env var is set
-        monkeypatch.setenv(ENV_API_KEY, "env-api-key")
-
-        # When: Creating a client without explicit api_key
-        client = VClient(base_url="https://test.api.com")
-
-        # Then: api_key is read from env
-        assert client._config.api_key == "env-api-key"
-
-    def test_default_company_id_from_env_var(self, monkeypatch):
-        """Verify default_company_id falls back to VALENTINA_CLIENT_DEFAULT_COMPANY_ID env var."""
-        # Given: The env var is set
-        monkeypatch.setenv(ENV_DEFAULT_COMPANY_ID, "env-company-123")
-
-        # When: Creating a client without explicit default_company_id
-        client = VClient(base_url="https://test.api.com", api_key="my-key")
-
-        # Then: default_company_id is read from env
-        assert client._config.default_company_id == "env-company-123"
-
-    def test_all_values_from_env_vars(self, monkeypatch):
-        """Verify all three env vars work together for zero-config initialization."""
-        # Given: All env vars are set
-        monkeypatch.setenv(ENV_BASE_URL, "https://env.api.com")
-        monkeypatch.setenv(ENV_API_KEY, "env-api-key")
-        monkeypatch.setenv(ENV_DEFAULT_COMPANY_ID, "env-company-123")
-
-        # When: Creating a client with no explicit arguments
-        client = VClient()
-
-        # Then: All values are read from env
-        assert client._config.base_url == "https://env.api.com"
-        assert client._config.api_key == "env-api-key"
-        assert client._config.default_company_id == "env-company-123"
-
-    def test_explicit_arg_overrides_env_var(self, monkeypatch):
-        """Verify explicit constructor arguments take precedence over env vars."""
-        # Given: All env vars are set
-        monkeypatch.setenv(ENV_BASE_URL, "https://env.api.com")
-        monkeypatch.setenv(ENV_API_KEY, "env-api-key")
-        monkeypatch.setenv(ENV_DEFAULT_COMPANY_ID, "env-company-123")
-
-        # When: Creating a client with explicit arguments
-        client = VClient(
-            base_url="https://explicit.api.com",
-            api_key="explicit-key",
-            default_company_id="explicit-company",
-        )
-
-        # Then: Explicit values win
-        assert client._config.base_url == "https://explicit.api.com"
-        assert client._config.api_key == "explicit-key"
-        assert client._config.default_company_id == "explicit-company"
-
-    def test_missing_base_url_raises_error(self, monkeypatch):
-        """Verify clear error when base_url not provided and env var not set."""
-        # Given: No env var set (ensure clean)
-        monkeypatch.delenv(ENV_BASE_URL, raising=False)
-
-        # When/Then: Creating a client without base_url raises ValueError
+    def test_empty_base_url_raises_error(self):
+        """Verify an empty base_url raises ValueError."""
         with pytest.raises(ValueError, match="base_url"):
-            VClient(api_key="my-key")
+            VClient(base_url="", api_key="my-key")
 
-    def test_missing_api_key_raises_error(self, monkeypatch):
-        """Verify clear error when api_key not provided and env var not set."""
-        # Given: No env var set (ensure clean)
-        monkeypatch.delenv(ENV_API_KEY, raising=False)
-
-        # When/Then: Creating a client without api_key raises ValueError
+    def test_empty_api_key_raises_error(self):
+        """Verify an empty api_key raises ValueError."""
         with pytest.raises(ValueError, match="api_key"):
-            VClient(base_url="https://test.api.com")
-
-    def test_missing_both_required_raises_error(self, monkeypatch):
-        """Verify clear error when both required values are missing."""
-        # Given: No env vars set
-        monkeypatch.delenv(ENV_BASE_URL, raising=False)
-        monkeypatch.delenv(ENV_API_KEY, raising=False)
-
-        # When/Then: Creating a client with no arguments raises ValueError
-        with pytest.raises(ValueError):
-            VClient()
-
-    def test_default_company_id_remains_optional(self, monkeypatch):
-        """Verify default_company_id is None when neither arg nor env var provided."""
-        # Given: No default_company_id env var set
-        monkeypatch.delenv(ENV_DEFAULT_COMPANY_ID, raising=False)
-
-        # When: Creating a client without default_company_id
-        client = VClient(base_url="https://test.api.com", api_key="my-key")
-
-        # Then: default_company_id is None
-        assert client._config.default_company_id is None
+            VClient(base_url="https://test.api.com", api_key="")

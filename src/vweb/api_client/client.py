@@ -1,6 +1,5 @@
 """Main API client for Valentina."""
 
-import os
 import platform
 from types import TracebackType
 from typing import TYPE_CHECKING, Self
@@ -13,11 +12,7 @@ from vweb.api_client.constants import (
     API_KEY_HEADER,
     DEFAULT_MAX_RETRIES,
     DEFAULT_RETRY_DELAY,
-    DEFAULT_RETRY_STATUSES,
     DEFAULT_TIMEOUT,
-    ENV_API_KEY,
-    ENV_BASE_URL,
-    ENV_DEFAULT_COMPANY_ID,
     USER_AGENT_PRODUCT,
 )
 
@@ -55,7 +50,7 @@ class VClient:
         from vweb.api_client import VClient, companies_service
 
         # Client auto-registers as default
-        client = VClient(api_key="...")
+        client = VClient(base_url="https://api.example.com", api_key="...")
 
         # Use factory functions from any module
         companies = companies_service()
@@ -72,78 +67,53 @@ class VClient:
 
     def __init__(  # noqa: PLR0913
         self,
-        base_url: str | None = None,
-        api_key: str | None = None,
+        base_url: str,
+        api_key: str,
         *,
         timeout: float = DEFAULT_TIMEOUT,
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = DEFAULT_RETRY_DELAY,
         auto_retry_rate_limit: bool = True,
         auto_idempotency_keys: bool = False,
-        retry_statuses: set[int] | frozenset[int] | None = None,
         default_company_id: str | None = None,
-        headers: dict[str, str] | None = None,
         set_as_default: bool = True,
     ) -> None:
         """Initialize the API client.
 
-        Values for ``base_url``, ``api_key``, and ``default_company_id`` can be
-        provided as constructor arguments or via environment variables. Explicit
-        arguments always take precedence over environment variables.
-
-        Environment variables:
-            VALENTINA_CLIENT_BASE_URL: Base URL for the API.
-            VALENTINA_CLIENT_API_KEY: API key for authentication.
-            VALENTINA_CLIENT_DEFAULT_COMPANY_ID: Default company ID.
-
         Args:
-            base_url: Base URL for the API. Falls back to VALENTINA_CLIENT_BASE_URL.
-            api_key: API key for authentication. Falls back to VALENTINA_CLIENT_API_KEY.
+            base_url: Base URL for the API.
+            api_key: API key for authentication.
             timeout: Request timeout in seconds.
             max_retries: Maximum number of retry attempts for failed requests.
             retry_delay: Base delay between retries in seconds.
             auto_retry_rate_limit: Automatically retry requests that hit rate limits.
             auto_idempotency_keys: Automatically generate idempotency keys for
                 POST/PUT/PATCH requests.
-            retry_statuses: HTTP status codes that trigger automatic retries.
-                Defaults to {429, 500, 502, 503, 504}.
             default_company_id: Default company ID to use when not explicitly provided
-                to service factory methods. Falls back to
-                VALENTINA_CLIENT_DEFAULT_COMPANY_ID.
-            headers: Additional headers to include with all requests.
+                to service factory methods.
             set_as_default: If True, register this client as the default for factory
                 functions. Set to False when creating multiple clients or when using
                 the context manager pattern exclusively.
 
         Raises:
-            ValueError: If base_url or api_key is not provided and the corresponding
-                environment variable is not set.
+            ValueError: If base_url or api_key is empty.
         """
-        resolved_base_url = base_url or os.environ.get(ENV_BASE_URL)
-        if resolved_base_url is None:
-            msg = "base_url is required (set it directly or via the VALENTINA_CLIENT_BASE_URL environment variable)"
+        if not base_url:
+            msg = "base_url is required"
             raise ValueError(msg)
-
-        resolved_api_key = api_key or os.environ.get(ENV_API_KEY)
-        if resolved_api_key is None:
-            msg = "api_key is required (set it directly or via the VALENTINA_CLIENT_API_KEY environment variable)"
+        if not api_key:
+            msg = "api_key is required"
             raise ValueError(msg)
-
-        resolved_company_id = default_company_id or os.environ.get(ENV_DEFAULT_COMPANY_ID)
 
         self._config = _APIConfig(
-            base_url=resolved_base_url,
-            api_key=resolved_api_key,
+            base_url=base_url,
+            api_key=api_key,
             timeout=timeout,
             max_retries=max_retries,
             retry_delay=retry_delay,
             auto_retry_rate_limit=auto_retry_rate_limit,
             auto_idempotency_keys=auto_idempotency_keys,
-            retry_statuses=frozenset(retry_statuses)
-            if retry_statuses is not None
-            else DEFAULT_RETRY_STATUSES,
-            default_company_id=resolved_company_id,
-            headers=headers or {},
+            default_company_id=default_company_id,
         )
 
         self._http: httpx2.Client = self._create_http_client()
@@ -169,11 +139,8 @@ class VClient:
         headers = {
             "Accept": "application/json",
             "User-Agent": user_agent,
-            **self._config.headers,
+            API_KEY_HEADER: self._config.api_key,
         }
-
-        if self._config.api_key:
-            headers[API_KEY_HEADER] = self._config.api_key
 
         return httpx2.Client(
             base_url=self._config.base_url,
@@ -206,15 +173,6 @@ class VClient:
     def is_closed(self) -> bool:
         """Check if the client has been closed."""
         return self._http.is_closed
-
-    def _set_api_key(self, api_key: str) -> None:
-        """Send a new API key on every later request from this client and its services.
-
-        Args:
-            api_key: The API key to authenticate with from now on.
-        """
-        self._config.api_key = api_key
-        self._http.headers[API_KEY_HEADER] = api_key
 
     @property
     def default_company_id(self) -> str | None:

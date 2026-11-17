@@ -1,11 +1,10 @@
 """Configuration for the API client."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from vweb.api_client.constants import (
     DEFAULT_MAX_RETRIES,
     DEFAULT_RETRY_DELAY,
-    DEFAULT_RETRY_STATUSES,
     DEFAULT_TIMEOUT,
 )
 
@@ -22,7 +21,6 @@ class _APIConfig:
         retry_delay: Base delay between retries in seconds.
         auto_retry_rate_limit: Automatically retry requests that hit rate limits (429).
         auto_idempotency_keys: Automatically generate idempotency keys for POST/PUT/PATCH.
-        retry_statuses: HTTP status codes that trigger automatic retries.
         default_company_id: Default company ID to use when not explicitly provided.
     """
 
@@ -33,9 +31,7 @@ class _APIConfig:
     retry_delay: float = DEFAULT_RETRY_DELAY
     auto_retry_rate_limit: bool = True
     auto_idempotency_keys: bool = False
-    retry_statuses: frozenset[int] = DEFAULT_RETRY_STATUSES
     default_company_id: str | None = None
-    headers: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Validate and normalize configuration."""

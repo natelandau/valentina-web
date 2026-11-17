@@ -907,7 +907,7 @@ class TestBaseServiceTransientRetry:
 
     @respx.mock
     def test_5xx_not_retried_for_non_retryable_status(self, vclient, base_url, mocker):
-        """Verify 501 is not retried because it is not in default retry_statuses."""
+        """Verify 501 is not retried because it is not in DEFAULT_RETRY_STATUSES."""
         # Given: Mock time.sleep to avoid actual delays
         mock_sleep = mocker.patch("vweb.api_client.services.base.time.sleep")
 
@@ -1067,29 +1067,6 @@ class TestBaseServiceTransientRetry:
         # Then: Only one request was made (no retries)
         assert route.call_count == 1
         mock_sleep.assert_not_called()
-
-    @respx.mock
-    def test_custom_retry_statuses(self, base_url, api_key, mocker):
-        """Verify custom retry_statuses are respected for retry decisions."""
-        # Given: Mock time.sleep to avoid actual delays
-        mocker.patch("vweb.api_client.services.base.time.sleep")
-
-        # Given: An endpoint that returns 501 once then succeeds
-        route = respx.get(f"{base_url}/test").mock(
-            side_effect=[
-                httpx.Response(501, json={"detail": "Not Implemented"}),
-                httpx.Response(200, json={"success": True}),
-            ]
-        )
-
-        # When: Making a request with custom retry_statuses that includes 501
-        with VClient(base_url=base_url, api_key=api_key, retry_statuses={501}) as client:
-            service = BaseService(client)
-            response = service._get("/test")
-
-        # Then: Request was retried and succeeded
-        assert route.call_count == 2
-        assert response.status_code == 200
 
     @respx.mock
     def test_5xx_uses_exponential_backoff(self, vclient, base_url, mocker):
