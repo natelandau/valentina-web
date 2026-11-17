@@ -9,6 +9,12 @@ import jinjax
 from flask import g, session, url_for
 
 import vweb
+from vweb.api_client.constants import (
+    MAX_CUSTOM_FLAW_XP_COST,
+    MAX_LONG_TEXT_LENGTH,
+    MAX_URL_LENGTH,
+    MIN_CUSTOM_FLAW_XP_COST,
+)
 from vweb.config import get_settings
 from vweb.constants import (
     MAX_AVATAR_SIZE,
@@ -249,6 +255,10 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
         MAX_AVATAR_SIZE=MAX_AVATAR_SIZE,
         MAX_IMAGE_SIZE_MB=MAX_IMAGE_SIZE_MB,
         MAX_AVATAR_SIZE_MB=MAX_AVATAR_SIZE_MB,
+        MAX_LONG_TEXT_LENGTH=MAX_LONG_TEXT_LENGTH,
+        MAX_URL_LENGTH=MAX_URL_LENGTH,
+        MIN_CUSTOM_FLAW_XP_COST=MIN_CUSTOM_FLAW_XP_COST,
+        MAX_CUSTOM_FLAW_XP_COST=MAX_CUSTOM_FLAW_XP_COST,
     )
     jinja_globals["is_admin"] = is_admin
     jinja_globals["is_active_role"] = is_active_role

@@ -286,7 +286,8 @@ def build_trait_items(form_data: Mapping[str, str]) -> list[CharacterTraitAdd]:
         form_data: Submitted form fields, with trait values keyed as "trait:<id>".
 
     Returns:
-        CharacterTraitAdd payloads for every trait with a positive integer value.
+        CharacterTraitAdd payloads for every trait with a positive integer value the API
+        accepts. Values above the API maximum come only from a tampered form and are dropped.
     """
     trait_items: list[CharacterTraitAdd] = []
     for key, value in form_data.items():
@@ -297,10 +298,14 @@ def build_trait_items(form_data: Mapping[str, str]) -> list[CharacterTraitAdd]:
             int_val = int(value)
         except ValueError:
             continue
-        if int_val > 0:
+        if int_val <= 0:
+            continue
+        try:
             trait_items.append(
                 CharacterTraitAdd(trait_id=trait_id, value=int_val, currency="NO_COST")
             )
+        except PydanticValidationError:
+            logger.warning("Dropped out-of-range trait value %s for trait %s", int_val, trait_id)
     return trait_items
 
 

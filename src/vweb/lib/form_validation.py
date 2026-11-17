@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-NAME_MAX_LENGTH = 50
+from vweb.api_client.constants import MAX_NAME_LENGTH
+
+NAME_MAX_LENGTH = MAX_NAME_LENGTH
 CAMPAIGN_NAME_MIN_LENGTH = 3
 
 

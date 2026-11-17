@@ -49,7 +49,8 @@
                    class="grow"
                    value="{{ form_data.get('name_first', '') }}"
                    required
-                   minlength="3" />
+                   minlength="3"
+                   maxlength="50" />
           </label>
           {% if errors.get('name_first') %}
             <p class="text-error text-sm mt-1">{{ errors['name_first'] }}</p>
@@ -64,7 +65,8 @@
                    class="grow"
                    value="{{ form_data.get('name_last', '') }}"
                    required
-                   minlength="3" />
+                   minlength="3"
+                   maxlength="50" />
           </label>
           {% if errors.get('name_last') %}
             <p class="text-error text-sm mt-1">{{ errors['name_last'] }}</p>
@@ -227,7 +229,7 @@
         {# Biography — full width #}
         <fieldset class="fieldset md:col-span-2">
           <legend class="fieldset-legend">Biography</legend>
-          <textarea name="biography" class="textarea w-full" rows="3" minlength="3">{{ form_data.get('biography', '') }}</textarea>
+          <textarea name="biography" class="textarea w-full" rows="3" minlength="3" maxlength="{{ MAX_LONG_TEXT_LENGTH }}">{{ form_data.get('biography', '') }}</textarea>
         </fieldset>
       </div>
 
