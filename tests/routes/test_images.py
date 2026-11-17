@@ -386,7 +386,7 @@ class TestCharacterImageUpload:
         # Given a mocked character service
         char, _ = mock_character_lookup
         mock_svc = mocker.patch(
-            "vweb.routes.character_view.views.characters_service",
+            "vweb.routes.character_view.views.api_services.characters",
         ).return_value
         mock_svc.upload_asset.return_value = sample_assets[0]
         mock_svc.list_all_assets.return_value = sample_assets
@@ -438,7 +438,7 @@ class TestCharacterImageUpload:
         # Given a mocked character service
         char, _ = mock_character_lookup
         mock_svc = mocker.patch(
-            "vweb.routes.character_view.views.characters_service",
+            "vweb.routes.character_view.views.api_services.characters",
         ).return_value
         mock_svc.list_all_assets.return_value = []
         csrf = get_csrf(client)
@@ -461,7 +461,7 @@ class TestCharacterImageUpload:
         # Given a mocked character service
         char, _ = mock_character_lookup
         mock_svc = mocker.patch(
-            "vweb.routes.character_view.views.characters_service",
+            "vweb.routes.character_view.views.api_services.characters",
         ).return_value
         mock_svc.list_all_assets.return_value = []
         csrf = get_csrf(client)
@@ -483,7 +483,7 @@ class TestCharacterImageUpload:
         # Given a mocked character service
         char, _ = mock_character_lookup
         mock_svc = mocker.patch(
-            "vweb.routes.character_view.views.characters_service",
+            "vweb.routes.character_view.views.api_services.characters",
         ).return_value
         mock_svc.list_all_assets.return_value = []
         csrf = get_csrf(client)
@@ -511,7 +511,7 @@ class TestCharacterImageDelete:
         # Given a mocked character service
         char, _ = mock_character_lookup
         mock_svc = mocker.patch(
-            "vweb.routes.character_view.views.characters_service",
+            "vweb.routes.character_view.views.api_services.characters",
         ).return_value
         mock_svc.list_all_assets.return_value = []
         csrf = get_csrf(client)

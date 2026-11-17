@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from flask import g, session
+from flask import g
 
-from vweb.api_client import characters_service
+from vweb.lib import api_services
 from vweb.lib.base_notes import BaseNotesHandler
 from vweb.lib.guards import can_edit_character
 
@@ -24,10 +24,7 @@ class CharacterNotesHandler(BaseNotesHandler):
             raise ValueError(msg)
         self._character = character
 
-        self._svc = characters_service(
-            on_behalf_of=session.get("user_id", ""),
-            company_id=session["company_id"],
-        )
+        self._svc = api_services.characters()
 
     def can_mutate(self) -> bool:
         """Restrict create/update/delete to users allowed to edit the character."""

@@ -25,7 +25,7 @@ def mock_svc(mocker):
     """Mock the characters_service for the handler module."""
     svc = MagicMock()
     mocker.patch(
-        "vweb.routes.character_view.handlers_inventory.characters_service", return_value=svc
+        "vweb.routes.character_view.handlers_inventory.api_services.characters", return_value=svc
     )
     return svc
 

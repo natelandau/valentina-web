@@ -263,7 +263,7 @@ class TestManualProfileView:
             },
         )
         mocker.patch(
-            "vweb.routes.character_create.manual_services.characters_service",
+            "vweb.routes.character_create.manual_services.api_services.characters",
             return_value=svc_mock,
         )
 
@@ -325,7 +325,7 @@ class TestManualProfileView:
 
         char_svc = MagicMock()
         mocker.patch(
-            "vweb.routes.character_create.manual_services.characters_service",
+            "vweb.routes.character_create.manual_services.api_services.characters",
             return_value=char_svc,
         )
         csrf = get_csrf(client)
@@ -359,7 +359,7 @@ class TestManualProfileView:
 
         char_svc = MagicMock()
         mocker.patch(
-            "vweb.routes.character_create.manual_services.characters_service",
+            "vweb.routes.character_create.manual_services.api_services.characters",
             return_value=char_svc,
         )
         csrf = get_csrf(client)
@@ -960,7 +960,7 @@ class TestProfileEditMode:
         char_svc = MagicMock()
         char_svc.get.return_value = other_char
         mocker.patch(
-            "vweb.routes.character_create.manual_services.characters_service",
+            "vweb.routes.character_create.manual_services.api_services.characters",
             return_value=char_svc,
         )
         csrf = get_csrf(client)
@@ -999,7 +999,7 @@ class TestProfileEditMode:
         char_svc = MagicMock()
         char_svc.get.return_value = own_char
         mocker.patch(
-            "vweb.routes.character_create.manual_services.characters_service",
+            "vweb.routes.character_create.manual_services.api_services.characters",
             return_value=char_svc,
         )
         csrf = get_csrf(client)

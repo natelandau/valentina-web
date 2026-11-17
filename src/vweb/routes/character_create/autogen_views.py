@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from flask import flash, g, request, session, url_for
+from flask import flash, request, url_for
 from flask.views import MethodView
 
 if TYPE_CHECKING:
@@ -44,11 +44,9 @@ class MultiAutogenView(MethodView):
             Rendered comparison fragment, or selection cards with error.
         """
         campaign = fetch_campaign_or_404(campaign_id)
-        user = g.requesting_user
 
         try:
             session_response = start_session(
-                user_id=user.id,
                 campaign_id=campaign_id,
             )
         except APIError:
@@ -99,7 +97,6 @@ class MultiAutogenFinalizeView(MethodView):
 
         try:
             new_char = finalize_session(
-                user_id=session["user_id"],
                 campaign_id=campaign_id,
                 session_id=session_id,
                 selected_character_id=selected_character_id,
@@ -145,11 +142,9 @@ class ResumeSessionView(MethodView):
             Rendered comparison fragment, or redirect on error.
         """
         campaign = fetch_campaign_or_404(campaign_id)
-        user = g.requesting_user
 
         try:
             session_response = get_session(
-                user_id=user.id,
                 campaign_id=campaign_id,
                 session_id=session_id,
             )

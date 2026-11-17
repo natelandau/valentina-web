@@ -54,7 +54,7 @@ def selection_card_context(campaign_id: str) -> dict:
 
     now = datetime.now(tz=UTC)
     try:
-        all_sessions = list_sessions(user_id=session["user_id"], campaign_id=campaign_id)
+        all_sessions = list_sessions(campaign_id=campaign_id)
         pending_sessions = [s for s in all_sessions if s.expires_at > now]
     except APIError:
         logger.exception("Failed to list chargen sessions")

@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, cast
 from flask import session
 from pydantic import ValidationError as PydanticValidationError
 
-from vweb.api_client import character_traits_service, characters_service
 from vweb.api_client.exceptions import APIError, NotFoundError
 from vweb.api_client.models import CharacterCreate, CharacterTraitAdd, CharacterUpdate
+from vweb.lib import api_services
 from vweb.lib.api_errors import api_field_errors
 from vweb.lib.guards import can_manage_npcs, is_self, is_storyteller
 from vweb.routes.character_create.profile_form import build_class_attrs, character_to_form_data
@@ -84,10 +84,7 @@ def fetch_character(character_id: str) -> Character:
     Returns:
         The requested Character.
     """
-    svc = characters_service(
-        on_behalf_of=session["user_id"],
-        company_id=session["company_id"],
-    )
+    svc = api_services.characters()
     return svc.get(character_id)
 
 
@@ -235,10 +232,7 @@ def update_character_profile(character_id: str, form_data: dict[str, str]) -> di
     Returns:
         Errors keyed by field name (empty when the update succeeds).
     """
-    svc = characters_service(
-        on_behalf_of=session["user_id"],
-        company_id=session["company_id"],
-    )
+    svc = api_services.characters()
     try:
         svc.update(character_id, _build_update_payload(form_data))
     except (PydanticValidationError, APIError) as exc:
@@ -264,10 +258,7 @@ def save_temp_character(campaign_id: str, form_data: dict[str, str]) -> dict[str
     Returns:
         Errors keyed by field name (empty when the save succeeds).
     """
-    svc = characters_service(
-        on_behalf_of=session["user_id"],
-        company_id=session["company_id"],
-    )
+    svc = api_services.characters()
     temp_char_id = session.get("temp_character_id")
 
     try:
@@ -326,11 +317,7 @@ def bulk_assign_traits(character_id: str, trait_items: list[CharacterTraitAdd]) 
     if not trait_items:
         return []
 
-    traits_svc = character_traits_service(
-        on_behalf_of=session["user_id"],
-        character_id=character_id,
-        company_id=session["company_id"],
-    )
+    traits_svc = api_services.character_traits(character_id)
     result = traits_svc.bulk_assign(trait_items)
     return [f.trait_id for f in result.failed]
 
@@ -341,8 +328,5 @@ def mark_character_permanent(character_id: str) -> None:
     Args:
         character_id: The temporary character to finalize.
     """
-    svc = characters_service(
-        on_behalf_of=session["user_id"],
-        company_id=session["company_id"],
-    )
+    svc = api_services.characters()
     svc.update(character_id, CharacterUpdate(is_temporary=False))

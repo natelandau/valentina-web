@@ -26,7 +26,7 @@ class TestGenerateSingle:
         expected_character = CharacterFactory.build()
         mock_service.generate_character.return_value = expected_character
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.character_autogen_service",
+            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
             return_value=mock_service,
         )
 
@@ -37,8 +37,8 @@ class TestGenerateSingle:
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = "u1"
             result = generate_single(
-                user_id="u1",
                 campaign_id="c1",
                 character_type="PLAYER",
             )
@@ -64,7 +64,7 @@ class TestGenerateSingle:
         expected_character = CharacterFactory.build()
         mock_service.generate_character.return_value = expected_character
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.character_autogen_service",
+            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
             return_value=mock_service,
         )
 
@@ -75,8 +75,8 @@ class TestGenerateSingle:
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = "u1"
             result = generate_single(
-                user_id="u1",
                 campaign_id="c1",
                 character_type="NPC",
                 character_class="VAMPIRE",
@@ -111,7 +111,7 @@ class TestStartSession:
         expected_response = ChargenSessionResponseFactory.build()
         mock_service.start_chargen_session.return_value = expected_response
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.character_autogen_service",
+            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
             return_value=mock_service,
         )
 
@@ -122,7 +122,8 @@ class TestStartSession:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            result = start_session(user_id="u1", campaign_id="c1")
+            session["user_id"] = "u1"
+            result = start_session(campaign_id="c1")
 
         # Then the session response is returned
         mock_service.start_chargen_session.assert_called_once()
@@ -139,7 +140,7 @@ class TestFinalizeSession:
         expected_character = CharacterFactory.build()
         mock_service.finalize_chargen_session.return_value = expected_character
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.character_autogen_service",
+            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
             return_value=mock_service,
         )
 
@@ -150,8 +151,8 @@ class TestFinalizeSession:
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = "u1"
             result = finalize_session(
-                user_id="u1",
                 campaign_id="c1",
                 session_id="sess-1",
                 selected_character_id="char-2",
@@ -201,6 +202,7 @@ class TestFetchFormOptions:
             from flask import session
 
             session["company_id"] = "test-company-id"
+            session["user_id"] = "u1"
             result = fetch_form_options()
 
         # Then enum lists and blueprint data are returned
@@ -229,7 +231,8 @@ class TestListSessions:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            result = list_sessions(user_id="u1", campaign_id="c1")
+            session["user_id"] = "u1"
+            result = list_sessions(campaign_id="c1")
 
         # Then both sessions are returned
         assert result == sessions
@@ -246,7 +249,8 @@ class TestListSessions:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            result = list_sessions(user_id="u1", campaign_id="c1")
+            session["user_id"] = "u1"
+            result = list_sessions(campaign_id="c1")
 
         # Then empty list is returned
         assert result == []
@@ -262,7 +266,7 @@ class TestGetSession:
         expected = ChargenSessionResponseFactory.build(id="sess-123")
         mock_service.get.return_value = expected
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.character_autogen_service",
+            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
             return_value=mock_service,
         )
 
@@ -273,7 +277,8 @@ class TestGetSession:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            result = get_session(user_id="u1", campaign_id="c1", session_id="sess-123")
+            session["user_id"] = "u1"
+            result = get_session(campaign_id="c1", session_id="sess-123")
 
         # Then the session is returned
         assert result.id == "sess-123"

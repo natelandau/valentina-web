@@ -38,7 +38,7 @@ class TestCharacterDelete:
         # Given a mocked vclient delete
         char, _ = mock_character_lookup
         mock_svc = mocker.patch(
-            "vweb.routes.character_view.views.characters_service",
+            "vweb.routes.character_view.views.api_services.characters",
         ).return_value
         mocker.patch("vweb.lib.cache.global_context.clear")
 

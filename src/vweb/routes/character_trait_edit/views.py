@@ -10,16 +10,14 @@ from flask import (
     g,
     redirect,
     request,
-    session,
     url_for,
 )
 from flask.views import MethodView
 
-from vweb.api_client import character_traits_service
 from vweb.api_client.constants import TraitModifyCurrency
 from vweb.api_client.exceptions import APIError
 from vweb.api_client.models import TraitCreate
-from vweb.lib import cache
+from vweb.lib import api_services, cache
 from vweb.lib.api import get_character_and_campaign
 from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog
@@ -279,7 +277,6 @@ class CharacterTraitsView(MethodView):
 
     def post(self, character_id: str) -> str | Response:  # noqa: C901, PLR0911
         """Post the character traits form."""
-        requesting_user = g.requesting_user
         character, campaign = get_character_and_campaign(character_id)
         if not character or not campaign:
             return hx_redirect(url_for("index.index"))
@@ -296,11 +293,7 @@ class CharacterTraitsView(MethodView):
             f"character_trait_edit.{self.spend_type}", character_id=character_id
         )
 
-        api_svc = character_traits_service(
-            on_behalf_of=requesting_user.id,
-            character_id=character.id,
-            company_id=session["company_id"],
-        )
+        api_svc = api_services.character_traits(character.id)
         for trait_id, value in request.form.items():
             if value == "DELETE":
                 result = self._delete_trait(

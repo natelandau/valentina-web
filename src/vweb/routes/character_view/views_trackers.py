@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, NoReturn
 
-from flask import Response, abort, flash, g, request, session
+from flask import Response, abort, flash, request
 from flask.views import MethodView
 
 from vweb.api_client.exceptions import APIError
@@ -64,10 +64,6 @@ def _parse_or_abort(allowed_actions: tuple[str, ...]) -> TrackerRequest:
         return parse_tracker_request(request.form, allowed_actions=allowed_actions)
     except ValueError:
         abort(400)
-
-
-def _api_ids() -> dict[str, str]:
-    return {"user_id": g.requesting_user.id, "company_id": session["company_id"]}
 
 
 def _render_tracker(character: Character, character_trait: CharacterTrait, tracker: Tracker) -> str:
@@ -161,13 +157,11 @@ class TraitTrackerView(MethodView):
             _refuse("That trait is no longer on the sheet. Reload the page.", 404)
 
         try:
-            tracker = update_trait_tracker(
-                character_id, character_trait_id, tracker_request, **_api_ids()
-            )
+            tracker = update_trait_tracker(character_id, character_trait_id, tracker_request)
         except TRAIT_API_ERRORS as error:
             return _recover(
                 api_error_message(error, fallback="Could not update"),
-                refetch=lambda: fetch_trait_tracker(character_id, character_trait_id, **_api_ids()),
+                refetch=lambda: fetch_trait_tracker(character_id, character_trait_id),
                 store=lambda fresh: _store_tracker(character_id, character_trait_id, fresh),
                 render=lambda fresh: _render_tracker(character, character_trait, fresh),
                 fallback=character_trait.tracker,
@@ -192,11 +186,11 @@ class HealthView(MethodView):
         tracker_request = _parse_or_abort(HEALTH_ACTIONS)
 
         try:
-            health = update_health(character_id, tracker_request, **_api_ids())
+            health = update_health(character_id, tracker_request)
         except TRAIT_API_ERRORS as error:
             return _recover(
                 api_error_message(error, fallback="Could not update"),
-                refetch=lambda: fetch_health(character_id, **_api_ids()),
+                refetch=lambda: fetch_health(character_id),
                 store=lambda fresh: _store_health(character_id, fresh),
                 render=lambda fresh: _render_health(character, fresh),
                 fallback=None,

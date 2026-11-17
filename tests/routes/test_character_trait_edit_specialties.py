@@ -28,7 +28,7 @@ from vweb.routes.character_trait_edit.services import specialty_help_text
 if TYPE_CHECKING:
     from vweb.api_client.models import Character
 
-SVC_PATH = "vweb.routes.character_trait_edit.views_specialties.character_traits_service"
+SVC_PATH = "vweb.routes.character_trait_edit.views_specialties.api_services.character_traits"
 
 
 def _specialty(specialty_id: str, name: str) -> CharacterTraitSpecialty:

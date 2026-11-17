@@ -48,7 +48,7 @@ NOTES_HANDLER_CASES: dict[str, NotesHandlerCase] = {
     ),
     "character": NotesHandlerCase(
         handler_class=CharacterNotesHandler,
-        service_path="vweb.routes.character_view.handlers_notes.characters_service",
+        service_path="vweb.routes.character_view.handlers_notes.api_services.characters",
         parent_id="char-123",
         needs_character_in_context=True,
     ),

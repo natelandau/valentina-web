@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from tests.helpers import seed_session
 from vweb.api_client.testing import CounterTrackerFactory, HealthFactory, Routes
 from vweb.routes.character_view.services import (
     TrackerRequest,
@@ -54,7 +55,7 @@ def test_parse_rejects_action_outside_allowed() -> None:
         parse_tracker_request({"action": "set", "current": "1"}, allowed_actions=("damage", "heal"))
 
 
-def test_update_trait_tracker_set_returns_stored_tracker(fake_vclient) -> None:
+def test_update_trait_tracker_set_returns_stored_tracker(app, fake_vclient) -> None:
     """Verify a set request goes to the API and returns the stored tracker."""
     # Given the API stores current=3
     fake_vclient.set_response(
@@ -62,19 +63,15 @@ def test_update_trait_tracker_set_returns_stored_tracker(fake_vclient) -> None:
     )
 
     # When setting the tracker
-    result = update_trait_tracker(
-        "char-1",
-        "ct-1",
-        TrackerRequest(action="set", current=3),
-        user_id="test-user-id",
-        company_id="test-company-id",
-    )
+    with app.test_request_context():
+        seed_session()
+        result = update_trait_tracker("char-1", "ct-1", TrackerRequest(action="set", current=3))
 
     # Then the stored state comes back
     assert result.current == 3
 
 
-def test_update_health_sends_action_with_amount_one(fake_vclient) -> None:
+def test_update_health_sends_action_with_amount_one(app, fake_vclient) -> None:
     """Verify a health action reaches the API and returns the stored health."""
     # Given the API stores one point of damage
     fake_vclient.set_response(
@@ -82,12 +79,9 @@ def test_update_health_sends_action_with_amount_one(fake_vclient) -> None:
     )
 
     # When damaging health
-    result = update_health(
-        "char-1",
-        TrackerRequest(action="damage", current=None),
-        user_id="test-user-id",
-        company_id="test-company-id",
-    )
+    with app.test_request_context():
+        seed_session()
+        result = update_health("char-1", TrackerRequest(action="damage", current=None))
 
     # Then the stored damage comes back
     assert result.damage == 1
