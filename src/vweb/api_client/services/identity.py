@@ -39,12 +39,7 @@ class IdentityService(BaseService):
             client: The VClient instance to use for requests.
             company_id: The ID of the company to resolve identities in.
         """
-        super().__init__(client)
-        self._company_id = company_id
-
-    def _format_endpoint(self, endpoint: str, **kwargs: str) -> str:
-        """Format an endpoint with the scoped company_id plus any extra params."""
-        return endpoint.format(company_id=self._company_id, **kwargs)
+        super().__init__(client, company_id=company_id)
 
     def identify(
         self,

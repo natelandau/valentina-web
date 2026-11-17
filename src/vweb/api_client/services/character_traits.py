@@ -44,17 +44,8 @@ class CharacterTraitsService(BaseService):
             character_id: The ID of the character to operate within.
             on_behalf_of: User ID to impersonate via On-Behalf-Of header.
         """
-        super().__init__(client)
-        self._company_id = company_id
-        self._character_id = character_id
-        self._on_behalf_of = on_behalf_of
-
-    def _format_endpoint(self, endpoint: str, **kwargs: str) -> str:
-        """Format an endpoint with the scoped company_id and character_id plus any extra params."""
-        return endpoint.format(
-            company_id=self._company_id,
-            character_id=self._character_id,
-            **kwargs,
+        super().__init__(
+            client, on_behalf_of=on_behalf_of, company_id=company_id, character_id=character_id
         )
 
     # Character Trait CRUD Methods

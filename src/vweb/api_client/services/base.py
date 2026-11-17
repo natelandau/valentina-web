@@ -56,14 +56,34 @@ class BaseService:
     Provides common functionality for making HTTP requests and handling responses.
     """
 
-    def __init__(self, client: "VClient") -> None:
+    def __init__(self, client: "VClient", *, on_behalf_of: str | None = None, **scope: str) -> None:
         """Initialize the service.
 
         Args:
             client: The VClient instance to use for requests.
+            on_behalf_of: User ID to impersonate via the On-Behalf-Of header, or None.
+            **scope: Path IDs (such as ``company_id``) filled into every endpoint template.
         """
         self._client = client
-        self._on_behalf_of: str | None = None
+        self._on_behalf_of = on_behalf_of
+        self._scope = scope
+
+    @property
+    def _company_id(self) -> str | None:
+        """The company this service is scoped to, or None for unscoped services."""
+        return self._scope.get("company_id")
+
+    def _format_endpoint(self, endpoint: str, **kwargs: str) -> str:
+        """Fill an endpoint template with the service's scope IDs plus any extra params.
+
+        Args:
+            endpoint: The endpoint template from ``Endpoints``.
+            **kwargs: Path parameters beyond the service's scope.
+
+        Returns:
+            The formatted endpoint path.
+        """
+        return endpoint.format(**self._scope, **kwargs)
 
     @property
     def _http(self) -> httpx2.Client:

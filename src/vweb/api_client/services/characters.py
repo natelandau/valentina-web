@@ -62,16 +62,7 @@ class CharactersService(BaseService):
             company_id: The ID of the company to operate within.
             on_behalf_of: User ID to impersonate via On-Behalf-Of header.
         """
-        super().__init__(client)
-        self._company_id = company_id
-        self._on_behalf_of = on_behalf_of
-
-    def _format_endpoint(self, endpoint: str, **kwargs: str) -> str:
-        """Format an endpoint with scoped IDs plus any extra params."""
-        return endpoint.format(
-            company_id=self._company_id,
-            **kwargs,
-        )
+        super().__init__(client, on_behalf_of=on_behalf_of, company_id=company_id)
 
     # Character CRUD Methods
 
