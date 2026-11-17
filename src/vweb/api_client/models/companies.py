@@ -12,6 +12,7 @@ from vweb.api_client.constants import (
     ManageNPCPermission,
     PermissionLevel,
     RecoupXPPermission,
+    SpecialtyRules,
 )
 from vweb.api_client.models.request_types import CustomFlawXPCost, LongText3, Name3to50
 from vweb.api_client.models.users import User
@@ -34,6 +35,7 @@ class CompanySettings(BaseModel):
     permission_free_trait_changes: FreeTraitChangesPermission
     permission_recoup_xp: RecoupXPPermission
     specialty_xp_cost_enabled: bool = False
+    specialty_rules: SpecialtyRules = "FIXED_COST"
     custom_flaw_xp_cost: int = DEFAULT_CUSTOM_FLAW_XP_COST
 
 
@@ -52,6 +54,7 @@ class CompanySettingsCreate(BaseModel):
     permission_free_trait_changes: FreeTraitChangesPermission | None = None
     permission_recoup_xp: RecoupXPPermission | None = None
     specialty_xp_cost_enabled: bool | None = None
+    specialty_rules: SpecialtyRules | None = None
     custom_flaw_xp_cost: CustomFlawXPCost | None = None
 
 
@@ -70,6 +73,7 @@ class CompanySettingsUpdate(BaseModel):
     permission_free_trait_changes: FreeTraitChangesPermission | None = None
     permission_recoup_xp: RecoupXPPermission | None = None
     specialty_xp_cost_enabled: bool | None = None
+    specialty_rules: SpecialtyRules | None = None
     custom_flaw_xp_cost: CustomFlawXPCost | None = None
 
 

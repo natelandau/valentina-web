@@ -32,39 +32,9 @@ def _settings(*, enabled: bool) -> CompanySettings:
     return settings
 
 
-@pytest.mark.parametrize(
-    ("spend_type", "enabled", "expected"),
-    [
-        ("XP", True, 3),
-        ("STARTING_POINTS", True, 3),
-        ("NO_COST", True, 0),
-        ("XP", False, 0),
-    ],
-)
-def test_specialty_cost(spend_type: TraitModifyCurrency, *, enabled: bool, expected: int) -> None:
-    """Verify the cost applies only to paid currencies with the setting on."""
-    assert specialty_cost(spend_type, _settings(enabled=enabled)) == expected
-
-
-@pytest.mark.parametrize(
-    ("spend_type", "enabled", "expected"),
-    [
-        ("XP", True, "Add · 3 XP"),
-        ("STARTING_POINTS", True, "Add · 3 starting points"),
-        ("NO_COST", True, "Add"),
-        ("XP", False, "Add"),
-    ],
-)
-def test_specialty_add_label(
-    spend_type: TraitModifyCurrency, *, enabled: bool, expected: str
-) -> None:
-    """Verify the add label carries the cost only when one is charged."""
-    assert specialty_add_label(spend_type, _settings(enabled=enabled)) == expected
-
-
-def _threshold_settings(*, enabled: bool = True) -> CompanySettings:
+def _rating_based_settings(*, enabled: bool = True) -> CompanySettings:
     settings = _settings(enabled=enabled)
-    settings.specialty_rules = "THRESHOLD"
+    settings.specialty_rules = "RATING_BASED"
     return settings
 
 
@@ -85,38 +55,81 @@ def _medicine(value: int, specialty_count: int) -> CharacterTrait:
 
 
 @pytest.mark.parametrize(
-    ("value", "specialty_count", "spend_type", "expected"),
+    ("spend_type", "enabled", "expected"),
     [
-        (4, 0, "XP", 0),
-        (4, 1, "XP", 4),
-        (5, 2, "STARTING_POINTS", 5),
-        (4, 1, "NO_COST", 0),
+        ("XP", True, 3),
+        ("STARTING_POINTS", True, 3),
+        ("NO_COST", True, 0),
+        ("XP", False, 0),
     ],
 )
-def test_threshold_specialty_cost(
-    value: int, specialty_count: int, spend_type: TraitModifyCurrency, expected: int
+def test_specialty_cost(spend_type: TraitModifyCurrency, *, enabled: bool, expected: int) -> None:
+    """Verify FIXED_COST charges 3 only for paid currencies with the setting on."""
+    assert specialty_cost(spend_type, _settings(enabled=enabled), _medicine(2, 1)) == expected
+
+
+@pytest.mark.parametrize(
+    ("spend_type", "enabled", "expected"),
+    [
+        ("XP", True, "Add · 3 XP"),
+        ("STARTING_POINTS", True, "Add · 3 starting points"),
+        ("NO_COST", True, "Add"),
+        ("XP", False, "Add"),
+    ],
+)
+def test_specialty_add_label(
+    spend_type: TraitModifyCurrency, *, enabled: bool, expected: str
 ) -> None:
-    """Verify THRESHOLD pricing: first free, then the trait's current rating."""
+    """Verify the add label carries the cost only when one is charged."""
+    assert specialty_add_label(spend_type, _settings(enabled=enabled), _medicine(2, 0)) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "specialty_count", "spend_type", "enabled", "expected"),
+    [
+        (4, 0, "XP", True, 0),
+        (4, 1, "XP", True, 4),
+        (5, 2, "STARTING_POINTS", True, 5),
+        (4, 1, "NO_COST", True, 0),
+        (4, 1, "XP", False, 0),
+    ],
+)
+def test_rating_based_specialty_cost(
+    value: int,
+    specialty_count: int,
+    spend_type: TraitModifyCurrency,
+    *,
+    enabled: bool,
+    expected: int,
+) -> None:
+    """Verify RATING_BASED pricing: first free, then the trait's current rating."""
     trait = _medicine(value, specialty_count)
-    assert specialty_cost(spend_type, _threshold_settings(), trait) == expected
+    assert specialty_cost(spend_type, _rating_based_settings(enabled=enabled), trait) == expected
 
 
-def test_threshold_specialty_add_label_shows_rating_cost() -> None:
+def test_rating_based_add_label_shows_rating_cost() -> None:
     """Verify the add label shows the rating-based cost."""
-    trait = _medicine(4, 1)
-    assert specialty_add_label("XP", _threshold_settings(), trait) == "Add · 4 XP"
+    assert specialty_add_label("XP", _rating_based_settings(), _medicine(4, 1)) == "Add · 4 XP"
 
 
-def test_specialty_rules_text_threshold() -> None:
-    """Verify the explanation names the bonus, the threshold, and the pricing."""
-    text = specialty_rules_text(_medicine(3, 0), _threshold_settings(), 3)
+def test_specialty_rules_text_rating_based() -> None:
+    """Verify the explanation names the bonus, the minimum rating, removal, and pricing."""
+    text = specialty_rules_text(_medicine(3, 0), _rating_based_settings(), 3)
     assert "adds one die to Medicine" in text
-    assert "at 3 dots" in text
+    assert "at 3 dots or more" in text
+    assert "removes them" in text
     assert "first specialty is free" in text
 
 
-def test_specialty_rules_text_flat_omits_threshold() -> None:
-    """Verify FLAT rules only explain the bonus."""
+def test_specialty_rules_text_rating_based_without_cost() -> None:
+    """Verify pricing is left out when specialties are free."""
+    text = specialty_rules_text(_medicine(3, 0), _rating_based_settings(enabled=False), 3)
+    assert "at 3 dots or more" in text
+    assert "free" not in text
+
+
+def test_specialty_rules_text_fixed_cost_omits_min_rating() -> None:
+    """Verify FIXED_COST rules only explain the bonus."""
     text = specialty_rules_text(_medicine(1, 0), _settings(enabled=True), 1)
     assert "adds one die to Medicine" in text
     assert "dots" not in text

@@ -21,7 +21,11 @@ from vweb.lib import api_services, cache
 from vweb.lib.api import get_character_and_campaign
 from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog
-from vweb.lib.character_profile import TRAIT_API_ERRORS, find_character_trait
+from vweb.lib.character_profile import (
+    TRAIT_API_ERRORS,
+    character_trait_specialty_keep_rating,
+    find_character_trait,
+)
 from vweb.lib.guards import can_edit_character, can_edit_traits_free
 from vweb.lib.htmx import hx_redirect
 from vweb.routes.character_trait_edit.services import (
@@ -36,7 +40,7 @@ bp = Blueprint("character_trait_edit", __name__)
 if TYPE_CHECKING:
     from werkzeug.wrappers.response import Response
 
-    from vweb.api_client.models import Trait
+    from vweb.api_client.models import Character, CharacterTrait, Trait
     from vweb.api_client.services import CharacterTraitsService
 
 
@@ -269,11 +273,22 @@ class CharacterTraitsView(MethodView):
         )
 
     @staticmethod
-    def _had_specialties(character_id: str, trait_id: str) -> bool:
-        """Report whether a character trait currently has specialties."""
+    def _sheet_trait(character_id: str, trait_id: str) -> CharacterTrait | None:
+        """Find a character trait on the cached sheet the edit page renders from."""
         sheet = cache.character_sheet.get(character_id, include_available_traits=True)
-        trait = find_character_trait(sheet, trait_id)
+        return find_character_trait(sheet, trait_id)
+
+    def _had_specialties(self, character_id: str, trait_id: str) -> bool:
+        """Report whether a character trait currently has specialties."""
+        trait = self._sheet_trait(character_id, trait_id)
         return bool(trait and trait.specialties)
+
+    def _removes_specialties(self, character: Character, trait_id: str, value: str) -> bool:
+        """Report whether setting a trait to this value makes the API remove its specialties."""
+        trait = self._sheet_trait(character.id, trait_id)
+        if not trait or not value.isdigit():
+            return False
+        return int(value) < character_trait_specialty_keep_rating(trait, character)
 
     def post(self, character_id: str) -> str | Response:  # noqa: C901, PLR0911
         """Post the character traits form."""
@@ -371,7 +386,7 @@ class CharacterTraitsView(MethodView):
                 trait_id=trait_id,
                 value=value,
                 get_method_url=get_method_url,
-                removes_specialties=value == "0" and self._had_specialties(character.id, trait_id),
+                removes_specialties=self._removes_specialties(character, trait_id, value),
             )
             cache.character_sheet.clear(character.id)
             cache.global_context.clear_current()

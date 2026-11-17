@@ -33,8 +33,7 @@ from vweb.lib.api import (
 )
 from vweb.lib.character_profile import (
     character_trait_accepts_specialties,
-    character_trait_specialty_threshold,
-    specialty_rules_for,
+    character_trait_specialty_keep_rating,
 )
 from vweb.lib.guards import (
     can_edit_character,
@@ -58,7 +57,7 @@ from vweb.lib.jinja_filters import (
     normalize_string,
     to_roman,
 )
-from vweb.lib.trait_rules import accepts_specialties, is_derived_trait
+from vweb.lib.trait_rules import is_derived_trait
 from vweb.lib.urls import is_http_url
 from vweb.lib.user_display import user_display_name
 from vweb.lib.user_profile import has_custom_avatar, user_avatar_url
@@ -280,10 +279,8 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
     jinja_globals["can_edit_trackers"] = can_edit_trackers
     jinja_globals.update(
         is_derived_trait=is_derived_trait,
-        accepts_specialties=accepts_specialties,
         character_trait_accepts_specialties=character_trait_accepts_specialties,
-        character_trait_specialty_threshold=character_trait_specialty_threshold,
-        specialty_rules_for=specialty_rules_for,
+        character_trait_specialty_keep_rating=character_trait_specialty_keep_rating,
         is_http_url=is_http_url,
     )
 

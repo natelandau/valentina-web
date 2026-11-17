@@ -15,7 +15,7 @@
       <character_view.components.TermTooltip name={{ character_trait.trait.name }} dictionary_terms={{ dictionary_terms }} />
     {% endif %}
     {% if character_trait.specialties %}
-      <shared.traits.SpecialtyList character={{ character }} character_trait={{ character_trait }} extra_class={{ "pl-4" if indent else "" }} />
+      <shared.traits.SpecialtyList character_trait={{ character_trait }} extra_class={{ "pl-4" if indent else "" }} />
     {% endif %}
   </td>
   {% if not character_trait.tracker %}

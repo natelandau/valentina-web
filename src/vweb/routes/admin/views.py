@@ -14,12 +14,25 @@ from vweb.lib import cache
 from vweb.lib.catalog import catalog
 from vweb.lib.guards import is_admin, is_self
 from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
+from vweb.lib.trait_rules import (
+    FIXED_COST_MIN_RATING,
+    FIXED_COST_SPECIALTY_COST,
+    SPECIALTY_FAVORED_MIN_RATING,
+    SPECIALTY_MIN_RATING,
+)
 from vweb.routes.admin import services as admin_services
 
 if TYPE_CHECKING:
     from werkzeug.wrappers.response import Response
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
+
+_SPECIALTY_RULE_LIMITS: dict[str, int] = {
+    "fixed_min_rating": FIXED_COST_MIN_RATING,
+    "fixed_cost": FIXED_COST_SPECIALTY_COST,
+    "min_rating": SPECIALTY_MIN_RATING,
+    "favored_min_rating": SPECIALTY_FAVORED_MIN_RATING,
+}
 
 
 @bp.before_request
@@ -149,6 +162,7 @@ class SettingsView(MethodView):
             company=company,
             errors={},
             form_values=None,
+            specialty_limits=_SPECIALTY_RULE_LIMITS,
         )
 
     def post(self) -> Response | tuple[str, int]:
@@ -172,6 +186,7 @@ class SettingsView(MethodView):
                 company=company,
                 errors=errors,
                 form_values=form,
+                specialty_limits=_SPECIALTY_RULE_LIMITS,
             )
             return page, 400
 

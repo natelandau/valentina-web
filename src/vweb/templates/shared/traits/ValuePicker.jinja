@@ -8,6 +8,7 @@
     post_url: str = "",
     read_only: bool = False,
     specialty_names: list = [],
+    specialty_keep_rating: int = 0,
 #}
 {# HTMX-driven variant for live character sheets; Alpine sibling: routes/character_create/templates/character_create/manual/components/ValuePicker.jinja #}
 
@@ -30,7 +31,7 @@
                     name="{{ trait_id }}"
                     value="{{ i }}"
                     hx-trigger="click"
-                    {% if i == 0 and specialty_names %}hx-confirm="Lowering {{ trait_name.strip().title() }} to 0 removes its specialties: {{ specialty_names | join(', ') }}."{% endif %}
+                    {% if i < specialty_keep_rating and specialty_names %}hx-confirm="Lowering {{ trait_name.strip().title() }} to {{ i }} removes its specialties: {{ specialty_names | join(', ') }}."{% endif %}
                     hx-post="{{ post_url }}">{{ i }}</button>
           {% endif %}
         {% endfor %}

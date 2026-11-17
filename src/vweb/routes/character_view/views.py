@@ -65,11 +65,7 @@ class CharacterView(MethodView):
                 data["full_sheet"] = full_sheet
                 data["dictionary_terms"] = cache.dictionary.terms()
             case "profile":
-                data["concept"] = (
-                    api_services.character_blueprint().get_concept(concept_id=character.concept_id)
-                    if character.concept_id
-                    else None
-                )
+                data["concept"] = cache.blueprint.concept(character.concept_id)
                 data["dictionary_terms"] = cache.dictionary.terms()
             case "inventory" | "notes":
                 # Both are CRUD-table tabs; the table fetches its own data lazily.

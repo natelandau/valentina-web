@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Final
 
 from vweb.api_client.constants import MAX_NAME_LENGTH
 from vweb.lib.character_profile import iter_character_traits
+from vweb.lib.trait_rules import next_specialty_cost
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -19,7 +20,6 @@ if TYPE_CHECKING:
         Trait,
     )
 
-SPECIALTY_COST: Final = 3
 SPECIALTY_NAME_MIN_LENGTH: Final = 3
 SPECIALTY_NAME_MAX_LENGTH: Final = MAX_NAME_LENGTH
 _PAID_CURRENCIES: Final = ("XP", "STARTING_POINTS")
@@ -90,34 +90,27 @@ def find_standard_trait_by_name(
 def specialty_cost(
     spend_type: TraitModifyCurrency,
     settings: CompanySettings,
-    character_trait: CharacterTrait | None = None,
+    character_trait: CharacterTrait,
 ) -> int:
-    """Return the points charged to add a specialty.
-
-    Under THRESHOLD rules the first specialty on a trait is free and each further one costs
-    the trait's current rating. Under FLAT rules every specialty costs the same.
+    """Return the points charged to add the next specialty to a trait.
 
     Args:
         spend_type: The currency the specialty is bought with.
         settings: The company settings.
-        character_trait: The trait the specialty is added to; required for THRESHOLD pricing.
+        character_trait: The trait the specialty is added to.
 
     Returns:
         int: The points charged, 0 when free.
     """
     if not settings.specialty_xp_cost_enabled or spend_type not in _PAID_CURRENCIES:
         return 0
-    if settings.specialty_rules == "THRESHOLD":
-        if character_trait is None or not character_trait.specialties:
-            return 0
-        return character_trait.value
-    return SPECIALTY_COST
+    return next_specialty_cost(character_trait, rules=settings.specialty_rules)
 
 
 def specialty_add_label(
     spend_type: TraitModifyCurrency,
     settings: CompanySettings,
-    character_trait: CharacterTrait | None = None,
+    character_trait: CharacterTrait,
 ) -> str:
     """Return the add button label, including the cost when one is charged."""
     cost = specialty_cost(spend_type, settings, character_trait)
@@ -128,14 +121,15 @@ def specialty_add_label(
 
 
 def specialty_rules_text(
-    character_trait: CharacterTrait, settings: CompanySettings, threshold: int
+    character_trait: CharacterTrait, settings: CompanySettings, min_rating: int | None
 ) -> str:
-    """Explain how specialties work on this trait, for the dialog and sheet tooltips.
+    """Explain how specialties work on this trait, for the specialty dialog.
 
     Args:
         character_trait: The trait whose specialties are explained.
         settings: The company settings.
-        threshold: The rating the trait needs before it can take a specialty.
+        min_rating: The rating the trait needs before it can take a specialty, or None when
+            its section never takes them.
 
     Returns:
         str: A short plain-language explanation.
@@ -145,11 +139,17 @@ def specialty_rules_text(
         f"A specialty adds one die to {name} when what you're doing fits it. "
         "The Storyteller decides when it fits."
     )
-    if settings.specialty_rules != "THRESHOLD":
+    if settings.specialty_rules != "RATING_BASED" or min_rating is None:
         return text
-    text += f" {name} can take specialties at {threshold} dots."
+    text += (
+        f" {name} keeps its specialties at {min_rating} dots or more;"
+        " lowering it below that removes them and refunds what they cost."
+    )
     if settings.specialty_xp_cost_enabled:
-        text += " Your first specialty is free; each one after costs XP equal to its rating."
+        text += (
+            " The first specialty is free, and each one after costs points equal to"
+            f" {name}'s rating."
+        )
     return text
 
 

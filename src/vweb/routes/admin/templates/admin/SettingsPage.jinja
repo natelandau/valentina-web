@@ -1,4 +1,4 @@
-{#def company, errors, form_values #}
+{#def company, errors, form_values, specialty_limits #}
 {# Field-value resolver: prefer submitted form_values on re-render, otherwise current company. #}
 {%- macro field_val(name, default="") -%}
   {%- if form_values is not none -%}{{ form_values.get(name, default) }}{%- else -%}{{ default }}{%- endif -%}
@@ -17,7 +17,8 @@
   {%- set perm_free_trait_val = field_val("permission_free_trait_changes", (s.permission_free_trait_changes if s and s.permission_free_trait_changes else "")) -%}
   {%- set perm_recoup_xp_val = field_val("permission_recoup_xp", (s.permission_recoup_xp if s and s.permission_recoup_xp else "")) -%}
   {%- set flaw_cost_val = field_val("custom_flaw_xp_cost", (s.custom_flaw_xp_cost if s and s.custom_flaw_xp_cost is not none else "")) -%}
-  {%- set specialty_rules_val = field_val("specialty_rules", (s.specialty_rules if s and s.specialty_rules else "FLAT")) -%}
+  {%- set saved_specialty_rules = s.specialty_rules if s else "FIXED_COST" -%}
+  {%- set specialty_rules_val = field_val("specialty_rules", saved_specialty_rules) -%}
   {#- An unchecked box is absent from the submitted form, so presence decides on re-render. -#}
   {%- set specialty_cost_on = ("specialty_xp_cost_enabled" in form_values) if form_values is not none else (s.specialty_xp_cost_enabled if s else false) -%}
 
@@ -34,9 +35,14 @@
       </div>
     {% endif %}
 
+    {#- Warn before saving new specialty rules, because the API removes specialties they no longer allow. -#}
+    {# djlint:off #}
     <form method="post"
           action="{{ url_for('admin.settings') }}"
-          class="space-y-6">
+          class="space-y-6"
+          x-data="{ savedRules: '{{ saved_specialty_rules }}' }"
+          @submit="if ($refs.specialtyRules.value !== savedRules && !confirm('Changing the specialty rules removes every specialty the new rules do not allow and refunds what it cost. Save anyway?')) $event.preventDefault()">
+    {# djlint:on #}
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
 
       <div class="card surface-card">
@@ -299,6 +305,33 @@
           </fieldset>
 
           <fieldset class="fieldset">
+            <legend class="fieldset-legend">Specialty rules</legend>
+            <select name="specialty_rules" class="select w-full" x-ref="specialtyRules">
+              <option value="FIXED_COST" {% if specialty_rules_val == "FIXED_COST" %}selected{% endif %}>
+                Fixed cost
+              </option>
+              <option value="RATING_BASED" {% if specialty_rules_val == "RATING_BASED" %}selected{% endif %}>
+                Rating based
+              </option>
+            </select>
+            <div class="label whitespace-normal block">
+              Which traits can take specialties, and what they cost when charging is on.
+              <ul class="list-disc pl-5 mt-1 space-y-1">
+                <li>Fixed cost: abilities with at least {{ specialty_limits.fixed_min_rating }} dot. Each specialty costs {{ specialty_limits.fixed_cost }}.</li>
+                <li>
+                  Rating based: attributes and abilities with at least {{ specialty_limits.min_rating }} dots, or {{ specialty_limits.favored_min_rating }} dots for abilities the character's concept favors. The first specialty on a trait is free. Each one after costs the trait's rating.
+                </li>
+              </ul>
+              <p class="mt-1">
+                Changing the rules removes every specialty the new rules do not allow and refunds what it cost. A trait that drops below its minimum rating also loses its specialties.
+              </p>
+            </div>
+            {% if errors.get("specialty_rules") %}
+              <p class="label text-error">{{ errors["specialty_rules"] }}</p>
+            {% endif %}
+          </fieldset>
+
+          <fieldset class="fieldset">
             <legend class="fieldset-legend">Charge for specialties</legend>
             <label class="label cursor-pointer justify-start gap-3">
               <input type="checkbox"
@@ -309,7 +342,7 @@
               <span>Charge for specialties</span>
             </label>
             <p class="label whitespace-normal block">
-              When on, specialties bought with XP or starting points cost what the specialty rules set: 3 each under Flat, or the trait's rating after the first under Threshold. Waiving a cost follows the free trait changes permission; the first specialty under Threshold is free by rule and needs no waiver. When off, specialties are always free.
+              When on, specialties bought with XP or starting points cost what the specialty rules set. Adding a specialty that has a cost without paying for it follows the free trait changes permission. When off, specialties are always free.
             </p>
           </fieldset>
 
@@ -328,30 +361,6 @@
             </p>
             {% if errors.get("custom_flaw_xp_cost") %}
               <p class="label text-error">{{ errors["custom_flaw_xp_cost"] }}</p>
-            {% endif %}
-          </fieldset>
-
-          <fieldset class="fieldset">
-            <legend class="fieldset-legend">Specialty rules</legend>
-            <select name="specialty_rules" class="select w-full">
-              <option value="FLAT" {% if specialty_rules_val == "FLAT" %}selected{% endif %}>
-                Flat
-              </option>
-              <option value="THRESHOLD" {% if specialty_rules_val == "THRESHOLD" %}selected{% endif %}>
-                Threshold
-              </option>
-            </select>
-            <p class="label whitespace-normal block">
-              Which traits can take specialties, and what they cost when charging is on.
-              <br>
-              &nbsp;&nbsp;- Flat: any ability with a dot; each specialty costs 3
-              <br>
-              &nbsp;&nbsp;- Threshold: attributes and abilities at 4 dots, or 3 for abilities the character's concept favors
-              <br>
-              &nbsp;&nbsp;&nbsp;&nbsp;The first specialty on a trait is free; each one after costs the trait's rating
-            </p>
-            {% if errors.get("specialty_rules") %}
-              <p class="label text-error">{{ errors["specialty_rules"] }}</p>
             {% endif %}
           </fieldset>
         </div>

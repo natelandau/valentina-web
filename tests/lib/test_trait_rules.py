@@ -6,10 +6,19 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from vweb.api_client.models import CharacterTraitSpecialty
 from vweb.api_client.testing import CharacterTraitFactory, TraitFactory
-from vweb.lib.trait_rules import accepts_specialties, is_derived_trait, specialty_threshold
+from vweb.lib.trait_rules import (
+    accepts_specialties,
+    is_derived_trait,
+    next_specialty_cost,
+    specialty_keep_rating,
+    specialty_min_rating,
+    specialty_sections_text,
+)
 
 if TYPE_CHECKING:
+    from vweb.api_client.constants import SpecialtyRules
     from vweb.api_client.models import CharacterTrait
 
 
@@ -39,39 +48,33 @@ def test_other_trait_is_not_derived() -> None:
     assert is_derived_trait(_character_trait("Composure"), "V5") is False
 
 
-def _ability(section_name: str | None, value: int) -> CharacterTrait:
-    trait = TraitFactory.build(sheet_section_name=section_name)
+def _trait(
+    section_name: str | None,
+    value: int,
+    name: str = "Firearms",
+    custom_for_character_id: str | None = None,
+) -> CharacterTrait:
+    trait = TraitFactory.build(
+        sheet_section_name=section_name,
+        name=name,
+        custom_for_character_id=custom_for_character_id,
+    )
     return CharacterTraitFactory.build(trait=trait, value=value)
 
 
-def test_ability_at_one_accepts_specialties() -> None:
-    """Verify an ability with one dot accepts specialties."""
-    assert accepts_specialties(_ability("Abilities", 1)) is True
-
-
-def test_ability_at_zero_does_not() -> None:
-    """Verify an ability with no dots does not."""
-    assert accepts_specialties(_ability("Abilities", 0)) is False
-
-
-def test_section_name_case_insensitive() -> None:
-    """Verify the section name match ignores case."""
-    assert accepts_specialties(_ability("ABILITIES", 2)) is True
-
-
-def test_attribute_does_not() -> None:
-    """Verify attributes do not accept specialties."""
-    assert accepts_specialties(_ability("Attributes", 3)) is False
-
-
-def test_missing_section_name_does_not() -> None:
-    """Verify a trait without a section name does not."""
-    assert accepts_specialties(_ability(None, 3)) is False
-
-
-def _named(section_name: str, name: str, value: int) -> CharacterTrait:
-    trait = TraitFactory.build(sheet_section_name=section_name, name=name)
-    return CharacterTraitFactory.build(trait=trait, value=value)
+@pytest.mark.parametrize(
+    ("section", "value", "expected"),
+    [
+        ("Abilities", 1, True),
+        ("Abilities", 0, False),
+        ("ABILITIES", 2, True),
+        ("Attributes", 5, False),
+        (None, 3, False),
+    ],
+)
+def test_fixed_cost_accepts_specialties(section: str | None, value: int, *, expected: bool) -> None:
+    """Verify FIXED_COST rules accept abilities with at least one dot, matching section case-free."""
+    assert accepts_specialties(_trait(section, value), rules="FIXED_COST") is expected
 
 
 @pytest.mark.parametrize(
@@ -86,31 +89,89 @@ def _named(section_name: str, name: str, value: int) -> CharacterTrait:
         ("Other", "Courage", 5, [], False),
     ],
 )
-def test_threshold_rules_accept_specialties(
+def test_rating_based_accepts_specialties(
     section: str, name: str, value: int, favored: list[str], *, expected: bool
 ) -> None:
-    """Verify THRESHOLD rules: 4 dots, 3 for favored abilities, attributes and abilities only."""
-    trait = _named(section, name, value)
-    assert accepts_specialties(trait, rules="THRESHOLD", favored_ability_names=favored) is expected
+    """Verify RATING_BASED rules: 4 dots, 3 for favored abilities, attributes and abilities only."""
+    trait = _trait(section, value, name=name)
+    assert (
+        accepts_specialties(trait, rules="RATING_BASED", favored_ability_names=favored) is expected
+    )
 
 
 @pytest.mark.parametrize(
-    ("section", "name", "favored", "expected"),
+    ("rules", "section", "name", "favored", "expected"),
     [
-        ("Abilities", "Medicine", ["Medicine"], 3),
-        ("Abilities", "Firearms", ["Medicine"], 4),
-        ("Attributes", "Strength", ["Strength"], 4),
+        ("RATING_BASED", "Abilities", "Medicine", ["Medicine"], 3),
+        ("RATING_BASED", "Abilities", "Firearms", ["Medicine"], 4),
+        ("RATING_BASED", "Attributes", "Strength", ["Strength"], 4),
+        ("RATING_BASED", "Disciplines", "Auspex", [], None),
+        ("FIXED_COST", "Abilities", "Medicine", ["Medicine"], 1),
+        ("FIXED_COST", "Attributes", "Strength", [], None),
     ],
 )
-def test_threshold_rules_specialty_threshold(
-    section: str, name: str, favored: list[str], expected: int
+def test_specialty_min_rating(
+    rules: SpecialtyRules, section: str, name: str, favored: list[str], expected: int | None
 ) -> None:
-    """Verify the threshold a trait needs under THRESHOLD rules."""
-    trait = _named(section, name, 1)
-    assert specialty_threshold(trait, rules="THRESHOLD", favored_ability_names=favored) == expected
+    """Verify the minimum rating per rules, or None for sections that never take specialties."""
+    trait = _trait(section, 1, name=name)
+    assert specialty_min_rating(trait, rules=rules, favored_ability_names=favored) == expected
 
 
-def test_flat_rules_threshold_is_one() -> None:
-    """Verify FLAT rules need only one dot, whatever the concept favors."""
-    trait = _named("Abilities", "Medicine", 1)
-    assert specialty_threshold(trait, favored_ability_names=["Medicine"]) == 1
+def test_custom_trait_is_never_favored() -> None:
+    """Verify a custom ability named like a favored one still needs 4 dots, as the API requires."""
+    trait = _trait("Abilities", 3, name="Medicine", custom_for_character_id="char-1")
+    assert (
+        specialty_min_rating(trait, rules="RATING_BASED", favored_ability_names=["Medicine"]) == 4
+    )
+
+
+def _with_specialties(trait: CharacterTrait, count: int) -> CharacterTrait:
+    trait.specialties = [
+        CharacterTraitSpecialty(
+            id=f"sp-{index}",
+            name=f"Specialty {index}",
+            date_created="2026-01-01T00:00:00Z",
+            date_modified="2026-01-01T00:00:00Z",
+        )
+        for index in range(count)
+    ]
+    return trait
+
+
+@pytest.mark.parametrize(
+    ("rules", "section", "value", "count", "expected"),
+    [
+        ("FIXED_COST", "Abilities", 3, 1, 1),
+        ("RATING_BASED", "Abilities", 5, 1, 4),
+        ("RATING_BASED", "Abilities", 5, 0, 0),
+        ("FIXED_COST", "Attributes", 3, 1, 3),
+    ],
+)
+def test_specialty_keep_rating(
+    rules: SpecialtyRules, section: str, value: int, count: int, expected: int
+) -> None:
+    """Verify the rating that keeps specialties: the minimum, 0 without any, the current value when disallowed."""
+    trait = _with_specialties(_trait(section, value), count)
+    assert specialty_keep_rating(trait, rules=rules) == expected
+
+
+@pytest.mark.parametrize(
+    ("rules", "value", "count", "expected"),
+    [
+        ("FIXED_COST", 2, 0, 3),
+        ("FIXED_COST", 5, 2, 3),
+        ("RATING_BASED", 4, 0, 0),
+        ("RATING_BASED", 5, 1, 5),
+    ],
+)
+def test_next_specialty_cost(rules: SpecialtyRules, value: int, count: int, expected: int) -> None:
+    """Verify FIXED_COST charges 3 and RATING_BASED makes the first free, then charges the rating."""
+    trait = _with_specialties(_trait("Abilities", value), count)
+    assert next_specialty_cost(trait, rules=rules) == expected
+
+
+def test_specialty_sections_text() -> None:
+    """Verify the message names the sections each rule set allows."""
+    assert specialty_sections_text("FIXED_COST") == "abilities"
+    assert specialty_sections_text("RATING_BASED") == "attributes and abilities"

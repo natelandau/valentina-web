@@ -11,6 +11,7 @@ from tests.conftest import get_csrf
 from tests.helpers import build_global_context
 from vweb.api_client.models import CharacterTraitSpecialty
 from vweb.api_client.testing import (
+    CharacterConceptFactory,
     CharacterFactory,
     CharacterFullSheetFactory,
     CharacterTraitFactory,
@@ -23,6 +24,7 @@ from vweb.api_client.testing import (
 from vweb.routes.character_trait_edit.services import specialty_help_text
 
 if TYPE_CHECKING:
+    from vweb.api_client.constants import SpecialtyRules
     from vweb.api_client.models import Character
 
 
@@ -51,8 +53,11 @@ class _Base:
         owner_id: str = "test-user-id",
         specialty_name: str = "Knives",
         recoup: Literal["UNRESTRICTED", "DENIED"] = "UNRESTRICTED",
+        rules: SpecialtyRules = "FIXED_COST",
+        strength_value: int = 3,
     ) -> Character:
         company = CompanyFactory.build(name="Test Company")
+        company.settings.specialty_rules = rules
         company.settings.permission_free_trait_changes = free
         company.settings.specialty_xp_cost_enabled = True
         company.settings.permission_recoup_xp = recoup
@@ -72,7 +77,7 @@ class _Base:
         )
         strength = CharacterTraitFactory.build(
             id="ct-str",
-            value=3,
+            value=strength_value,
             trait=TraitFactory.build(name="strength", sheet_section_name="Attributes"),
             specialties=[],
         )
@@ -216,7 +221,7 @@ class TestSpecialties(_Base):
         self.fake.assert_not_called(Routes.CHARACTER_TRAITS_SPECIALTY_ADD)
         assert (
             "warning",
-            "Only abilities with at least one dot can have specialties",
+            "Only abilities can have specialties",
         ) in self._flashes(client)
 
     def test_add_duplicate_flashes_api_detail(self, client, mocker) -> None:
@@ -274,7 +279,7 @@ class TestSpecialties(_Base):
         assert response.headers["HX-Redirect"] == f"/character/{character.id}/traits/XP"
         assert (
             "warning",
-            "Only abilities with at least one dot can have specialties",
+            "Only abilities can have specialties",
         ) in self._flashes(client)
 
     def test_add_empty_name_rejected(self, client, mocker) -> None:
@@ -537,3 +542,59 @@ class TestSpecialtyUi(_Base):
         assert "this.closest('dialog').close()" in html
         assert ">Add · 3 XP</button>" in html
         assert 'id="specialty-dialog-heading"' in html
+
+
+class TestRatingBasedSpecialties(_Base):
+    """Specialty eligibility and pricing under RATING_BASED rules."""
+
+    def test_attribute_below_four_rejected(self, client, mocker) -> None:
+        """Verify an attribute under 4 dots is refused with its minimum rating."""
+        character = self._setup(client, mocker, rules="RATING_BASED")
+        client.post(
+            self._url(character, "XP", "ct-str"),
+            data={"name": "Lifting"},
+            headers=self._headers(client),
+        )
+        self.fake.assert_not_called(Routes.CHARACTER_TRAITS_SPECIALTY_ADD)
+        assert (
+            "warning",
+            "Strength needs 4 dots before it can take a specialty",
+        ) in self._flashes(client)
+
+    def test_first_specialty_on_attribute_is_free(self, client, mocker) -> None:
+        """Verify an attribute at 4 dots takes its first specialty at no cost."""
+        character = self._setup(client, mocker, rules="RATING_BASED", strength_value=4)
+        client.post(
+            self._url(character, "XP", "ct-str"),
+            data={"name": "Lifting"},
+            headers=self._headers(client),
+        )
+        self.fake.assert_called(
+            Routes.CHARACTER_TRAITS_SPECIALTY_ADD,
+            json={"name": "Lifting", "currency": "XP"},
+            times=1,
+        )
+        assert ("success", "Added Lifting to Strength.") in self._flashes(client)
+
+    def test_favored_ability_dialog_prices_by_rating(self, client, mocker) -> None:
+        """Verify a favored ability at 3 dots opens the dialog and prices the next one at 3."""
+        character = self._setup(client, mocker, rules="RATING_BASED")
+        mocker.patch(
+            "vweb.lib.character_profile.cache.blueprint.concept",
+            return_value=CharacterConceptFactory.build(favored_ability_names=["Melee"]),
+        )
+        html = client.get(self._url(character, "XP"), headers={"HX-Request": "true"}).get_data(
+            as_text=True
+        )
+        assert "Add · 3 XP" in html
+        assert "Melee keeps its specialties at 3 dots or more" in html
+
+    def test_unfavored_ability_at_three_rejected(self, client, mocker) -> None:
+        """Verify an ability the concept does not favor needs 4 dots."""
+        character = self._setup(client, mocker, rules="RATING_BASED")
+        mocker.patch("vweb.lib.character_profile.cache.blueprint.concept", return_value=None)
+        client.get(self._url(character, "XP"), headers={"HX-Request": "true"})
+        assert (
+            "warning",
+            "Melee needs 4 dots before it can take a specialty",
+        ) in self._flashes(client)

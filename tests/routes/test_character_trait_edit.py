@@ -15,6 +15,7 @@ from vweb.api_client.exceptions import RequestValidationError
 from vweb.api_client.models import CharacterTraitSpecialty
 from vweb.api_client.models.character_trait import CharacterTraitValueOption
 from vweb.api_client.testing import (
+    CharacterConceptFactory,
     CharacterFactory,
     CharacterFullSheetFactory,
     CharacterTraitFactory,
@@ -27,6 +28,7 @@ from vweb.api_client.testing import (
 )
 
 if TYPE_CHECKING:
+    from vweb.api_client.constants import SpecialtyRules
     from vweb.api_client.models import (
         Character,
         CharacterFullSheet,
@@ -772,8 +774,16 @@ class TestSpecialtyLossWarnings:
     def _fake(self, fake_vclient) -> None:
         self.fake = fake_vclient
 
-    def _setup(self, mocker, names: tuple[str, ...] = ("Knives", "Swords")) -> Character:
+    def _setup(
+        self,
+        mocker,
+        names: tuple[str, ...] = ("Knives", "Swords"),
+        *,
+        rules: SpecialtyRules = "FIXED_COST",
+        melee_value: int = 3,
+    ) -> Character:
         ctx = build_global_context(user_role="STORYTELLER")
+        ctx.company.settings.specialty_rules = rules
         character = CharacterFactory.build(
             id="pc-1", campaign_id=ctx.campaigns[0].id, type="PLAYER", user_player_id="owner-1"
         )
@@ -781,7 +791,7 @@ class TestSpecialtyLossWarnings:
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
         melee = CharacterTraitFactory.build(
             id="ct-melee",
-            value=3,
+            value=melee_value,
             trait=TraitFactory.build(name="melee", sheet_section_name="Abilities", max_value=5),
             specialties=[_specialty(f"sp-{i}", name) for i, name in enumerate(names)],
         )
@@ -802,7 +812,7 @@ class TestSpecialtyLossWarnings:
         mocker.patch("vweb.lib.cache.character_sheet.clear")
         self.fake.set_response(
             Routes.CHARACTER_TRAITS_VALUE_OPTIONS,
-            model=_value_options("melee", **{"0": ("decrease", 0)}),
+            model=_value_options("melee", **{"0": ("decrease", 0), "3": ("decrease", 0)}),
         )
         return character
 
@@ -837,12 +847,42 @@ class TestSpecialtyLossWarnings:
         assert 'id="trait-delete-specialties" class="pb-4 -mt-2 empty:hidden"' in html
         assert "this.dataset.traitSpecialties + '.'" in html
 
-    def test_non_zero_change_skips_specialty_lookup(self, client, mocker) -> None:
-        """Verify a non-zero value change does not read the cached sheet."""
+    @staticmethod
+    def _value_button(html: str, trait_id: str, value: int) -> str:
+        return re.search(rf'<button[^>]*name="{trait_id}"\s+value="{value}"[^>]*>', html).group(0)
+
+    def test_rating_based_confirms_below_minimum(self, client, mocker) -> None:
+        """Verify RATING_BASED rules confirm any drop below 4 dots, not only a drop to 0."""
+        character = self._setup(mocker, rules="RATING_BASED", melee_value=5)
+        html = self._html(client, character)
+        below = self._value_button(html, "ct-melee", 3)
+        assert 'hx-confirm="Lowering Melee to 3 removes its specialties: Knives, Swords."' in below
+        assert "hx-confirm" not in self._value_button(html, "ct-melee", 4)
+
+    def test_rating_based_favored_ability_confirms_below_three(self, client, mocker) -> None:
+        """Verify an ability the concept favors keeps its specialties at 3 dots."""
+        character = self._setup(mocker, rules="RATING_BASED", melee_value=5)
+        mocker.patch(
+            "vweb.lib.character_profile.cache.blueprint.concept",
+            return_value=CharacterConceptFactory.build(favored_ability_names=["Melee"]),
+        )
+        html = self._html(client, character)
+        assert "hx-confirm" not in self._value_button(html, "ct-melee", 3)
+        assert "hx-confirm" in self._value_button(html, "ct-melee", 2)
+
+    def test_rating_based_drop_below_minimum_flash_mentions_specialties(
+        self, client, mocker
+    ) -> None:
+        """Verify lowering below the RATING_BASED minimum appends the specialties note."""
+        character = self._setup(mocker, rules="RATING_BASED", melee_value=5)
+        flashes = self._post(client, character, "ct-melee", "3")
+        assert any(m.endswith(" Its specialties were removed.") for m in flashes)
+
+    def test_fixed_cost_drop_above_zero_flash_omits_specialties(self, client, mocker) -> None:
+        """Verify FIXED_COST rules keep specialties on any rated ability."""
         character = self._setup(mocker)
-        sheet_get = mocker.patch("vweb.routes.character_trait_edit.views.cache.character_sheet.get")
-        self._post(client, character, "ct-melee", "2")
-        sheet_get.assert_not_called()
+        flashes = self._post(client, character, "ct-melee", "3")
+        assert not any("specialties" in m for m in flashes)
 
     def test_zero_change_looks_up_warm_sheet_key(self, client, mocker) -> None:
         """Verify a zero change reads the include_available_traits=True cache entry."""

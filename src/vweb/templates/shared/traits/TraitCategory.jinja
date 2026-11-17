@@ -13,7 +13,7 @@
     {# djlint:off #}
     <div class="flex items-center gap-1">
       {% if trait.specialties %}
-        <shared.traits.SpecialtyList character={{ character }} character_trait={{ trait }} inline={{ true }} />
+        <shared.traits.SpecialtyList character_trait={{ trait }} inline={{ true }} />
         <button type="button" class="btn btn-ghost btn-xs btn-square"
                 aria-label="Edit {{ trait.trait.name.strip().title() }} specialties"
                 hx-get="{{ specialties_url }}"
@@ -47,7 +47,7 @@
           {{ specialty_controls(trait) }}
         </td>
         <td class="text-right text-2xl text-bold justify-end">
-          <shared.traits.ValuePicker trait_id={{ trait.id }} current_value={{ trait.value }} min_value={{ trait.trait.min_value }} max_value={{ trait.trait.max_value }} show_delete={{ show_delete }} trait_name={{ trait.trait.name }} post_url={{ post_url }} read_only={{ is_derived_trait(trait, character.game_version) }} specialty_names={{ trait.specialties | map(attribute="name") | list }} />
+          <shared.traits.ValuePicker trait_id={{ trait.id }} current_value={{ trait.value }} min_value={{ trait.trait.min_value }} max_value={{ trait.trait.max_value }} show_delete={{ show_delete }} trait_name={{ trait.trait.name }} post_url={{ post_url }} read_only={{ is_derived_trait(trait, character.game_version) }} specialty_names={{ trait.specialties | map(attribute="name") | list }} specialty_keep_rating={{ character_trait_specialty_keep_rating(trait, character) }} />
         </td>
       </tr>
     {% endfor %}
@@ -64,7 +64,7 @@
             <div class="pl-4">{{ specialty_controls(trait) }}</div>
           </td>
           <td class="text-right text-2xl text-bold justify-end ">
-            <shared.traits.ValuePicker trait_id={{ trait.id }} current_value={{ trait.value }} min_value={{ trait.trait.min_value }} max_value={{ trait.trait.max_value }} show_delete={{ show_delete }} trait_name={{ trait.trait.name }} post_url={{ post_url }} read_only={{ is_derived_trait(trait, character.game_version) }} specialty_names={{ trait.specialties | map(attribute="name") | list }} />
+            <shared.traits.ValuePicker trait_id={{ trait.id }} current_value={{ trait.value }} min_value={{ trait.trait.min_value }} max_value={{ trait.trait.max_value }} show_delete={{ show_delete }} trait_name={{ trait.trait.name }} post_url={{ post_url }} read_only={{ is_derived_trait(trait, character.game_version) }} specialty_names={{ trait.specialties | map(attribute="name") | list }} specialty_keep_rating={{ character_trait_specialty_keep_rating(trait, character) }} />
           </td>
         </tr>
       {% endfor %}
