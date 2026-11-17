@@ -18,6 +18,8 @@ duty worktree-teardown branch=<name>  # Remove a worktree and flush its Redis da
 uv run duty validate_constants company_id=<id>  # Check client constants against a running API
 ```
 
+Do feature, fix, and refactor work in a worktree (`duty worktree branch=<name>`), not in the main checkout. It gives the work its own Redis database and dev server port, and keeps the main checkout on `main`.
+
 `duty ruff/format/ty/typos/test` and `duty precommit` run through gate-cache: a gate that already passed on the same files is skipped ("already passed on tree ..."). A skip is a valid pass. Force a rerun with `GATE_CACHE_DISABLE=1`.
 
 ## Stack
