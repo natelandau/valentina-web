@@ -15,14 +15,8 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
-def chapters_service(_mock_chapter_lookup) -> object:
-    """Return the chapters service mock from _mock_chapter_lookup for assertion-based tests."""
-    return _mock_chapter_lookup
-
-
-@pytest.fixture
-def _mock_chapter_lookup(mocker, mock_book, mock_campaign, mock_chapters) -> None:
-    """Mock book lookup, chapter lookup, and chapters service for chapter detail."""
+def _mock_chapter_lookup(mocker, fake_vclient, mock_book, mock_campaign, mock_chapters) -> None:
+    """Mock book and chapter lookups and serve the chapter API routes for chapter detail."""
     mocker.patch(
         "vweb.routes.chapter.views.fetch_book_or_404",
         return_value=(mock_book, mock_campaign),
@@ -39,14 +33,14 @@ def _mock_chapter_lookup(mocker, mock_book, mock_campaign, mock_chapters) -> Non
         "vweb.lib.cache.campaign_content.chapters",
         return_value=mock_chapters,
     )
-    chapters_service = mocker.patch("vweb.routes.chapter.views.api_services.chapters").return_value
-    chapters_service.list_all.return_value = mock_chapters
-    chapters_service.list_all_assets.return_value = []
-    chapters_service.list_all_notes.return_value = []
-    chapters_service.create.return_value = CampaignChapterFactory.build(
-        id="ch-new", book_id="book-1", number=4, name="New Chapter"
+    fake_vclient.set_response(Routes.CHAPTERS_ASSETS_LIST, items=[])
+    fake_vclient.set_response(Routes.CHAPTERS_NOTES_LIST, items=[])
+    fake_vclient.set_response(
+        Routes.CHAPTERS_CREATE,
+        model=CampaignChapterFactory.build(
+            id="ch-new", book_id="book-1", number=4, name="New Chapter"
+        ),
     )
-    return chapters_service
 
 
 @pytest.mark.usefixtures("_mock_chapter_lookup")
@@ -249,7 +243,7 @@ class TestChapterCharacterAssociations:
     """Tests for associating characters via the chapter create/edit forms."""
 
     def test_create_forwards_character_ids(
-        self, client, mocker, mock_campaign, mock_book, chapters_service
+        self, client, mocker, mock_campaign, mock_book, fake_vclient
     ) -> None:
         """Verify selected character ids are forwarded to the create call."""
         # Given a privileged user
@@ -262,12 +256,16 @@ class TestChapterCharacterAssociations:
             data={"name": "New Chapter", "character_ids": ["c1", "c2"], "csrf_token": csrf},
         )
 
-        # Then the ids are passed through to vclient create
-        _, kwargs = chapters_service.create.call_args
-        assert kwargs["character_ids"] == ["c1", "c2"]
+        # Then the ids reach the API's create call
+        fake_vclient.assert_called(
+            Routes.CHAPTERS_CREATE,
+            params={"campaign_id": mock_campaign.id, "book_id": mock_book.id},
+            json_subset={"name": "New Chapter", "character_ids": ["c1", "c2"]},
+            times=1,
+        )
 
     def test_edit_forwards_character_ids(
-        self, client, mocker, mock_campaign, mock_book, chapters_service
+        self, client, mocker, mock_campaign, mock_book, fake_vclient
     ) -> None:
         """Verify the chapter edit form forwards the selected ids to update."""
         # Given a privileged user
@@ -280,12 +278,16 @@ class TestChapterCharacterAssociations:
             data={"name": "Chapter Two", "character_ids": ["c9"], "csrf_token": csrf},
         )
 
-        # Then the id list is passed to vclient update
-        _, kwargs = chapters_service.update.call_args
-        assert kwargs["character_ids"] == ["c9"]
+        # Then the id list reaches the API's update call
+        fake_vclient.assert_called(
+            Routes.CHAPTERS_UPDATE,
+            params={"campaign_id": mock_campaign.id, "book_id": mock_book.id, "chapter_id": "ch-2"},
+            json_subset={"character_ids": ["c9"]},
+            times=1,
+        )
 
     def test_edit_clears_associations_when_none_selected(
-        self, client, mocker, mock_campaign, mock_book, chapters_service
+        self, client, mocker, mock_campaign, mock_book, fake_vclient
     ) -> None:
         """Verify submitting the edit form with no characters clears associations."""
         # Given a privileged user
@@ -298,24 +300,25 @@ class TestChapterCharacterAssociations:
             data={"name": "Chapter Two", "csrf_token": csrf},
         )
 
-        # Then an empty list is passed to clear all associations
-        _, kwargs = chapters_service.update.call_args
-        assert kwargs["character_ids"] == []
+        # Then an empty list is sent to clear all associations
+        fake_vclient.assert_called(
+            Routes.CHAPTERS_UPDATE,
+            params={"campaign_id": mock_campaign.id, "book_id": mock_book.id, "chapter_id": "ch-2"},
+            json_subset={"character_ids": []},
+            times=1,
+        )
 
     def test_edit_invalid_character_id_rerenders_form(
-        self, client, mocker, mock_campaign, mock_book, chapters_service
+        self, client, mocker, mock_campaign, mock_book, fake_vclient
     ) -> None:
         """Verify a server-rejected character id re-renders the form, not a 500."""
         # Given a privileged user and an update that the API rejects
         mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-        from vweb.api_client.exceptions import ValidationError
-
-        chapters_service.update.side_effect = ValidationError(
-            "bad",
-            response_data={
-                "detail": "unknown character",
-                "invalid_parameters": [{"field": "character_ids", "message": "unknown character"}],
-            },
+        fake_vclient.set_error(
+            Routes.CHAPTERS_UPDATE,
+            status_code=400,
+            detail="unknown character",
+            invalid_parameters=[{"field": "character_ids", "message": "unknown character"}],
         )
         csrf = get_csrf(client)
 
@@ -325,9 +328,10 @@ class TestChapterCharacterAssociations:
             data={"name": "Chapter Two", "character_ids": ["nope"], "csrf_token": csrf},
         )
 
-        # Then the form is re-rendered with an error and no 500 is raised
+        # Then the form is re-rendered with the API's error and no 500 is raised
         assert response.status_code == 200
         assert b"chapter-content" in response.data
+        assert b"unknown character" in response.data
 
 
 class TestChapterSidebarCharacters:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -21,14 +20,21 @@ if TYPE_CHECKING:
 
     from pytest_mock import MockerFixture
 
+    from vweb.api_client.routes import RouteSpec
+
 
 @dataclass(frozen=True)
 class NotesHandlerCase:
     """Describe one notes handler variant for the shared validation and CRUD tests."""
 
     handler_class: type
-    service_path: str
+    list_route: RouteSpec
+    get_route: RouteSpec
+    create_route: RouteSpec
+    update_route: RouteSpec
+    delete_route: RouteSpec
     parent_id: str
+    path_params: dict[str, str]
     handler_kwargs: dict[str, str] = field(default_factory=dict)
     needs_character_in_context: bool = False
 
@@ -36,20 +42,35 @@ class NotesHandlerCase:
 NOTES_HANDLER_CASES: dict[str, NotesHandlerCase] = {
     "book": NotesHandlerCase(
         handler_class=BookNotesHandler,
-        service_path="vweb.routes.book.handlers.api_services.books",
+        list_route=Routes.BOOKS_NOTES_LIST,
+        get_route=Routes.BOOKS_NOTES_GET,
+        create_route=Routes.BOOKS_NOTES_CREATE,
+        update_route=Routes.BOOKS_NOTES_UPDATE,
+        delete_route=Routes.BOOKS_NOTES_DELETE,
         parent_id="book-123",
+        path_params={"campaign_id": "camp-456", "book_id": "book-123"},
         handler_kwargs={"campaign_id": "camp-456"},
     ),
     "chapter": NotesHandlerCase(
         handler_class=ChapterNotesHandler,
-        service_path="vweb.routes.chapter.handlers.api_services.chapters",
+        list_route=Routes.CHAPTERS_NOTES_LIST,
+        get_route=Routes.CHAPTERS_NOTES_GET,
+        create_route=Routes.CHAPTERS_NOTES_CREATE,
+        update_route=Routes.CHAPTERS_NOTES_UPDATE,
+        delete_route=Routes.CHAPTERS_NOTES_DELETE,
         parent_id="chapter-123",
+        path_params={"campaign_id": "camp-456", "book_id": "book-789", "chapter_id": "chapter-123"},
         handler_kwargs={"campaign_id": "camp-456", "book_id": "book-789"},
     ),
     "character": NotesHandlerCase(
         handler_class=CharacterNotesHandler,
-        service_path="vweb.routes.character_view.handlers_notes.api_services.characters",
+        list_route=Routes.CHARACTERS_NOTES_LIST,
+        get_route=Routes.CHARACTERS_NOTES_GET,
+        create_route=Routes.CHARACTERS_NOTES_CREATE,
+        update_route=Routes.CHARACTERS_NOTES_UPDATE,
+        delete_route=Routes.CHARACTERS_NOTES_DELETE,
         parent_id="char-123",
+        path_params={"character_id": "char-123"},
         needs_character_in_context=True,
     ),
 }
@@ -62,15 +83,7 @@ def handler_case(request: pytest.FixtureRequest) -> NotesHandlerCase:
 
 
 @pytest.fixture
-def mock_svc(mocker: MockerFixture, handler_case: NotesHandlerCase) -> MagicMock:
-    """Mock the vclient service factory for the handler under test."""
-    svc = MagicMock()
-    mocker.patch(handler_case.service_path, return_value=svc)
-    return svc
-
-
-@pytest.fixture
-def handler_in_context(app, handler_case, mock_global_context, mock_svc) -> Iterator[object]:
+def handler_in_context(app, handler_case, mock_global_context, fake_vclient) -> Iterator[object]:
     """Construct the handler inside a seeded request context and keep the context open."""
     with app.test_request_context():
         from flask import g
@@ -136,58 +149,69 @@ class TestNotesHandlerValidation:
 class TestNotesHandlerOperations:
     """Tests for the shared CRUD operations across all notes handlers."""
 
-    def test_list_items_calls_service(self, handler_case, handler_in_context, mock_svc) -> None:
-        """Verify list_items delegates to the vclient service."""
+    def test_list_items_calls_service(self, handler_case, handler_in_context, fake_vclient) -> None:
+        """Verify list_items fetches the parent's notes from the API."""
         # When listing items
         handler_in_context.list_items()
 
-        # Then the service is called with the parent ID
-        mock_svc.list_all_notes.assert_called_once_with(handler_case.parent_id)
+        # Then the parent's notes are requested
+        fake_vclient.assert_called(handler_case.list_route, params=handler_case.path_params)
 
-    def test_get_item_calls_service(self, handler_case, handler_in_context, mock_svc) -> None:
-        """Verify get_item delegates to the vclient service."""
+    def test_get_item_calls_service(self, handler_case, handler_in_context, fake_vclient) -> None:
+        """Verify get_item fetches the note under the parent from the API."""
         # When getting a single item
         handler_in_context.get_item("note-789")
 
-        # Then the service is called with the correct IDs
-        mock_svc.get_note.assert_called_once_with(handler_case.parent_id, "note-789")
+        # Then the note is requested under its parent
+        fake_vclient.assert_called(
+            handler_case.get_route,
+            params={**handler_case.path_params, "note_id": "note-789"},
+            times=1,
+        )
 
     def test_create_item_strips_whitespace(
-        self, handler_case, handler_in_context, mock_svc
+        self, handler_case, handler_in_context, fake_vclient
     ) -> None:
         """Verify create_item strips whitespace from form values before sending to the API."""
         # When creating an item with padded whitespace
         handler_in_context.create_item({"title": "  My Title  ", "content": "  My Content  "})
 
-        # Then the service receives stripped values
-        mock_svc.create_note.assert_called_once_with(
-            handler_case.parent_id,
-            title="My Title",
-            content="My Content",
+        # Then the API receives stripped values under the parent
+        fake_vclient.assert_called(
+            handler_case.create_route,
+            params=handler_case.path_params,
+            json={"title": "My Title", "content": "My Content"},
+            times=1,
         )
 
     def test_update_item_strips_whitespace(
-        self, handler_case, handler_in_context, mock_svc
+        self, handler_case, handler_in_context, fake_vclient
     ) -> None:
         """Verify update_item strips whitespace from form values before sending to the API."""
         # When updating with padded whitespace
         handler_in_context.update_item("note-789", {"title": "  Updated  ", "content": "  New  "})
 
-        # Then the service receives stripped values
-        mock_svc.update_note.assert_called_once_with(
-            handler_case.parent_id,
-            "note-789",
-            title="Updated",
-            content="New",
+        # Then the API receives stripped values for that note
+        fake_vclient.assert_called(
+            handler_case.update_route,
+            params={**handler_case.path_params, "note_id": "note-789"},
+            json={"title": "Updated", "content": "New"},
+            times=1,
         )
 
-    def test_delete_item_calls_service(self, handler_case, handler_in_context, mock_svc) -> None:
-        """Verify delete_item delegates to the vclient service."""
+    def test_delete_item_calls_service(
+        self, handler_case, handler_in_context, fake_vclient
+    ) -> None:
+        """Verify delete_item deletes the note under the parent through the API."""
         # When deleting an item
         handler_in_context.delete_item("note-789")
 
-        # Then the service is called with the correct IDs
-        mock_svc.delete_note.assert_called_once_with(handler_case.parent_id, "note-789")
+        # Then the API receives a delete for that note
+        fake_vclient.assert_called(
+            handler_case.delete_route,
+            params={**handler_case.path_params, "note_id": "note-789"},
+            times=1,
+        )
 
 
 class TestBookNotesHandlerSpecific:
@@ -253,23 +277,26 @@ class TestChapterNotesHandlerInit:
                 ChapterNotesHandler("chapter-123")
 
     def test_init_calls_service_with_correct_args(self, app, fake_vclient) -> None:
-        """Verify constructor passes campaign_id and book_id to chapters_service."""
+        """Verify the handler scopes its requests to the campaign, book, and session user."""
         with app.test_request_context():
-            from unittest.mock import patch
-
             seed_session()
 
-            with patch(
-                "vweb.lib.api_services.chapters_service", return_value=MagicMock()
-            ) as patched_svc:
-                ChapterNotesHandler("chapter-123", campaign_id="camp-456", book_id="book-789")
+            # When listing notes through a chapter handler
+            handler = ChapterNotesHandler("chapter-123", campaign_id="camp-456", book_id="book-789")
+            handler.list_items()
 
-                patched_svc.assert_called_once_with(
-                    campaign_id="camp-456",
-                    book_id="book-789",
-                    on_behalf_of="test-user-id",
-                    company_id="test-company-id",
-                )
+        # Then the request carries the campaign, book, company, and On-Behalf-Of user
+        (request,) = fake_vclient.assert_called(
+            Routes.CHAPTERS_NOTES_LIST,
+            params={
+                "company_id": "test-company-id",
+                "campaign_id": "camp-456",
+                "book_id": "book-789",
+                "chapter_id": "chapter-123",
+            },
+            times=1,
+        )
+        assert request.headers["on-behalf-of"] == "test-user-id"
 
 
 class TestCharacterNotesHandlerInit:
@@ -292,22 +319,10 @@ class TestCharacterNotesHandlerInit:
                 CharacterNotesHandler("nonexistent-id")
 
 
-CAMPAIGN_CONTENT_HANDLERS: dict[str, tuple[type, str, dict[str, str]]] = {
-    "campaign": (
-        CampaignNotesHandler,
-        "vweb.routes.campaign_notes.handlers.api_services.campaigns",
-        {},
-    ),
-    "book": (
-        BookNotesHandler,
-        "vweb.routes.book.handlers.api_services.books",
-        {"campaign_id": "camp-456"},
-    ),
-    "chapter": (
-        ChapterNotesHandler,
-        "vweb.routes.chapter.handlers.api_services.chapters",
-        {"campaign_id": "camp-456", "book_id": "book-789"},
-    ),
+CAMPAIGN_CONTENT_HANDLERS: dict[str, tuple[type, dict[str, str]]] = {
+    "campaign": (CampaignNotesHandler, {}),
+    "book": (BookNotesHandler, {"campaign_id": "camp-456"}),
+    "chapter": (ChapterNotesHandler, {"campaign_id": "camp-456", "book_id": "book-789"}),
 }
 
 
@@ -318,13 +333,13 @@ class TestCampaignContentNotesMutationGuard:
     @pytest.mark.parametrize(
         ("role", "expected"), [("PLAYER", False), ("STORYTELLER", True), ("ADMIN", True)]
     )
+    @pytest.mark.usefixtures("fake_vclient")
     def test_can_mutate_follows_can_manage_campaign(
-        self, app, mocker: MockerFixture, handler_name, role, expected
+        self, app, handler_name, role, expected
     ) -> None:
         """Verify note writes require campaign-management permission."""
         # Given a user of the given role in a company that restricts campaign management
-        handler_class, service_path, kwargs = CAMPAIGN_CONTENT_HANDLERS[handler_name]
-        mocker.patch(service_path, return_value=MagicMock())
+        handler_class, kwargs = CAMPAIGN_CONTENT_HANDLERS[handler_name]
         context = build_global_context(user_role=role)
         assert context.company.settings.permission_manage_campaign == "STORYTELLER"
 
@@ -351,14 +366,14 @@ class TestCampaignNotesRouteGuard:
             ("delete", "/campaign/camp-1/notes/items/note-1"),
         ],
     )
-    def test_player_write_is_forbidden(self, client, mocker: MockerFixture, method, path) -> None:
+    def test_player_write_is_forbidden(
+        self, client, mocker: MockerFixture, fake_vclient, method, path
+    ) -> None:
         """Verify a player cannot create, update, or delete campaign notes."""
         # Given a player in a company that restricts campaign management
         campaign = CampaignFactory.build(id="camp-1")
         context = build_global_context(user_role="PLAYER", campaign=campaign)
         mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
-        svc = MagicMock()
-        mocker.patch("vweb.routes.campaign_notes.handlers.api_services.campaigns", return_value=svc)
 
         # When the player sends the write directly
         response = getattr(client, method)(
@@ -369,9 +384,9 @@ class TestCampaignNotesRouteGuard:
 
         # Then the request is refused and no note write reaches the API
         assert response.status_code == 403
-        svc.create_note.assert_not_called()
-        svc.update_note.assert_not_called()
-        svc.delete_note.assert_not_called()
+        fake_vclient.assert_not_called(Routes.CAMPAIGNS_NOTES_CREATE)
+        fake_vclient.assert_not_called(Routes.CAMPAIGNS_NOTES_UPDATE)
+        fake_vclient.assert_not_called(Routes.CAMPAIGNS_NOTES_DELETE)
 
     @pytest.mark.parametrize(
         "path", ["/campaign/camp-1/notes/items/form", "/campaign/camp-1/notes/items/form/note-1"]
