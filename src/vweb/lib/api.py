@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any
 
-import httpx2
 from flask import abort, g, session
 
-from vweb.api_client.exceptions import APIError, ServerError
+from vweb.api_client.exceptions import APIConnectionError, APIError, ServerError
 from vweb.lib import cache
 from vweb.lib.api_errors import api_error_message
 
@@ -19,9 +18,6 @@ if TYPE_CHECKING:
     from vweb.api_client.services.users import UsersService
 
 logger = logging.getLogger(__name__)
-
-# The API client raises httpx2 connection and timeout errors as-is once its retries run out.
-API_UNAVAILABLE_ERRORS: Final = (httpx2.HTTPError, APIError)
 
 
 def count_notes(service: Any, parent_id: str) -> int:
@@ -264,7 +260,7 @@ def _outcome_unknown(error: Exception) -> bool:
     A network failure or a 5xx that outlasts the client's retries can arrive after the API has
     already committed the grant.
     """
-    return isinstance(error, (httpx2.HTTPError, ServerError))
+    return isinstance(error, (APIConnectionError, ServerError))
 
 
 def _grant_xp(
@@ -273,7 +269,7 @@ def _grant_xp(
     """Send the XP grant, returning a user-facing error on failure."""
     try:
         svc.add_xp(user_id, campaign_id, amount=amount)
-    except API_UNAVAILABLE_ERRORS as error:
+    except APIError as error:
         if not _outcome_unknown(error):
             return api_error_message(
                 error,
@@ -301,7 +297,7 @@ def _grant_cool_points(
     """Send the cool point grant, returning a user-facing error on failure."""
     try:
         svc.add_cool_points(user_id, campaign_id, amount=amount)
-    except API_UNAVAILABLE_ERRORS as error:
+    except APIError as error:
         outcome_unknown = _outcome_unknown(error)
         if outcome_unknown:
             logger.warning("Cool point grant outcome unknown", exc_info=True)

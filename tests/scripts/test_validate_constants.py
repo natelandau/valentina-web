@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import httpx2
 import pytest
 
 from scripts import validate_constants
+from vweb.api_client.exceptions import APIConnectionError
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -68,7 +68,7 @@ def test_api_error_exits_2(
     mock_main: MagicMock, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Verify a transport error is reported as exit code 2 without a traceback."""
-    mock_main.side_effect = httpx2.ConnectError("refused")
+    mock_main.side_effect = APIConnectionError("Could not reach the API: refused")
 
     assert _run(monkeypatch, "--company-id", "c1", "--api-url", "http://api", "--api-key", "k") == 2
-    assert "ConnectError: refused" in capsys.readouterr().err
+    assert "APIConnectionError: Could not reach the API: refused" in capsys.readouterr().err

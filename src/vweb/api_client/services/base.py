@@ -25,6 +25,7 @@ from vweb.api_client.constants import (
     REQUEST_ID_HEADER,
 )
 from vweb.api_client.exceptions import (
+    APIConnectionError,
     APIError,
     AuthenticationError,
     AuthorizationError,
@@ -318,8 +319,8 @@ class BaseService:
             ServerError: When server error occurs and max retries are exhausted.
             ConflictError: For a 409 response, or when an idempotent request is
                 still in progress after max retries are exhausted.
-            httpx2.ConnectError: When connection fails and max retries are exhausted.
-            httpx2.TimeoutException: When request times out and max retries are exhausted.
+            APIConnectionError: When no response arrives, such as a refused connection or
+                a timeout, and retries are exhausted or not allowed.
             APIError: For other API error responses.
         """
         headers = self._merge_on_behalf_of_header(headers)
@@ -350,8 +351,11 @@ class BaseService:
                     headers=headers,
                     files=files,
                 )
-            except (httpx2.ConnectError, httpx2.TimeoutException) as exc:
-                if not self._is_retryable_method(method, headers) or not self._wait_before_retry(
+            except httpx2.HTTPError as exc:
+                retryable = isinstance(
+                    exc, (httpx2.ConnectError, httpx2.TimeoutException)
+                ) and self._is_retryable_method(method, headers)
+                if retryable and self._wait_before_retry(
                     request_logger,
                     "Retry after network error",
                     attempt=attempt,
@@ -360,8 +364,12 @@ class BaseService:
                     started_at=started_at,
                     error_type=type(exc).__name__,
                 ):
-                    raise
-                continue
+                    continue
+                request_logger.bind(attempts=attempts_made, error_type=type(exc).__name__).error(
+                    "Fail to reach the API"
+                )
+                msg = f"Could not reach the API: {str(exc) or type(exc).__name__}"
+                raise APIConnectionError(msg) from exc
 
             try:
                 self._raise_for_status(response, method, path, params=params)

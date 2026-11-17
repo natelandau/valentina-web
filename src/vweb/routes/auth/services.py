@@ -7,8 +7,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from vweb.api_client import identity_service, user_lookup_service
-from vweb.api_client.exceptions import ServerError, UnprocessableEntityError
-from vweb.lib.api import API_UNAVAILABLE_ERRORS
+from vweb.api_client.exceptions import APIError, ServerError, UnprocessableEntityError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -119,7 +118,7 @@ def identify_in_companies(
                 username=username,
                 email=email,
             )
-        except API_UNAVAILABLE_ERRORS as exc:
+        except APIError as exc:
             # 422/5xx are token- or provider-level: failing in one company means
             # failing in all, so surface them instead of logging per company
             if isinstance(exc, (UnprocessableEntityError, ServerError)):

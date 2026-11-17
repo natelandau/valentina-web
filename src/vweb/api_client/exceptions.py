@@ -112,6 +112,16 @@ class APIError(Exception):
         return self.response_data.get("code")
 
 
+class APIConnectionError(APIError):
+    """Raised when a request gets no HTTP response from the API.
+
+    Covers refused connections, timeouts, and other transport failures, after any
+    retries run out. The request may still have reached the API, so a write that
+    raises this error has an unknown outcome. The original transport exception is
+    kept as ``__cause__``. ``status_code`` is None because no response arrived.
+    """
+
+
 class AuthenticationError(APIError):
     """Raised when authentication fails (401 Unauthorized).
 

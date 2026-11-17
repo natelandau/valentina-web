@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-import httpx2
 import pytest
 from flask import g, session
 from werkzeug.exceptions import NotFound
@@ -13,7 +12,7 @@ from werkzeug.exceptions import NotFound
 from tests.conftest import make_dice_roll_result
 from tests.helpers import build_global_context
 from vweb.api_client import campaigns_service
-from vweb.api_client.exceptions import ServerError, ValidationError
+from vweb.api_client.exceptions import APIConnectionError, ServerError, ValidationError
 from vweb.api_client.testing import (
     CampaignBookFactory,
     CampaignChapterFactory,
@@ -696,7 +695,9 @@ class TestValidateAndSubmitExperience:
         """Verify a network failure on cool points after XP succeeds is reported, not raised."""
         # Given XP that succeeds and a cool point call that cannot reach the API
         users_service = mocker.patch("vweb.api_client.users_service").return_value
-        users_service.add_cool_points.side_effect = httpx2.ConnectError("down")
+        users_service.add_cool_points.side_effect = APIConnectionError(
+            "Could not reach the API: down"
+        )
         clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
         form_data = {"xp": "5", "cool_points": "2"}
 
@@ -718,7 +719,9 @@ class TestValidateAndSubmitExperience:
         """Verify a network failure on cool points says the outcome is unknown."""
         # Given a cool point call that cannot reach the API and no XP requested
         users_service = mocker.patch("vweb.api_client.users_service").return_value
-        users_service.add_cool_points.side_effect = httpx2.ConnectError("down")
+        users_service.add_cool_points.side_effect = APIConnectionError(
+            "Could not reach the API: down"
+        )
         clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
 
         # When submitting only cool points
@@ -736,7 +739,7 @@ class TestValidateAndSubmitExperience:
         """Verify a network failure on XP is reported, not raised, and skips cool points."""
         # Given an XP call that cannot reach the API
         users_service = mocker.patch("vweb.api_client.users_service").return_value
-        users_service.add_xp.side_effect = httpx2.ReadTimeout("slow")
+        users_service.add_xp.side_effect = APIConnectionError("Could not reach the API: timed out")
         clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
         form_data = {"xp": "5", "cool_points": "2"}
 

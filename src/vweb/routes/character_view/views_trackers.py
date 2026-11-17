@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING, NoReturn
 from flask import Response, abort, flash, g, request, session
 from flask.views import MethodView
 
+from vweb.api_client.exceptions import APIError
 from vweb.lib import cache
-from vweb.lib.api import API_UNAVAILABLE_ERRORS, get_character_and_campaign
+from vweb.lib.api import get_character_and_campaign
 from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog
 from vweb.lib.character_profile import TRAIT_API_ERRORS, find_character_trait
@@ -125,7 +126,7 @@ def _recover[T](
     state: T | None
     try:
         state = refetch()
-    except API_UNAVAILABLE_ERRORS:
+    except APIError:
         state = fallback
     else:
         store(state)
@@ -171,7 +172,7 @@ class TraitTrackerView(MethodView):
                 render=lambda fresh: _render_tracker(character, character_trait, fresh),
                 fallback=character_trait.tracker,
             )
-        except API_UNAVAILABLE_ERRORS:
+        except APIError:
             return _save_failed(character_id)
 
         _store_tracker(character_id, character_trait_id, tracker)
@@ -200,7 +201,7 @@ class HealthView(MethodView):
                 render=lambda fresh: _render_health(character, fresh),
                 fallback=None,
             )
-        except API_UNAVAILABLE_ERRORS:
+        except APIError:
             return _save_failed(character_id)
 
         _store_health(character_id, health)

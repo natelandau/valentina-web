@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from pydantic import ValidationError as PydanticValidationError
 
 from vweb.api_client.exceptions import (
+    APIConnectionError,
     APIError,
     AuthenticationError,
     AuthorizationError,
@@ -684,3 +685,21 @@ class TestAPIErrorCodeProperty:
 
         # Then: The code appears in the string output
         assert "Code: TOKEN_VERIFICATION_FAILED" in str(error)
+
+
+class TestAPIConnectionError:
+    """Tests for APIConnectionError."""
+
+    def test_is_an_api_error_without_status(self):
+        """Verify a connection error is caught as APIError and reads as its message."""
+        # When: Creating a connection error
+        error = APIConnectionError("Could not reach the API: Connection refused")
+
+        # Then: It is an APIError with no HTTP status or response body
+        assert isinstance(error, APIError)
+        assert error.status_code is None
+        assert error.response_data == {}
+        assert error.detail is None
+
+        # Then: Its text is the message alone
+        assert str(error) == "Could not reach the API: Connection refused"

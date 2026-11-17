@@ -8,6 +8,7 @@ import respx
 from vweb.api_client import VClient
 from vweb.api_client.constants import API_KEY_HEADER, IDEMPOTENCY_KEY_HEADER, ON_BEHALF_OF_HEADER
 from vweb.api_client.exceptions import (
+    APIConnectionError,
     APIError,
     AuthenticationError,
     AuthorizationError,
@@ -1373,31 +1374,42 @@ class TestBaseServiceNetworkErrorRetry:
 
     @respx.mock
     def test_connect_error_max_retries_exhausted(self, vclient, base_url, mocker):
-        """Verify ConnectError is raised after max retries are exhausted."""
+        """Verify APIConnectionError wraps the ConnectError once retries are exhausted."""
         # Given: Mock time.sleep to avoid actual delays
         mocker.patch("vweb.api_client.services.base.time.sleep")
 
         # Given: An endpoint that always raises ConnectError
-        respx.get(f"{base_url}/test").mock(side_effect=httpx2.ConnectError("Connection refused"))
+        route = respx.get(f"{base_url}/test").mock(
+            side_effect=httpx2.ConnectError("Connection refused")
+        )
 
-        # When/Then: Making a request raises ConnectError after max retries
+        # When/Then: Making a request raises APIConnectionError after max retries
         service = BaseService(vclient)
-        with pytest.raises(httpx2.ConnectError):
+        with pytest.raises(APIConnectionError) as exc_info:
             service._get("/test")
+
+        # Then: Every attempt was used and the transport error is kept as the cause
+        assert route.call_count == vclient._config.max_retries + 1
+        assert isinstance(exc_info.value.__cause__, httpx2.ConnectError)
+        assert exc_info.value.status_code is None
+        assert str(exc_info.value) == "Could not reach the API: Connection refused"
 
     @respx.mock
     def test_timeout_max_retries_exhausted(self, vclient, base_url, mocker):
-        """Verify TimeoutException is raised after max retries are exhausted."""
+        """Verify APIConnectionError wraps a timeout once retries are exhausted."""
         # Given: Mock time.sleep to avoid actual delays
         mocker.patch("vweb.api_client.services.base.time.sleep")
 
         # Given: An endpoint that always raises ReadTimeout
         respx.get(f"{base_url}/test").mock(side_effect=httpx2.ReadTimeout("Read timed out"))
 
-        # When/Then: Making a request raises TimeoutException after max retries
+        # When/Then: Making a request raises APIConnectionError after max retries
         service = BaseService(vclient)
-        with pytest.raises(httpx2.TimeoutException):
+        with pytest.raises(APIConnectionError) as exc_info:
             service._get("/test")
+
+        # Then: The timeout is kept as the cause
+        assert isinstance(exc_info.value.__cause__, httpx2.TimeoutException)
 
     @respx.mock
     def test_post_without_idempotency_key_not_retried_on_connect_error(
@@ -1412,7 +1424,7 @@ class TestBaseServiceNetworkErrorRetry:
 
         # When/Then: Making a POST request without idempotency key raises immediately
         service = BaseService(vclient)
-        with pytest.raises(httpx2.ConnectError):
+        with pytest.raises(APIConnectionError):
             service._post("/items", json={"name": "test"})
 
         # Then: No retries were attempted
@@ -1452,7 +1464,7 @@ class TestBaseServiceNetworkErrorRetry:
         # When/Then: Making a request with retry disabled raises immediately
         with VClient(base_url=base_url, api_key=api_key, auto_retry_rate_limit=False) as client:
             service = BaseService(client)
-            with pytest.raises(httpx2.ConnectError):
+            with pytest.raises(APIConnectionError):
                 service._get("/test")
 
         # Then: No retries were attempted
@@ -1482,6 +1494,42 @@ class TestBaseServiceNetworkErrorRetry:
         assert len(delays) == 2
         assert 0.5 <= delays[0] <= 0.625
         assert 1.0 <= delays[1] <= 1.25
+
+    @respx.mock
+    def test_other_transport_error_is_wrapped_without_retry(self, vclient, base_url, mocker):
+        """Verify a transport error other than connect or timeout is raised at once, wrapped."""
+        # Given: Mock time.sleep to detect any retry
+        mock_sleep = mocker.patch("vweb.api_client.services.base.time.sleep")
+
+        # Given: An endpoint whose connection drops while reading the response
+        route = respx.get(f"{base_url}/test").mock(
+            side_effect=httpx2.RemoteProtocolError("Server disconnected")
+        )
+
+        # When/Then: The failure surfaces as APIConnectionError after one call
+        with pytest.raises(APIConnectionError) as exc_info:
+            BaseService(vclient)._get("/test")
+
+        # Then: No retry was made and the original error is the cause
+        assert route.call_count == 1
+        mock_sleep.assert_not_called()
+        assert isinstance(exc_info.value.__cause__, httpx2.RemoteProtocolError)
+
+    @respx.mock
+    def test_connection_error_without_message_names_the_error_type(self, base_url, api_key, mocker):
+        """Verify a transport error with no text still gives a readable message."""
+        # Given: Mock time.sleep to avoid actual delays
+        mocker.patch("vweb.api_client.services.base.time.sleep")
+
+        # Given: An endpoint that times out with an empty message
+        respx.get(f"{base_url}/test").mock(side_effect=httpx2.ReadTimeout(""))
+
+        # When/Then: The error message names the transport error type
+        with (
+            VClient(base_url=base_url, api_key=api_key, auto_retry_rate_limit=False) as client,
+            pytest.raises(APIConnectionError, match="Could not reach the API: ReadTimeout"),
+        ):
+            BaseService(client)._get("/test")
 
 
 class ConcreteServiceWithOnBehalfOf(BaseService):
@@ -1666,7 +1714,7 @@ class TestBaseServiceRetryLimits:
         # When/Then: The network error surfaces after one call
         with (
             VClient(base_url=base_url, api_key=api_key, retry_budget=10.0) as client,
-            pytest.raises(httpx2.ConnectError),
+            pytest.raises(APIConnectionError),
         ):
             BaseService(client)._get("/test")
 
