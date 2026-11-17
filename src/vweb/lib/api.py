@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# vclient raises httpx2 connection and timeout errors as-is once its retries run out.
+# The API client raises httpx2 connection and timeout errors as-is once its retries run out.
 API_UNAVAILABLE_ERRORS: Final = (httpx2.HTTPError, APIError)
 
 
@@ -31,7 +31,7 @@ def count_notes(service: Any, parent_id: str) -> int:
     surrounding page render.
     """
     try:
-        return len(service.list_all_notes(parent_id))
+        return service.get_notes_page(parent_id, limit=1).total
     except APIError:
         return 0
 
@@ -261,8 +261,8 @@ _COOL_POINTS_UNCONFIRMED_AFTER_XP = (
 def _outcome_unknown(error: Exception) -> bool:
     """Return True when a grant may have been applied despite the error.
 
-    vclient sends experience grants without an idempotency key and never retries them, so a
-    network failure or a 5xx can arrive after the API has already committed the grant.
+    A network failure or a 5xx that outlasts the client's retries can arrive after the API has
+    already committed the grant.
     """
     return isinstance(error, (httpx2.HTTPError, ServerError))
 

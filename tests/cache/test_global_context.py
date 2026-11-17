@@ -70,7 +70,7 @@ def test_fetch_global_data_returns_timestamp(app) -> None:
 
 
 def test_fetch_global_data_admin_populates_pending_user_count(app, fake_vclient) -> None:
-    """Verify pending_user_count reflects list_all_unapproved when user is ADMIN."""
+    """Verify pending_user_count reflects the unapproved-users total when user is ADMIN."""
     # Given an ADMIN requesting user and two pending users on the company
     company = CompanyFactory.build(id="test-company-id")
     admin = UserFactory.build(id="admin-id", role="ADMIN", company_id="test-company-id")
@@ -85,19 +85,19 @@ def test_fetch_global_data_admin_populates_pending_user_count(app, fake_vclient)
     with app.app_context():
         result = _fetch_global_data("test-company-id", "admin-id")
 
-    # Then pending_user_count matches the unapproved list length
+    # Then pending_user_count matches the unapproved-users total
     assert result.pending_user_count == 2
 
 
 def test_fetch_global_data_non_admin_skips_pending_user_count(app, fake_vclient) -> None:
-    """Verify pending_user_count stays 0 for non-admins (no list_all_unapproved call)."""
+    """Verify pending_user_count stays 0 for non-admins (no unapproved-users call)."""
     # Given a PLAYER requesting user
     company = CompanyFactory.build(id="test-company-id")
     player = UserFactory.build(id="player-id", role="PLAYER", company_id="test-company-id")
 
     fake_vclient.set_response(Routes.COMPANIES_GET, model=company)
     fake_vclient.set_response(Routes.USERS_LIST, items=[player])
-    # list_all_unapproved intentionally not registered — calling it would 404
+    # The unapproved-users route is intentionally not registered — calling it would 404
     fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[])
 
     # When fetching global data

@@ -12,6 +12,7 @@ from werkzeug.exceptions import NotFound
 
 from tests.conftest import make_dice_roll_result
 from tests.helpers import build_global_context
+from vweb.api_client import campaigns_service
 from vweb.api_client.exceptions import ServerError, ValidationError
 from vweb.api_client.testing import (
     CampaignBookFactory,
@@ -20,11 +21,13 @@ from vweb.api_client.testing import (
     CharacterFactory,
     CompanyFactory,
     DicerollFactory,
+    NoteFactory,
     Routes,
     TraitFactory,
     UserFactory,
 )
 from vweb.lib.api import (
+    count_notes,
     fetch_book_or_404,
     fetch_chapter_or_404,
     get_active_campaign,
@@ -817,3 +820,31 @@ class TestValidateAndSubmitExperience:
         assert errors == ["Cool points: Too many"]
         users_service.add_xp.assert_not_called()
         clear.assert_not_called()
+
+
+def test_count_notes_returns_api_total(app, fake_vclient) -> None:
+    """Verify count_notes reports the API's total, not the size of the first page."""
+    # Given a campaign whose notes span more than one page
+    fake_vclient.set_response(Routes.CAMPAIGNS_NOTES_LIST, items=NoteFactory.batch(3))
+
+    # When counting the campaign's notes
+    with app.app_context():
+        svc = campaigns_service(on_behalf_of="user-1", company_id="company-1")
+        count = count_notes(svc, "campaign-1")
+
+    # Then the count is the paginated total
+    assert count == 3
+
+
+def test_count_notes_returns_zero_on_api_error(app, fake_vclient) -> None:
+    """Verify count_notes falls back to zero when the notes endpoint fails."""
+    # Given a notes endpoint that errors
+    fake_vclient.set_error(Routes.CAMPAIGNS_NOTES_LIST, status_code=500)
+
+    # When counting the campaign's notes
+    with app.app_context():
+        svc = campaigns_service(on_behalf_of="user-1", company_id="company-1")
+        count = count_notes(svc, "campaign-1")
+
+    # Then the count is zero
+    assert count == 0

@@ -66,7 +66,7 @@ def _fetch_global_data(
     # Only admins have API permission to list unapproved users.
     requesting_user = next((u for u in users if u.id == user_id), None)
     pending_user_count = (
-        len(users_svc.list_all_unapproved())
+        users_svc.get_unapproved_page(limit=1).total
         if requesting_user is not None and requesting_user.role == "ADMIN"
         else 0
     )
