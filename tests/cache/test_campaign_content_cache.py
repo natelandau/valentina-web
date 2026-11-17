@@ -6,12 +6,19 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from vweb.api_client.testing import CampaignBookFactory, CampaignChapterFactory
+from tests.helpers import seed_session
+from vweb.api_client.testing import (
+    CampaignBookFactory,
+    CampaignChapterFactory,
+    Routes,
+)
 from vweb.extensions import cache
 from vweb.lib.cache import campaign_content as ccc
 
 if TYPE_CHECKING:
     from flask.ctx import RequestContext
+
+pytestmark = pytest.mark.usefixtures("real_cache_services")
 
 
 @pytest.fixture(autouse=True)
@@ -25,39 +32,38 @@ def _set_request_context(app, mocker, stamp: str = "2026-01-01T00:00:00+00:00") 
     """Push an app context with a fake g.global_context stamp and a session company."""
     ctx = app.test_request_context("/")
     ctx.push()
-    from flask import g, session
+    from flask import g
 
-    session["company_id"] = "comp-1"
-    session["user_id"] = "user-1"
+    seed_session(user_id="user-1", company_id="comp-1")
     g.global_context = mocker.MagicMock(resources_modified_at=stamp)
     return ctx
 
 
-def test_books_caches_and_sorts(app, mocker):
+def test_books_caches_and_sorts(app, mocker, fake_vclient):
     """Verify books are fetched once, cached, and returned sorted by number."""
-    # Given a request context and a books service returning unsorted books
+    # Given a request context and the API returning unsorted books
     ctx = _set_request_context(app, mocker)
     books = [CampaignBookFactory.build(number=2), CampaignBookFactory.build(number=1)]
-    svc = mocker.patch.object(ccc.api_services, "books")
-    svc.return_value.list_all.return_value = books
+    fake_vclient.set_response(Routes.BOOKS_LIST, items=books)
 
     # When fetched twice
     first = ccc.books("camp-1")
     second = ccc.books("camp-1")
 
-    # Then sorted by number and the service is hit only once
+    # Then sorted by number and the campaign's books are fetched only once
     assert [b.number for b in first] == [1, 2]
     assert second == first
-    svc.return_value.list_all.assert_called_once()
+    fake_vclient.assert_called(
+        Routes.BOOKS_LIST, params={"company_id": "comp-1", "campaign_id": "camp-1"}, times=1
+    )
     ctx.pop()
 
 
-def test_books_refetches_on_stamp_change(app, mocker):
+def test_books_refetches_on_stamp_change(app, mocker, fake_vclient):
     """Verify a changed company timestamp forces a refetch."""
     # Given cached books under one stamp
     ctx = _set_request_context(app, mocker, stamp="stamp-A")
-    svc = mocker.patch.object(ccc.api_services, "books")
-    svc.return_value.list_all.return_value = [CampaignBookFactory.build(number=1)]
+    fake_vclient.set_response(Routes.BOOKS_LIST, items=[CampaignBookFactory.build(number=1)])
     ccc.books("camp-1")
 
     # When the stamp changes
@@ -66,35 +72,37 @@ def test_books_refetches_on_stamp_change(app, mocker):
     g.global_context.resources_modified_at = "stamp-B"
     ccc.books("camp-1")
 
-    # Then the service is hit again
-    assert svc.return_value.list_all.call_count == 2
+    # Then the books are fetched again
+    fake_vclient.assert_called(Routes.BOOKS_LIST, params={"campaign_id": "camp-1"}, times=2)
     ctx.pop()
 
 
-def test_chapters_caches_and_sorts(app, mocker):
+def test_chapters_caches_and_sorts(app, mocker, fake_vclient):
     """Verify chapters are fetched once, cached, and sorted by number."""
-    # Given a chapters service returning unsorted chapters
+    # Given the API returning unsorted chapters
     ctx = _set_request_context(app, mocker)
     chapters = [CampaignChapterFactory.build(number=3), CampaignChapterFactory.build(number=1)]
-    svc = mocker.patch.object(ccc.api_services, "chapters")
-    svc.return_value.list_all.return_value = chapters
+    fake_vclient.set_response(Routes.CHAPTERS_LIST, items=chapters)
 
     # When fetched twice
     first = ccc.chapters("camp-1", "book-1")
     ccc.chapters("camp-1", "book-1")
 
-    # Then sorted and fetched once
+    # Then sorted and the book's chapters are fetched once
     assert [c.number for c in first] == [1, 3]
-    svc.return_value.list_all.assert_called_once()
+    fake_vclient.assert_called(
+        Routes.CHAPTERS_LIST,
+        params={"company_id": "comp-1", "campaign_id": "camp-1", "book_id": "book-1"},
+        times=1,
+    )
     ctx.pop()
 
 
-def test_chapters_refetches_on_stamp_change(app, mocker):
+def test_chapters_refetches_on_stamp_change(app, mocker, fake_vclient):
     """Verify a changed company timestamp forces a chapters refetch."""
     # Given cached chapters under one stamp
     ctx = _set_request_context(app, mocker, stamp="stamp-A")
-    svc = mocker.patch.object(ccc.api_services, "chapters")
-    svc.return_value.list_all.return_value = [CampaignChapterFactory.build(number=1)]
+    fake_vclient.set_response(Routes.CHAPTERS_LIST, items=[CampaignChapterFactory.build(number=1)])
     ccc.chapters("camp-1", "book-1")
 
     # When the stamp changes
@@ -103,25 +111,24 @@ def test_chapters_refetches_on_stamp_change(app, mocker):
     g.global_context.resources_modified_at = "stamp-B"
     ccc.chapters("camp-1", "book-1")
 
-    # Then the service is hit again
-    assert svc.return_value.list_all.call_count == 2
+    # Then the chapters are fetched again
+    fake_vclient.assert_called(Routes.CHAPTERS_LIST, params={"book_id": "book-1"}, times=2)
     ctx.pop()
 
 
-def test_clear_evicts_scope(app, mocker):
+def test_clear_evicts_scope(app, mocker, fake_vclient):
     """Verify clearing a scope forces the next read to refetch."""
     # Given cached books for a campaign
     ctx = _set_request_context(app, mocker)
-    svc = mocker.patch.object(ccc.api_services, "books")
-    svc.return_value.list_all.return_value = [CampaignBookFactory.build(number=1)]
+    fake_vclient.set_response(Routes.BOOKS_LIST, items=[CampaignBookFactory.build(number=1)])
     ccc.books("camp-1")
 
     # When the campaign scope is cleared
     ccc.clear("comp-1", campaign_id="camp-1")
     ccc.books("camp-1")
 
-    # Then the service is hit again
-    assert svc.return_value.list_all.call_count == 2
+    # Then the books are fetched again
+    fake_vclient.assert_called(Routes.BOOKS_LIST, params={"campaign_id": "camp-1"}, times=2)
     ctx.pop()
 
 

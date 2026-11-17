@@ -5,9 +5,13 @@ from __future__ import annotations
 import threading
 from unittest.mock import MagicMock
 
-import pytest
-
-from vweb.api_client.testing import TraitFactory
+from tests.helpers import seed_session
+from vweb.api_client.testing import (
+    FakeResponse,
+    Routes,
+    TraitFactory,
+    TraitSubcategoryFactory,
+)
 from vweb.lib.cache.blueprint import (
     clear,
     subcategories,
@@ -15,64 +19,49 @@ from vweb.lib.cache.blueprint import (
     traits,
 )
 
-
-@pytest.fixture
-def mock_bp_svc(mocker):
-    """Mock the character_blueprint_service factory."""
-    svc = MagicMock()
-    mocker.patch("vweb.lib.cache.blueprint.api_services.character_blueprint", return_value=svc)
-    return svc
+COMPANY = {"company_id": "test-company-id"}
 
 
 class TestTraits:
     """Tests for traits()."""
 
-    def test_fetches_from_api_on_cache_miss(self, app, mock_cache_store, mock_bp_svc) -> None:
+    def test_fetches_from_api_on_cache_miss(self, app, mock_cache_store, fake_vclient) -> None:
         """Verify traits calls the API when the cache is empty."""
         # Given two traits returned by the API
         trait_list = TraitFactory.batch(2)
-        mock_bp_svc.list_all_traits.return_value = trait_list
+        fake_vclient.set_response(Routes.BLUEPRINT_TRAITS_LIST, items=trait_list)
 
         # When fetching all traits
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
+            seed_session()
             result = traits()
 
         # Then the result is a dict keyed by trait ID
-        assert len(result) == 2
-        for t in trait_list:
-            assert result[t.id] is t
-        mock_bp_svc.list_all_traits.assert_called_once()
+        assert result == {t.id: t for t in trait_list}
+        fake_vclient.assert_called(Routes.BLUEPRINT_TRAITS_LIST, params=COMPANY, times=1)
 
-    def test_returns_cached_on_hit(self, app, mock_cache_store, mock_bp_svc) -> None:
+    def test_returns_cached_on_hit(self, app, mock_cache_store, fake_vclient) -> None:
         """Verify traits returns cached dict without calling the API again."""
         # Given traits are already cached from a first call
-        trait_list = TraitFactory.batch(2)
-        mock_bp_svc.list_all_traits.return_value = trait_list
+        fake_vclient.set_response(Routes.BLUEPRINT_TRAITS_LIST, items=TraitFactory.batch(2))
 
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
+            seed_session()
             first = traits()
             second = traits()
 
         # Then the API is called only once and both results are the same dict
         assert first is second
-        mock_bp_svc.list_all_traits.assert_called_once()
+        fake_vclient.assert_called(Routes.BLUEPRINT_TRAITS_LIST, times=1)
 
-    def test_returns_empty_dict_when_no_traits(self, app, mock_cache_store, mock_bp_svc) -> None:
+    def test_returns_empty_dict_when_no_traits(self, app, mock_cache_store, fake_vclient) -> None:
         """Verify traits returns an empty dict when the API returns no traits."""
         # Given the API returns an empty list
-        mock_bp_svc.list_all_traits.return_value = []
+        fake_vclient.set_response(Routes.BLUEPRINT_TRAITS_LIST, items=[])
 
         # When fetching all traits
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
+            seed_session()
             result = traits()
 
         # Then the result is an empty dict
@@ -82,32 +71,30 @@ class TestTraits:
 class TestTrait:
     """Tests for trait()."""
 
-    def test_returns_trait_for_known_id(self, app, mock_cache_store, mock_bp_svc) -> None:
+    def test_returns_trait_for_known_id(self, app, mock_cache_store, fake_vclient) -> None:
         """Verify trait returns the correct Trait for a known ID."""
         # Given a trait exists in the cache
         t = TraitFactory.build(id="trait-1", name="Strength")
-        mock_bp_svc.list_all_traits.return_value = [t]
+        fake_vclient.set_response(Routes.BLUEPRINT_TRAITS_LIST, items=[t])
 
         # When looking up by ID
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
+            seed_session()
             result = trait("trait-1")
 
         # Then the trait is returned
-        assert result is t
+        assert result == t
 
-    def test_returns_none_for_unknown_id(self, app, mock_cache_store, mock_bp_svc) -> None:
+    def test_returns_none_for_unknown_id(self, app, mock_cache_store, fake_vclient) -> None:
         """Verify trait returns None for an unknown trait ID."""
         # Given the cache has traits but not the requested one
-        mock_bp_svc.list_all_traits.return_value = [TraitFactory.build(id="other")]
+        fake_vclient.set_response(
+            Routes.BLUEPRINT_TRAITS_LIST, items=[TraitFactory.build(id="other")]
+        )
 
         # When looking up an unknown ID
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
+            seed_session()
             result = trait("nonexistent")
 
         # Then None is returned
@@ -117,17 +104,19 @@ class TestTrait:
 class TestClear:
     """Tests for clear()."""
 
-    def test_forces_refetch_on_next_call(self, app, mock_cache_store, mock_bp_svc) -> None:
+    def test_forces_refetch_on_next_call(self, app, mock_cache_store, fake_vclient) -> None:
         """Verify clear forces a fresh API fetch on next access."""
         # Given traits are cached
-        traits_v1 = TraitFactory.batch(2)
-        traits_v2 = TraitFactory.batch(3)
-        mock_bp_svc.list_all_traits.side_effect = [traits_v1, traits_v2]
+        fake_vclient.set_responses(
+            Routes.BLUEPRINT_TRAITS_LIST,
+            [
+                FakeResponse(items=TraitFactory.batch(2)),
+                FakeResponse(items=TraitFactory.batch(3)),
+            ],
+        )
 
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
+            seed_session()
             first = traits()
             assert len(first) == 2
 
@@ -138,23 +127,30 @@ class TestClear:
             second = traits()
             assert len(second) == 3
 
-        assert mock_bp_svc.list_all_traits.call_count == 2
+        fake_vclient.assert_called(Routes.BLUEPRINT_TRAITS_LIST, times=2)
 
-    def test_clears_both_traits_and_subcategories(self, app, mock_cache_store, mock_bp_svc) -> None:
+    def test_clears_both_traits_and_subcategories(
+        self, app, mock_cache_store, fake_vclient
+    ) -> None:
         """Verify clear evicts both the traits and subcategory cache keys."""
         # Given both caches are populated
-        traits_v1 = TraitFactory.batch(2)
-        traits_v2 = TraitFactory.batch(3)
-        mock_bp_svc.list_all_traits.side_effect = [traits_v1, traits_v2]
-
-        subcats_v1 = [MagicMock(id="sc-1")]
-        subcats_v2 = [MagicMock(id="sc-2"), MagicMock(id="sc-3")]
-        mock_bp_svc.list_all_subcategories.side_effect = [subcats_v1, subcats_v2]
+        fake_vclient.set_responses(
+            Routes.BLUEPRINT_TRAITS_LIST,
+            [
+                FakeResponse(items=TraitFactory.batch(2)),
+                FakeResponse(items=TraitFactory.batch(3)),
+            ],
+        )
+        fake_vclient.set_responses(
+            Routes.BLUEPRINT_SUBCATEGORIES_LIST,
+            [
+                FakeResponse(items=TraitSubcategoryFactory.batch(1)),
+                FakeResponse(items=TraitSubcategoryFactory.batch(2)),
+            ],
+        )
 
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
+            seed_session()
 
             # Populate both caches
             first_traits = traits()
@@ -171,47 +167,43 @@ class TestClear:
             assert len(second_traits) == 3
             assert len(second_subcats) == 2
 
-        assert mock_bp_svc.list_all_traits.call_count == 2
-        assert mock_bp_svc.list_all_subcategories.call_count == 2
+        fake_vclient.assert_called(Routes.BLUEPRINT_TRAITS_LIST, times=2)
+        fake_vclient.assert_called(Routes.BLUEPRINT_SUBCATEGORIES_LIST, times=2)
 
 
 class TestSubcategories:
     """Tests for subcategories()."""
 
-    def test_fetches_from_api_on_cache_miss(self, app, mock_cache_store, mock_bp_svc) -> None:
+    def test_fetches_from_api_on_cache_miss(self, app, mock_cache_store, fake_vclient) -> None:
         """Verify subcategories calls the API when the cache is empty."""
         # Given two subcategories returned by the API
-        subcategory_list = [MagicMock(id="sc-1"), MagicMock(id="sc-2")]
-        mock_bp_svc.list_all_subcategories.return_value = subcategory_list
+        subcategory_list = TraitSubcategoryFactory.batch(2)
+        fake_vclient.set_response(Routes.BLUEPRINT_SUBCATEGORIES_LIST, items=subcategory_list)
 
         # When fetching all subcategories
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
+            seed_session()
             result = subcategories()
 
         # Then the result is a dict keyed by subcategory ID
-        assert len(result) == 2
-        for sc in subcategory_list:
-            assert result[sc.id] is sc
-        mock_bp_svc.list_all_subcategories.assert_called_once()
+        assert result == {sc.id: sc for sc in subcategory_list}
+        fake_vclient.assert_called(Routes.BLUEPRINT_SUBCATEGORIES_LIST, params=COMPANY, times=1)
 
-    def test_returns_cached_on_hit(self, app, mock_cache_store, mock_bp_svc) -> None:
+    def test_returns_cached_on_hit(self, app, mock_cache_store, fake_vclient) -> None:
         """Verify subcategories returns the cached dict without re-fetching."""
         # Given subcategories cached from a first call
-        mock_bp_svc.list_all_subcategories.return_value = [MagicMock(id="sc-1")]
+        fake_vclient.set_response(
+            Routes.BLUEPRINT_SUBCATEGORIES_LIST, items=TraitSubcategoryFactory.batch(1)
+        )
 
         with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
+            seed_session()
             first = subcategories()
             second = subcategories()
 
         # Then the API is called only once and both results are the same dict
         assert first is second
-        mock_bp_svc.list_all_subcategories.assert_called_once()
+        fake_vclient.assert_called(Routes.BLUEPRINT_SUBCATEGORIES_LIST, times=1)
 
 
 class TestSingleFlight:
@@ -249,9 +241,7 @@ class TestSingleFlight:
 
         def worker(name: str) -> None:
             with app.test_request_context("/"):
-                from flask import session
-
-                session["company_id"] = "test-company-id"
+                seed_session()
                 results[name] = traits()
 
         # When thread A enters the rebuild and blocks, then thread B starts and queues
