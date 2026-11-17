@@ -120,29 +120,42 @@ class BaseService:
         except PydanticValidationError as e:
             raise RequestValidationError(e) from e
 
-    def _calculate_backoff_delay(self, attempt: int, retry_after: int | None) -> float:
-        """Calculate the delay before the next retry attempt.
+    def _calculate_backoff_delay(
+        self, attempt: int, retry_after: int | None, *, started_at: float
+    ) -> float | None:
+        """Calculate the delay before the next retry attempt, or decide not to retry.
 
         Wait the server's ``retry_after`` when it gives one, since the server knows
         when capacity returns. Otherwise use exponential backoff:
         ``retry_delay * 2 ** attempt``. Either way, add up to 25% random jitter so
-        clients that were limited together do not retry together.
+        clients that were limited together do not retry together, and cap the result
+        at ``max_retry_delay``.
+
+        A caller holds a web worker while it waits, so a call never waits longer than
+        it can use: a server ``retry_after`` above ``max_retry_delay``, or a wait that
+        would overrun ``retry_budget``, ends the retries.
 
         Args:
             attempt: The current attempt number (0-indexed).
             retry_after: Seconds the server asked the client to wait, or None.
+            started_at: ``time.monotonic()`` reading taken when the call began.
 
         Returns:
-            Number of seconds to wait before retrying.
+            Number of seconds to wait before retrying, or None to stop retrying.
         """
+        config = self._client._config  # noqa: SLF001
         if retry_after is not None and retry_after > 0:
+            if retry_after > config.max_retry_delay:
+                return None
             delay = float(retry_after)
         else:
-            delay = self._client._config.retry_delay * (2**attempt)  # noqa: SLF001
+            delay = config.retry_delay * (2**attempt)
 
-        # Add jitter (up to 25% of the delay)
-        jitter = random.uniform(0, delay * 0.25)
-        return delay + jitter
+        delay = min(delay + random.uniform(0, delay * 0.25), config.max_retry_delay)
+
+        if time.monotonic() - started_at + delay > config.retry_budget:
+            return None
+        return delay
 
     @staticmethod
     def _is_retryable_method(method: str, headers: dict[str, str] | None) -> bool:
@@ -230,8 +243,9 @@ class BaseService:
         attempt: int,
         max_attempts: int,
         retry_after: int | None,
+        started_at: float,
         **log_fields: Any,
-    ) -> None:
+    ) -> bool:
         """Log a retry at WARNING and sleep for the backoff delay before the next attempt.
 
         Args:
@@ -240,9 +254,22 @@ class BaseService:
             attempt: The current attempt number (0-indexed).
             max_attempts: The total number of attempts allowed.
             retry_after: Seconds the server asked the client to wait, or None to use backoff.
+            started_at: ``time.monotonic()`` reading taken when the call began.
             **log_fields: Extra structured fields to bind on the log record.
+
+        Returns:
+            True after waiting, or False when the call must stop retrying instead.
         """
-        delay = self._calculate_backoff_delay(attempt, retry_after)
+        if attempt >= max_attempts - 1:
+            return False
+
+        delay = self._calculate_backoff_delay(attempt, retry_after, started_at=started_at)
+        if delay is None:
+            request_logger.bind(**log_fields, attempt=attempt + 1, retry_after=retry_after).warning(
+                "Stop retrying to stay within the retry time limits"
+            )
+            return False
+
         request_logger.bind(
             **log_fields,
             attempt=attempt + 1,
@@ -250,6 +277,7 @@ class BaseService:
             delay=delay,
         ).warning(message)
         time.sleep(delay)
+        return True
 
     def _request(
         self,
@@ -265,9 +293,10 @@ class BaseService:
         """Make an HTTP request with automatic retry on transient errors.
 
         Retries on rate limits (429), server errors (5xx in DEFAULT_RETRY_STATUSES),
-        and network errors (ConnectError, TimeoutException). Non-idempotent
-        methods (POST, PATCH) only retry on 5xx/network errors when an
-        idempotency key header is present. Rate limit retries (429) always
+        and network errors (ConnectError, TimeoutException), within the
+        ``max_retry_delay`` and ``retry_budget`` limits described on
+        `_calculate_backoff_delay`. Non-idempotent methods (POST, PATCH) only
+        retry on 5xx/network errors when an idempotency key header is present. Rate limit retries (429) always
         apply regardless of method. A 409 is retried only when the API reports
         that a request with the same idempotency key is still in progress
         (code IDEMPOTENCY_IN_PROGRESS) and this request carried that key.
@@ -306,8 +335,11 @@ class BaseService:
         request_logger.trace("Send request")
 
         last_error: RateLimitError | ServerError | ConflictError | None = None
+        attempts_made = 0
+        started_at = time.monotonic()
 
         for attempt in range(max_attempts):
+            attempts_made = attempt + 1
             try:
                 response = self._http.request(
                     method=method,
@@ -319,17 +351,16 @@ class BaseService:
                     files=files,
                 )
             except (httpx2.ConnectError, httpx2.TimeoutException) as exc:
-                if not self._is_retryable_method(method, headers) or attempt >= max_attempts - 1:
-                    raise
-
-                self._wait_before_retry(
+                if not self._is_retryable_method(method, headers) or not self._wait_before_retry(
                     request_logger,
                     "Retry after network error",
                     attempt=attempt,
                     max_attempts=max_attempts,
                     retry_after=None,
+                    started_at=started_at,
                     error_type=type(exc).__name__,
-                )
+                ):
+                    raise
                 continue
 
             try:
@@ -343,21 +374,20 @@ class BaseService:
 
                 last_error = e
 
-                if attempt >= max_attempts - 1:
-                    break
-
-                self._wait_before_retry(
+                if not self._wait_before_retry(
                     request_logger,
                     retry_plan.message,
                     attempt=attempt,
                     max_attempts=max_attempts,
                     retry_after=retry_plan.retry_after,
+                    started_at=started_at,
                     **retry_plan.log_fields,
-                )
+                ):
+                    break
 
         if last_error is not None:
             if max_attempts > 1:
-                request_logger.bind(attempts=max_attempts).error("Exhaust retries")
+                request_logger.bind(attempts=attempts_made).error("Exhaust retries")
             else:
                 request_logger.warning("Fail with automatic retries off")
             raise last_error

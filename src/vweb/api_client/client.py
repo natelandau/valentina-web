@@ -11,6 +11,8 @@ from vweb.api_client.config import _APIConfig
 from vweb.api_client.constants import (
     API_KEY_HEADER,
     DEFAULT_MAX_RETRIES,
+    DEFAULT_MAX_RETRY_DELAY,
+    DEFAULT_RETRY_BUDGET,
     DEFAULT_RETRY_DELAY,
     DEFAULT_TIMEOUT,
     USER_AGENT_PRODUCT,
@@ -73,6 +75,8 @@ class VClient:
         timeout: float = DEFAULT_TIMEOUT,
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_delay: float = DEFAULT_RETRY_DELAY,
+        max_retry_delay: float = DEFAULT_MAX_RETRY_DELAY,
+        retry_budget: float = DEFAULT_RETRY_BUDGET,
         auto_retry_rate_limit: bool = True,
         auto_idempotency_keys: bool = False,
         default_company_id: str | None = None,
@@ -86,6 +90,10 @@ class VClient:
             timeout: Request timeout in seconds.
             max_retries: Maximum number of retry attempts for failed requests.
             retry_delay: Base delay between retries in seconds.
+            max_retry_delay: Longest single wait between retries in seconds. A server
+                ``Retry-After`` longer than this raises the error instead of waiting.
+            retry_budget: Total seconds one call may spend across all attempts and
+                waits. A retry whose wait would overrun it raises the last error instead.
             auto_retry_rate_limit: Automatically retry requests that hit rate limits.
             auto_idempotency_keys: Automatically generate idempotency keys for
                 POST/PUT/PATCH requests.
@@ -111,6 +119,8 @@ class VClient:
             timeout=timeout,
             max_retries=max_retries,
             retry_delay=retry_delay,
+            max_retry_delay=max_retry_delay,
+            retry_budget=retry_budget,
             auto_retry_rate_limit=auto_retry_rate_limit,
             auto_idempotency_keys=auto_idempotency_keys,
             default_company_id=default_company_id,

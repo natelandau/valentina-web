@@ -64,8 +64,10 @@ class APISettings(BaseModel):
     base_url: str
     api_key: str
     timeout: float = Field(default=10.0)
-    max_retries: int = Field(default=5)
-    retry_delay: float = Field(default=1.0)
+    max_retries: int = Field(default=2)
+    retry_delay: float = Field(default=0.5)
+    max_retry_delay: float = Field(default=2.0)
+    retry_budget: float = Field(default=10.0)
     auto_retry_rate_limit: bool = Field(default=True)
     auto_idempotency_keys: bool = Field(default=True)
     enable_logs: bool = Field(default=False)

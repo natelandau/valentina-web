@@ -175,6 +175,8 @@ def create_app(settings_override: Settings | None = None) -> Flask:
         timeout=settings.api.timeout,
         max_retries=settings.api.max_retries,
         retry_delay=settings.api.retry_delay,
+        max_retry_delay=settings.api.max_retry_delay,
+        retry_budget=settings.api.retry_budget,
         auto_retry_rate_limit=settings.api.auto_retry_rate_limit,
         auto_idempotency_keys=settings.api.auto_idempotency_keys,
     )

@@ -218,7 +218,7 @@ class TestRequestLogging:
                 httpx.Response(
                     429,
                     json={"detail": "Rate limited"},
-                    headers={"RateLimit": '"default";r=0;t=3'},
+                    headers={"RateLimit": '"default";r=0;t=1'},
                 ),
                 httpx.Response(200, json={"ok": True}),
             ]
@@ -239,9 +239,9 @@ class TestRequestLogging:
         assert record.extra["method"] == "GET"
         assert record.extra["url"] == "/test"
 
-        # Then: The wait was the header's 3 seconds plus at most 25% jitter
+        # Then: The wait was the header's 1 second plus at most 25% jitter
         mock_sleep.assert_called_once()
-        assert 3.0 <= mock_sleep.call_args[0][0] <= 3.75
+        assert 1.0 <= mock_sleep.call_args[0][0] <= 1.25
 
     @respx.mock
     def test_log_retry_on_server_error(
@@ -321,7 +321,7 @@ class TestRequestLogging:
                 httpx.Response(
                     409,
                     json={"detail": "In progress", "code": "IDEMPOTENCY_IN_PROGRESS"},
-                    headers={"Retry-After": "3"},
+                    headers={"Retry-After": "1"},
                 ),
                 httpx.Response(201, json={"ok": True}),
             ]
@@ -344,7 +344,7 @@ class TestRequestLogging:
         assert record.extra["status"] == 409
         assert record.extra["attempt"] == 1
         assert record.extra["max_attempts"] == client._config.max_retries + 1
-        assert 3.0 <= record.extra["delay"] <= 3.75
+        assert 1.0 <= record.extra["delay"] <= 1.25
         mock_sleep.assert_called_once_with(record.extra["delay"])
 
         # Then: The expected conflict itself is logged at DEBUG, not as a second WARNING
