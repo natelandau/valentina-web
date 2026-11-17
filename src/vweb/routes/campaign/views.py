@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from typing import TYPE_CHECKING
 
 from flask import Blueprint, Response, abort, g, request, session, url_for
 from flask.views import MethodView
@@ -17,33 +17,33 @@ from vweb.lib.api import (
 )
 from vweb.lib.api_errors import USER_FACING_API_ERRORS, api_error_message
 from vweb.lib.catalog import catalog
-from vweb.lib.form_validation import CAMPAIGN_NAME_MIN_LENGTH, name_errors
+from vweb.lib.form_validation import CAMPAIGN_NAME_MIN_LENGTH, name_errors, parse_form_date
 from vweb.lib.guards import can_grant_experience, can_manage_campaign
 from vweb.lib.htmx import hx_redirect
 
+if TYPE_CHECKING:
+    from datetime import date
+
 bp = Blueprint("campaign", __name__)
 
+_INVALID_IN_GAME_DATE = "In-game date must be a valid date."
 
-def _parse_in_game_date(value: str) -> date | None:
-    """Parse the campaign's in-game date from a date input.
 
-    Args:
-        value: The submitted ``YYYY-MM-DD`` text, or blank.
+def _read_campaign_form() -> tuple[dict[str, str], date | None, list[str]]:
+    """Read and check the campaign create/edit modal's fields.
 
     Returns:
-        The date, or None when blank or not a valid calendar date.
+        The stripped form values for re-rendering, the parsed in-game date, and the errors.
     """
-    try:
-        return date.fromisoformat(value) if value else None
-    except ValueError:
-        return None
-
-
-def _in_game_date_errors(value: str) -> list[str]:
-    """Return the error for an in-game date that is not a valid calendar date."""
-    if value and _parse_in_game_date(value) is None:
-        return ["In-game date must be a valid date."]
-    return []
+    form_data = {
+        field: request.form.get(field, "").strip()
+        for field in ("name", "description", "in_game_date")
+    }
+    parsed_date = parse_form_date(form_data["in_game_date"])
+    errors = name_errors(form_data["name"], min_length=CAMPAIGN_NAME_MIN_LENGTH)
+    if form_data["in_game_date"] and parsed_date is None:
+        errors.append(_INVALID_IN_GAME_DATE)
+    return form_data, parsed_date, errors
 
 
 class CampaignView(MethodView):
@@ -122,19 +122,15 @@ class CampaignCreateView(MethodView):
         if not can_manage_campaign():
             abort(403)
 
-        name = request.form.get("name", "").strip()
-        description = request.form.get("description", "").strip()
-        in_game_date = request.form.get("in_game_date", "").strip()
-
-        errors = name_errors(name, min_length=CAMPAIGN_NAME_MIN_LENGTH)
-        errors += _in_game_date_errors(in_game_date)
+        form_data, parsed_date, errors = _read_campaign_form()
+        name, description = form_data["name"], form_data["description"]
         if not errors:
             try:
                 new_campaign = api_services.campaigns().create(
                     CampaignCreate(
                         name=name,
                         description=description or None,
-                        in_game_date=_parse_in_game_date(in_game_date),
+                        in_game_date=parsed_date,
                     )
                 )
             except USER_FACING_API_ERRORS as error:
@@ -143,11 +139,7 @@ class CampaignCreateView(MethodView):
             return catalog.render(
                 "shared.layout.CampaignCreateModalContent",
                 errors=errors,
-                form_data={
-                    "name": name,
-                    "description": description,
-                    "in_game_date": in_game_date,
-                },
+                form_data=form_data,
             )
 
         cache.global_context.clear_current()
@@ -179,18 +171,14 @@ class CampaignUpdateView(MethodView):
 
         campaign = fetch_campaign_or_404(campaign_id)
 
-        name = request.form.get("name", "").strip()
-        description = request.form.get("description", "").strip()
-        in_game_date = request.form.get("in_game_date", "").strip()
-
-        errors = name_errors(name, min_length=CAMPAIGN_NAME_MIN_LENGTH)
-        errors += _in_game_date_errors(in_game_date)
+        form_data, parsed_date, errors = _read_campaign_form()
+        name, description = form_data["name"], form_data["description"]
         if not errors:
             # An empty description is sent as-is so the API clears it
             update = CampaignUpdate(name=name, description=description)
             # A blank date clears it; a form without the field leaves it unchanged.
             if "in_game_date" in request.form:
-                update.in_game_date = _parse_in_game_date(in_game_date)
+                update.in_game_date = parsed_date
             try:
                 api_services.campaigns().update(campaign_id, update)
             except USER_FACING_API_ERRORS as error:
@@ -199,11 +187,7 @@ class CampaignUpdateView(MethodView):
             return catalog.render(
                 "shared.layout.CampaignCreateModalContent",
                 errors=errors,
-                form_data={
-                    "name": name,
-                    "description": description,
-                    "in_game_date": in_game_date,
-                },
+                form_data=form_data,
                 campaign=campaign,
             )
 

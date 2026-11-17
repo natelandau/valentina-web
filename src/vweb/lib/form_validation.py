@@ -1,6 +1,8 @@
-"""Form checks shared by the book, chapter, and campaign views."""
+"""Form checks shared by the book, chapter, campaign, and character views."""
 
 from __future__ import annotations
+
+from datetime import date
 
 from vweb.api_client.constants import MAX_NAME_LENGTH
 
@@ -53,3 +55,18 @@ def position_number(submitted: str, current: int) -> tuple[int, str | None]:
     if number < 1:
         return current, "Number must be 1 or greater"
     return number, None
+
+
+def parse_form_date(value: str) -> date | None:
+    """Parse a date input's ``YYYY-MM-DD`` value.
+
+    Args:
+        value: The submitted text, stripped.
+
+    Returns:
+        The date, or None when the text is blank or not a valid calendar date.
+    """
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None

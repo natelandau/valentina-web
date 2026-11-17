@@ -129,6 +129,18 @@ def get_active_campaign() -> Campaign | None:
     return max(ctx.campaigns, key=lambda c: c.date_modified)
 
 
+def get_campaign(campaign_id: str) -> Campaign | None:
+    """Look up a campaign from the company context, without an API call.
+
+    Args:
+        campaign_id: The campaign's unique identifier.
+
+    Returns:
+        The campaign, or None when the user's company context does not include it.
+    """
+    return next((c for c in g.global_context.campaigns if c.id == campaign_id), None)
+
+
 def get_character_and_campaign(
     character_id: str,
 ) -> tuple[Character | None, Campaign | None]:
@@ -144,7 +156,7 @@ def get_character_and_campaign(
     if character is None:
         return None, None
 
-    campaign = next((c for c in g.global_context.campaigns if c.id == character.campaign_id), None)
+    campaign = get_campaign(character.campaign_id)
     return character, campaign
 
 
@@ -161,7 +173,7 @@ def fetch_book_or_404(campaign_id: str, book_id: str) -> tuple[CampaignBook, Cam
     Raises:
         werkzeug.exceptions.NotFound: If the book or campaign is not found.
     """
-    campaign = next((c for c in g.global_context.campaigns if c.id == campaign_id), None)
+    campaign = get_campaign(campaign_id)
     if campaign is None:
         abort(404)
     book = next((b for b in cache.campaign_content.books(campaign_id) if b.id == book_id), None)
@@ -182,7 +194,7 @@ def fetch_campaign_or_404(campaign_id: str) -> Campaign:
     Raises:
         werkzeug.exceptions.NotFound: If the campaign is not found.
     """
-    campaign = next((c for c in g.global_context.campaigns if c.id == campaign_id), None)
+    campaign = get_campaign(campaign_id)
     if campaign is None:
         abort(404)
     return campaign
@@ -221,7 +233,7 @@ def get_campaign_name(campaign_id: str) -> str:
     Returns:
         The campaign name, or "Unknown" if not found.
     """
-    campaign = next((c for c in g.global_context.campaigns if c.id == campaign_id), None)
+    campaign = get_campaign(campaign_id)
     return campaign.name if campaign else "Unknown"
 
 

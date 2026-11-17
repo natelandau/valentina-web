@@ -99,7 +99,7 @@
               <span>Date of birth</span>
             </label>
           </div>
-          <label class="input w-full {% if errors.get('age') %}input-error{% endif %}" x-show="ageMode === 'age'">
+          <label class="input w-full {% if errors.get('age') %}input-error{% endif %}" x-show="ageMode === 'age'" {% if age_mode != "age" %}x-cloak{% endif %}>
             <input type="number"
                    name="age"
                    class="grow"
@@ -110,7 +110,7 @@
                    step="1"
                    :disabled="ageMode !== 'age'" />
           </label>
-          <label class="input w-full {% if errors.get('date_of_birth') %}input-error{% endif %}" x-show="ageMode === 'date_of_birth'">
+          <label class="input w-full {% if errors.get('date_of_birth') %}input-error{% endif %}" x-show="ageMode === 'date_of_birth'" {% if age_mode != "date_of_birth" %}x-cloak{% endif %}>
             <input type="date"
                    name="date_of_birth"
                    class="grow"
@@ -121,13 +121,13 @@
           {% for field in ("age", "date_of_birth") if errors.get(field) %}
             <p class="text-error text-sm mt-1">{{ errors[field] }}</p>
           {% endfor %}
-          <p class="label whitespace-normal block" x-show="ageMode === 'age'">
+          <p class="label whitespace-normal block" x-show="ageMode === 'age'" {% if age_mode != "age" %}x-cloak{% endif %}>
             Optional. The age stays as entered.
           </p>
-          <p class="label whitespace-normal block" x-show="ageMode === 'date_of_birth'">
+          <p class="label whitespace-normal block" x-show="ageMode === 'date_of_birth'" {% if age_mode != "date_of_birth" %}x-cloak{% endif %}>
             Optional.
             {% if campaign.in_game_date %}
-              The age is worked out from the campaign's in-game date, currently {{ campaign.in_game_date.strftime("%-d %b %Y") }}.
+              The age is worked out from the campaign's in-game date, currently {{ campaign.in_game_date | format_long_date }}.
             {% else %}
               The age is worked out once the campaign has an in-game date.
             {% endif %}

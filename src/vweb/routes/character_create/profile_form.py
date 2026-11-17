@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date
 from typing import TYPE_CHECKING
 
 from vweb.api_client.constants import MAX_CHARACTER_AGE
@@ -16,6 +15,7 @@ from vweb.api_client.models.characters import (
     WerewolfAttributesUpdate,
 )
 from vweb.lib import cache
+from vweb.lib.form_validation import parse_form_date
 
 if TYPE_CHECKING:
     from vweb.api_client.models import Character
@@ -77,13 +77,13 @@ def validate_profile(form_data: dict[str, str]) -> dict[str, str]:
 
 def _age_errors(form_data: dict[str, str]) -> dict[str, str]:
     """Check that at most one of age and date of birth is given, and that it is valid."""
-    age = form_data.get("age", "").strip()
-    date_of_birth = form_data.get("date_of_birth", "").strip()
+    age = form_data.get("age", "")
+    date_of_birth = form_data.get("date_of_birth", "")
     if age and date_of_birth:
         return {"date_of_birth": "Enter an age or a date of birth, not both."}
     if age and parse_age(age) is None:
         return {"age": f"Age must be a whole number from 0 to {MAX_CHARACTER_AGE:,}."}
-    if date_of_birth and parse_date_of_birth(date_of_birth) is None:
+    if date_of_birth and parse_form_date(date_of_birth) is None:
         return {"date_of_birth": "Date of birth must be a valid date."}
     return {}
 
@@ -97,26 +97,11 @@ def parse_age(value: str) -> int | None:
     Returns:
         The age, or None when the text is blank, not a whole number, or out of range.
     """
-    try:
-        age = int(value.strip())
-    except ValueError:
+    # int() also takes signs, underscores, and non-ASCII digits, which an age input never sends.
+    if not (value.isascii() and value.isdigit()):
         return None
-    return age if 0 <= age <= MAX_CHARACTER_AGE else None
-
-
-def parse_date_of_birth(value: str) -> date | None:
-    """Parse a date of birth from a date input.
-
-    Args:
-        value: The submitted ``YYYY-MM-DD`` text.
-
-    Returns:
-        The date, or None when the text is blank or not a valid calendar date.
-    """
-    try:
-        return date.fromisoformat(value.strip())
-    except ValueError:
-        return None
+    age = int(value)
+    return age if age <= MAX_CHARACTER_AGE else None
 
 
 def character_to_form_data(character: Character) -> dict[str, str]:

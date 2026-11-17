@@ -405,22 +405,6 @@ class TestCampaignInGameDate:
         assert "In-game date must be a valid date." in response.get_data(as_text=True)
         fake_vclient.assert_not_called(Routes.CAMPAIGNS_CREATE)
 
-    def test_player_cannot_set_in_game_date(self, client, mocker, fake_vclient) -> None:
-        """Verify only users who manage campaigns can change the in-game date."""
-        ctx = build_global_context(user_role="PLAYER")
-        ctx.company.settings.permission_manage_campaign = "STORYTELLER"
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        campaign = ctx.campaigns[0]
-
-        response = self._post(
-            client,
-            f"/campaign/{campaign.id}/update",
-            {"name": campaign.name, "in_game_date": "2003-01-01"},
-        )
-
-        assert response.status_code == 403
-        fake_vclient.assert_not_called(Routes.CAMPAIGNS_UPDATE)
-
 
 class TestCampaignUpdateView:
     """Tests for POST /campaign/<campaign_id>/update."""

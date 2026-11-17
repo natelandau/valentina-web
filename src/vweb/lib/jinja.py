@@ -28,6 +28,7 @@ from vweb.constants import (
 from vweb.lib import cache
 from vweb.lib.api import (
     get_active_campaign,
+    get_campaign,
     get_selectable_characters,
     get_user_campaign_experience,
     resolve_characters,
@@ -51,6 +52,7 @@ from vweb.lib.guards import (
 )
 from vweb.lib.jinja_filters import (
     format_date,
+    format_long_date,
     from_markdown,
     from_markdown_no_p,
     humanize_date,
@@ -171,11 +173,11 @@ def character_born_label(character: Character) -> str | None:
         The label, e.g. ``"15 Mar 1960"`` or ``"c. 1967"``, or None when the campaign has no
         in-game date or the character has neither a date of birth nor an age.
     """
-    campaign = next((c for c in g.global_context.campaigns if c.id == character.campaign_id), None)
+    campaign = get_campaign(character.campaign_id)
     if campaign is None or campaign.in_game_date is None:
         return None
     if character.date_of_birth is not None:
-        return character.date_of_birth.strftime("%-d %b %Y")
+        return format_long_date(character.date_of_birth)
     if character.age is not None and character.status == "ALIVE":
         return f"c. {_year_label(campaign.in_game_date.year - character.age)}"
     return None
@@ -230,6 +232,7 @@ def register_jinjax_catalog() -> jinjax.Catalog:
     catalog.jinja_env.filters["from_markdown"] = from_markdown
     catalog.jinja_env.filters["from_markdown_no_p"] = from_markdown_no_p
     catalog.jinja_env.filters["format_date"] = format_date
+    catalog.jinja_env.filters["format_long_date"] = format_long_date
     catalog.jinja_env.filters["humanize_date"] = humanize_date
     catalog.jinja_env.filters["link_terms"] = link_terms
     catalog.jinja_env.filters["normalize_string"] = normalize_string

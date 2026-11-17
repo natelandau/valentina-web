@@ -36,7 +36,7 @@
           {% if campaign.in_game_date %}
             <span class="badge badge-outline badge-sm" title="In-game date">
               <i class="fa-regular fa-calendar"></i>
-              {{ campaign.in_game_date.strftime("%-d %b %Y") }}
+              {{ campaign.in_game_date | format_long_date }}
             </span>
           {% endif %}
           <span class="badge badge-outline badge-sm">

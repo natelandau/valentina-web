@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from vweb.api_client.testing import CharacterFactory
@@ -198,6 +200,8 @@ class TestAgeValidation:
             ({"age": "100001"}, "age"),
             ({"age": "-1"}, "age"),
             ({"age": "old"}, "age"),
+            ({"age": "1_000"}, "age"),
+            ({"age": "+5"}, "age"),
             ({"date_of_birth": "1960-02-31"}, "date_of_birth"),
             ({"age": "30", "date_of_birth": "1960-03-15"}, "date_of_birth"),
         ],
@@ -205,19 +209,6 @@ class TestAgeValidation:
     def test_rejects_invalid_or_both(self, app, fields: dict[str, str], error_field: str) -> None:
         """Verify an out-of-range age, a bad date, or both values together is rejected."""
         assert error_field in self._validate(app, **fields)
-
-    def test_form_data_prefers_date_of_birth(self) -> None:
-        """Verify a character with a date of birth fills only that field, not its stored age."""
-        from datetime import date
-
-        from vweb.api_client.testing import CharacterFactory
-        from vweb.routes.character_create.profile_form import character_to_form_data
-
-        character = CharacterFactory.build(date_of_birth=date(1960, 3, 15), age=58)
-        data = character_to_form_data(character)
-
-        assert data["date_of_birth"] == "1960-03-15"
-        assert "age" not in data
 
 
 class TestCharacterToFormData:
@@ -278,7 +269,6 @@ class TestCharacterToFormData:
         character = CharacterFactory.build(
             name_nick=None,
             age=None,
-            birth_year=None,
             biography=None,
             demeanor=None,
             nature=None,
@@ -291,7 +281,6 @@ class TestCharacterToFormData:
         # Then None optional fields are absent
         assert "name_nick" not in data
         assert "age" not in data
-        assert "birth_year" not in data
         assert "biography" not in data
         assert "demeanor" not in data
         assert "nature" not in data
@@ -362,3 +351,13 @@ class TestBuildClassAttrs:
         assert vampire_c is None
         assert hunter_c is None
         assert mage_c is None
+
+    def test_form_data_prefers_date_of_birth(self) -> None:
+        """Verify a character with a date of birth fills only that field, not its stored age."""
+        from vweb.routes.character_create.profile_form import character_to_form_data
+
+        character = CharacterFactory.build(date_of_birth=date(1960, 3, 15), age=58)
+        data = character_to_form_data(character)
+
+        assert data["date_of_birth"] == "1960-03-15"
+        assert "age" not in data

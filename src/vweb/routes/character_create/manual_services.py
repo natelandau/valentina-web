@@ -13,12 +13,12 @@ from vweb.api_client.exceptions import APIError, NotFoundError
 from vweb.api_client.models import CharacterCreate, CharacterTraitAdd, CharacterUpdate
 from vweb.lib import api_services
 from vweb.lib.api_errors import api_field_errors
+from vweb.lib.form_validation import parse_form_date
 from vweb.lib.guards import can_manage_npcs, is_self, is_storyteller
 from vweb.routes.character_create.profile_form import (
     build_class_attrs,
     character_to_form_data,
     parse_age,
-    parse_date_of_birth,
 )
 
 if TYPE_CHECKING:
@@ -175,7 +175,7 @@ def _build_update_payload(
     """
     character_class = cast("CharacterClass", form_data["character_class"])
     game_version = cast("GameVersion", form_data["game_version"])
-    date_of_birth = parse_date_of_birth(form_data.get("date_of_birth", ""))
+    date_of_birth = parse_form_date(form_data.get("date_of_birth", ""))
     _create_attrs, update_attrs = build_class_attrs(character_class, form_data)
     vampire_u, werewolf_u, hunter_u, mage_attrs = update_attrs
 
@@ -226,7 +226,7 @@ def _build_create_payload(campaign_id: str, form_data: dict[str, str]) -> Charac
         type=cast("CharacterType", form_data.get("character_type") or "PLAYER"),
         name_nick=form_data.get("name_nick") or None,
         age=parse_age(form_data.get("age", "")),
-        date_of_birth=parse_date_of_birth(form_data.get("date_of_birth", "")),
+        date_of_birth=parse_form_date(form_data.get("date_of_birth", "")),
         biography=form_data.get("biography") or None,
         demeanor=form_data.get("demeanor") or None,
         nature=form_data.get("nature") or None,
