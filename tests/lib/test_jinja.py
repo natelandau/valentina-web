@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 from flask import flash
-from vclient.testing import CampaignBookFactory, CampaignFactory
 
 import vweb
+from vweb.api_client.testing import CampaignBookFactory, CampaignFactory
 from vweb.lib.jinja import build_fragment_url, dice_notation, threat_badge_class
 
 

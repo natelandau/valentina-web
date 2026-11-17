@@ -3,7 +3,9 @@
 from unittest.mock import MagicMock
 
 from flask import Flask
-from vclient.testing import (
+
+from tests.helpers import make_cache_store_mock
+from vweb.api_client.testing import (
     CharacterConceptFactory,
     CharacterFactory,
     ChargenSessionResponseFactory,
@@ -11,8 +13,6 @@ from vclient.testing import (
     WerewolfAuspiceFactory,
     WerewolfTribeFactory,
 )
-
-from tests.helpers import make_cache_store_mock
 
 
 class TestGenerateSingle:
@@ -25,7 +25,7 @@ class TestGenerateSingle:
         expected_character = CharacterFactory.build()
         mock_service.generate_character.return_value = expected_character
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.sync_character_autogen_service",
+            "vweb.routes.character_create.autogen_services.character_autogen_service",
             return_value=mock_service,
         )
 
@@ -63,7 +63,7 @@ class TestGenerateSingle:
         expected_character = CharacterFactory.build()
         mock_service.generate_character.return_value = expected_character
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.sync_character_autogen_service",
+            "vweb.routes.character_create.autogen_services.character_autogen_service",
             return_value=mock_service,
         )
 
@@ -110,7 +110,7 @@ class TestStartSession:
         expected_response = ChargenSessionResponseFactory.build()
         mock_service.start_chargen_session.return_value = expected_response
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.sync_character_autogen_service",
+            "vweb.routes.character_create.autogen_services.character_autogen_service",
             return_value=mock_service,
         )
 
@@ -138,7 +138,7 @@ class TestFinalizeSession:
         expected_character = CharacterFactory.build()
         mock_service.finalize_chargen_session.return_value = expected_character
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.sync_character_autogen_service",
+            "vweb.routes.character_create.autogen_services.character_autogen_service",
             return_value=mock_service,
         )
 
@@ -182,7 +182,7 @@ class TestFetchFormOptions:
         mock_bp_service.list_all_werewolf_tribes.return_value = tribes
         mock_bp_service.list_all_werewolf_auspices.return_value = auspices
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.sync_character_blueprint_service",
+            "vweb.routes.character_create.autogen_services.character_blueprint_service",
             return_value=mock_bp_service,
         )
 
@@ -227,7 +227,7 @@ class TestListSessions:
         sessions = ChargenSessionResponseFactory.batch(2)
         mock_service.list_all.return_value = sessions
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.sync_character_autogen_service",
+            "vweb.routes.character_create.autogen_services.character_autogen_service",
             return_value=mock_service,
         )
 
@@ -250,7 +250,7 @@ class TestListSessions:
         mock_service = MagicMock()
         mock_service.list_all.return_value = []
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.sync_character_autogen_service",
+            "vweb.routes.character_create.autogen_services.character_autogen_service",
             return_value=mock_service,
         )
 
@@ -277,7 +277,7 @@ class TestGetSession:
         expected = ChargenSessionResponseFactory.build(id="sess-123")
         mock_service.get.return_value = expected
         mocker.patch(
-            "vweb.routes.character_create.autogen_services.sync_character_autogen_service",
+            "vweb.routes.character_create.autogen_services.character_autogen_service",
             return_value=mock_service,
         )
 

@@ -57,10 +57,10 @@ SAMPLE_RAW: dict = {
 
 @pytest.fixture
 def mock_options_svc(mocker):
-    """Mock the sync_options_service factory."""
+    """Mock the options_service factory."""
     svc = MagicMock()
     svc.get_options.return_value = SAMPLE_RAW
-    mocker.patch("vweb.lib.cache.options.sync_options_service", return_value=svc)
+    mocker.patch("vweb.lib.cache.options.options_service", return_value=svc)
     return svc
 
 

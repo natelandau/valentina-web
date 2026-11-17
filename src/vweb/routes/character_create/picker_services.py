@@ -7,14 +7,14 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from flask import session
-from vclient.exceptions import APIError
 
+from vweb.api_client.exceptions import APIError
 from vweb.lib import cache
 from vweb.lib.api import get_user_campaign_experience
 from vweb.routes.character_create.autogen_services import list_sessions
 
 if TYPE_CHECKING:
-    from vclient.models import ChargenSessionResponse, User
+    from vweb.api_client.models import ChargenSessionResponse, User
 
 logger = logging.getLogger(__name__)
 

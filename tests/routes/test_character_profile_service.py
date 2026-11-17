@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from vclient.testing import CharacterFactory
+from vweb.api_client.testing import CharacterFactory
 
 
 class TestValidateProfile:

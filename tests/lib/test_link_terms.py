@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 from markupsafe import Markup
-from vclient.testing import DictionaryTermFactory
 
+from vweb.api_client.testing import DictionaryTermFactory
 from vweb.lib.jinja_filters import from_markdown, link_terms
 
 if TYPE_CHECKING:

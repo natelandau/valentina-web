@@ -7,7 +7,8 @@ import logging
 import pytest
 from pydantic import BaseModel, Field, field_validator
 from pydantic import ValidationError as PydanticValidationError
-from vclient.exceptions import (
+
+from vweb.api_client.exceptions import (
     APIError,
     AuthenticationError,
     AuthorizationError,
@@ -18,7 +19,6 @@ from vclient.exceptions import (
     ServerError,
     ValidationError,
 )
-
 from vweb.lib.api_errors import (
     USER_FACING_API_ERRORS,
     api_error_message,

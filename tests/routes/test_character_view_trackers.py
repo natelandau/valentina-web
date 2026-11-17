@@ -10,8 +10,11 @@ from typing import TYPE_CHECKING
 
 import httpx2
 import pytest
-from vclient.models import CharacterTraitSpecialty, StainsTracker
-from vclient.testing import (
+
+from tests.conftest import get_csrf
+from tests.helpers import build_mock_options_service
+from vweb.api_client.models import CharacterTraitSpecialty, StainsTracker
+from vweb.api_client.testing import (
     CharacterFullSheetFactory,
     CharacterTraitFactory,
     CounterTrackerFactory,
@@ -24,16 +27,14 @@ from vclient.testing import (
     StainsTrackerFactory,
     TraitFactory,
 )
-
-from tests.conftest import get_csrf
-from tests.helpers import build_mock_options_service
 from vweb.routes.character_view import views_trackers
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
 
-    from vclient.models import CharacterFullSheet, CharacterTrait
     from werkzeug.test import TestResponse
+
+    from vweb.api_client.models import CharacterFullSheet, CharacterTrait
 
 TRACKER_RULES = {
     "V4": {
@@ -59,7 +60,7 @@ def tracker_rules(mocker) -> dict:
     rules = json.loads(json.dumps(TRACKER_RULES))
     service = build_mock_options_service()
     service.get_options.return_value["characters"]["TrackerRules"] = rules
-    mocker.patch("vweb.lib.cache.options.sync_options_service", return_value=service)
+    mocker.patch("vweb.lib.cache.options.options_service", return_value=service)
     return rules
 
 
@@ -510,16 +511,16 @@ def _assert_no_cache_change(sheet_cache: dict[str, MagicMock]) -> None:
 
 def _record_requests(fake_vclient, mocker) -> list:
     """Record every API request the vclient services send as (method, json body) pairs."""
-    from vclient._sync.services.base import SyncBaseService
+    from vweb.api_client.services.base import BaseService
 
     seen: list = []
-    original = SyncBaseService._request
+    original = BaseService._request
 
     def _spy(self, method, path, **kwargs) -> object:
         seen.append((method, kwargs.get("json")))
         return original(self, method, path, **kwargs)
 
-    mocker.patch.object(SyncBaseService, "_request", _spy)
+    mocker.patch.object(BaseService, "_request", _spy)
     return seen
 
 
@@ -838,7 +839,7 @@ def test_health_refetch_failure_flashes_without_swap(
 @pytest.fixture
 def _no_retry_delay(mocker) -> None:
     """Skip vclient's retry backoff so retried errors fail fast."""
-    mocker.patch("vclient._sync.services.base.time.sleep")
+    mocker.patch("vweb.api_client.services.base.time.sleep")
 
 
 @pytest.mark.usefixtures("_no_retry_delay")

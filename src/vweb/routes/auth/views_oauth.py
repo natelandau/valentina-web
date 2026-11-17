@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING
 from authlib.integrations.base_client.errors import OAuthError
 from flask import current_app, flash, redirect, request, session, url_for
 from flask.views import MethodView
-from vclient.exceptions import APIError, ServerError, UnprocessableEntityError
 from werkzeug.wrappers.response import Response
 
+from vweb.api_client.exceptions import APIError, ServerError, UnprocessableEntityError
 from vweb.extensions import oauth
 from vweb.lib.api import API_UNAVAILABLE_ERRORS
 from vweb.lib.guards import is_active_role
@@ -24,8 +24,8 @@ from vweb.routes.auth.services import (
 from vweb.routes.auth.views_identity import handle_link, link_redirect_target
 
 if TYPE_CHECKING:
-    from vclient.constants import IdentityProvider
-    from vclient.models import UserLookupResult
+    from vweb.api_client.constants import IdentityProvider
+    from vweb.api_client.models import UserLookupResult
 
 logger = logging.getLogger(__name__)
 

@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from vclient.testing import (
+from vweb.api_client.testing import (
     CharacterFullSheetFactory,
     CharacterTraitFactory,
     FullSheetTraitCategoryFactory,
     FullSheetTraitSectionFactory,
     FullSheetTraitSubcategoryFactory,
 )
-
 from vweb.lib.character_profile import find_character_trait, iter_character_traits
 
 

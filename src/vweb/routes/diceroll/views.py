@@ -7,9 +7,9 @@ from urllib.parse import urlparse
 
 from flask import Blueprint, abort, make_response, request, url_for
 from flask.views import MethodView
-from vclient.constants import DiceSize
-from vclient.exceptions import APIError
 
+from vweb.api_client.constants import DiceSize
+from vweb.api_client.exceptions import APIError
 from vweb.lib import cache
 from vweb.lib.api import get_character_and_campaign
 from vweb.lib.api_errors import api_error_message

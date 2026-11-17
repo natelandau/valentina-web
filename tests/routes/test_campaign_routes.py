@@ -3,15 +3,15 @@
 import re
 
 import pytest
-from vclient.testing import (
+
+from tests.conftest import get_csrf
+from tests.helpers import assert_has_element, build_global_context
+from vweb.api_client.testing import (
     CampaignFactory,
     CharacterFactory,
     CompanyFactory,
     UserFactory,
 )
-
-from tests.conftest import get_csrf
-from tests.helpers import assert_has_element, build_global_context
 from vweb.lib.cache.global_context import GlobalContext
 
 
@@ -186,7 +186,7 @@ class TestCampaignCreateView:
         new_campaign = CampaignFactory.build(name="New Campaign")
         mock_service = mocker.MagicMock()
         mock_service.create.return_value = new_campaign
-        mocker.patch("vweb.routes.campaign.views.sync_campaigns_service", return_value=mock_service)
+        mocker.patch("vweb.routes.campaign.views.campaigns_service", return_value=mock_service)
         mocker.patch("vweb.lib.cache.global_context.clear")
 
         # When submitting a valid campaign creation form
@@ -349,7 +349,7 @@ class TestCampaignUpdateView:
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
         mock_service = mocker.MagicMock()
         mock_service.update.return_value = campaign
-        mocker.patch("vweb.routes.campaign.views.sync_campaigns_service", return_value=mock_service)
+        mocker.patch("vweb.routes.campaign.views.campaigns_service", return_value=mock_service)
         mocker.patch("vweb.lib.cache.global_context.clear")
 
         # When submitting a valid update form
@@ -438,7 +438,7 @@ class TestCampaignUpdateDangerDesperationView:
         mock_service = mocker.MagicMock()
         updated_campaign = CampaignFactory.build(id=campaign.id, danger=3, desperation=0)
         mock_service.update.return_value = updated_campaign
-        mocker.patch("vweb.routes.campaign.views.sync_campaigns_service", return_value=mock_service)
+        mocker.patch("vweb.routes.campaign.views.campaigns_service", return_value=mock_service)
         mocker.patch("vweb.lib.cache.global_context.clear")
 
         # When posting a danger value update
@@ -462,7 +462,7 @@ class TestCampaignUpdateDangerDesperationView:
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
         mock_service = mocker.MagicMock()
         mock_service.update.return_value = campaign
-        mocker.patch("vweb.routes.campaign.views.sync_campaigns_service", return_value=mock_service)
+        mocker.patch("vweb.routes.campaign.views.campaigns_service", return_value=mock_service)
         mocker.patch("vweb.lib.cache.global_context.clear")
 
         # When posting a desperation value update
@@ -485,7 +485,7 @@ class TestCampaignUpdateDangerDesperationView:
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
         mock_service = mocker.MagicMock()
         mock_service.update.return_value = campaign
-        mocker.patch("vweb.routes.campaign.views.sync_campaigns_service", return_value=mock_service)
+        mocker.patch("vweb.routes.campaign.views.campaigns_service", return_value=mock_service)
         mock_clear = mocker.patch("vweb.lib.cache.global_context.clear")
 
         # When posting a valid update
@@ -556,7 +556,7 @@ class TestCampaignDeleteView:
         campaign = ctx.campaigns[0]
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
         mock_service = mocker.MagicMock()
-        mocker.patch("vweb.routes.campaign.views.sync_campaigns_service", return_value=mock_service)
+        mocker.patch("vweb.routes.campaign.views.campaigns_service", return_value=mock_service)
         mocker.patch("vweb.lib.cache.global_context.clear")
 
         # Given the session has the campaign stored

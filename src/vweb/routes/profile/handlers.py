@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from flask import session
-from vclient import sync_users_service
-from vclient.models import QuickrollCreate, QuickrollUpdate
 
+from vweb.api_client import users_service
+from vweb.api_client.models import QuickrollCreate, QuickrollUpdate
 from vweb.lib import cache
 
 if TYPE_CHECKING:
-    from vclient.models import Quickroll
+    from vweb.api_client.models import Quickroll
 
 
 @dataclass
@@ -39,9 +39,7 @@ class QuickrollHandler:
 
     def __init__(self, parent_id: str) -> None:
         self._parent_id = parent_id
-        self._svc = sync_users_service(
-            on_behalf_of=session["user_id"], company_id=session["company_id"]
-        )
+        self._svc = users_service(on_behalf_of=session["user_id"], company_id=session["company_id"])
 
     def list_items(self) -> list[QuickrollDisplay]:
         """Fetch all quickrolls for the user, resolving trait IDs to display names."""

@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
-    from vclient.constants import GameVersion
-    from vclient.models import CharacterTrait
+    from vweb.api_client.constants import GameVersion
+    from vweb.api_client.models import CharacterTrait
 
 DERIVED_V5_TRAIT_NAME: Final = "willpower"
 ABILITIES_SECTION_NAME: Final = "abilities"

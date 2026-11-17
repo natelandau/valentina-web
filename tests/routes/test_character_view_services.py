@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from vclient.testing import CounterTrackerFactory, HealthFactory, Routes
 
+from vweb.api_client.testing import CounterTrackerFactory, HealthFactory, Routes
 from vweb.routes.character_view.services import (
     TrackerRequest,
     parse_tracker_request,

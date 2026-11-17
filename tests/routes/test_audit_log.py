@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 from flask import session
-from vclient.testing import (
+
+from vweb.api_client.testing import (
     AuditLogFactory,
     CampaignBookFactory,
     CampaignChapterFactory,
     CharacterFactory,
 )
-
 from vweb.routes.fragments_shared_cards.audit_log import (
     FieldDiff,
     OtherEntry,
@@ -459,7 +459,7 @@ class TestGetAuditLogPage:
         mock_svc = mocker.MagicMock()
         mock_svc.get_audit_log_page.return_value = mocker.MagicMock()
         mocker.patch(
-            "vweb.routes.fragments_shared_cards.audit_log.sync_companies_service",
+            "vweb.routes.fragments_shared_cards.audit_log.companies_service",
             autospec=True,
             return_value=mock_svc,
         )
@@ -509,12 +509,10 @@ class TestGetAuditLogPage:
 
             cache.clear()
 
-            from vclient.models.audit_logs import AuditLog
-            from vclient.models.pagination import PaginatedResponse
+            from vweb.api_client.models.audit_logs import AuditLog
+            from vweb.api_client.models.pagination import PaginatedResponse
 
-            svc = mocker.patch(
-                "vweb.routes.fragments_shared_cards.audit_log.sync_companies_service"
-            )
+            svc = mocker.patch("vweb.routes.fragments_shared_cards.audit_log.companies_service")
             svc.return_value.get_audit_log_page.return_value = PaginatedResponse[AuditLog](
                 items=[], total=0, limit=10, offset=0
             )
@@ -535,12 +533,10 @@ class TestGetAuditLogPage:
 
             cache.clear()
 
-            from vclient.models.audit_logs import AuditLog
-            from vclient.models.pagination import PaginatedResponse
+            from vweb.api_client.models.audit_logs import AuditLog
+            from vweb.api_client.models.pagination import PaginatedResponse
 
-            svc = mocker.patch(
-                "vweb.routes.fragments_shared_cards.audit_log.sync_companies_service"
-            )
+            svc = mocker.patch("vweb.routes.fragments_shared_cards.audit_log.companies_service")
             svc.return_value.get_audit_log_page.return_value = PaginatedResponse[AuditLog](
                 items=[], total=0, limit=10, offset=0
             )
@@ -558,7 +554,7 @@ class TestGetAuditLogPage:
         mock_svc = mocker.MagicMock()
         mock_svc.get_audit_log_page.return_value = mocker.MagicMock()
         mocker.patch(
-            "vweb.routes.fragments_shared_cards.audit_log.sync_companies_service",
+            "vweb.routes.fragments_shared_cards.audit_log.companies_service",
             autospec=True,
             return_value=mock_svc,
         )

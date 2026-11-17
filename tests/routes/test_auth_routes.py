@@ -2,10 +2,9 @@
 
 from unittest.mock import MagicMock
 
-from vclient.models import IdentityResolution, UserLookupResult
-from vclient.testing import UserFactory
-
 from tests.helpers import identify_resolving
+from vweb.api_client.models import IdentityResolution, UserLookupResult
+from vweb.api_client.testing import UserFactory
 
 
 def _make_lookup_result(**kwargs) -> UserLookupResult:
@@ -574,7 +573,7 @@ class TestLogoutView:
         # Given a valid CSRF token (mock profile API call triggered by get_csrf)
         mock_svc = MagicMock()
         mock_svc.get_statistics.return_value = MagicMock()
-        mocker.patch("vweb.routes.profile.views.sync_users_service", return_value=mock_svc)
+        mocker.patch("vweb.routes.profile.views.users_service", return_value=mock_svc)
 
         from tests.conftest import get_csrf
 
@@ -664,7 +663,7 @@ class TestIdentifyIntegration:
 
     def test_callback_token_verification_failure_aborts_login(self, client, mocker):
         """Verify a 422 from identify aborts login without setting a session."""
-        from vclient.exceptions import UnprocessableEntityError
+        from vweb.api_client.exceptions import UnprocessableEntityError
 
         # Given a mock OAuth flow with valid lookup results
         mock_discord = MagicMock()

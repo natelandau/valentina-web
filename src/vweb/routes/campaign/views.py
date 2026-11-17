@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from flask import Blueprint, Response, abort, g, request, session, url_for
 from flask.views import MethodView
-from vclient import sync_campaigns_service
-from vclient.models import CampaignCreate, CampaignUpdate
 
+from vweb.api_client import campaigns_service
+from vweb.api_client.models import CampaignCreate, CampaignUpdate
 from vweb.lib import cache
 from vweb.lib.api import (
     fetch_campaign_or_404,
@@ -133,7 +133,7 @@ class CampaignCreateView(MethodView):
                 form_data={"name": name, "description": description},
             )
 
-        service = sync_campaigns_service(
+        service = campaigns_service(
             on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         new_campaign = service.create(CampaignCreate(name=name, description=description or None))
@@ -178,7 +178,7 @@ class CampaignUpdateView(MethodView):
                 campaign=campaign,
             )
 
-        service = sync_campaigns_service(
+        service = campaigns_service(
             on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         service.update(campaign_id, CampaignUpdate(name=name, description=description or None))
@@ -211,7 +211,7 @@ class CampaignDeleteView(MethodView):
 
         fetch_campaign_or_404(campaign_id)
 
-        service = sync_campaigns_service(
+        service = campaigns_service(
             on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         service.delete(campaign_id)
@@ -264,7 +264,7 @@ class CampaignUpdateDangerDesperationView(MethodView):
         else:
             update = CampaignUpdate(desperation=value)
 
-        service = sync_campaigns_service(
+        service = campaigns_service(
             on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
         )
         campaign = service.update(campaign_id, update)

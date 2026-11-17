@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from flask import session
-from vclient import sync_chapters_service
 
+from vweb.api_client import chapters_service
 from vweb.lib.base_notes import BaseNotesHandler
 
 
@@ -23,7 +23,7 @@ class ChapterNotesHandler(BaseNotesHandler):
             msg = "campaign_id and book_id are required for ChapterNotesHandler"
             raise ValueError(msg)
 
-        self._svc = sync_chapters_service(
+        self._svc = chapters_service(
             campaign_id=campaign_id,
             book_id=book_id,
             on_behalf_of=session.get("user_id", ""),

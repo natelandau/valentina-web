@@ -7,16 +7,16 @@ from typing import TYPE_CHECKING, Any, Final
 
 import httpx2
 from flask import abort, g, session
-from vclient.exceptions import APIError, ServerError
 
+from vweb.api_client.exceptions import APIError, ServerError
 from vweb.lib import cache
 from vweb.lib.api_errors import api_error_message
 
 if TYPE_CHECKING:
-    from vclient._sync.services.users import SyncUsersService
-    from vclient.models import CampaignBook, CampaignChapter, Character
-    from vclient.models.campaigns import Campaign
-    from vclient.models.users import CampaignExperience
+    from vweb.api_client.models import CampaignBook, CampaignChapter, Character
+    from vweb.api_client.models.campaigns import Campaign
+    from vweb.api_client.models.users import CampaignExperience
+    from vweb.api_client.services.users import UsersService
 
 logger = logging.getLogger(__name__)
 
@@ -268,7 +268,7 @@ def _outcome_unknown(error: Exception) -> bool:
 
 
 def _grant_xp(
-    *, svc: SyncUsersService, form_data: dict, user_id: str, campaign_id: str, amount: int
+    *, svc: UsersService, form_data: dict, user_id: str, campaign_id: str, amount: int
 ) -> str | None:
     """Send the XP grant, returning a user-facing error on failure."""
     try:
@@ -291,7 +291,7 @@ def _grant_xp(
 
 def _grant_cool_points(
     *,
-    svc: SyncUsersService,
+    svc: UsersService,
     form_data: dict,
     user_id: str,
     campaign_id: str,
@@ -325,7 +325,7 @@ def _grant_cool_points(
 
 def _grant_experience(
     *,
-    svc: SyncUsersService,
+    svc: UsersService,
     form_data: dict,
     user_id: str,
     campaign_id: str,
@@ -372,7 +372,7 @@ def validate_and_submit_experience(
     Returns:
         A list of validation error strings (empty on success).
     """
-    from vclient import sync_users_service
+    from vweb.api_client import users_service
 
     errors: list[str] = []
 
@@ -399,7 +399,7 @@ def validate_and_submit_experience(
     if errors:
         return errors
 
-    svc = sync_users_service(on_behalf_of=on_behalf_of, company_id=session["company_id"])
+    svc = users_service(on_behalf_of=on_behalf_of, company_id=session["company_id"])
 
     grant_errors = _grant_experience(
         svc=svc,

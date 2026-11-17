@@ -5,13 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, cast
 
-from vclient import sync_character_traits_service, sync_characters_service
-from vclient.constants import TrackerAction
+from vweb.api_client import character_traits_service, characters_service
+from vweb.api_client.constants import TrackerAction
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from vclient.models import Health, Tracker
+    from vweb.api_client.models import Health, Tracker
 
 
 # "set" is the sheet's name for replacing a counter's state; the API exposes it as its own endpoint.
@@ -61,7 +61,7 @@ def fetch_trait_tracker(
     character_id: str, character_trait_id: str, *, user_id: str, company_id: str
 ) -> Tracker:
     """Fetch the current state of a trait tracker."""
-    return sync_character_traits_service(
+    return character_traits_service(
         character_id=character_id, on_behalf_of=user_id, company_id=company_id
     ).get_tracker(character_trait_id)
 
@@ -79,7 +79,7 @@ def update_trait_tracker(
     Returns:
         The tracker as stored after the change.
     """
-    service = sync_character_traits_service(
+    service = character_traits_service(
         character_id=character_id, on_behalf_of=user_id, company_id=company_id
     )
     if request.action == "set":
@@ -89,9 +89,7 @@ def update_trait_tracker(
 
 def fetch_health(character_id: str, *, user_id: str, company_id: str) -> Health:
     """Fetch the current health of a character."""
-    return sync_characters_service(on_behalf_of=user_id, company_id=company_id).get_health(
-        character_id
-    )
+    return characters_service(on_behalf_of=user_id, company_id=company_id).get_health(character_id)
 
 
 def update_health(
@@ -104,6 +102,6 @@ def update_health(
     """
     # The health endpoint's allowed actions never include "set".
     action = cast("TrackerAction", request.action)
-    return sync_characters_service(on_behalf_of=user_id, company_id=company_id).apply_health_action(
+    return characters_service(on_behalf_of=user_id, company_id=company_id).apply_health_action(
         character_id, action, amount=1
     )

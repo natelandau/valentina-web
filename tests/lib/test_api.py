@@ -8,8 +8,12 @@ from typing import TYPE_CHECKING
 import httpx2
 import pytest
 from flask import g, session
-from vclient.exceptions import ServerError, ValidationError
-from vclient.testing import (
+from werkzeug.exceptions import NotFound
+
+from tests.conftest import make_dice_roll_result
+from tests.helpers import build_global_context
+from vweb.api_client.exceptions import ServerError, ValidationError
+from vweb.api_client.testing import (
     CampaignBookFactory,
     CampaignChapterFactory,
     CampaignFactory,
@@ -20,10 +24,6 @@ from vclient.testing import (
     TraitFactory,
     UserFactory,
 )
-from werkzeug.exceptions import NotFound
-
-from tests.conftest import make_dice_roll_result
-from tests.helpers import build_global_context
 from vweb.lib.api import (
     fetch_book_or_404,
     fetch_chapter_or_404,
@@ -37,7 +37,7 @@ from vweb.lib.cache.dicerolls import recent
 from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
-    from vclient.models import Character
+    from vweb.api_client.models import Character
 
 
 _COOL_POINTS_UNCONFIRMED = (
@@ -299,7 +299,7 @@ class TestRecentDicerolls:
         fake_service = mocker.MagicMock()
         fake_service.get_page.return_value = page
         service_factory = mocker.patch(
-            "vweb.lib.cache.dicerolls.sync_dicerolls_service", return_value=fake_service
+            "vweb.lib.cache.dicerolls.dicerolls_service", return_value=fake_service
         )
 
         ctx = self._make_context(user=user, characters=[], campaign=campaign)
@@ -336,7 +336,7 @@ class TestRecentDicerolls:
 
             cache.clear()
 
-            svc = mocker.patch("vweb.lib.cache.dicerolls.sync_dicerolls_service")
+            svc = mocker.patch("vweb.lib.cache.dicerolls.dicerolls_service")
             page = mocker.MagicMock()
             page.items = []
             svc.return_value.get_page.return_value = page
@@ -360,7 +360,7 @@ class TestRecentDicerolls:
 
             cache.clear()
 
-            svc = mocker.patch("vweb.lib.cache.dicerolls.sync_dicerolls_service")
+            svc = mocker.patch("vweb.lib.cache.dicerolls.dicerolls_service")
             page = mocker.MagicMock()
             page.items = []
             svc.return_value.get_page.return_value = page
@@ -422,7 +422,7 @@ class TestRecentDicerollsScopes:
         fake_service = MagicMock()
         fake_service.get_page.return_value = MagicMock(items=[])
         mocker.patch(
-            "vweb.lib.cache.dicerolls.sync_dicerolls_service",
+            "vweb.lib.cache.dicerolls.dicerolls_service",
             autospec=True,
         ).return_value = fake_service
         mocker.patch("vweb.lib.cache.blueprint.traits", return_value={})
@@ -578,7 +578,7 @@ class TestValidateAndSubmitExperience:
     ) -> None:
         """Verify zero and negative amounts return an error and send nothing."""
         # Given a mocked users service
-        users_service = mocker.patch("vclient.sync_users_service")
+        users_service = mocker.patch("vweb.api_client.users_service")
 
         # When submitting the form data
         with app.test_request_context():
@@ -594,7 +594,7 @@ class TestValidateAndSubmitExperience:
     def test_submits_only_positive_amounts(self, app, mocker) -> None:
         """Verify a positive XP amount is sent and a zero cool point amount is skipped."""
         # Given a mocked users service
-        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service = mocker.patch("vweb.api_client.users_service").return_value
         mocker.patch("vweb.lib.api.cache.global_context.clear_current")
 
         # When submitting 3 XP and no cool points
@@ -612,7 +612,7 @@ class TestValidateAndSubmitExperience:
     def test_refused_xp_returns_field_error_and_skips_cool_points(self, app, mocker) -> None:
         """Verify an API field error on XP is returned and cool points are not sent."""
         # Given an XP grant the API refuses
-        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service = mocker.patch("vweb.api_client.users_service").return_value
         users_service.add_xp.side_effect = ValidationError(
             "bad",
             400,
@@ -640,7 +640,7 @@ class TestValidateAndSubmitExperience:
     def test_refused_cool_points_after_xp_reports_partial_grant(self, app, mocker) -> None:
         """Verify a cool point failure after XP succeeds resets XP and clears the cache."""
         # Given XP that succeeds and cool points the API refuses
-        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service = mocker.patch("vweb.api_client.users_service").return_value
         users_service.add_cool_points.side_effect = ValidationError(
             "bad",
             400,
@@ -664,7 +664,7 @@ class TestValidateAndSubmitExperience:
     def test_refused_xp_bound_reads_as_xp_sentence(self, app, mocker) -> None:
         """Verify an API bound on the XP amount names XP instead of the amount field."""
         # Given an XP grant the API refuses with its constraint text
-        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service = mocker.patch("vweb.api_client.users_service").return_value
         users_service.add_xp.side_effect = ValidationError(
             "bad",
             400,
@@ -692,7 +692,7 @@ class TestValidateAndSubmitExperience:
     ) -> None:
         """Verify a network failure on cool points after XP succeeds is reported, not raised."""
         # Given XP that succeeds and a cool point call that cannot reach the API
-        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service = mocker.patch("vweb.api_client.users_service").return_value
         users_service.add_cool_points.side_effect = httpx2.ConnectError("down")
         clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
         form_data = {"xp": "5", "cool_points": "2"}
@@ -714,7 +714,7 @@ class TestValidateAndSubmitExperience:
     ) -> None:
         """Verify a network failure on cool points says the outcome is unknown."""
         # Given a cool point call that cannot reach the API and no XP requested
-        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service = mocker.patch("vweb.api_client.users_service").return_value
         users_service.add_cool_points.side_effect = httpx2.ConnectError("down")
         clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
 
@@ -732,7 +732,7 @@ class TestValidateAndSubmitExperience:
     def test_unreachable_api_on_xp_reports_unknown_outcome(self, app, mocker) -> None:
         """Verify a network failure on XP is reported, not raised, and skips cool points."""
         # Given an XP call that cannot reach the API
-        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service = mocker.patch("vweb.api_client.users_service").return_value
         users_service.add_xp.side_effect = httpx2.ReadTimeout("slow")
         clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
         form_data = {"xp": "5", "cool_points": "2"}
@@ -755,7 +755,7 @@ class TestValidateAndSubmitExperience:
     def test_server_error_on_xp_reports_unknown_outcome(self, app, mocker) -> None:
         """Verify a 500 on XP is treated as an unknown outcome without the API detail."""
         # Given an XP grant that fails server-side, possibly after the grant was applied
-        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service = mocker.patch("vweb.api_client.users_service").return_value
         users_service.add_xp.side_effect = ServerError("boom", 500, {"detail": "db exploded"})
         clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
         form_data = {"xp": "3", "cool_points": "0"}
@@ -779,7 +779,7 @@ class TestValidateAndSubmitExperience:
     ) -> None:
         """Verify a 500 on cool points after XP succeeds is treated as an unknown outcome."""
         # Given XP that succeeds and a cool point grant that fails server-side
-        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service = mocker.patch("vweb.api_client.users_service").return_value
         users_service.add_cool_points.side_effect = ServerError("boom", 502, {})
         mocker.patch("vweb.lib.api.cache.global_context.clear_current")
         form_data = {"xp": "5", "cool_points": "2"}
@@ -798,7 +798,7 @@ class TestValidateAndSubmitExperience:
     def test_refused_cool_points_alone_returns_field_error(self, app, mocker) -> None:
         """Verify a cool point refusal with no XP returns the field message and keeps the cache."""
         # Given cool points the API refuses and no XP requested
-        users_service = mocker.patch("vclient.sync_users_service").return_value
+        users_service = mocker.patch("vweb.api_client.users_service").return_value
         users_service.add_cool_points.side_effect = ValidationError(
             "bad",
             400,

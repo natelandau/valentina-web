@@ -14,8 +14,8 @@ from flask import (
     url_for,
 )
 from flask.views import MethodView
-from vclient import sync_character_blueprint_service, sync_characters_service
 
+from vweb.api_client import character_blueprint_service, characters_service
 from vweb.lib import cache
 from vweb.lib.api import get_character_and_campaign
 from vweb.lib.catalog import catalog
@@ -28,8 +28,9 @@ from vweb.routes.character_view.views_notes import CharacterNotesTableView
 from vweb.routes.character_view.views_trackers import HealthView, TraitTrackerView
 
 if TYPE_CHECKING:
-    from vclient.models import Campaign, Character
     from werkzeug.wrappers.response import Response
+
+    from vweb.api_client.models import Campaign, Character
 
 bp = Blueprint("character_view", __name__)
 
@@ -69,7 +70,7 @@ class CharacterView(MethodView):
                 data["dictionary_terms"] = cache.dictionary.terms()
             case "profile":
                 data["concept"] = (
-                    sync_character_blueprint_service(company_id=session["company_id"]).get_concept(
+                    character_blueprint_service(company_id=session["company_id"]).get_concept(
                         concept_id=character.concept_id
                     )
                     if character.concept_id
@@ -80,7 +81,7 @@ class CharacterView(MethodView):
                 # Both are CRUD-table tabs; the table fetches its own data lazily.
                 pass
             case "images":
-                char_svc = sync_characters_service(
+                char_svc = characters_service(
                     on_behalf_of=user.id,
                     company_id=session["company_id"],
                 )
@@ -201,7 +202,7 @@ class CharacterDeleteView(MethodView):
             return make_response("", 403)
 
         user = g.requesting_user
-        char_svc = sync_characters_service(on_behalf_of=user.id, company_id=session["company_id"])
+        char_svc = characters_service(on_behalf_of=user.id, company_id=session["company_id"])
         char_svc.delete(character_id)
         cache.global_context.clear_current()
 
@@ -235,7 +236,7 @@ class ImageUploadView(MethodView):
             return make_response("", 403)
 
         user = g.requesting_user
-        char_svc = sync_characters_service(on_behalf_of=user.id, company_id=session["company_id"])
+        char_svc = characters_service(on_behalf_of=user.id, company_id=session["company_id"])
 
         assets = upload_and_append_asset(
             svc=char_svc, parent_id=character_id, file=request.files.get("image")
@@ -276,7 +277,7 @@ class ImageDeleteView(MethodView):
             return make_response("", 403)
 
         user = g.requesting_user
-        char_svc = sync_characters_service(on_behalf_of=user.id, company_id=session["company_id"])
+        char_svc = characters_service(on_behalf_of=user.id, company_id=session["company_id"])
 
         handle_image_delete(svc=char_svc, parent_id=character_id, asset_id=asset_id)
 

@@ -11,8 +11,7 @@ from flask.views import MethodView
 if TYPE_CHECKING:
     from werkzeug.wrappers.response import Response
 
-from vclient.exceptions import APIError, ValidationError
-
+from vweb.api_client.exceptions import APIError, ValidationError
 from vweb.lib import cache
 from vweb.lib.api import fetch_campaign_or_404
 from vweb.lib.api_errors import api_error_message

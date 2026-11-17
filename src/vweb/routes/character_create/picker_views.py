@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING
 
 from flask import abort, flash, request, session, url_for
 from flask.views import MethodView
-from vclient.exceptions import APIError
+
+from vweb.api_client.exceptions import APIError
 
 if TYPE_CHECKING:
     from werkzeug.wrappers.response import Response

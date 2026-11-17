@@ -14,11 +14,11 @@ from flask import (
     url_for,
 )
 from flask.views import MethodView
-from vclient import sync_character_traits_service
-from vclient.constants import TraitModifyCurrency
-from vclient.exceptions import APIError
-from vclient.models import TraitCreate
 
+from vweb.api_client import character_traits_service
+from vweb.api_client.constants import TraitModifyCurrency
+from vweb.api_client.exceptions import APIError
+from vweb.api_client.models import TraitCreate
 from vweb.lib import cache
 from vweb.lib.api import get_character_and_campaign
 from vweb.lib.api_errors import api_error_message
@@ -36,9 +36,10 @@ from vweb.routes.character_trait_edit.views_specialties import SpecialtiesView, 
 bp = Blueprint("character_trait_edit", __name__)
 
 if TYPE_CHECKING:
-    from vclient._sync.services import SyncCharacterTraitsService
-    from vclient.models import Trait
     from werkzeug.wrappers.response import Response
+
+    from vweb.api_client.models import Trait
+    from vweb.api_client.services import CharacterTraitsService
 
 
 class CharacterTraitsView(MethodView):
@@ -52,7 +53,7 @@ class CharacterTraitsView(MethodView):
 
     def _update_trait_value(
         self,
-        svc: SyncCharacterTraitsService,
+        svc: CharacterTraitsService,
         *,
         trait_id: str,
         value: str,
@@ -117,7 +118,7 @@ class CharacterTraitsView(MethodView):
 
     def _delete_trait(
         self,
-        svc: SyncCharacterTraitsService,
+        svc: CharacterTraitsService,
         *,
         trait_id: str,
         get_method_url: str,
@@ -156,7 +157,7 @@ class CharacterTraitsView(MethodView):
 
     def _assign_trait(
         self,
-        svc: SyncCharacterTraitsService,
+        svc: CharacterTraitsService,
         *,
         trait: Trait,
         character_id: str,
@@ -186,7 +187,7 @@ class CharacterTraitsView(MethodView):
 
     def _spend_summary(
         self,
-        svc: SyncCharacterTraitsService,
+        svc: CharacterTraitsService,
         *,
         character_trait_id: str,
     ) -> str:
@@ -298,7 +299,7 @@ class CharacterTraitsView(MethodView):
             f"character_trait_edit.{self.spend_type}", character_id=character_id
         )
 
-        api_svc = sync_character_traits_service(
+        api_svc = character_traits_service(
             on_behalf_of=requesting_user.id,
             character_id=character.id,
             company_id=session["company_id"],

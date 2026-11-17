@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from markupsafe import escape
 
 if TYPE_CHECKING:
-    from vclient.models.users import User
+    from vweb.api_client.models.users import User
 
 
 def user_display_name(user: User) -> str:

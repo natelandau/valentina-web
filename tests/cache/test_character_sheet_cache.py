@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.models.full_sheet import CharacterFullSheet
-from vclient.testing import CharacterFullSheetFactory
 
+from vweb.api_client.models.full_sheet import CharacterFullSheet
+from vweb.api_client.testing import CharacterFullSheetFactory
 from vweb.lib.cache.character_sheet import clear, get, update
 
 if TYPE_CHECKING:
@@ -17,10 +17,10 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def mock_char_svc(mocker) -> MagicMock:
-    """Mock the sync_characters_service factory."""
+    """Mock the characters_service factory."""
     svc = MagicMock()
     svc.get_full_sheet.return_value = CharacterFullSheetFactory.build()
-    mocker.patch("vweb.lib.cache.character_sheet.sync_characters_service", return_value=svc)
+    mocker.patch("vweb.lib.cache.character_sheet.characters_service", return_value=svc)
     return svc
 
 

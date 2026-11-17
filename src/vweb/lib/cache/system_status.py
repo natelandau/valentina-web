@@ -10,13 +10,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
-from vclient import sync_system_service
-
+from vweb.api_client import system_service
 from vweb.constants import CACHE_SYSTEM_STATUS_TTL
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
-    from vclient.models import SystemHealth
+    from vweb.api_client.models import SystemHealth
 
 _CACHE_SYSTEM_STATUS_KEY: Final[str] = "system_status"
 _STRATEGY = base.ShortTTL(ttl=CACHE_SYSTEM_STATUS_TTL)
@@ -33,4 +32,4 @@ def clear() -> None:
 
 
 def _fetch() -> SystemHealth:
-    return sync_system_service().health()
+    return system_service().health()

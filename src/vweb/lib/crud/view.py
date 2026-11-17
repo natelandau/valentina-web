@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from flask import abort, flash, request
 from flask.views import MethodView
 from pydantic import ValidationError as PydanticValidationError
-from vclient.exceptions import APIError
 
+from vweb.api_client.exceptions import APIError
 from vweb.lib import cache
 from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog

@@ -26,7 +26,13 @@ from vweb.routes.character_view.services import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from vclient.models import Character, CharacterFullSheet, CharacterTrait, Health, Tracker
+    from vweb.api_client.models import (
+        Character,
+        CharacterFullSheet,
+        CharacterTrait,
+        Health,
+        Tracker,
+    )
 
 TRAIT_ACTIONS = ("set", "add_stain", "remove_stain")
 HEALTH_ACTIONS = ("damage", "heal")

@@ -8,15 +8,21 @@ from unittest.mock import MagicMock
 
 from flask import session
 from PIL import Image
-from vclient.models import IdentityResolution
-from vclient.testing import CampaignFactory, CompanyFactory, SystemHealthFactory, UserFactory
 
+from vweb.api_client.models import IdentityResolution
+from vweb.api_client.testing import (
+    CampaignFactory,
+    CompanyFactory,
+    SystemHealthFactory,
+    UserFactory,
+)
 from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
     from flask.testing import TestResponse
     from pytest_mock import MockerFixture
-    from vclient.models import (
+
+    from vweb.api_client.models import (
         Campaign,
         Character,
         Company,

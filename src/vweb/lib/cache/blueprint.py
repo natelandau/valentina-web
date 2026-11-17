@@ -12,13 +12,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 from flask import session
-from vclient import sync_character_blueprint_service
 
+from vweb.api_client import character_blueprint_service
 from vweb.constants import CACHE_BLUEPRINT_TTL
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
-    from vclient.models import Trait, TraitSubcategory
+    from vweb.api_client.models import Trait, TraitSubcategory
 
 _CACHE_BLUEPRINT_ALL_TRAITS_PREFIX: Final[str] = "bp_all_traits:"
 _CACHE_BLUEPRINT_ALL_SHEET_SECTIONS_PREFIX: Final[str] = "bp_all_sheet_sections:"
@@ -76,16 +76,14 @@ def clear() -> None:
 def _fetch_traits() -> dict[str, Trait]:
     return {
         t.id: t
-        for t in sync_character_blueprint_service(
-            company_id=session["company_id"]
-        ).list_all_traits()
+        for t in character_blueprint_service(company_id=session["company_id"]).list_all_traits()
     }
 
 
 def _fetch_subcategories() -> dict[str, TraitSubcategory]:
     return {
         sc.id: sc
-        for sc in sync_character_blueprint_service(
+        for sc in character_blueprint_service(
             company_id=session["company_id"]
         ).list_all_subcategories()
     }

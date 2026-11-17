@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 
 from flask import flash, g, request, session, url_for
 from flask.views import MethodView
-from vclient import sync_character_traits_service
 
+from vweb.api_client import character_traits_service
 from vweb.lib import cache
 from vweb.lib.api import get_character_and_campaign
 from vweb.lib.api_errors import api_error_message
@@ -28,10 +28,11 @@ from vweb.routes.character_trait_edit.services import (
 )
 
 if TYPE_CHECKING:
-    from vclient._sync.services import SyncCharacterTraitsService
-    from vclient.constants import TraitModifyCurrency
-    from vclient.models import Character, CharacterTrait
     from werkzeug.wrappers.response import Response
+
+    from vweb.api_client.constants import TraitModifyCurrency
+    from vweb.api_client.models import Character, CharacterTrait
+    from vweb.api_client.services import CharacterTraitsService
 
 
 class _SpecialtyBaseView(MethodView):
@@ -79,8 +80,8 @@ class _SpecialtyBaseView(MethodView):
         self.character_trait = character_trait
         return None
 
-    def _service(self) -> SyncCharacterTraitsService:
-        return sync_character_traits_service(
+    def _service(self) -> CharacterTraitsService:
+        return character_traits_service(
             on_behalf_of=g.requesting_user.id,
             character_id=self.character.id,
             company_id=session["company_id"],

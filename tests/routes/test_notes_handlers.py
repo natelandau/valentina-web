@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.testing import CampaignFactory, CharacterFactory, NoteFactory
 
 from tests.conftest import get_csrf
 from tests.helpers import build_global_context, seed_session
+from vweb.api_client.testing import CampaignFactory, CharacterFactory, NoteFactory
 from vweb.routes.book.handlers import BookNotesHandler
 from vweb.routes.campaign_notes.handlers import CampaignNotesHandler
 from vweb.routes.chapter.handlers import ChapterNotesHandler
@@ -36,19 +36,19 @@ class NotesHandlerCase:
 NOTES_HANDLER_CASES: dict[str, NotesHandlerCase] = {
     "book": NotesHandlerCase(
         handler_class=BookNotesHandler,
-        service_path="vweb.routes.book.handlers.sync_books_service",
+        service_path="vweb.routes.book.handlers.books_service",
         parent_id="book-123",
         handler_kwargs={"campaign_id": "camp-456"},
     ),
     "chapter": NotesHandlerCase(
         handler_class=ChapterNotesHandler,
-        service_path="vweb.routes.chapter.handlers.sync_chapters_service",
+        service_path="vweb.routes.chapter.handlers.chapters_service",
         parent_id="chapter-123",
         handler_kwargs={"campaign_id": "camp-456", "book_id": "book-789"},
     ),
     "character": NotesHandlerCase(
         handler_class=CharacterNotesHandler,
-        service_path="vweb.routes.character_view.handlers_notes.sync_characters_service",
+        service_path="vweb.routes.character_view.handlers_notes.characters_service",
         parent_id="char-123",
         needs_character_in_context=True,
     ),
@@ -192,9 +192,9 @@ class TestNotesHandlerOperations:
 
 @pytest.fixture
 def mock_book_svc(mocker: MockerFixture) -> MagicMock:
-    """Mock the sync_books_service for the book handler module."""
+    """Mock the books_service for the book handler module."""
     svc = MagicMock()
-    mocker.patch("vweb.routes.book.handlers.sync_books_service", return_value=svc)
+    mocker.patch("vweb.routes.book.handlers.books_service", return_value=svc)
     return svc
 
 
@@ -235,9 +235,9 @@ class TestBookNotesHandlerSpecific:
 
 @pytest.fixture
 def mock_chapter_svc(mocker: MockerFixture) -> MagicMock:
-    """Mock the sync_chapters_service for the chapter handler module."""
+    """Mock the chapters_service for the chapter handler module."""
     svc = MagicMock()
-    mocker.patch("vweb.routes.chapter.handlers.sync_chapters_service", return_value=svc)
+    mocker.patch("vweb.routes.chapter.handlers.chapters_service", return_value=svc)
     return svc
 
 
@@ -269,14 +269,14 @@ class TestChapterNotesHandlerInit:
                 ChapterNotesHandler("chapter-123")
 
     def test_init_calls_service_with_correct_args(self, app, mock_chapter_svc) -> None:
-        """Verify constructor passes campaign_id and book_id to sync_chapters_service."""
+        """Verify constructor passes campaign_id and book_id to chapters_service."""
         with app.test_request_context():
             from unittest.mock import patch
 
             seed_session()
 
             with patch(
-                "vweb.routes.chapter.handlers.sync_chapters_service", return_value=MagicMock()
+                "vweb.routes.chapter.handlers.chapters_service", return_value=MagicMock()
             ) as patched_svc:
                 ChapterNotesHandler("chapter-123", campaign_id="camp-456", book_id="book-789")
 
@@ -290,11 +290,9 @@ class TestChapterNotesHandlerInit:
 
 @pytest.fixture
 def mock_character_svc(mocker: MockerFixture) -> MagicMock:
-    """Mock the sync_characters_service for the character notes handler module."""
+    """Mock the characters_service for the character notes handler module."""
     svc = MagicMock()
-    mocker.patch(
-        "vweb.routes.character_view.handlers_notes.sync_characters_service", return_value=svc
-    )
+    mocker.patch("vweb.routes.character_view.handlers_notes.characters_service", return_value=svc)
     return svc
 
 
@@ -321,17 +319,17 @@ class TestCharacterNotesHandlerInit:
 CAMPAIGN_CONTENT_HANDLERS: dict[str, tuple[type, str, dict[str, str]]] = {
     "campaign": (
         CampaignNotesHandler,
-        "vweb.routes.campaign_notes.handlers.sync_campaigns_service",
+        "vweb.routes.campaign_notes.handlers.campaigns_service",
         {},
     ),
     "book": (
         BookNotesHandler,
-        "vweb.routes.book.handlers.sync_books_service",
+        "vweb.routes.book.handlers.books_service",
         {"campaign_id": "camp-456"},
     ),
     "chapter": (
         ChapterNotesHandler,
-        "vweb.routes.chapter.handlers.sync_chapters_service",
+        "vweb.routes.chapter.handlers.chapters_service",
         {"campaign_id": "camp-456", "book_id": "book-789"},
     ),
 }
@@ -384,7 +382,7 @@ class TestCampaignNotesRouteGuard:
         context = build_global_context(user_role="PLAYER", campaign=campaign)
         mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
         svc = MagicMock()
-        mocker.patch("vweb.routes.campaign_notes.handlers.sync_campaigns_service", return_value=svc)
+        mocker.patch("vweb.routes.campaign_notes.handlers.campaigns_service", return_value=svc)
 
         # When the player sends the write directly
         response = getattr(client, method)(
@@ -409,7 +407,7 @@ class TestCampaignNotesRouteGuard:
         context = build_global_context(user_role="PLAYER", campaign=campaign)
         mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
         mocker.patch(
-            "vweb.routes.campaign_notes.handlers.sync_campaigns_service", return_value=MagicMock()
+            "vweb.routes.campaign_notes.handlers.campaigns_service", return_value=MagicMock()
         )
 
         # When the player requests the form directly
@@ -426,7 +424,7 @@ class TestCampaignNotesRouteGuard:
         mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
         svc = MagicMock()
         svc.list_all_notes.return_value = [NoteFactory.build(id="note-1")]
-        mocker.patch("vweb.routes.campaign_notes.handlers.sync_campaigns_service", return_value=svc)
+        mocker.patch("vweb.routes.campaign_notes.handlers.campaigns_service", return_value=svc)
 
         # When the player requests the table with editable=true
         response = client.get(

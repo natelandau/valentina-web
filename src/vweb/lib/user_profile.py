@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from vclient.models import User
+    from vweb.api_client.models import User
 
 
 def user_avatar_url(user: User) -> str | None:

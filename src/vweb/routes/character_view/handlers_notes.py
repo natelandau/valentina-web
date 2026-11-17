@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from flask import g, session
-from vclient import sync_characters_service
 
+from vweb.api_client import characters_service
 from vweb.lib.base_notes import BaseNotesHandler
 from vweb.lib.guards import can_edit_character
 
@@ -24,7 +24,7 @@ class CharacterNotesHandler(BaseNotesHandler):
             raise ValueError(msg)
         self._character = character
 
-        self._svc = sync_characters_service(
+        self._svc = characters_service(
             on_behalf_of=session.get("user_id", ""),
             company_id=session["company_id"],
         )

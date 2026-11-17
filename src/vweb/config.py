@@ -71,16 +71,19 @@ class APISettings(BaseModel):
     enable_logs: bool = Field(default=False)
 
 
+SETTINGS_SOURCES = SettingsConfigDict(
+    env_file=".env.secret",
+    env_file_encoding="utf-8",
+    env_prefix="VWEB_",
+    env_nested_delimiter="__",
+    case_sensitive=False,
+)
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables and .env file."""
 
-    model_config = SettingsConfigDict(
-        env_file=".env.secret",
-        env_file_encoding="utf-8",
-        env_prefix="VWEB_",
-        env_nested_delimiter="__",
-        case_sensitive=False,
-    )
+    model_config = SETTINGS_SOURCES
 
     app_name: str = "Valentina Web"
     debug_toolbar: bool = False

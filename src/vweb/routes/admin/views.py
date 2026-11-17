@@ -7,9 +7,9 @@ from typing import TYPE_CHECKING, Any
 from flask import Blueprint, flash, g, redirect, request, session, url_for
 from flask.views import MethodView
 from pydantic import ValidationError
-from vclient import sync_companies_service
-from vclient.models.companies import CompanySettingsUpdate, CompanyUpdate
 
+from vweb.api_client import companies_service
+from vweb.api_client.models.companies import CompanySettingsUpdate, CompanyUpdate
 from vweb.lib import cache
 from vweb.lib.catalog import catalog
 from vweb.lib.guards import is_admin, is_self
@@ -137,7 +137,7 @@ class SettingsView(MethodView):
     def get(self) -> str:
         """Render the company settings page with current company values pre-populated."""
         company_id = session["company_id"]
-        company = sync_companies_service().get(company_id)
+        company = companies_service().get(company_id)
         return catalog.render(
             "admin.SettingsPage",
             company=company,
@@ -160,7 +160,7 @@ class SettingsView(MethodView):
             errors[exc.field] = str(exc)
 
         if errors or update is None:
-            company = sync_companies_service().get(company_id)
+            company = companies_service().get(company_id)
             page = catalog.render(
                 "admin.SettingsPage",
                 company=company,
@@ -169,7 +169,7 @@ class SettingsView(MethodView):
             )
             return page, 400
 
-        sync_companies_service().update(company_id, request=update)
+        companies_service().update(company_id, request=update)
         cache.global_context.clear_current()
         flash("Settings updated.", "success")
         return redirect(url_for("admin.settings"))

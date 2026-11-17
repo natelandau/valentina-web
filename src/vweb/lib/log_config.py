@@ -8,6 +8,8 @@ from loguru import logger
 
 from vweb.config import get_settings
 
+LOG_FORMAT = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>: <level>{message}</level> | <level>{extra}</level>"
+
 if TYPE_CHECKING:
     from vweb.config import Settings
 
@@ -38,7 +40,7 @@ def instantiate_logger(settings: "Settings | None" = None) -> None:  # pragma: n
         sys.stderr,
         level=log_level_name,
         colorize=True,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>: <level>{message}</level> | <level>{extra}</level>",
+        format=LOG_FORMAT,
     )
     if settings.log_file_path:
         logger.add(
@@ -50,7 +52,7 @@ def instantiate_logger(settings: "Settings | None" = None) -> None:  # pragma: n
         )
 
     if settings.api.enable_logs:
-        logger.enable("vclient")
+        logger.enable("vweb.api_client")
 
     # # Intercept standard discord.py logs and redirect to Loguru
     logging.getLogger("asyncio").setLevel(level="ERROR")

@@ -9,15 +9,18 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
-from vclient.exceptions import (
+
+from tests.conftest import get_csrf
+from tests.helpers import build_global_context
+from vweb.api_client.exceptions import (
     AuthorizationError,
     ConflictError,
     NotFoundError,
     RequestValidationError,
     ValidationError,
 )
-from vclient.models import CharacterTraitSpecialty
-from vclient.testing import (
+from vweb.api_client.models import CharacterTraitSpecialty
+from vweb.api_client.testing import (
     CharacterFactory,
     CharacterFullSheetFactory,
     CharacterTraitFactory,
@@ -27,11 +30,8 @@ from vclient.testing import (
     TraitFactory,
 )
 
-from tests.conftest import get_csrf
-from tests.helpers import build_global_context
-
 if TYPE_CHECKING:
-    from vclient.models import Character, CharacterFullSheet
+    from vweb.api_client.models import Character, CharacterFullSheet
 
 
 class _Currency(BaseModel):
@@ -70,7 +70,7 @@ class TestCharacterTraitsViewPermissions:
 
         traits_svc = MagicMock()
         mocker.patch(
-            "vweb.routes.character_trait_edit.views.sync_character_traits_service",
+            "vweb.routes.character_trait_edit.views.character_traits_service",
             return_value=traits_svc,
         )
         csrf = get_csrf(client)
@@ -122,7 +122,7 @@ class TestCharacterTraitsViewPermissions:
 
         traits_svc = MagicMock()
         mocker.patch(
-            "vweb.routes.character_trait_edit.views.sync_character_traits_service",
+            "vweb.routes.character_trait_edit.views.character_traits_service",
             return_value=traits_svc,
         )
         csrf = get_csrf(client)
@@ -177,7 +177,7 @@ class TestCustomTraitCreation:
         options.options = {"DELETE": MagicMock(point_change=1)}
         traits_svc.get_value_options.return_value = options
         mocker.patch(
-            "vweb.routes.character_trait_edit.views.sync_character_traits_service",
+            "vweb.routes.character_trait_edit.views.character_traits_service",
             return_value=traits_svc,
         )
         self.blueprint_traits = mocker.patch(
@@ -520,7 +520,7 @@ class TestTraitDeletePost:
         traits_svc.get_value_options.return_value = options
         traits_svc.delete.return_value = None
         mocker.patch(
-            "vweb.routes.character_trait_edit.views.sync_character_traits_service",
+            "vweb.routes.character_trait_edit.views.character_traits_service",
             return_value=traits_svc,
         )
         return character, traits_svc
@@ -634,7 +634,7 @@ class TestChangeValuePost:
         }
         traits_svc.get_value_options.return_value = options
         mocker.patch(
-            "vweb.routes.character_trait_edit.views.sync_character_traits_service",
+            "vweb.routes.character_trait_edit.views.character_traits_service",
             return_value=traits_svc,
         )
         return character, traits_svc
@@ -750,7 +750,7 @@ class TestSpecialtyLossWarnings:
         }
         traits_svc.get_value_options.return_value = options
         mocker.patch(
-            "vweb.routes.character_trait_edit.views.sync_character_traits_service",
+            "vweb.routes.character_trait_edit.views.character_traits_service",
             return_value=traits_svc,
         )
         return character

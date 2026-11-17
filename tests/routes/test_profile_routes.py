@@ -7,16 +7,17 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.models.users import GitHubProfile
-from vclient.testing import UserFactory
 
 from tests.helpers import make_image_bytes
+from vweb.api_client.models.users import GitHubProfile
+from vweb.api_client.testing import UserFactory
 from vweb.constants import MAX_AVATAR_SIZE, MAX_AVATAR_SIZE_MB
 from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
     from flask.testing import FlaskClient
-    from vclient.models import User
+
+    from vweb.api_client.models import User
 
 
 @pytest.fixture
@@ -68,7 +69,7 @@ def _mock_profile_api(mocker, profile_context) -> MagicMock:
 
     mock_svc = MagicMock()
     mock_svc.list_all_quickrolls.return_value = []
-    mocker.patch("vweb.routes.profile.views.sync_users_service", return_value=mock_svc)
+    mocker.patch("vweb.routes.profile.views.users_service", return_value=mock_svc)
 
     return mock_svc
 
@@ -203,9 +204,8 @@ class TestProfilePost:
         self, client: FlaskClient, mock_profile_svc: MagicMock
     ) -> None:
         """Verify successful profile update calls svc.update with a UserUpdate object."""
-        from vclient.models.users import UserUpdate
-
         from tests.conftest import get_csrf
+        from vweb.api_client.models.users import UserUpdate
 
         csrf = get_csrf(client)
 
@@ -237,9 +237,8 @@ class TestProfilePost:
         self, client: FlaskClient, mock_profile_svc: MagicMock
     ) -> None:
         """Verify a taken username re-renders the form with the API's message."""
-        from vclient.exceptions import ConflictError
-
         from tests.conftest import get_csrf
+        from vweb.api_client.exceptions import ConflictError
 
         # Given the API refuses the username as taken
         mock_profile_svc.update.side_effect = ConflictError(
@@ -266,9 +265,8 @@ class TestProfilePost:
         self, client: FlaskClient, mock_profile_svc: MagicMock, mocker
     ) -> None:
         """Verify a refused update still shows the avatar flash now and drops the stale context."""
-        from vclient.exceptions import ConflictError
-
         from tests.conftest import get_csrf
+        from vweb.api_client.exceptions import ConflictError
 
         # Given an avatar removal that succeeds and an update the API refuses
         mock_profile_svc.update.side_effect = ConflictError(
@@ -300,9 +298,8 @@ class TestProfilePost:
         self, client: FlaskClient, mock_profile_svc: MagicMock, mocker
     ) -> None:
         """Verify a refused update with no avatar change leaves the cached context alone."""
-        from vclient.exceptions import ConflictError
-
         from tests.conftest import get_csrf
+        from vweb.api_client.exceptions import ConflictError
 
         # Given an update the API refuses and no avatar change
         mock_profile_svc.update.side_effect = ConflictError(

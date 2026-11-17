@@ -8,9 +8,9 @@ shape (list vs dict) — the rendered output is the contract.
 from __future__ import annotations
 
 import pytest
-from vclient.testing import CampaignFactory, CharacterFactory
 
 from tests.conftest import get_csrf
+from vweb.api_client.testing import CampaignFactory, CharacterFactory
 
 
 class TestDictionaryCreateErrorRendering:

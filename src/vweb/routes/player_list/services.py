@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from flask import g
 
 if TYPE_CHECKING:
-    from vclient.models import User
+    from vweb.api_client.models import User
 
 
 HAS_CHARACTERS_YES = "yes"

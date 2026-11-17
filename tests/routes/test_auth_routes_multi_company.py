@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from vclient.models import UserLookupResult
-from vclient.testing import CompanyFactory, UserFactory
-
 from tests.conftest import get_csrf
 from tests.helpers import identify_resolving
+from vweb.api_client.models import UserLookupResult
+from vweb.api_client.testing import CompanyFactory, UserFactory
 
 
 def _make_lookup_result(**kwargs) -> UserLookupResult:
@@ -235,7 +234,7 @@ class TestSelectCompaniesView:
         # Given available companies from the API
         companies = CompanyFactory.batch(2)
         mocker.patch(
-            "vweb.routes.auth.views.sync_companies_service"
+            "vweb.routes.auth.views.companies_service"
         ).return_value.list_all.return_value = companies
 
         # When the page is requested
@@ -248,7 +247,7 @@ class TestSelectCompaniesView:
 
     def test_post_registers_user_redirects_to_pending(self, client, mocker):
         """Verify POST /select-companies resolves identities and redirects to pending."""
-        from vclient.models import IdentityResolution
+        from vweb.api_client.models import IdentityResolution
 
         # Given pending OAuth data in session (new shape: verified credential)
         with client.session_transaction() as sess:
@@ -270,9 +269,7 @@ class TestSelectCompaniesView:
         mock_company = CompanyFactory.build(id="comp-1", name="Test Company")
         mock_companies_svc = MagicMock()
         mock_companies_svc.list_all.return_value = [mock_company]
-        mocker.patch(
-            "vweb.routes.auth.views.sync_companies_service", return_value=mock_companies_svc
-        )
+        mocker.patch("vweb.routes.auth.views.companies_service", return_value=mock_companies_svc)
 
         # Given a CSRF token
         csrf_token = get_csrf(client)
@@ -321,7 +318,7 @@ class TestSelectCompaniesView:
 
     def test_post_identify_failure_flashes_and_redirects_to_index(self, client, mocker):
         """Verify a token verification failure during registration aborts to index."""
-        from vclient.exceptions import UnprocessableEntityError
+        from vweb.api_client.exceptions import UnprocessableEntityError
 
         # Given pending OAuth data in session
         with client.session_transaction() as sess:

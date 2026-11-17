@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from vweb.lib.jinja import CHARACTER_TYPE_LABELS
 
 if TYPE_CHECKING:
-    from vclient.models import Character
+    from vweb.api_client.models import Character
 
 # Player-facing character types in display order, shared with CharacterTypeBadge.
 CHARACTER_TYPE_ORDER: tuple[str, ...] = ("PLAYER", "NPC", "STORYTELLER")

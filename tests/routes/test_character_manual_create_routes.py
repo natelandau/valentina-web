@@ -10,16 +10,16 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.testing import (
+
+from tests.conftest import get_csrf
+from tests.helpers import assert_shows_error, build_global_context, setup_form_options
+from vweb.api_client.testing import (
     CharacterConceptFactory,
     CharacterFactory,
     VampireClanFactory,
     WerewolfAuspiceFactory,
     WerewolfTribeFactory,
 )
-
-from tests.conftest import get_csrf
-from tests.helpers import assert_shows_error, build_global_context, setup_form_options
 
 if TYPE_CHECKING:
     from flask.testing import TestResponse
@@ -134,8 +134,8 @@ class TestManualProfileView:
     def test_character_type_shows_npc_for_unrestricted_player(self, client, mocker) -> None:
         """Verify a player sees PLAYER and NPC (not STORYTELLER) when NPC mgmt is UNRESTRICTED."""
         # Given a PLAYER user under an UNRESTRICTED permission_manage_npc setting
-        from vclient.models.companies import CompanySettings
-        from vclient.testing import CompanyFactory
+        from vweb.api_client.models.companies import CompanySettings
+        from vweb.api_client.testing import CompanyFactory
 
         company = CompanyFactory.build(
             name="Test Company",
@@ -207,7 +207,7 @@ class TestManualProfileView:
 
     def test_create_post_inline_errors_on_api_rejection(self, client, mocker, fake_vclient) -> None:
         """Verify an API rejection of a submitted character type shows an inline error."""
-        from vclient.testing import Routes
+        from vweb.api_client.testing import Routes
 
         # Given a player whose crafted character_type the API will reject
         ctx = build_global_context(user_role="PLAYER")
@@ -245,7 +245,7 @@ class TestManualProfileView:
         """Verify a 422 field-level validation error from the API renders inline."""
         from unittest.mock import MagicMock
 
-        from vclient.exceptions import ValidationError
+        from vweb.api_client.exceptions import ValidationError
 
         # Given a player whose submission the API rejects with field-level errors
         ctx = build_global_context(user_role="PLAYER")
@@ -263,7 +263,7 @@ class TestManualProfileView:
             },
         )
         mocker.patch(
-            "vweb.routes.character_create.manual_services.sync_characters_service",
+            "vweb.routes.character_create.manual_services.characters_service",
             return_value=svc_mock,
         )
 
@@ -325,7 +325,7 @@ class TestManualProfileView:
 
         char_svc = MagicMock()
         mocker.patch(
-            "vweb.routes.character_create.manual_services.sync_characters_service",
+            "vweb.routes.character_create.manual_services.characters_service",
             return_value=char_svc,
         )
         csrf = get_csrf(client)
@@ -359,7 +359,7 @@ class TestManualProfileView:
 
         char_svc = MagicMock()
         mocker.patch(
-            "vweb.routes.character_create.manual_services.sync_characters_service",
+            "vweb.routes.character_create.manual_services.characters_service",
             return_value=char_svc,
         )
         csrf = get_csrf(client)
@@ -499,7 +499,7 @@ class TestManualFinalizeView:
         self, client, mocker, fake_vclient, character_type: str, player_id: str | None
     ) -> None:
         """Verify successful creation redirects to the character sheet, with or without a player."""
-        from vclient.testing import BulkAssignTraitResponseFactory, Routes
+        from vweb.api_client.testing import BulkAssignTraitResponseFactory, Routes
 
         # Given a campaign and a temp character the requester created, which has no player
         # when it is an NPC or storyteller character
@@ -581,7 +581,7 @@ class TestManualFinalizeView:
 
     def test_rerenders_traits_on_api_error(self, client, mocker, fake_vclient) -> None:
         """Verify API error re-renders traits form with error flash."""
-        from vclient.testing import CharacterFullSheetFactory, Routes
+        from vweb.api_client.testing import CharacterFullSheetFactory, Routes
 
         # Given a campaign and a failing API
         ctx = build_global_context(user_role="PLAYER")
@@ -645,7 +645,7 @@ class TestManualFinalizeLoadError:
 
     def test_server_error_flashes_fallback(self, client, mocker) -> None:
         """Verify a server error loading the character flashes the fallback, not the detail."""
-        from vclient.exceptions import ServerError
+        from vweb.api_client.exceptions import ServerError
 
         # Given loading the in-progress character fails server-side
         ctx = build_global_context(user_role="PLAYER")
@@ -693,7 +693,7 @@ class TestManualFinalizeGuards:
         self, client, mocker, fake_vclient, is_temporary, owner, same_campaign
     ) -> None:
         """Verify a stale or foreign temp_character_id cannot receive NO_COST traits."""
-        from vclient.testing import Routes
+        from vweb.api_client.testing import Routes
 
         # Given a session pointing at a character that is permanent or created by someone else
         ctx = build_global_context(user_role="PLAYER")
@@ -746,7 +746,7 @@ class TestProfileEditMode:
 
     def test_edit_mode_prefills_from_character(self, client, mocker, fake_vclient) -> None:
         """Verify edit mode pre-fills form from existing character."""
-        from vclient.testing import Routes
+        from vweb.api_client.testing import Routes
 
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
@@ -775,7 +775,7 @@ class TestProfileEditMode:
 
     def test_edit_mode_game_version_disabled(self, client, mocker, fake_vclient) -> None:
         """Verify game version is disabled in edit mode."""
-        from vclient.testing import Routes
+        from vweb.api_client.testing import Routes
 
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
@@ -801,7 +801,7 @@ class TestProfileEditMode:
 
     def test_edit_post_updates_and_redirects(self, client, mocker, fake_vclient) -> None:
         """Verify successful edit POST updates character and redirects."""
-        from vclient.testing import Routes
+        from vweb.api_client.testing import Routes
 
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
@@ -841,7 +841,7 @@ class TestProfileEditMode:
 
     def test_edit_post_validation_error_rerenders(self, client, mocker, fake_vclient) -> None:
         """Verify validation error in edit mode re-renders form with errors."""
-        from vclient.testing import Routes
+        from vweb.api_client.testing import Routes
 
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
@@ -875,7 +875,7 @@ class TestProfileEditMode:
 
     def test_edit_post_api_error_shows_general_error(self, client, mocker, fake_vclient) -> None:
         """Verify API error in edit mode shows general error message."""
-        from vclient.testing import Routes
+        from vweb.api_client.testing import Routes
 
         ctx = build_global_context(user_role="PLAYER")
         campaign = ctx.campaigns[0]
@@ -912,7 +912,7 @@ class TestProfileEditMode:
 
     def test_edit_load_server_error_shows_fallback(self, client, mocker, fake_vclient) -> None:
         """Verify a server error loading the character shows the fallback, not the detail."""
-        from vclient.testing import Routes
+        from vweb.api_client.testing import Routes
 
         # Given loading the character fails server-side
         ctx = build_global_context(user_role="PLAYER")
@@ -960,7 +960,7 @@ class TestProfileEditMode:
         char_svc = MagicMock()
         char_svc.get.return_value = other_char
         mocker.patch(
-            "vweb.routes.character_create.manual_services.sync_characters_service",
+            "vweb.routes.character_create.manual_services.characters_service",
             return_value=char_svc,
         )
         csrf = get_csrf(client)
@@ -999,7 +999,7 @@ class TestProfileEditMode:
         char_svc = MagicMock()
         char_svc.get.return_value = own_char
         mocker.patch(
-            "vweb.routes.character_create.manual_services.sync_characters_service",
+            "vweb.routes.character_create.manual_services.characters_service",
             return_value=char_svc,
         )
         csrf = get_csrf(client)

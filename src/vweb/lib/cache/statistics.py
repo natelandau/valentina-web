@@ -10,17 +10,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal
 
 from flask import g, session
-from vclient import (
-    sync_campaigns_service,
-    sync_characters_service,
-    sync_users_service,
-)
 
+from vweb.api_client import (
+    campaigns_service,
+    characters_service,
+    users_service,
+)
 from vweb.constants import CACHE_STATISTICS_TTL
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
-    from vclient.models import RollStatistics
+    from vweb.api_client.models import RollStatistics
 
 ScopeType = Literal["campaign", "user", "character"]
 _NUM_TOP_TRAITS = 1
@@ -53,10 +53,10 @@ def _fetch(scope_type: ScopeType, scope_id: str) -> RollStatistics:
     company_id = session["company_id"]
 
     if scope_type == "campaign":
-        svc = sync_campaigns_service(on_behalf_of=user_id, company_id=company_id)
+        svc = campaigns_service(on_behalf_of=user_id, company_id=company_id)
     elif scope_type == "user":
-        svc = sync_users_service(on_behalf_of=user_id, company_id=company_id)
+        svc = users_service(on_behalf_of=user_id, company_id=company_id)
     else:  # scope_type == "character"
-        svc = sync_characters_service(on_behalf_of=user_id, company_id=company_id)
+        svc = characters_service(on_behalf_of=user_id, company_id=company_id)
 
     return svc.get_statistics(scope_id, num_top_traits=_NUM_TOP_TRAITS)

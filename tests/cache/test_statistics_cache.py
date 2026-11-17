@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.testing import RollStatisticsFactory
 
+from vweb.api_client.testing import RollStatisticsFactory
 from vweb.lib.cache.statistics import get
 
 if TYPE_CHECKING:
@@ -18,14 +18,12 @@ class TestGetStatistics:
     """Tests for get(scope_type, scope_id)."""
 
     def test_campaign_scope_calls_campaigns_service(self, app, mocker: MockerFixture) -> None:
-        """Verify campaign scope dispatches to sync_campaigns_service.get_statistics."""
+        """Verify campaign scope dispatches to campaigns_service.get_statistics."""
         # Given a mocked campaigns service
         stats = RollStatisticsFactory.build()
         svc = MagicMock()
         svc.get_statistics.return_value = stats
-        mock_factory = mocker.patch(
-            "vweb.lib.cache.statistics.sync_campaigns_service", autospec=True
-        )
+        mock_factory = mocker.patch("vweb.lib.cache.statistics.campaigns_service", autospec=True)
         mock_factory.return_value = svc
 
         # When requesting campaign-scoped statistics
@@ -41,12 +39,12 @@ class TestGetStatistics:
         assert result is stats
 
     def test_user_scope_calls_users_service(self, app, mocker: MockerFixture) -> None:
-        """Verify user scope dispatches to sync_users_service.get_statistics."""
+        """Verify user scope dispatches to users_service.get_statistics."""
         # Given a mocked users service
         stats = RollStatisticsFactory.build()
         svc = MagicMock()
         svc.get_statistics.return_value = stats
-        mock_factory = mocker.patch("vweb.lib.cache.statistics.sync_users_service", autospec=True)
+        mock_factory = mocker.patch("vweb.lib.cache.statistics.users_service", autospec=True)
         mock_factory.return_value = svc
 
         # When requesting user-scoped statistics
@@ -62,14 +60,12 @@ class TestGetStatistics:
         assert result is stats
 
     def test_character_scope_calls_characters_service(self, app, mocker: MockerFixture) -> None:
-        """Verify character scope dispatches to sync_characters_service.get_statistics."""
+        """Verify character scope dispatches to characters_service.get_statistics."""
         # Given a mocked characters service
         stats = RollStatisticsFactory.build()
         svc = MagicMock()
         svc.get_statistics.return_value = stats
-        mock_factory = mocker.patch(
-            "vweb.lib.cache.statistics.sync_characters_service", autospec=True
-        )
+        mock_factory = mocker.patch("vweb.lib.cache.statistics.characters_service", autospec=True)
         mock_factory.return_value = svc
 
         # When requesting character-scoped statistics
@@ -90,9 +86,7 @@ class TestGetStatistics:
         stats = RollStatisticsFactory.build()
         mocker.patch("vweb.lib.cache.base.cache.get", return_value=stats)
         svc = MagicMock()
-        mock_factory = mocker.patch(
-            "vweb.lib.cache.statistics.sync_campaigns_service", autospec=True
-        )
+        mock_factory = mocker.patch("vweb.lib.cache.statistics.campaigns_service", autospec=True)
         mock_factory.return_value = svc
 
         # When requesting statistics (cache hit happens before Flask state needed)

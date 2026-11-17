@@ -16,9 +16,8 @@ from flask.views import MethodView
 
 if TYPE_CHECKING:
     from werkzeug.wrappers.response import Response
-from vclient import sync_users_service
-from vclient.models.users import UserUpdate
-
+from vweb.api_client import users_service
+from vweb.api_client.models.users import UserUpdate
 from vweb.lib import cache
 from vweb.lib.api import get_campaign_name, validate_and_submit_experience
 from vweb.lib.api_errors import USER_FACING_API_ERRORS, api_error_message
@@ -77,7 +76,7 @@ class ProfileView(MethodView):
         if errors:
             return _render_edit_form(user_id, form_data=form_data, errors=errors)
 
-        svc = sync_users_service(on_behalf_of=session["user_id"], company_id=session["company_id"])
+        svc = users_service(on_behalf_of=session["user_id"], company_id=session["company_id"])
 
         # A newly chosen file replaces the avatar; only when no file was supplied
         # does an explicit remove revert to the identity-provider avatar. Keying

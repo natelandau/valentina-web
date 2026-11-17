@@ -12,7 +12,8 @@ import re
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from pydantic import ValidationError as PydanticValidationError
-from vclient.exceptions import (
+
+from vweb.api_client.exceptions import (
     APIError,
     AuthenticationError,
     AuthorizationError,
@@ -22,7 +23,6 @@ from vclient.exceptions import (
     RequestValidationError,
     ValidationError,
 )
-
 from vweb.constants import MAX_IMAGE_SIZE_MB
 
 if TYPE_CHECKING:

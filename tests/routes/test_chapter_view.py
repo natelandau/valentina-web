@@ -5,13 +5,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from vclient.testing import CampaignChapterFactory
 
 from tests.conftest import get_csrf
 from tests.helpers import build_global_context
+from vweb.api_client.testing import CampaignChapterFactory
 
 if TYPE_CHECKING:
-    from vclient.models import CampaignChapter
+    from vweb.api_client.models import CampaignChapter
 
 
 @pytest.fixture
@@ -39,7 +39,7 @@ def _mock_chapter_lookup(mocker, mock_book, mock_campaign, mock_chapters) -> Non
         "vweb.lib.cache.campaign_content.chapters",
         return_value=mock_chapters,
     )
-    chapters_service = mocker.patch("vweb.routes.chapter.views.sync_chapters_service").return_value
+    chapters_service = mocker.patch("vweb.routes.chapter.views.chapters_service").return_value
     chapters_service.list_all.return_value = mock_chapters
     chapters_service.list_all_assets.return_value = []
     chapters_service.list_all_notes.return_value = []
@@ -308,7 +308,7 @@ class TestChapterCharacterAssociations:
         """Verify a server-rejected character id re-renders the form, not a 500."""
         # Given a privileged user and an update that the API rejects
         mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-        from vclient.exceptions import ValidationError
+        from vweb.api_client.exceptions import ValidationError
 
         chapters_service.update.side_effect = ValidationError(
             "bad",
@@ -338,7 +338,7 @@ class TestChapterSidebarCharacters:
     ) -> None:
         """Verify the chapter sidebar renders a link to each associated character."""
         # Given a campaign whose roster contains the associated character
-        from vclient.testing import CampaignChapterFactory, CharacterFactory
+        from vweb.api_client.testing import CampaignChapterFactory, CharacterFactory
 
         hero = CharacterFactory.build(
             id="hero-1", type="PLAYER", name="Sidebar Hero", campaign_id=mock_campaign.id
@@ -353,7 +353,7 @@ class TestChapterSidebarCharacters:
         mocker.patch(
             "vweb.routes.chapter.views.fetch_book_or_404", return_value=(mock_book, mock_campaign)
         )
-        svc = mocker.patch("vweb.routes.chapter.views.sync_chapters_service").return_value
+        svc = mocker.patch("vweb.routes.chapter.views.chapters_service").return_value
         svc.list_all_assets.return_value = []
         svc.list_all_notes.return_value = []
         mocker.patch("vweb.lib.cache.campaign_content.chapters", return_value=[chapter])
@@ -374,7 +374,7 @@ class TestChapterEditPickerPreservesAssociations:
     ) -> None:
         """Verify an already-associated storyteller character survives an edit-form render."""
         # Given a roster with a storyteller character the picker would not offer
-        from vclient.testing import CampaignChapterFactory, CharacterFactory
+        from vweb.api_client.testing import CampaignChapterFactory, CharacterFactory
 
         boss = CharacterFactory.build(
             id="boss-1", type="STORYTELLER", name="Story Boss", campaign_id=mock_campaign.id

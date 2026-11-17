@@ -5,9 +5,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.testing import DictionaryTermFactory
 
 from tests.helpers import seed_session
+from vweb.api_client.testing import DictionaryTermFactory
 from vweb.lib.cache.dictionary import (
     clear,
     search,
@@ -18,9 +18,9 @@ from vweb.lib.cache.dictionary import (
 
 @pytest.fixture
 def mock_dict_svc(mocker):
-    """Mock the sync_dictionary_service factory."""
+    """Mock the dictionary_service factory."""
     svc = MagicMock()
-    mocker.patch("vweb.lib.cache.dictionary.sync_dictionary_service", return_value=svc)
+    mocker.patch("vweb.lib.cache.dictionary.dictionary_service", return_value=svc)
     return svc
 
 

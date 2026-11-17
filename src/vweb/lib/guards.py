@@ -17,8 +17,8 @@ from typing import TYPE_CHECKING
 from flask import g
 
 if TYPE_CHECKING:
-    from vclient.constants import UserRole
-    from vclient.models import Character, User
+    from vweb.api_client.constants import UserRole
+    from vweb.api_client.models import Character, User
 
 _ACTIVE_ROLES: frozenset[UserRole] = frozenset({"ADMIN", "STORYTELLER", "PLAYER"})
 

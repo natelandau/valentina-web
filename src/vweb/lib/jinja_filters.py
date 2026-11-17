@@ -17,7 +17,7 @@ from vweb.lib.urls import is_http_url
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from vclient.models import DictionaryTerm
+    from vweb.api_client.models import DictionaryTerm
 
 
 def from_markdown(value: str) -> Markup:

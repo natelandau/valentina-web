@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.testing import UserFactory
 
 from tests.helpers import seed_session
+from vweb.api_client.testing import UserFactory
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -38,7 +38,7 @@ class TestListPendingAndApproved:
         svc.list_all_unapproved.return_value = pending
         svc.list_all.return_value = approved
         mocker.patch(
-            "vweb.routes.admin.services.sync_users_service",
+            "vweb.routes.admin.services.users_service",
             return_value=svc,
         )
 
@@ -67,7 +67,7 @@ class TestApprove:
         svc = MagicMock()
         svc.approve_user.return_value = UserFactory.build(id="u1", role="PLAYER")
         mocker.patch(
-            "vweb.routes.admin.services.sync_users_service",
+            "vweb.routes.admin.services.users_service",
             return_value=svc,
         )
         clear_cache = mocker.patch(
@@ -108,7 +108,7 @@ class TestChangeRole:
         svc = MagicMock()
         svc.update.return_value = UserFactory.build(id="u1", role="STORYTELLER")
         mocker.patch(
-            "vweb.routes.admin.services.sync_users_service",
+            "vweb.routes.admin.services.users_service",
             return_value=svc,
         )
         clear_cache = mocker.patch(
@@ -144,7 +144,7 @@ class TestDeny:
         # Given a mocked users service and cache clearer
         svc = MagicMock()
         mocker.patch(
-            "vweb.routes.admin.services.sync_users_service",
+            "vweb.routes.admin.services.users_service",
             return_value=svc,
         )
         clear_cache = mocker.patch(
@@ -176,7 +176,7 @@ class TestMerge:
         svc = MagicMock()
         svc.merge.return_value = UserFactory.build(id="primary")
         mocker.patch(
-            "vweb.routes.admin.services.sync_users_service",
+            "vweb.routes.admin.services.users_service",
             return_value=svc,
         )
         clear_cache = mocker.patch(

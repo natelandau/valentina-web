@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from vclient.testing import CampaignBookFactory, CampaignChapterFactory
 
+from vweb.api_client.testing import CampaignBookFactory, CampaignChapterFactory
 from vweb.extensions import cache
 from vweb.lib.cache import campaign_content as ccc
 
@@ -38,7 +38,7 @@ def test_books_caches_and_sorts(app, mocker):
     # Given a request context and a books service returning unsorted books
     ctx = _set_request_context(app, mocker)
     books = [CampaignBookFactory.build(number=2), CampaignBookFactory.build(number=1)]
-    svc = mocker.patch.object(ccc, "sync_books_service")
+    svc = mocker.patch.object(ccc, "books_service")
     svc.return_value.list_all.return_value = books
 
     # When fetched twice
@@ -56,7 +56,7 @@ def test_books_refetches_on_stamp_change(app, mocker):
     """Verify a changed company timestamp forces a refetch."""
     # Given cached books under one stamp
     ctx = _set_request_context(app, mocker, stamp="stamp-A")
-    svc = mocker.patch.object(ccc, "sync_books_service")
+    svc = mocker.patch.object(ccc, "books_service")
     svc.return_value.list_all.return_value = [CampaignBookFactory.build(number=1)]
     ccc.books("camp-1")
 
@@ -76,7 +76,7 @@ def test_chapters_caches_and_sorts(app, mocker):
     # Given a chapters service returning unsorted chapters
     ctx = _set_request_context(app, mocker)
     chapters = [CampaignChapterFactory.build(number=3), CampaignChapterFactory.build(number=1)]
-    svc = mocker.patch.object(ccc, "sync_chapters_service")
+    svc = mocker.patch.object(ccc, "chapters_service")
     svc.return_value.list_all.return_value = chapters
 
     # When fetched twice
@@ -93,7 +93,7 @@ def test_chapters_refetches_on_stamp_change(app, mocker):
     """Verify a changed company timestamp forces a chapters refetch."""
     # Given cached chapters under one stamp
     ctx = _set_request_context(app, mocker, stamp="stamp-A")
-    svc = mocker.patch.object(ccc, "sync_chapters_service")
+    svc = mocker.patch.object(ccc, "chapters_service")
     svc.return_value.list_all.return_value = [CampaignChapterFactory.build(number=1)]
     ccc.chapters("camp-1", "book-1")
 
@@ -112,7 +112,7 @@ def test_clear_evicts_scope(app, mocker):
     """Verify clearing a scope forces the next read to refetch."""
     # Given cached books for a campaign
     ctx = _set_request_context(app, mocker)
-    svc = mocker.patch.object(ccc, "sync_books_service")
+    svc = mocker.patch.object(ccc, "books_service")
     svc.return_value.list_all.return_value = [CampaignBookFactory.build(number=1)]
     ccc.books("camp-1")
 

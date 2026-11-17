@@ -5,15 +5,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 from flask import session
-from vclient import sync_characters_service
 
+from vweb.api_client import characters_service
 from vweb.constants import CACHE_CHARACTER_FULL_SHEET_TTL
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from vclient.models import CharacterFullSheet
+    from vweb.api_client.models import CharacterFullSheet
 
 _CACHE_CHARACTER_FULL_SHEET_PREFIX: Final[str] = "char_full_sheet:"
 _STRATEGY = base.ShortTTL(ttl=CACHE_CHARACTER_FULL_SHEET_TTL)
@@ -39,7 +39,7 @@ def get(
     key = f"{_CACHE_CHARACTER_FULL_SHEET_PREFIX}{character_id}:{include_available_traits}"
     return base.cached_fetch(
         key,
-        lambda: sync_characters_service(
+        lambda: characters_service(
             on_behalf_of=requesting_user_id,
             company_id=session["company_id"],
         ).get_full_sheet(character_id, include_available_traits=include_available_traits),

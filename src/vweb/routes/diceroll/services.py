@@ -6,11 +6,16 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from flask import g, session
-from vclient import sync_character_traits_service, sync_dicerolls_service, sync_users_service
+
+from vweb.api_client import (
+    character_traits_service,
+    dicerolls_service,
+    users_service,
+)
 
 if TYPE_CHECKING:
-    from vclient.constants import DiceSize
-    from vclient.models import Campaign, Character, CharacterTrait, Diceroll, Quickroll
+    from vweb.api_client.constants import DiceSize
+    from vweb.api_client.models import Campaign, Character, CharacterTrait, Diceroll, Quickroll
 
 
 @dataclass
@@ -38,7 +43,7 @@ def get_character_traits(*, character: Character) -> list[CharacterTrait]:
     """
     user_id = g.requesting_user.id
 
-    return sync_character_traits_service(
+    return character_traits_service(
         on_behalf_of=user_id,
         character_id=character.id,
         company_id=session["company_id"],
@@ -61,7 +66,7 @@ def get_roll_context(*, character: Character, campaign: Campaign) -> RollContext
     user_id = g.requesting_user.id
 
     traits = get_character_traits(character=character)
-    quickrolls = sync_users_service(
+    quickrolls = users_service(
         on_behalf_of=user_id, company_id=session["company_id"]
     ).list_all_quickrolls(user_id)
 
@@ -104,7 +109,7 @@ def perform_custom_roll(
     Returns:
         The resulting Diceroll object from the API.
     """
-    from vclient.models import DicerollCreate
+    from vweb.api_client.models import DicerollCreate
 
     user_id = g.requesting_user.id
 
@@ -116,9 +121,7 @@ def perform_custom_roll(
         character_id=character.id,
         campaign_id=campaign.id,
     )
-    return sync_dicerolls_service(on_behalf_of=user_id, company_id=session["company_id"]).create(
-        request
-    )
+    return dicerolls_service(on_behalf_of=user_id, company_id=session["company_id"]).create(request)
 
 
 def perform_trait_roll(  # noqa: PLR0913
@@ -156,7 +159,7 @@ def perform_trait_roll(  # noqa: PLR0913
     Raises:
         ValueError: If trait_one_id or trait_two_id is not found in character_traits.
     """
-    from vclient.models import DicerollCreate
+    from vweb.api_client.models import DicerollCreate
 
     user_id = g.requesting_user.id
 
@@ -190,9 +193,7 @@ def perform_trait_roll(  # noqa: PLR0913
         campaign_id=campaign.id,
         trait_ids=trait_ids,
     )
-    return sync_dicerolls_service(on_behalf_of=user_id, company_id=session["company_id"]).create(
-        request
-    )
+    return dicerolls_service(on_behalf_of=user_id, company_id=session["company_id"]).create(request)
 
 
 def perform_quickroll(
@@ -222,7 +223,7 @@ def perform_quickroll(
     """
     user_id = g.requesting_user.id
 
-    return sync_dicerolls_service(
+    return dicerolls_service(
         on_behalf_of=user_id, company_id=session["company_id"]
     ).create_from_quickroll(
         quickroll_id=quickroll_id,

@@ -6,8 +6,10 @@ import re
 from datetime import UTC, datetime
 
 import pytest
-from vclient.models import CharacterTraitSpecialty
-from vclient.testing import (
+
+from tests.conftest import get_csrf
+from vweb.api_client.models import CharacterTraitSpecialty
+from vweb.api_client.testing import (
     CharacterFactory,
     CharacterFullSheetFactory,
     CharacterTraitFactory,
@@ -16,8 +18,6 @@ from vclient.testing import (
     FullSheetTraitSubcategoryFactory,
     TraitFactory,
 )
-
-from tests.conftest import get_csrf
 
 
 @pytest.fixture
@@ -38,7 +38,7 @@ class TestCharacterDelete:
         # Given a mocked vclient delete
         char, _ = mock_character_lookup
         mock_svc = mocker.patch(
-            "vweb.routes.character_view.views.sync_characters_service",
+            "vweb.routes.character_view.views.characters_service",
         ).return_value
         mocker.patch("vweb.lib.cache.global_context.clear")
 
@@ -102,7 +102,7 @@ class TestCharacterDelete:
         """Verify global context cache is cleared after deletion."""
         # Given a mocked vclient delete
         char, _ = mock_character_lookup
-        mocker.patch("vweb.routes.character_view.views.sync_characters_service")
+        mocker.patch("vweb.routes.character_view.views.characters_service")
         mock_clear = mocker.patch("vweb.lib.cache.global_context.clear")
 
         csrf = get_csrf(client)

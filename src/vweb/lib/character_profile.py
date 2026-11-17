@@ -9,7 +9,7 @@ from vweb.lib.api_errors import USER_FACING_API_ERRORS
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from vclient.models import CharacterFullSheet, CharacterTrait
+    from vweb.api_client.models import CharacterFullSheet, CharacterTrait
 
 TRAIT_API_ERRORS = USER_FACING_API_ERRORS
 
