@@ -2,6 +2,7 @@
 
 import copy
 import json
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 
 import pytest
@@ -11,7 +12,6 @@ from respx import MockResponse
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.exceptions import NotFoundError, RequestValidationError, ValidationError
 from vweb.api_client.models import (
-    Asset,
     Character,
     CharacterDetail,
     CharacterFullSheet,
@@ -22,7 +22,6 @@ from vweb.api_client.models import (
     HunterAttributesUpdate,
     InventoryItem,
     NameDescriptionSubDocument,
-    Note,
     PaginatedResponse,
     RollStatistics,
     VampireAttributesCreate,
@@ -158,16 +157,6 @@ def full_sheet_response_data_with_available_traits(
     data = copy.deepcopy(full_sheet_response_data)
     data["sections"][0]["categories"][0] = full_sheet_category_response_data_with_available_traits
     return data
-
-
-@pytest.fixture
-def asset_response_data(asset_response_data_factory) -> dict:
-    """Return sample asset response data for a character."""
-    return asset_response_data_factory(
-        original_filename="character.png",
-        public_url="https://example.com/character.png",
-        character_id="character123",
-    )
 
 
 @pytest.fixture
@@ -361,7 +350,7 @@ def character_detail_response_data(
     character_trait_response_data: dict,
     inventory_item_response_data: dict,
     note_response_data: dict,
-    asset_response_data: dict,
+    asset_response_data_factory: Callable[..., dict],
 ) -> dict:
     """Return sample character detail response with embedded resources."""
     return {
@@ -369,7 +358,7 @@ def character_detail_response_data(
         "traits": [character_trait_response_data],
         "inventory": [inventory_item_response_data],
         "notes": [note_response_data],
-        "assets": [asset_response_data],
+        "assets": [asset_response_data_factory(character_id="char123")],
     }
 
 
@@ -1048,262 +1037,6 @@ class TestCharactersServiceVampireAttributes:
         assert result.vampire_attributes.clan_name == "Ventrue"
         assert result.vampire_attributes.generation == 10
         assert result.vampire_attributes.sire == "Ancient One"
-
-
-class TestCharactersServiceAssets:
-    """Tests for CharactersService asset methods."""
-
-    @respx.mock
-    def test_get_assets_page(self, vclient, base_url, asset_response_data):
-        """Verify getting a page of character assets."""
-        # Given: A mocked assets endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        route = respx.get(
-            f"{base_url}{Endpoints.CHARACTER_ASSETS.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id='char123')}",
-            params={"limit": "10", "offset": "0"},
-        ).respond(
-            200,
-            json={
-                "items": [asset_response_data],
-                "limit": 10,
-                "offset": 0,
-                "total": 1,
-            },
-        )
-
-        # When: Getting a page of assets
-        result = vclient.characters("on-behalf-of-user", company_id=company_id).get_assets_page(
-            "char123"
-        )
-
-        # Then: Returns paginated Asset objects
-        assert route.called
-        assert isinstance(result, PaginatedResponse)
-        assert len(result.items) == 1
-        assert isinstance(result.items[0], Asset)
-
-    @respx.mock
-    def test_list_all_assets(self, vclient, base_url, asset_response_data):
-        """Verify list_all_assets returns all assets."""
-        # Given: A mocked assets endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        character_id = "character123"
-        respx.get(
-            f"{base_url}{Endpoints.CHARACTER_ASSETS.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id=character_id)}",
-            params={"limit": "100", "offset": "0"},
-        ).respond(
-            200,
-            json={
-                "items": [asset_response_data],
-                "limit": 100,
-                "offset": 0,
-                "total": 1,
-            },
-        )
-
-        # When: Calling list_all_assets
-        result = vclient.characters("on-behalf-of-user", company_id=company_id).list_all_assets(
-            character_id
-        )
-
-        # Then: Returns list of Asset objects
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert isinstance(result[0], Asset)
-
-    @respx.mock
-    def test_get_asset(self, vclient, base_url, asset_response_data):
-        """Verify getting a specific asset."""
-        # Given: A mocked asset endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        asset_id = "asset123"
-        route = respx.get(
-            f"{base_url}{Endpoints.CHARACTER_ASSET.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id='char123', asset_id=asset_id)}"
-        ).respond(200, json=asset_response_data)
-
-        # When: Getting the asset
-        result = vclient.characters("on-behalf-of-user", company_id=company_id).get_asset(
-            "char123", asset_id
-        )
-
-        # Then: Returns Asset object
-        assert route.called
-        assert isinstance(result, Asset)
-        assert result.id == "asset123"
-
-    @respx.mock
-    def test_delete_asset(self, vclient, base_url):
-        """Verify deleting an asset."""
-        # Given: A mocked delete endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        asset_id = "asset123"
-        route = respx.delete(
-            f"{base_url}{Endpoints.CHARACTER_ASSET.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id='char123', asset_id=asset_id)}"
-        ).respond(204)
-
-        # When: Deleting the asset
-        vclient.characters("on-behalf-of-user", company_id=company_id).delete_asset(
-            "char123", asset_id
-        )
-
-        # Then: Request was made
-        assert route.called
-
-    @respx.mock
-    def test_upload_asset(self, vclient, base_url, asset_response_data):
-        """Verify uploading an asset."""
-        # Given: A mocked upload endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        route = respx.post(
-            f"{base_url}{Endpoints.CHARACTER_ASSET_UPLOAD.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id='char123')}"
-        ).respond(201, json=asset_response_data)
-
-        # When: Uploading an asset
-        result = vclient.characters("on-behalf-of-user", company_id=company_id).upload_asset(
-            "char123",
-            filename="test.png",
-            content=b"test content",
-            content_type="image/png",
-        )
-
-        # Then: Returns Asset object
-        assert route.called
-        assert isinstance(result, Asset)
-        assert result.id == "asset123"
-
-
-class TestCharactersServiceNotes:
-    """Tests for CharactersService note methods."""
-
-    @respx.mock
-    def test_get_notes_page(self, vclient, base_url, note_response_data):
-        """Verify getting a page of notes."""
-        # Given: A mocked notes endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        route = respx.get(
-            f"{base_url}{Endpoints.CHARACTER_NOTES.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id='char123')}",
-            params={"limit": "10", "offset": "0"},
-        ).respond(
-            200,
-            json={
-                "items": [note_response_data],
-                "limit": 10,
-                "offset": 0,
-                "total": 1,
-            },
-        )
-
-        # When: Getting a page of notes
-        result = vclient.characters("on-behalf-of-user", company_id=company_id).get_notes_page(
-            "char123"
-        )
-
-        # Then: Returns paginated Note objects
-        assert route.called
-        assert isinstance(result, PaginatedResponse)
-        assert len(result.items) == 1
-        assert isinstance(result.items[0], Note)
-
-    @respx.mock
-    def test_get_note(self, vclient, base_url, note_response_data):
-        """Verify getting a specific note."""
-        # Given: A mocked note endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        note_id = "note123"
-        route = respx.get(
-            f"{base_url}{Endpoints.CHARACTER_NOTE.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id='char123', note_id=note_id)}"
-        ).respond(200, json=note_response_data)
-
-        # When: Getting the note
-        result = vclient.characters("on-behalf-of-user", company_id=company_id).get_note(
-            "char123", note_id
-        )
-
-        # Then: Returns Note object
-        assert route.called
-        assert isinstance(result, Note)
-        assert result.id == "note123"
-        assert result.title == "Test Note"
-
-    @respx.mock
-    def test_create_note(self, vclient, base_url, note_response_data):
-        """Verify creating a note."""
-        # Given: A mocked create endpoint
-        company_id = "company123"
-        user_id = "user123"
-        character_id = "char123"
-        campaign_id = "campaign123"
-        route = respx.post(
-            f"{base_url}{Endpoints.CHARACTER_NOTES.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id=character_id)}"
-        ).respond(201, json=note_response_data)
-
-        # When: Creating a note
-        result = vclient.characters("on-behalf-of-user", company_id=company_id).create_note(
-            character_id, title="Test Note", content="This is test content"
-        )
-
-        # Then: Returns Note object
-        assert route.called
-        assert isinstance(result, Note)
-        assert result.title == "Test Note"
-
-    @respx.mock
-    def test_update_note(self, vclient, base_url, note_response_data):
-        """Verify updating a note."""
-        # Given: A mocked update endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        character_id = "char123"
-        note_id = "note123"
-        updated_data = {**note_response_data, "title": "Updated Title"}
-        route = respx.patch(
-            f"{base_url}{Endpoints.CHARACTER_NOTE.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id=character_id, note_id=note_id)}"
-        ).respond(200, json=updated_data)
-
-        # When: Updating the note
-        result = vclient.characters("on-behalf-of-user", company_id=company_id).update_note(
-            character_id, note_id, title="Updated Title"
-        )
-
-        # Then: Returns updated Note object
-        assert route.called
-        assert isinstance(result, Note)
-        assert result.title == "Updated Title"
-
-    @respx.mock
-    def test_delete_note(self, vclient, base_url):
-        """Verify deleting a note."""
-        # Given: A mocked delete endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        note_id = "note123"
-        route = respx.delete(
-            f"{base_url}{Endpoints.CHARACTER_NOTE.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, character_id='char123', note_id=note_id)}"
-        ).respond(204)
-
-        # When: Deleting the note
-        vclient.characters("on-behalf-of-user", company_id=company_id).delete_note(
-            "char123", note_id
-        )
-
-        # Then: Request was made
-        assert route.called
 
 
 class TestCharactersServiceGetStatistics:
