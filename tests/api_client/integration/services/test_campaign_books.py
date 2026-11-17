@@ -308,7 +308,7 @@ class TestBooksServiceCreate:
         # When/Then: Creating with invalid data raises RequestValidationError
         with pytest.raises(RequestValidationError):
             vclient.books("campaign123", "on-behalf-of-user", company_id="company123").create(
-                name="AB"
+                name="x" * 51
             )
 
 

@@ -7,15 +7,16 @@ from typing import TYPE_CHECKING
 from flask import Blueprint, abort, flash, request, session, url_for
 from flask.views import MethodView
 
-from vweb.api_client.exceptions import ValidationError
 from vweb.lib import api_services, cache
 from vweb.lib.api import (
     count_notes,
     fetch_book_or_404,
     fetch_chapter_or_404,
 )
+from vweb.lib.api_errors import USER_FACING_API_ERRORS, api_error_message
 from vweb.lib.catalog import catalog
 from vweb.lib.crud.routing import register_crud_table_routes
+from vweb.lib.form_validation import position_number
 from vweb.lib.guards import can_manage_campaign
 from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
@@ -166,12 +167,9 @@ class ChapterEditView(MethodView):
         if not name:
             errors.append("Name is required")
 
-        number = chapter.number
-        if number_str:
-            try:
-                number = int(number_str)
-            except ValueError:
-                errors.append("Number must be a valid integer")
+        number, number_error = position_number(number_str, chapter.number)
+        if number_error:
+            errors.append(number_error)
 
         if errors:
             return catalog.render(
@@ -188,8 +186,10 @@ class ChapterEditView(MethodView):
             updated = svc.update(
                 chapter_id, name=name, description=description, character_ids=character_ids
             )
-        except ValidationError as error:
-            errors.append(error.detail or "One or more selected characters are invalid")
+            if number != chapter.number:
+                updated = svc.renumber(chapter_id, number)
+        except USER_FACING_API_ERRORS as error:
+            errors.append(api_error_message(error, fallback="Could not save the chapter"))
             return catalog.render(
                 "chapter.partials.ChapterEditForm",
                 chapter=chapter,
@@ -198,10 +198,10 @@ class ChapterEditView(MethodView):
                 errors=errors,
                 form_data=request.form,
             )
-        if number != chapter.number:
-            updated = svc.renumber(chapter_id, number)
-        cache.global_context.clear_current()
-        cache.campaign_content.clear(session["company_id"], book_id=book_id)
+        finally:
+            # The update can be saved even when renumbering then fails
+            cache.global_context.clear_current()
+            cache.campaign_content.clear(session["company_id"], book_id=book_id)
 
         assets = svc.list_all_assets(chapter_id)
         note_count = count_notes(svc, chapter_id)
@@ -268,8 +268,8 @@ class ChapterCreateView(MethodView):
             new_chapter = svc.create(
                 name=name, description=description, character_ids=character_ids
             )
-        except ValidationError as error:
-            errors.append(error.detail or "One or more selected characters are invalid")
+        except USER_FACING_API_ERRORS as error:
+            errors.append(api_error_message(error, fallback="Could not create the chapter"))
             return catalog.render(
                 "book.partials.ChapterCreateForm",
                 book=book,

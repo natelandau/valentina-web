@@ -204,6 +204,52 @@ class TestCampaignCreateView:
             times=1,
         )
 
+    @pytest.mark.parametrize(
+        ("name", "message"),
+        [("Ab", "Name must be at least 3 characters"), ("", "Name is required")],
+    )
+    def test_invalid_name_rerenders_form(self, client, mocker, fake_vclient, name, message) -> None:
+        """Verify an invalid name shows a form error and sends nothing to the API."""
+        # Given a STORYTELLER user
+        ctx = build_global_context(user_role="STORYTELLER")
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+
+        # When submitting the form with an invalid name
+        response = client.post(
+            "/campaign/create",
+            data={"name": name},
+            headers={"X-CSRFToken": get_csrf(client)},
+        )
+
+        # Then the form shows the error and the API is not called
+        assert response.status_code == 200
+        assert message in response.get_data(as_text=True)
+        fake_vclient.assert_not_called(Routes.CAMPAIGNS_CREATE)
+
+    def test_api_rejection_rerenders_form_with_its_reason(
+        self, client, mocker, fake_vclient
+    ) -> None:
+        """Verify a validation error from the API shows on the form instead of a server error."""
+        # Given a STORYTELLER user and an API that rejects the name
+        ctx = build_global_context(user_role="STORYTELLER")
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        fake_vclient.set_error(
+            Routes.CAMPAIGNS_CREATE,
+            status_code=400,
+            invalid_parameters=[{"field": "name", "message": "Name is already taken"}],
+        )
+
+        # When submitting the form
+        response = client.post(
+            "/campaign/create",
+            data={"name": "Taken Name"},
+            headers={"X-CSRFToken": get_csrf(client)},
+        )
+
+        # Then the form shows the API's reason
+        assert response.status_code == 200
+        assert "Name is already taken" in response.get_data(as_text=True)
+
     def test_returns_403_for_player_role(self, client, mocker) -> None:
         """Verify players cannot create campaigns."""
         # Given a PLAYER user
@@ -220,50 +266,6 @@ class TestCampaignCreateView:
 
         # Then a 403 is returned
         assert response.status_code == 403
-
-    def test_returns_errors_for_short_name(self, client, mocker) -> None:
-        """Verify validation rejects names shorter than 3 characters."""
-        # Given a CSRF token (must be fetched before mocking the catalog)
-        csrf = get_csrf(client)
-
-        # Given a STORYTELLER user and a mocked catalog object
-        ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mock_catalog = mocker.MagicMock()
-        mock_catalog.render.return_value = "<div>Name must be at least 3 characters.</div>"
-        mocker.patch("vweb.routes.campaign.views.catalog", mock_catalog)
-        response = client.post(
-            "/campaign/create",
-            data={"name": "Ab"},
-            headers={"X-CSRFToken": csrf},
-        )
-
-        # Then the error message is returned
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "at least 3 characters" in body
-
-    def test_returns_errors_for_empty_name(self, client, mocker) -> None:
-        """Verify validation rejects empty name."""
-        # Given a CSRF token (must be fetched before mocking the catalog)
-        csrf = get_csrf(client)
-
-        # Given a STORYTELLER user and a mocked catalog object
-        ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mock_catalog = mocker.MagicMock()
-        mock_catalog.render.return_value = "<div>Name must be at least 3 characters.</div>"
-        mocker.patch("vweb.routes.campaign.views.catalog", mock_catalog)
-        response = client.post(
-            "/campaign/create",
-            data={"name": ""},
-            headers={"X-CSRFToken": csrf},
-        )
-
-        # Then the error message is returned
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "at least 3 characters" in body
 
 
 class TestNavbarCampaignDropdown:
@@ -369,30 +371,73 @@ class TestCampaignUpdateView:
             times=1,
         )
 
-    def test_returns_validation_errors(self, client, mocker) -> None:
-        """Verify validation errors re-render the form."""
-        # Given a CSRF token
-        csrf = get_csrf(client)
-
-        # Given a STORYTELLER user and a mocked catalog
+    def test_short_name_rerenders_form(self, client, mocker, fake_vclient) -> None:
+        """Verify a name under 3 characters shows a form error and sends nothing."""
+        # Given a STORYTELLER user
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mock_catalog = mocker.MagicMock()
-        mock_catalog.render.return_value = "<div>Name must be at least 3 characters.</div>"
-        mocker.patch("vweb.routes.campaign.views.catalog", mock_catalog)
 
-        # When submitting an invalid form
+        # When submitting a short name
         response = client.post(
             f"/campaign/{campaign.id}/update",
-            data={"name": "Ab"},
-            headers={"X-CSRFToken": csrf},
+            data={"name": "Ab", "description": "Kept"},
+            headers={"X-CSRFToken": get_csrf(client)},
         )
 
-        # Then the error message is returned
+        # Then the form shows the error and the API is not called
         assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "at least 3 characters" in body
+        assert "Name must be at least 3 characters" in response.get_data(as_text=True)
+        fake_vclient.assert_not_called(Routes.CAMPAIGNS_UPDATE)
+
+    def test_cleared_description_is_sent_to_the_api(self, client, mocker, fake_vclient) -> None:
+        """Verify clearing a saved description sends an empty string, which the API clears."""
+        # Given a STORYTELLER user and a campaign with a description
+        campaign = CampaignFactory.build(description="A saved description")
+        ctx = build_global_context(user_role="STORYTELLER", campaign=campaign)
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=campaign)
+
+        # When submitting the form with the description emptied
+        response = client.post(
+            f"/campaign/{campaign.id}/update",
+            data={"name": "Good Name", "description": ""},
+            headers={"X-CSRFToken": get_csrf(client), "HX-Request": "true"},
+        )
+
+        # Then the empty description reaches the API
+        assert response.status_code == 200
+        fake_vclient.assert_called(
+            Routes.CAMPAIGNS_UPDATE,
+            params={"campaign_id": campaign.id},
+            json={"name": "Good Name", "description": ""},
+            times=1,
+        )
+
+    def test_api_rejection_rerenders_form_with_its_reason(
+        self, client, mocker, fake_vclient
+    ) -> None:
+        """Verify a validation error from the API shows on the edit form."""
+        # Given a STORYTELLER user and an API that rejects the name
+        ctx = build_global_context(user_role="STORYTELLER")
+        campaign = ctx.campaigns[0]
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        fake_vclient.set_error(
+            Routes.CAMPAIGNS_UPDATE,
+            status_code=400,
+            invalid_parameters=[{"field": "name", "message": "Name is already taken"}],
+        )
+
+        # When submitting the form
+        response = client.post(
+            f"/campaign/{campaign.id}/update",
+            data={"name": "Taken Name", "description": "A saved description"},
+            headers={"X-CSRFToken": get_csrf(client)},
+        )
+
+        # Then the form shows the API's reason
+        assert response.status_code == 200
+        assert "Name is already taken" in response.get_data(as_text=True)
 
     def test_returns_403_for_player(self, client, mocker) -> None:
         """Verify players cannot update campaigns."""

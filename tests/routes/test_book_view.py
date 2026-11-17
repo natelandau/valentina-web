@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 from werkzeug.exceptions import NotFound
 
 from tests.conftest import get_csrf
 from tests.helpers import build_global_context
 from vweb.api_client.testing import CampaignBookFactory, Routes
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from werkzeug.test import TestResponse
+
+    from vweb.api_client.models import CampaignBook
 
 
 @pytest.fixture
@@ -165,6 +174,123 @@ class TestBookUpdate:
         assert kwargs["campaign_id"] == mock_campaign.id
 
 
+class TestBookUpdateValidation:
+    """Tests for book edit form validation."""
+
+    @pytest.fixture(autouse=True)
+    def _privileged(self, mocker) -> None:
+        mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
+
+    @pytest.fixture
+    def post_edit(self, client, mocker, mock_campaign) -> Callable[..., TestResponse]:
+        """Return a function that posts the edit form for a given book."""
+
+        def _post(book: CampaignBook, **form: str) -> TestResponse:
+            mocker.patch(
+                "vweb.routes.book.views.fetch_book_or_404", return_value=(book, mock_campaign)
+            )
+            return client.post(
+                f"/campaign/{mock_campaign.id}/book/{book.id}",
+                data={"number": str(book.number), **form, "csrf_token": get_csrf(client)},
+            )
+
+        return _post
+
+    @pytest.mark.parametrize(
+        ("name", "description", "expected_body"),
+        [
+            ("New Name", "", {"name": "New Name", "description": ""}),
+            ("ab", "ab", {"name": "ab", "description": "ab"}),
+        ],
+    )
+    def test_saves_short_values_and_cleared_description(
+        self, post_edit, fake_vclient, mock_book, name, description, expected_body
+    ) -> None:
+        """Verify short values and a cleared description reach the API, which accepts them."""
+        # Given a book that has a description
+        assert mock_book.description
+
+        # When saving the form
+        response = post_edit(mock_book, name=name, description=description)
+
+        # Then the submitted values are sent, with an empty description to clear it
+        assert response.status_code == 200
+        fake_vclient.assert_called(
+            Routes.BOOKS_UPDATE, params={"book_id": mock_book.id}, json=expected_body, times=1
+        )
+
+    @pytest.mark.parametrize(
+        ("name", "message"),
+        [("", "Name is required"), ("x" * 51, "Name must be 50 characters or fewer")],
+    )
+    def test_invalid_name_rerenders_form_without_calling_api(
+        self, post_edit, fake_vclient, mock_book, name, message
+    ) -> None:
+        """Verify a missing or too long name shows a form error."""
+        # When saving the form with an invalid name
+        response = post_edit(mock_book, name=name, description="A fine tale")
+
+        # Then the form shows the error and nothing reaches the API
+        assert response.status_code == 200
+        assert message in response.get_data(as_text=True)
+        fake_vclient.assert_not_called(Routes.BOOKS_UPDATE)
+
+    def test_api_rejection_rerenders_form_with_its_reason(
+        self, post_edit, fake_vclient, mock_book
+    ) -> None:
+        """Verify a validation error from the API shows on the form instead of a server error."""
+        # Given an API that rejects the new name
+        fake_vclient.set_error(
+            Routes.BOOKS_UPDATE,
+            status_code=400,
+            invalid_parameters=[{"field": "name", "message": "Name is already taken"}],
+        )
+
+        # When saving the form
+        response = post_edit(mock_book, name="Taken Name", description=mock_book.description)
+
+        # Then the form shows the API's reason
+        assert response.status_code == 200
+        assert "Name is already taken" in response.get_data(as_text=True)
+
+    def test_number_below_one_rerenders_form_without_calling_api(
+        self, post_edit, fake_vclient, mock_book
+    ) -> None:
+        """Verify a number below 1 shows a form error before the name is saved."""
+        # When saving the form with a new name and number 0
+        response = post_edit(
+            mock_book, name="New Name", description=mock_book.description, number="0"
+        )
+
+        # Then the form shows the error and nothing reaches the API
+        assert response.status_code == 200
+        assert "Number must be 1 or greater" in response.get_data(as_text=True)
+        fake_vclient.assert_not_called(Routes.BOOKS_UPDATE)
+        fake_vclient.assert_not_called(Routes.BOOKS_RENUMBER)
+
+    def test_number_only_change_renumbers_without_updating(
+        self, post_edit, fake_vclient, mock_book
+    ) -> None:
+        """Verify changing only the number skips the name and description update."""
+        # When saving the form with only a new number
+        response = post_edit(
+            mock_book,
+            name=mock_book.name,
+            description=mock_book.description,
+            number=str(mock_book.number + 1),
+        )
+
+        # Then only the renumber call reaches the API
+        assert response.status_code == 200
+        fake_vclient.assert_not_called(Routes.BOOKS_UPDATE)
+        fake_vclient.assert_called(
+            Routes.BOOKS_RENUMBER,
+            params={"book_id": mock_book.id},
+            json_subset={"number": mock_book.number + 1},
+            times=1,
+        )
+
+
 @pytest.fixture
 def _mock_campaign_lookup(mocker, mock_campaign) -> None:
     """Mock the campaign lookup used by the books index and create views."""
@@ -296,6 +422,28 @@ class TestBookCreatePost:
         assert b"Create Book" in response.data
         fake_vclient.assert_not_called(Routes.BOOKS_CREATE)
 
+    def test_api_rejection_rerenders_form_with_its_reason(
+        self, client, mocker, fake_vclient, mock_campaign
+    ) -> None:
+        """Verify a validation error from the API shows on the create form."""
+        # Given a privileged user and an API that rejects the name
+        mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
+        fake_vclient.set_error(
+            Routes.BOOKS_CREATE,
+            status_code=400,
+            invalid_parameters=[{"field": "name", "message": "Name is already taken"}],
+        )
+
+        # When submitting the form
+        response = client.post(
+            f"/campaign/{mock_campaign.id}/books/create",
+            data={"name": "Taken Name", "csrf_token": get_csrf(client)},
+        )
+
+        # Then the form shows the API's reason
+        assert response.status_code == 200
+        assert "Name is already taken" in response.get_data(as_text=True)
+
     def test_blank_description_creates_with_none(
         self, client, mocker, fake_vclient, mock_campaign
     ) -> None:
@@ -323,23 +471,23 @@ class TestBookCreatePost:
             times=1,
         )
 
-    def test_short_name_rerenders_with_error(
+    def test_long_name_rerenders_with_error(
         self, client, mocker, fake_vclient, mock_campaign
     ) -> None:
-        """Verify a name shorter than the API minimum re-renders with an error, no create."""
+        """Verify a name longer than the API maximum re-renders with an error, no create."""
         # Given a privileged user
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
         csrf = get_csrf(client)
 
-        # When submitting a 2-character name
+        # When submitting a 51-character name
         response = client.post(
             f"/campaign/{mock_campaign.id}/books/create",
-            data={"name": "Ab", "csrf_token": csrf},
+            data={"name": "x" * 51, "csrf_token": csrf},
         )
 
         # Then the form re-renders with a length error and nothing is created
         assert response.status_code == 200
-        assert b"between 3 and 50" in response.data
+        assert b"50 characters or fewer" in response.data
         fake_vclient.assert_not_called(Routes.BOOKS_CREATE)
 
 

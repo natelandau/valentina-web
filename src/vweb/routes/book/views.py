@@ -13,8 +13,10 @@ from vweb.lib.api import (
     fetch_book_or_404,
     fetch_campaign_or_404,
 )
+from vweb.lib.api_errors import USER_FACING_API_ERRORS, api_error_message
 from vweb.lib.catalog import catalog
 from vweb.lib.crud.routing import register_crud_table_routes
+from vweb.lib.form_validation import name_errors, position_number
 from vweb.lib.guards import can_manage_campaign
 from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
 from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
@@ -107,16 +109,14 @@ class BookCreateView(MethodView):
         name = request.form.get("name", "").strip()
         description = request.form.get("description", "").strip()
 
-        # Mirror the vclient BookCreate constraints (name 3-50, optional description >=3)
-        # so invalid input re-renders the form instead of raising a 500 from the API client.
-        errors: list[str] = []
-        if not name:
-            errors.append("Name is required")
-        elif not 3 <= len(name) <= 50:  # noqa: PLR2004
-            errors.append("Name must be between 3 and 50 characters")
-        if description and len(description) < 3:  # noqa: PLR2004
-            errors.append("Description must be at least 3 characters")
-
+        errors = name_errors(name)
+        if not errors:
+            try:
+                new_book = api_services.books(campaign_id).create(
+                    name=name, description=description or None
+                )
+            except USER_FACING_API_ERRORS as error:
+                errors = [api_error_message(error, fallback="Could not create the book")]
         if errors:
             return catalog.render(
                 "book.partials.BookCreateForm",
@@ -127,8 +127,6 @@ class BookCreateView(MethodView):
                 form_data=request.form,
             )
 
-        svc = api_services.books(campaign_id)
-        new_book = svc.create(name=name, description=description or None)
         cache.global_context.clear_current()
         cache.campaign_content.clear(session["company_id"], campaign_id=campaign_id)
 
@@ -195,16 +193,27 @@ class BookDetailView(MethodView):
         number_str = request.form.get("number", "").strip()
         description = request.form.get("description", "").strip()
 
-        errors: list[str] = []
-        if not name:
-            errors.append("Name is required")
+        errors = name_errors(name)
 
-        number = book.number
-        if number_str:
+        number, number_error = position_number(number_str, book.number)
+        if number_error:
+            errors.append(number_error)
+
+        svc = api_services.books(campaign_id)
+        updated_book = book
+        if not errors:
             try:
-                number = int(number_str)
-            except ValueError:
-                errors.append("Number must be a valid integer")
+                if name != book.name or description != (book.description or ""):
+                    # An empty description is sent as-is so the API clears it
+                    updated_book = svc.update(book_id, name=name, description=description)
+                if number != book.number:
+                    updated_book = svc.renumber(book_id, number)
+            except USER_FACING_API_ERRORS as error:
+                errors = [api_error_message(error, fallback="Could not save the book")]
+            finally:
+                # The name can be saved even when renumbering then fails
+                cache.global_context.clear_current()
+                cache.campaign_content.clear(session["company_id"], campaign_id=campaign_id)
 
         if errors:
             return catalog.render(
@@ -214,13 +223,6 @@ class BookDetailView(MethodView):
                 errors=errors,
                 form_data=request.form,
             )
-
-        svc = api_services.books(campaign_id)
-        updated_book = svc.update(book_id, name=name, description=description)
-        if number != book.number:
-            updated_book = svc.renumber(book_id, number)
-        cache.global_context.clear_current()
-        cache.campaign_content.clear(session["company_id"], campaign_id=campaign_id)
 
         assets = svc.list_all_assets(book_id)
         chapters = cache.campaign_content.chapters(campaign_id, book_id)

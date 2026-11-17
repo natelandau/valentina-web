@@ -56,10 +56,8 @@ class BookCreate(BaseModel):
     Used to construct the JSON payload for book creation.
     """
 
-    name: str = Field(..., min_length=3, max_length=50, description="Book name (3-50 characters).")
-    description: str | None = Field(
-        default=None, min_length=3, description="Book description (minimum 3 characters)."
-    )
+    name: str = Field(..., max_length=50, description="Book name (up to 50 characters).")
+    description: str | None = Field(default=None, description="Book description.")
 
 
 class BookUpdate(BaseModel):
@@ -69,10 +67,10 @@ class BookUpdate(BaseModel):
     """
 
     name: str | None = Field(
-        default=None, min_length=3, max_length=50, description="New book name (3-50 characters)."
+        default=None, max_length=50, description="New book name (up to 50 characters)."
     )
     description: str | None = Field(
-        default=None, min_length=3, description="New book description (minimum 3 characters)."
+        default=None, description="New book description. An empty string clears it."
     )
 
 

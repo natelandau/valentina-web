@@ -135,20 +135,18 @@ class TestBookCreate:
         assert request.name == "Test"
         assert request.description is None
 
-    def test_name_min_length(self):
-        """Verify name minimum length validation."""
-        with pytest.raises(PydanticValidationError):
-            BookCreate(name="ab")
+    def test_short_name_allowed(self):
+        """Verify a short name is accepted, as the API sets no minimum."""
+        assert BookCreate(name="ab").name == "ab"
 
     def test_name_max_length(self):
         """Verify name maximum length validation."""
         with pytest.raises(PydanticValidationError):
             BookCreate(name="a" * 51)
 
-    def test_description_min_length(self):
-        """Verify description minimum length validation."""
-        with pytest.raises(PydanticValidationError):
-            BookCreate(name="Valid", description="ab")
+    def test_short_description_allowed(self):
+        """Verify a short description is accepted, as the API sets no minimum."""
+        assert BookCreate(name="Valid", description="ab").description == "ab"
 
 
 class TestBookUpdate:
@@ -177,14 +175,15 @@ class TestBookUpdate:
         assert data == {"name": "New Name"}
 
     def test_name_validation_when_provided(self):
-        """Verify name validation still applies when value is provided."""
+        """Verify the name length limit still applies when a value is provided."""
         with pytest.raises(PydanticValidationError):
-            BookUpdate(name="ab")
+            BookUpdate(name="a" * 51)
 
-    def test_description_validation_when_provided(self):
-        """Verify description validation still applies when value is provided."""
-        with pytest.raises(PydanticValidationError):
-            BookUpdate(description="ab")
+    def test_empty_description_is_sent_to_clear_it(self):
+        """Verify an empty description survives the dump, so the API clears it."""
+        data = BookUpdate(description="").model_dump(exclude_none=True, exclude_unset=True)
+
+        assert data == {"description": ""}
 
 
 def _book_payload() -> dict:
