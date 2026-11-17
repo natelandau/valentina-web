@@ -3,6 +3,7 @@
 import re
 
 import pytest
+from werkzeug.test import TestResponse
 
 from tests.conftest import get_csrf
 from tests.helpers import assert_has_element, build_global_context
@@ -340,6 +341,69 @@ class TestNavbarCampaignDropdown:
 
         # Then the add button is present
         assert "+ Create Campaign" in body
+
+
+class TestCampaignInGameDate:
+    """The campaign form sets the in-game date that character ages are measured on."""
+
+    @pytest.fixture(autouse=True)
+    def _storyteller(self, mocker) -> None:
+        self.ctx = build_global_context(user_role="STORYTELLER")
+        mocker.patch("vweb.lib.cache.global_context.load", return_value=self.ctx)
+
+    def _post(self, client, url: str, data: dict[str, str]) -> TestResponse:
+        return client.post(
+            url, data=data, headers={"X-CSRFToken": get_csrf(client), "HX-Request": "true"}
+        )
+
+    def test_create_sends_in_game_date(self, client, fake_vclient) -> None:
+        """Verify a submitted in-game date reaches the create request."""
+        fake_vclient.set_response(Routes.CAMPAIGNS_CREATE, model=CampaignFactory.build())
+
+        self._post(client, "/campaign/create", {"name": "Noir", "in_game_date": "1990-06-01"})
+
+        fake_vclient.assert_called(
+            Routes.CAMPAIGNS_CREATE, json={"name": "Noir", "in_game_date": "1990-06-01"}, times=1
+        )
+
+    def test_update_sends_in_game_date(self, client, fake_vclient) -> None:
+        """Verify moving the in-game date forward reaches the update request."""
+        campaign = self.ctx.campaigns[0]
+        fake_vclient.set_response(Routes.CAMPAIGNS_GET, model=campaign)
+        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=campaign)
+
+        self._post(
+            client,
+            f"/campaign/{campaign.id}/update",
+            {"name": campaign.name, "in_game_date": "2003-01-01"},
+        )
+
+        fake_vclient.assert_called(
+            Routes.CAMPAIGNS_UPDATE, json_subset={"in_game_date": "2003-01-01"}, times=1
+        )
+
+    def test_update_blank_date_clears_it(self, client, fake_vclient) -> None:
+        """Verify blanking the in-game date sends null so the API clears it."""
+        campaign = self.ctx.campaigns[0]
+        fake_vclient.set_response(Routes.CAMPAIGNS_GET, model=campaign)
+        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=campaign)
+
+        self._post(
+            client, f"/campaign/{campaign.id}/update", {"name": campaign.name, "in_game_date": ""}
+        )
+
+        fake_vclient.assert_called(
+            Routes.CAMPAIGNS_UPDATE, json_subset={"in_game_date": None}, times=1
+        )
+
+    def test_rejects_invalid_in_game_date(self, client, fake_vclient) -> None:
+        """Verify an impossible date re-renders the form with an error and saves nothing."""
+        response = self._post(
+            client, "/campaign/create", {"name": "Noir", "in_game_date": "1990-02-31"}
+        )
+
+        assert "In-game date must be a valid date." in response.get_data(as_text=True)
+        fake_vclient.assert_not_called(Routes.CAMPAIGNS_CREATE)
 
 
 class TestCampaignUpdateView:

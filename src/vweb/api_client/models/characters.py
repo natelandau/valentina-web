@@ -13,7 +13,7 @@ from vweb.api_client.constants import (
 )
 
 from .character_trait import CharacterCreateTraitAssign, CharacterTrait, Health, HealthStateSet
-from .request_types import Generation, LongText, LongText3, Name3to50, NameMax50
+from .request_types import CharacterAge, Generation, LongText, LongText3, Name3to50, NameMax50
 from .shared import Asset, CharacterSpecialty, Note
 
 # -----------------------------------------------------------------------------
@@ -283,7 +283,7 @@ class CharacterCreate(BaseModel):
     type: CharacterType | None = Field(default=None, description="Character type.")
     is_temporary: bool = Field(default=False, description="Whether the character is temporary.")
     name_nick: Name3to50 | None = Field(default=None, description="Character's nickname.")
-    age: int | None = Field(default=None, description="Character's age.")
+    age: CharacterAge | None = Field(default=None, description="Character's age.")
     date_of_birth: date | None = Field(
         default=None, description="Character's date of birth (ISO 8601 calendar date)."
     )
@@ -331,7 +331,7 @@ class CharacterUpdate(BaseModel):
     name_last: Name3to50 | None = Field(default=None, description="Character's last name.")
     name_nick: Name3to50 | None = Field(default=None, description="Character's nickname.")
 
-    age: int | None = None
+    age: CharacterAge | None = None
     date_of_birth: date | None = None
     biography: LongText3 | None = Field(default=None, description="Character biography.")
     demeanor: Name3to50 | None = Field(default=None, description="Character's demeanor.")

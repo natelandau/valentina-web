@@ -10,12 +10,14 @@
     {% set submit_label = "Save" %}
     {% set name_value = form_data.get('name', campaign.name) %}
     {% set desc_value = form_data.get('description', campaign.description or '') %}
+    {% set date_value = form_data.get('in_game_date', campaign.in_game_date.isoformat() if campaign.in_game_date else '') %}
 {% else %}
     {% set modal_title = "Create New Campaign" %}
     {% set form_action = url_for('campaign.create') %}
     {% set submit_label = "Create" %}
     {% set name_value = form_data.get('name', '') %}
     {% set desc_value = form_data.get('description', '') %}
+    {% set date_value = form_data.get('in_game_date', '') %}
 {% endif %}
 
 <div class="flex items-center justify-between border-b border-base-300 pb-4 mb-4">
@@ -59,6 +61,16 @@
                   class="textarea w-full"
                   placeholder="Enter campaign description (optional)"
                   rows="3">{{ desc_value }}</textarea>
+    </fieldset>
+
+    <fieldset class="fieldset mt-4">
+        <legend class="fieldset-legend">In-game date</legend>
+        <label class="input w-full">
+            <input type="date" name="in_game_date" class="grow" value="{{ date_value }}" />
+        </label>
+        <p class="label whitespace-normal block">
+            The date the story has reached. Characters' ages are measured on it, so move it forward as time passes in the game.
+        </p>
     </fieldset>
 
     <div class="modal-action">

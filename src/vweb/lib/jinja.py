@@ -10,6 +10,7 @@ from flask import g, session, url_for
 
 import vweb
 from vweb.api_client.constants import (
+    MAX_CHARACTER_AGE,
     MAX_CUSTOM_FLAW_XP_COST,
     MAX_LONG_TEXT_LENGTH,
     MAX_URL_LENGTH,
@@ -27,6 +28,7 @@ from vweb.constants import (
 from vweb.lib import cache
 from vweb.lib.api import (
     get_active_campaign,
+    get_campaign,
     get_selectable_characters,
     get_user_campaign_experience,
     resolve_characters,
@@ -50,6 +52,7 @@ from vweb.lib.guards import (
 )
 from vweb.lib.jinja_filters import (
     format_date,
+    format_long_date,
     from_markdown,
     from_markdown_no_p,
     humanize_date,
@@ -65,7 +68,7 @@ from vweb.lib.user_profile import has_custom_avatar, user_avatar_url
 if TYPE_CHECKING:
     from flask import Flask
 
-    from vweb.api_client.models import User
+    from vweb.api_client.models import Character, User
     from vweb.config import Settings
     from vweb.lib.cache.global_context import GlobalContext
 
@@ -152,6 +155,34 @@ def character_type_label(character_type: str) -> str:
     return CHARACTER_TYPE_LABELS.get(character_type, character_type.title())
 
 
+def _year_label(year: int) -> str:
+    # There is no year 0: the year before 1 CE is 1 BCE.
+    return f"{1 - year} BCE" if year < 1 else str(year)
+
+
+def character_born_label(character: Character) -> str | None:
+    """Return when a character was born, for the sheet, measured on the campaign's in-game date.
+
+    A date of birth is shown as recorded. A living character with only an age gets an
+    estimated year, because the API keeps that age fixed while the in-game date moves.
+
+    Args:
+        character: The character to describe.
+
+    Returns:
+        The label, e.g. ``"15 Mar 1960"`` or ``"c. 1967"``, or None when the campaign has no
+        in-game date or the character has neither a date of birth nor an age.
+    """
+    campaign = get_campaign(character.campaign_id)
+    if campaign is None or campaign.in_game_date is None:
+        return None
+    if character.date_of_birth is not None:
+        return format_long_date(character.date_of_birth)
+    if character.age is not None and character.status == "ALIVE":
+        return f"c. {_year_label(campaign.in_game_date.year - character.age)}"
+    return None
+
+
 def build_fragment_url(endpoint: str, **kwargs: object) -> str:
     """Build an HTMX fragment URL, dropping kwargs with empty or None values.
 
@@ -201,11 +232,13 @@ def register_jinjax_catalog() -> jinjax.Catalog:
     catalog.jinja_env.filters["from_markdown"] = from_markdown
     catalog.jinja_env.filters["from_markdown_no_p"] = from_markdown_no_p
     catalog.jinja_env.filters["format_date"] = format_date
+    catalog.jinja_env.filters["format_long_date"] = format_long_date
     catalog.jinja_env.filters["humanize_date"] = humanize_date
     catalog.jinja_env.filters["link_terms"] = link_terms
     catalog.jinja_env.filters["normalize_string"] = normalize_string
     catalog.jinja_env.filters["to_roman"] = to_roman
     catalog.jinja_env.globals["user_campaign_experience"] = get_user_campaign_experience  # ty:ignore[invalid-assignment]
+    catalog.jinja_env.globals["character_born_label"] = character_born_label  # ty:ignore[invalid-assignment]
     catalog.jinja_env.add_extension("jinja2.ext.do")
     # JinjaX builds its environment without autoescape (Jinja2 defaults it off),
     # which would let user-controlled API data reflect raw HTML into every page.
@@ -263,6 +296,7 @@ def configure_jinja(app: Flask, s: Settings, catalog: jinjax.Catalog) -> None:
         MAX_URL_LENGTH=MAX_URL_LENGTH,
         MIN_CUSTOM_FLAW_XP_COST=MIN_CUSTOM_FLAW_XP_COST,
         MAX_CUSTOM_FLAW_XP_COST=MAX_CUSTOM_FLAW_XP_COST,
+        MAX_CHARACTER_AGE=MAX_CHARACTER_AGE,
     )
     jinja_globals["is_admin"] = is_admin
     jinja_globals["is_active_role"] = is_active_role

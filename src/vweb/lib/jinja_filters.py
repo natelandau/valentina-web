@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Literal
 
 import humanize
@@ -55,6 +55,18 @@ def format_date(value: str | datetime) -> str:
         value = datetime.fromisoformat(value)
 
     return value.strftime("%Y-%m-%d")
+
+
+def format_long_date(value: date) -> str:
+    """Format a calendar date for display, e.g. ``15 Mar 1960``.
+
+    Args:
+        value: The date to format.
+
+    Returns:
+        str: The day, abbreviated month, and year.
+    """
+    return f"{value.day} {value:%b %Y}"
 
 
 def humanize_date(value: str | datetime) -> str:

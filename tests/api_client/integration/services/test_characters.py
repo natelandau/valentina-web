@@ -638,6 +638,27 @@ class TestCharactersServiceUpdate:
         assert result.date_of_birth is None
 
     @respx.mock
+    def test_update_character_clears_blanked_profile_fields(
+        self, vclient, base_url, character_response_data
+    ) -> None:
+        """Verify None on a clearable profile field sends null, while omitted fields stay out."""
+        # Given: A mocked update endpoint
+        route = respx.patch(
+            f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
+        ).mock(return_value=MockResponse(200, json=character_response_data))
+
+        # When: Clearing the nickname, age, and concept while renaming the character
+        vclient.characters("on-behalf-of-user", company_id="company123").update(
+            "char123", name_first="Renamed", name_nick=None, age=None, concept_id=None
+        )
+
+        # Then: Each cleared field is sent as null and nothing else is added
+        import json
+
+        body = json.loads(route.calls.last.request.content)
+        assert body == {"name_first": "Renamed", "name_nick": None, "age": None, "concept_id": None}
+
+    @respx.mock
     def test_update_character_not_found(self, vclient, base_url) -> None:
         """Verify updating a non-existent character raises NotFoundError."""
         # Given: A mocked 404 response

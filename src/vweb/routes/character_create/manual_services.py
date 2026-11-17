@@ -13,8 +13,13 @@ from vweb.api_client.exceptions import APIError, NotFoundError
 from vweb.api_client.models import CharacterCreate, CharacterTraitAdd, CharacterUpdate
 from vweb.lib import api_services
 from vweb.lib.api_errors import api_field_errors
+from vweb.lib.form_validation import parse_form_date
 from vweb.lib.guards import can_manage_npcs, is_self, is_storyteller
-from vweb.routes.character_create.profile_form import build_class_attrs, character_to_form_data
+from vweb.routes.character_create.profile_form import (
+    build_class_attrs,
+    character_to_form_data,
+    parse_age,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -40,6 +45,8 @@ _INLINE_ERROR_FIELDS: frozenset[str] = frozenset(
         "vampire_clan_id",
         "werewolf_tribe_id",
         "creed",
+        "age",
+        "date_of_birth",
     }
 )
 
@@ -150,29 +157,35 @@ def load_temp_character_form_data(*, is_resuming: bool, fallback: dict[str, str]
     return character_to_form_data(character)
 
 
-def _build_update_payload(form_data: dict[str, str]) -> CharacterUpdate:
+def _build_update_payload(
+    form_data: dict[str, str], *, keep_stored_age: bool = False
+) -> CharacterUpdate:
     """Build a CharacterUpdate payload from validated profile form data.
+
+    Age and date of birth are alternatives, so the one left blank is cleared. A dead
+    character's stored age is the age it died at, so `keep_stored_age` leaves it in place
+    when a date of birth is given.
 
     Args:
         form_data: Stripped, validated profile form data.
+        keep_stored_age: Leave the stored age unchanged when the form gives a date of birth.
 
     Returns:
         The CharacterUpdate payload for the characters service.
     """
     character_class = cast("CharacterClass", form_data["character_class"])
     game_version = cast("GameVersion", form_data["game_version"])
-    age_str = form_data.get("age", "").strip()
+    date_of_birth = parse_form_date(form_data.get("date_of_birth", ""))
     _create_attrs, update_attrs = build_class_attrs(character_class, form_data)
     vampire_u, werewolf_u, hunter_u, mage_attrs = update_attrs
 
-    return CharacterUpdate(
+    payload = CharacterUpdate(
         character_class=character_class,
         game_version=game_version,
         name_first=form_data["name_first"],
         name_last=form_data["name_last"],
         type=cast("CharacterType", form_data.get("character_type") or "PLAYER"),
         name_nick=form_data.get("name_nick") or None,
-        age=int(age_str) if age_str else None,
         biography=form_data.get("biography") or None,
         demeanor=form_data.get("demeanor") or None,
         nature=form_data.get("nature") or None,
@@ -181,7 +194,12 @@ def _build_update_payload(form_data: dict[str, str]) -> CharacterUpdate:
         werewolf_attributes=werewolf_u,
         hunter_attributes=hunter_u,
         mage_attributes=mage_attrs,
+        date_of_birth=date_of_birth,
     )
+    # Assigning marks the field as set, so a None age is sent and clears the stored one.
+    if not (date_of_birth and keep_stored_age):
+        payload.age = parse_age(form_data.get("age", ""))
+    return payload
 
 
 def _build_create_payload(campaign_id: str, form_data: dict[str, str]) -> CharacterCreate:
@@ -196,7 +214,6 @@ def _build_create_payload(campaign_id: str, form_data: dict[str, str]) -> Charac
     """
     character_class = cast("CharacterClass", form_data["character_class"])
     game_version = cast("GameVersion", form_data["game_version"])
-    age_str = form_data.get("age", "").strip()
     create_attrs, _update_attrs = build_class_attrs(character_class, form_data)
     vampire_c, werewolf_c, hunter_c, mage_attrs = create_attrs
 
@@ -208,7 +225,8 @@ def _build_create_payload(campaign_id: str, form_data: dict[str, str]) -> Charac
         name_last=form_data["name_last"],
         type=cast("CharacterType", form_data.get("character_type") or "PLAYER"),
         name_nick=form_data.get("name_nick") or None,
-        age=int(age_str) if age_str else None,
+        age=parse_age(form_data.get("age", "")),
+        date_of_birth=parse_form_date(form_data.get("date_of_birth", "")),
         biography=form_data.get("biography") or None,
         demeanor=form_data.get("demeanor") or None,
         nature=form_data.get("nature") or None,
@@ -222,19 +240,22 @@ def _build_create_payload(campaign_id: str, form_data: dict[str, str]) -> Charac
     )
 
 
-def update_character_profile(character_id: str, form_data: dict[str, str]) -> dict[str, str]:
+def update_character_profile(
+    character_id: str, form_data: dict[str, str], *, keep_stored_age: bool = False
+) -> dict[str, str]:
     """Update an existing character's profile from validated form data.
 
     Args:
         character_id: The character being edited.
         form_data: Stripped, validated profile form data.
+        keep_stored_age: Leave the stored age unchanged when the form gives a date of birth.
 
     Returns:
         Errors keyed by field name (empty when the update succeeds).
     """
     svc = api_services.characters()
     try:
-        svc.update(character_id, _build_update_payload(form_data))
+        svc.update(character_id, _build_update_payload(form_data, keep_stored_age=keep_stored_age))
     except (PydanticValidationError, APIError) as exc:
         return api_field_errors(
             exc,

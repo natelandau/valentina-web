@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from vweb.api_client.constants import MAX_CHARACTER_AGE
 from vweb.api_client.models.characters import (
     HunterAttributesCreate,
     HunterAttributesUpdate,
@@ -14,6 +15,7 @@ from vweb.api_client.models.characters import (
     WerewolfAttributesUpdate,
 )
 from vweb.lib import cache
+from vweb.lib.form_validation import parse_form_date
 
 if TYPE_CHECKING:
     from vweb.api_client.models import Character
@@ -68,7 +70,38 @@ def validate_profile(form_data: dict[str, str]) -> dict[str, str]:
     if character_class == "HUNTER" and not form_data.get("creed"):
         errors["creed"] = "Hunter creed is required."
 
+    errors.update(_age_errors(form_data))
+
     return errors
+
+
+def _age_errors(form_data: dict[str, str]) -> dict[str, str]:
+    """Check that at most one of age and date of birth is given, and that it is valid."""
+    age = form_data.get("age", "")
+    date_of_birth = form_data.get("date_of_birth", "")
+    if age and date_of_birth:
+        return {"date_of_birth": "Enter an age or a date of birth, not both."}
+    if age and parse_age(age) is None:
+        return {"age": f"Age must be a whole number from 0 to {MAX_CHARACTER_AGE:,}."}
+    if date_of_birth and parse_form_date(date_of_birth) is None:
+        return {"date_of_birth": "Date of birth must be a valid date."}
+    return {}
+
+
+def parse_age(value: str) -> int | None:
+    """Parse an age from form input, rejecting anything outside the API's range.
+
+    Args:
+        value: The submitted text.
+
+    Returns:
+        The age, or None when the text is blank, not a whole number, or out of range.
+    """
+    # int() also takes signs, underscores, and non-ASCII digits, which an age input never sends.
+    if not (value.isascii() and value.isdigit()):
+        return None
+    age = int(value)
+    return age if age <= MAX_CHARACTER_AGE else None
 
 
 def character_to_form_data(character: Character) -> dict[str, str]:
@@ -90,7 +123,12 @@ def character_to_form_data(character: Character) -> dict[str, str]:
 
     optional: dict[str, str | None] = {
         "name_nick": character.name_nick,
-        "age": str(character.age) if character.age is not None else None,
+        # Age and date of birth are alternatives; a date of birth wins because the API
+        # computes the age from it.
+        "date_of_birth": character.date_of_birth.isoformat() if character.date_of_birth else None,
+        "age": str(character.age)
+        if character.age is not None and character.date_of_birth is None
+        else None,
         "biography": character.biography,
         "demeanor": character.demeanor,
         "nature": character.nature,

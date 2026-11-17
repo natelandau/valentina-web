@@ -95,6 +95,21 @@
       </div>
     </div>
 
+    {#- Only a dated campaign can compute an age, and a dead character's age is fixed. -#}
+    {% if can_edit and campaign.in_game_date and character.date_of_birth is none and character.status == "ALIVE" %}
+      <div role="alert" class="alert alert-info alert-soft">
+        <i class="fa-solid fa-cake-candles"></i>
+        <span>Add {{ character.name }}'s date of birth so their age follows the campaign's in-game date.</span>
+        <button type="button"
+                class="btn btn-sm"
+                hx-get="{{ url_for('character_create.manual_profile', campaign_id=campaign.id) }}?character_id={{ character.id }}"
+                hx-target="#character-tab-content"
+                hx-swap="innerHTML">
+          Add date of birth
+        </button>
+      </div>
+    {% endif %}
+
     <nav aria-label="Character sections"
          class="border-b border-base-300/60 relative"
          x-data='priorityNav({{ {"items": sub_tabs, "active": active_section} | tojson }})'
