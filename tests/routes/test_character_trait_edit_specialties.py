@@ -4,15 +4,12 @@ from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING, Literal
-from unittest.mock import MagicMock
 
 import pytest
 
 from tests.conftest import get_csrf
 from tests.helpers import build_global_context
-from vweb.api_client.exceptions import NotFoundError, ValidationError
 from vweb.api_client.models import CharacterTraitSpecialty
-from vweb.api_client.services import CharacterTraitsService
 from vweb.api_client.testing import (
     CharacterFactory,
     CharacterFullSheetFactory,
@@ -28,8 +25,6 @@ from vweb.routes.character_trait_edit.services import specialty_help_text
 if TYPE_CHECKING:
     from vweb.api_client.models import Character
 
-SVC_PATH = "vweb.routes.character_trait_edit.views_specialties.api_services.character_traits"
-
 
 def _specialty(specialty_id: str, name: str) -> CharacterTraitSpecialty:
     return CharacterTraitSpecialty(
@@ -43,6 +38,10 @@ def _specialty(specialty_id: str, name: str) -> CharacterTraitSpecialty:
 class _Base:
     """Shared setup for specialty endpoint tests."""
 
+    @pytest.fixture(autouse=True)
+    def _fake(self, fake_vclient) -> None:
+        self.fake = fake_vclient
+
     def _setup(
         self,
         client,
@@ -52,8 +51,7 @@ class _Base:
         owner_id: str = "test-user-id",
         specialty_name: str = "Knives",
         recoup: Literal["UNRESTRICTED", "DENIED"] = "UNRESTRICTED",
-        real_service: bool = False,
-    ) -> tuple[Character, MagicMock]:
+    ) -> Character:
         company = CompanyFactory.build(name="Test Company")
         company.settings.permission_free_trait_changes = free
         company.settings.specialty_xp_cost_enabled = True
@@ -98,11 +96,7 @@ class _Base:
         self.sheet_get = mocker.patch("vweb.lib.cache.character_sheet.get", return_value=sheet)
         self.clear_sheet = mocker.patch("vweb.lib.cache.character_sheet.clear")
         self.clear_ctx = mocker.patch("vweb.lib.cache.global_context.clear_current")
-
-        svc = MagicMock()
-        if not real_service:
-            mocker.patch(SVC_PATH, return_value=svc)
-        return character, svc
+        return character
 
     def _flashes(self, client) -> list[tuple[str, str]]:
         with client.session_transaction() as sess:
@@ -110,6 +104,16 @@ class _Base:
 
     def _headers(self, client) -> dict[str, str]:
         return {"HX-Request": "true", "X-CSRFToken": get_csrf(client)}
+
+    def _trait_params(self, specialty_id: str | None = None) -> dict[str, str]:
+        params = {
+            "company_id": "test-company-id",
+            "character_id": "pc-1",
+            "character_trait_id": "ct-melee",
+        }
+        if specialty_id:
+            params["specialty_id"] = specialty_id
+        return params
 
     def _url(
         self, character, spend: str, trait: str = "ct-melee", specialty: str | None = None
@@ -140,19 +144,18 @@ def test_specialty_help_text(recoup: str, expected: str) -> None:
 class TestSpecialties(_Base):
     """Dialog and add endpoint."""
 
-    def test_add_xp_calls_api_and_flashes_cost(self, client, mocker, fake_vclient) -> None:
+    def test_add_xp_calls_api_and_flashes_cost(self, client, mocker) -> None:
         """Verify a paid add calls the API, flashes the cost, and clears caches."""
-        character, _ = self._setup(client, mocker, real_service=True)
-        fake_vclient.set_response(
-            Routes.CHARACTER_TRAITS_SPECIALTY_ADD, model=CharacterTraitFactory.build()
-        )
-        add = mocker.spy(CharacterTraitsService, "add_specialty")
+        character = self._setup(client, mocker)
         response = client.post(
             self._url(character, "XP"), data={"name": "Swords"}, headers=self._headers(client)
         )
-        add.assert_called_once()
-        assert add.call_args.args[1:] == ("ct-melee", "Swords")
-        assert add.call_args.kwargs == {"currency": "XP"}
+        self.fake.assert_called(
+            Routes.CHARACTER_TRAITS_SPECIALTY_ADD,
+            params=self._trait_params(),
+            json={"name": "Swords", "currency": "XP"},
+            times=1,
+        )
         assert response.headers["HX-Redirect"] == f"/character/{character.id}/traits/XP"
         assert ("success", "Added Swords to Melee. You spent 3 xp") in self._flashes(client)
         self.clear_sheet.assert_called_once_with(character.id)
@@ -160,11 +163,16 @@ class TestSpecialties(_Base):
 
     def test_add_starting_points_flash(self, client, mocker) -> None:
         """Verify the starting points flash is humanized."""
-        character, _ = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         client.post(
             self._url(character, "STARTING_POINTS"),
             data={"name": "Swords"},
             headers=self._headers(client),
+        )
+        self.fake.assert_called(
+            Routes.CHARACTER_TRAITS_SPECIALTY_ADD,
+            json={"name": "Swords", "currency": "STARTING_POINTS"},
+            times=1,
         )
         assert (
             "success",
@@ -173,29 +181,39 @@ class TestSpecialties(_Base):
 
     def test_add_no_cost_flash_has_no_cost(self, client, mocker) -> None:
         """Verify a free add has no cost suffix."""
-        character, _ = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         client.post(
             self._url(character, "NO_COST"), data={"name": "Swords"}, headers=self._headers(client)
+        )
+        self.fake.assert_called(
+            Routes.CHARACTER_TRAITS_SPECIALTY_ADD,
+            json={"name": "Swords", "currency": "NO_COST"},
+            times=1,
         )
         assert ("success", "Added Swords to Melee.") in self._flashes(client)
 
     def test_add_strips_name(self, client, mocker) -> None:
         """Verify surrounding whitespace is stripped."""
-        character, svc = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         client.post(
             self._url(character, "XP"), data={"name": "  Swords "}, headers=self._headers(client)
         )
-        svc.add_specialty.assert_called_once_with("ct-melee", "Swords", currency="XP")
+        self.fake.assert_called(
+            Routes.CHARACTER_TRAITS_SPECIALTY_ADD,
+            params=self._trait_params(),
+            json={"name": "Swords", "currency": "XP"},
+            times=1,
+        )
 
     def test_add_to_non_ability_rejected(self, client, mocker) -> None:
         """Verify attributes cannot take specialties."""
-        character, svc = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         client.post(
             self._url(character, "XP", "ct-str"),
             data={"name": "Swords"},
             headers=self._headers(client),
         )
-        svc.add_specialty.assert_not_called()
+        self.fake.assert_not_called(Routes.CHARACTER_TRAITS_SPECIALTY_ADD)
         assert (
             "warning",
             "Only abilities with at least one dot can have specialties",
@@ -203,9 +221,9 @@ class TestSpecialties(_Base):
 
     def test_add_duplicate_flashes_api_detail(self, client, mocker) -> None:
         """Verify an API validation error is flashed and no cache is cleared."""
-        character, svc = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         detail = "A specialty with this name already exists"
-        svc.add_specialty.side_effect = ValidationError(detail, response_data={"detail": detail})
+        self.fake.set_error(Routes.CHARACTER_TRAITS_SPECIALTY_ADD, status_code=400, detail=detail)
         client.post(
             self._url(character, "XP"), data={"name": "Knives"}, headers=self._headers(client)
         )
@@ -214,7 +232,7 @@ class TestSpecialties(_Base):
 
     def test_no_cost_denied_without_free_permission(self, client, mocker) -> None:
         """Verify free specialty changes need the free-edit permission on every endpoint."""
-        character, svc = self._setup(client, mocker, free="STORYTELLER")
+        character = self._setup(client, mocker, free="STORYTELLER")
         headers = self._headers(client)
         responses = [
             client.get(self._url(character, "NO_COST"), headers=headers),
@@ -228,15 +246,11 @@ class TestSpecialties(_Base):
         ]
         for response in responses:
             assert response.headers["HX-Redirect"] == f"/character/{character.id}"
-        svc.assert_not_called()
-        svc.add_specialty.assert_not_called()
-        svc.update_specialty.assert_not_called()
-        svc.delete_specialty.assert_not_called()
+        assert self.fake.requests == []
 
     def test_non_owner_denied_on_every_endpoint(self, client, mocker) -> None:
         """Verify a player who does not own the character is denied in paid mode."""
-        character, svc = self._setup(client, mocker, owner_id="someone-else")
-        service_factory = mocker.patch(SVC_PATH, return_value=svc)
+        character = self._setup(client, mocker, owner_id="someone-else")
         headers = self._headers(client)
         responses = [
             client.get(self._url(character, "XP"), headers=headers),
@@ -250,12 +264,12 @@ class TestSpecialties(_Base):
         ]
         for response in responses:
             assert response.headers["HX-Redirect"] == f"/character/{character.id}"
-        service_factory.assert_not_called()
+        assert self.fake.requests == []
         self.clear_sheet.assert_not_called()
 
     def test_dialog_get_ineligible_trait_redirects(self, client, mocker) -> None:
         """Verify the dialog refuses attributes with the same warning as add."""
-        character, _ = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         response = client.get(self._url(character, "XP", "ct-str"), headers={"HX-Request": "true"})
         assert response.headers["HX-Redirect"] == f"/character/{character.id}/traits/XP"
         assert (
@@ -265,22 +279,22 @@ class TestSpecialties(_Base):
 
     def test_add_empty_name_rejected(self, client, mocker) -> None:
         """Verify a blank name on add warns without calling the API."""
-        character, svc = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         client.post(self._url(character, "XP"), data={"name": "   "}, headers=self._headers(client))
-        svc.add_specialty.assert_not_called()
+        self.fake.assert_not_called(Routes.CHARACTER_TRAITS_SPECIALTY_ADD)
         assert ("warning", "Specialty name is required") in self._flashes(client)
 
     @pytest.mark.parametrize("name", ["ab", "x" * 51])
     def test_add_bad_length_rejected(self, client, mocker, name: str) -> None:
         """Verify names outside 3 to 50 characters warn without calling the API."""
-        character, svc = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         client.post(self._url(character, "XP"), data={"name": name}, headers=self._headers(client))
-        svc.add_specialty.assert_not_called()
+        self.fake.assert_not_called(Routes.CHARACTER_TRAITS_SPECIALTY_ADD)
         assert ("warning", "Specialty names must be 3 to 50 characters.") in self._flashes(client)
 
     def test_lookup_uses_warm_sheet_cache_key(self, client, mocker) -> None:
         """Verify the trait lookup reads the include_available_traits=True cache entry."""
-        character, _ = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         client.post(
             self._url(character, "XP"), data={"name": "Swords"}, headers=self._headers(client)
         )
@@ -288,7 +302,7 @@ class TestSpecialties(_Base):
 
     def test_dialog_inputs_have_length_limits(self, client, mocker) -> None:
         """Verify the add and rename inputs carry the length bounds and disable on submit."""
-        character, _ = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         html = client.get(self._url(character, "XP"), headers={"HX-Request": "true"}).get_data(
             as_text=True
         )
@@ -299,7 +313,7 @@ class TestSpecialties(_Base):
 
     def test_dialog_get_renders_for_ability(self, client, mocker) -> None:
         """Verify the dialog body renders title, label, and current specialties."""
-        character, _ = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         response = client.get(self._url(character, "XP"), headers={"HX-Request": "true"})
         html = response.get_data(as_text=True)
         assert response.status_code == 200
@@ -310,7 +324,7 @@ class TestSpecialties(_Base):
 
     def test_dialog_help_text_when_xp_recoup_denied(self, client, mocker) -> None:
         """Verify the help text says XP is not refunded when recouping XP is denied."""
-        character, _ = self._setup(client, mocker, recoup="DENIED")
+        character = self._setup(client, mocker, recoup="DENIED")
         html = client.get(self._url(character, "XP"), headers={"HX-Request": "true"}).get_data(
             as_text=True
         )
@@ -319,7 +333,7 @@ class TestSpecialties(_Base):
 
     def test_dialog_get_unknown_trait_redirects(self, client, mocker) -> None:
         """Verify an unknown trait redirects back with an error flash."""
-        character, _ = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         response = client.get(
             self._url(character, "XP", "ct-missing"), headers={"HX-Request": "true"}
         )
@@ -330,73 +344,79 @@ class TestSpecialties(_Base):
 class TestSpecialty(_Base):
     """Rename and remove endpoint."""
 
-    def test_rename_calls_api(self, client, mocker, fake_vclient) -> None:
+    def test_rename_calls_api(self, client, mocker) -> None:
         """Verify rename calls the API, flashes, and clears caches."""
-        character, _ = self._setup(client, mocker, real_service=True)
-        fake_vclient.set_response(
-            Routes.CHARACTER_TRAITS_SPECIALTY_UPDATE, model=CharacterTraitFactory.build()
-        )
-        update = mocker.spy(CharacterTraitsService, "update_specialty")
+        character = self._setup(client, mocker)
         client.post(
             self._url(character, "XP", specialty="sp-1"),
             data={"name": "Daggers"},
             headers=self._headers(client),
         )
-        update.assert_called_once()
-        assert update.call_args.args[1:] == ("ct-melee", "sp-1", "Daggers")
+        self.fake.assert_called(
+            Routes.CHARACTER_TRAITS_SPECIALTY_UPDATE,
+            params=self._trait_params(specialty_id="sp-1"),
+            json={"name": "Daggers"},
+            times=1,
+        )
         assert ("success", "Renamed Knives to Daggers.") in self._flashes(client)
         self.clear_sheet.assert_called_once_with(character.id)
         self.clear_ctx.assert_called_once()
 
-    def test_remove_calls_api(self, client, mocker, fake_vclient) -> None:
+    def test_remove_calls_api(self, client, mocker) -> None:
         """Verify remove calls the API, flashes, and clears caches."""
-        character, _ = self._setup(client, mocker, real_service=True)
-        fake_vclient.set_response(Routes.CHARACTER_TRAITS_SPECIALTY_DELETE)
-        delete = mocker.spy(CharacterTraitsService, "delete_specialty")
+        character = self._setup(client, mocker)
         client.delete(self._url(character, "XP", specialty="sp-1"), headers=self._headers(client))
-        delete.assert_called_once()
-        assert delete.call_args.args[1:] == ("ct-melee", "sp-1")
+        self.fake.assert_called(
+            Routes.CHARACTER_TRAITS_SPECIALTY_DELETE,
+            params=self._trait_params(specialty_id="sp-1"),
+            times=1,
+        )
         assert ("success", "Removed Knives from Melee.") in self._flashes(client)
         self.clear_sheet.assert_called_once_with(character.id)
         self.clear_ctx.assert_called_once()
 
     def test_rename_empty_name_rejected(self, client, mocker) -> None:
         """Verify a blank name on rename warns without calling the API."""
-        character, svc = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         client.post(
             self._url(character, "XP", specialty="sp-1"),
             data={"name": " "},
             headers=self._headers(client),
         )
-        svc.update_specialty.assert_not_called()
+        self.fake.assert_not_called(Routes.CHARACTER_TRAITS_SPECIALTY_UPDATE)
         assert ("warning", "Specialty name is required") in self._flashes(client)
 
     @pytest.mark.parametrize("name", ["ab", "x" * 51])
     def test_rename_bad_length_rejected(self, client, mocker, name: str) -> None:
         """Verify renames outside 3 to 50 characters warn without calling the API."""
-        character, svc = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         client.post(
             self._url(character, "XP", specialty="sp-1"),
             data={"name": name},
             headers=self._headers(client),
         )
-        svc.update_specialty.assert_not_called()
+        self.fake.assert_not_called(Routes.CHARACTER_TRAITS_SPECIALTY_UPDATE)
         assert ("warning", "Specialty names must be 3 to 50 characters.") in self._flashes(client)
 
     def test_rename_unknown_specialty_uses_generic_wording(self, client, mocker) -> None:
         """Verify the flash reads naturally when the old name is not in the cached sheet."""
-        character, svc = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         client.post(
             self._url(character, "XP", specialty="sp-other"),
             data={"name": "Daggers"},
             headers=self._headers(client),
         )
-        svc.update_specialty.assert_called_once_with("ct-melee", "sp-other", "Daggers")
+        self.fake.assert_called(
+            Routes.CHARACTER_TRAITS_SPECIALTY_UPDATE,
+            params=self._trait_params(specialty_id="sp-other"),
+            json={"name": "Daggers"},
+            times=1,
+        )
         assert ("success", "Renamed a specialty to Daggers.") in self._flashes(client)
 
     def test_remove_unknown_specialty_uses_generic_wording(self, client, mocker) -> None:
         """Verify the remove flash reads naturally for an unknown specialty."""
-        character, _ = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         client.delete(
             self._url(character, "XP", specialty="sp-other"), headers=self._headers(client)
         )
@@ -405,12 +425,12 @@ class TestSpecialty(_Base):
     @pytest.mark.parametrize("method", ["post", "delete"])
     def test_stale_specialty_flashes_error(self, client, mocker, method: str) -> None:
         """Verify a missing specialty flashes the API detail instead of raising."""
-        character, svc = self._setup(client, mocker)
-        error = NotFoundError(
-            "Specialty not found", response_data={"detail": "Specialty not found"}
-        )
-        svc.update_specialty.side_effect = error
-        svc.delete_specialty.side_effect = error
+        character = self._setup(client, mocker)
+        for route in (
+            Routes.CHARACTER_TRAITS_SPECIALTY_UPDATE,
+            Routes.CHARACTER_TRAITS_SPECIALTY_DELETE,
+        ):
+            self.fake.set_error(route, status_code=404, detail="Specialty not found")
         response = getattr(client, method)(
             self._url(character, "XP", specialty="sp-gone"),
             data={"name": "Daggers"} if method == "post" else None,
@@ -425,7 +445,7 @@ class TestSpecialtyUi(_Base):
     """Rendering of the specialty controls on the Manage Traits form."""
 
     def _form(self, client, mocker) -> tuple[Character, str]:
-        character, _ = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         response = client.get(f"/character/{character.id}/traits/XP")
         return character, response.get_data(as_text=True)
 
@@ -473,7 +493,7 @@ class TestSpecialtyUi(_Base):
     def test_dialog_escapes_names(self, client, mocker) -> None:
         """Verify specialty names are escaped in the dialog inputs."""
         evil = '<b>"Edge"</b>'
-        character, _ = self._setup(client, mocker, specialty_name=evil)
+        character = self._setup(client, mocker, specialty_name=evil)
         response = client.get(self._url(character, "XP"), headers={"HX-Request": "true"})
         html = response.get_data(as_text=True)
         assert evil not in html
@@ -481,7 +501,7 @@ class TestSpecialtyUi(_Base):
 
     def test_dialog_rows_post_and_delete(self, client, mocker) -> None:
         """Verify rows rename and remove, the add row posts, and help text shows."""
-        character, _ = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         response = client.get(self._url(character, "XP"), headers={"HX-Request": "true"})
         html = response.get_data(as_text=True)
         item = self._url(character, "XP", specialty="sp-1")
@@ -492,7 +512,7 @@ class TestSpecialtyUi(_Base):
 
     def test_dialog_without_specialties_has_no_divider(self, client, mocker) -> None:
         """Verify the divider is omitted when there is nothing above the add row."""
-        character, _ = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         response = client.get(
             self._url(character, "XP", "ct-insight"), headers={"HX-Request": "true"}
         )
@@ -502,7 +522,7 @@ class TestSpecialtyUi(_Base):
 
     def test_dialog_structure(self, client, mocker) -> None:
         """Verify row forms scope their own input, and the divider, close, and label render."""
-        character, _ = self._setup(client, mocker)
+        character = self._setup(client, mocker)
         response = client.get(self._url(character, "XP"), headers={"HX-Request": "true"})
         html = response.get_data(as_text=True)
         item = self._url(character, "XP", specialty="sp-1")

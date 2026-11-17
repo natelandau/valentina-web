@@ -16,6 +16,7 @@ from vweb.api_client.testing import (
     FullSheetTraitCategoryFactory,
     FullSheetTraitSectionFactory,
     FullSheetTraitSubcategoryFactory,
+    Routes,
     TraitFactory,
 )
 
@@ -33,14 +34,10 @@ def mock_character_lookup(mocker, mock_character, mock_campaign):
 class TestCharacterDelete:
     """Tests for DELETE /character/<character_id>."""
 
-    def test_owner_can_delete_character(self, client, mocker, mock_character_lookup) -> None:
+    def test_owner_can_delete_character(self, client, fake_vclient, mock_character_lookup) -> None:
         """Verify character owner can delete and gets HX-Redirect to home."""
-        # Given a mocked vclient delete
+        # Given an owned character
         char, _ = mock_character_lookup
-        mock_svc = mocker.patch(
-            "vweb.routes.character_view.views.api_services.characters",
-        ).return_value
-        mocker.patch("vweb.lib.cache.global_context.clear")
 
         csrf = get_csrf(client)
 
@@ -50,10 +47,14 @@ class TestCharacterDelete:
             headers={"X-CSRFToken": csrf, "HX-Request": "true"},
         )
 
-        # Then the response redirects to home and delete was called
+        # Then the response redirects to home and the character is deleted
         assert response.status_code == 200
         assert response.headers.get("HX-Redirect") == "/"
-        mock_svc.delete.assert_called_once_with(char.id)
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_DELETE,
+            params={"company_id": "test-company-id", "character_id": char.id},
+            times=1,
+        )
 
     def test_non_owner_gets_403(self, client, mocker, mock_campaign) -> None:
         """Verify non-owner cannot delete a character."""

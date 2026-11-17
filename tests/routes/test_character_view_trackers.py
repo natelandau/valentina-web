@@ -509,21 +509,6 @@ def _assert_no_cache_change(sheet_cache: dict[str, MagicMock]) -> None:
         spy.assert_not_called()
 
 
-def _record_requests(fake_vclient, mocker) -> list:
-    """Record every API request the vclient services send as (method, json body) pairs."""
-    from vweb.api_client.services.base import BaseService
-
-    seen: list = []
-    original = BaseService._request
-
-    def _spy(self, method, path, **kwargs) -> object:
-        seen.append((method, kwargs.get("json")))
-        return original(self, method, path, **kwargs)
-
-    mocker.patch.object(BaseService, "_request", _spy)
-    return seen
-
-
 def test_counter_set_rerenders_partial_and_writes_cached_sheet(
     post_tracker, fake_vclient, sheet_cache, v4_character
 ) -> None:
@@ -552,13 +537,12 @@ def test_counter_set_rerenders_partial_and_writes_cached_sheet(
 
 
 def test_stain_action_posts_action_and_amount(
-    post_tracker, fake_vclient, sheet_cache, mocker, v5_character
+    post_tracker, fake_vclient, sheet_cache, v5_character
 ) -> None:
     """Verify a stain action reaches the API with amount 1 and the result is stored."""
     # Given the API returns a tracker with two stains
     stored = StainsTrackerFactory.build(humanity=7, stain_capacity=3, stains=2)
     fake_vclient.set_response(Routes.CHARACTER_TRAITS_TRACKER_ACTION, model=stored)
-    seen = _record_requests(fake_vclient, mocker)
     trait = _trait(StainsTrackerFactory.build(humanity=7, stain_capacity=3, stains=1))
 
     # When adding a stain
@@ -568,8 +552,12 @@ def test_stain_action_posts_action_and_amount(
 
     # Then the API received only the action and amount
     assert response.status_code == 200
-    body = next(payload for method, payload in seen if method == "POST")
-    assert body == {"action": "add_stain", "amount": 1}
+    fake_vclient.assert_called(
+        Routes.CHARACTER_TRAITS_TRACKER_ACTION,
+        params={"character_id": v5_character.id, "character_trait_id": "ct-1"},
+        json={"action": "add_stain", "amount": 1},
+        times=1,
+    )
     assert _marks(response.get_data(as_text=True))[-2:] == ["/", "/"]
     cached = _apply_update(sheet_cache, _sheet(v5_character, traits=[trait.model_copy()]))
     assert cached.sections[0].categories[0].character_traits[0].tracker == stored
@@ -603,14 +591,13 @@ def test_health_damage_rerenders_health(
 
 @pytest.mark.parametrize("character_type", ["PLAYER", "NPC"])
 def test_non_owner_gets_403_on_both_endpoints(
-    post_tracker, fake_vclient, mocker, v5_character, character_type
+    post_tracker, fake_vclient, v5_character, character_type
 ) -> None:
     """Verify a player who does not own the character is refused, NPC or not."""
     # Given a character owned by someone else, and an API that must not be called
     other = v5_character.model_copy(
         update={"user_player_id": "someone-else", "type": character_type}
     )
-    seen = _record_requests(fake_vclient, mocker)
     trait = _trait(CounterTrackerFactory.build(size=3, current=1))
 
     # When posting to both endpoints
@@ -624,23 +611,22 @@ def test_non_owner_gets_403_on_both_endpoints(
         assert response.status_code == 200
         assert response.headers["HX-Reswap"] == "none"
         assert "You cannot change this character&#39;s trackers." in response.get_data(as_text=True)
-    assert not [call for call in seen if call[0] in ("PUT", "POST")]
+    assert not [request for request in fake_vclient.requests if request.method in ("PUT", "POST")]
 
 
-def test_non_owner_without_htmx_gets_403(post_tracker, fake_vclient, mocker, v5_character) -> None:
+def test_non_owner_without_htmx_gets_403(post_tracker, fake_vclient, v5_character) -> None:
     """Verify a non-htmx request from a non-owner keeps the plain 403."""
     other = v5_character.model_copy(update={"user_player_id": "someone-else"})
-    seen = _record_requests(fake_vclient, mocker)
 
     response = post_tracker(other, "/health", {"action": "damage"}, htmx=False)
 
     assert response.status_code == 403
     assert "HX-Reswap" not in response.headers
-    assert not [call for call in seen if call[0] == "POST"]
+    assert not [request for request in fake_vclient.requests if request.method == "POST"]
 
 
 def test_npc_non_owner_with_unrestricted_setting_gets_403(
-    post_tracker, fake_vclient, mocker, v5_character, mock_global_context
+    post_tracker, fake_vclient, v5_character, mock_global_context
 ) -> None:
     """Verify opening NPC management to everyone does not open tracker edits."""
     # Given an ownerless NPC in a company with unrestricted NPC management
@@ -651,7 +637,6 @@ def test_npc_non_owner_with_unrestricted_setting_gets_403(
         update={"settings": settings}
     )
     npc = v5_character.model_copy(update={"user_player_id": None, "type": "NPC"})
-    seen = _record_requests(fake_vclient, mocker)
 
     # When posting a health action
     response = post_tracker(npc, "/health", {"action": "damage"})
@@ -659,7 +644,7 @@ def test_npc_non_owner_with_unrestricted_setting_gets_403(
     # Then it is refused with no API call
     assert response.headers["HX-Reswap"] == "none"
     assert "You cannot change this character&#39;s trackers." in response.get_data(as_text=True)
-    assert not [call for call in seen if call[0] == "POST"]
+    assert not [request for request in fake_vclient.requests if request.method == "POST"]
 
 
 @pytest.mark.parametrize(
@@ -676,24 +661,19 @@ def test_npc_non_owner_with_unrestricted_setting_gets_403(
     ],
 )
 def test_garbage_form_returns_400_without_api_call(
-    post_tracker, fake_vclient, mocker, v5_character, suffix, data
+    post_tracker, fake_vclient, v5_character, suffix, data
 ) -> None:
     """Verify an invalid form is rejected before any API call."""
-    seen = _record_requests(fake_vclient, mocker)
     trait = _trait(CounterTrackerFactory.build(size=3, current=1))
 
     response = post_tracker(v5_character, suffix, data, traits=[trait])
 
     assert response.status_code == 400
-    assert not seen
+    assert fake_vclient.requests == []
 
 
-def test_unknown_trait_flashes_without_swap(
-    post_tracker, fake_vclient, mocker, v5_character
-) -> None:
+def test_unknown_trait_flashes_without_swap(post_tracker, fake_vclient, v5_character) -> None:
     """Verify a trait missing from the sheet flashes, keeps the page and changes nothing."""
-    seen = _record_requests(fake_vclient, mocker)
-
     response = post_tracker(
         v5_character, "/traits/nope/tracker", {"action": "set", "current": "1"}, traits=[]
     )
@@ -701,7 +681,7 @@ def test_unknown_trait_flashes_without_swap(
     assert response.status_code == 200
     assert response.headers["HX-Reswap"] == "none"
     assert "That trait is no longer on the sheet." in response.get_data(as_text=True)
-    assert not seen
+    assert fake_vclient.requests == []
 
 
 def test_unknown_trait_without_htmx_returns_404(post_tracker, v5_character) -> None:
@@ -725,17 +705,15 @@ def test_unknown_trait_without_htmx_returns_404(post_tracker, v5_character) -> N
     ],
 )
 def test_missing_character_flashes_without_swap(
-    post_tracker, fake_vclient, mocker, v5_character, suffix, data
+    post_tracker, fake_vclient, v5_character, suffix, data
 ) -> None:
     """Verify a character missing from the global context is refused with no API call."""
-    seen = _record_requests(fake_vclient, mocker)
-
     response = post_tracker(v5_character, suffix, data, character_found=False)
 
     assert response.status_code == 200
     assert response.headers["HX-Reswap"] == "none"
     assert "Character not found." in response.get_data(as_text=True)
-    assert not seen
+    assert fake_vclient.requests == []
 
 
 def test_api_validation_error_rerenders_from_fresh_fetch_with_flash(
@@ -836,13 +814,6 @@ def test_health_refetch_failure_flashes_without_swap(
     _assert_no_cache_change(sheet_cache)
 
 
-@pytest.fixture
-def _no_retry_delay(mocker) -> None:
-    """Skip vclient's retry backoff so retried errors fail fast."""
-    mocker.patch("vweb.api_client.services.base.time.sleep")
-
-
-@pytest.mark.usefixtures("_no_retry_delay")
 @pytest.mark.parametrize("status_code", [429, 500, 503])
 @pytest.mark.parametrize(
     "endpoint",
