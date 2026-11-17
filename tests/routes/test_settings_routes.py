@@ -4,18 +4,37 @@ from __future__ import annotations
 
 import re
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 
-from vweb.api_client.models.companies import CompanySettings
+from vweb.api_client.models.companies import Company, CompanySettings
 from vweb.api_client.testing import CompanyFactory, Routes
 
 if TYPE_CHECKING:
-    from flask import Flask
     from flask.testing import FlaskClient
 
     from vweb.lib.cache.global_context import GlobalContext
+
+
+@pytest.fixture
+def admin_context(mock_global_context: GlobalContext) -> GlobalContext:
+    """Promote the test user to ADMIN."""
+    mock_global_context.users[0].role = "ADMIN"
+    return mock_global_context
+
+
+@pytest.fixture
+def _company_api(mocker, admin_context, fake_vclient) -> None:
+    """Serve a known company from the API for reads and updates."""
+    company = CompanyFactory.build(
+        id="test-company-id",
+        name="Acme Co",
+        email="admin@acme.example",
+        description="A test company",
+    )
+    mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
+    fake_vclient.set_response(Routes.COMPANIES_GET, model=company)
+    fake_vclient.set_response(Routes.COMPANIES_UPDATE, model=company)
 
 
 class TestSettingsRouteRegistered:
@@ -29,12 +48,6 @@ class TestSettingsRouteRegistered:
 
 class TestSettingsAccessControl:
     """Server-side guard: only ADMIN may reach /settings."""
-
-    @pytest.fixture
-    def admin_context(self, mock_global_context: GlobalContext) -> GlobalContext:  # type: ignore[name-defined]
-        """Promote the test user to ADMIN."""
-        mock_global_context.users[0].role = "ADMIN"
-        return mock_global_context
 
     @pytest.fixture
     def player_context(self, mock_global_context: GlobalContext) -> GlobalContext:  # type: ignore[name-defined]
@@ -105,14 +118,8 @@ class TestSettingsGet:
     """GET /settings renders pre-populated form."""
 
     @pytest.fixture
-    def admin_context(self, mock_global_context: GlobalContext) -> GlobalContext:
-        """Promote the test user to ADMIN."""
-        mock_global_context.users[0].role = "ADMIN"
-        return mock_global_context
-
-    @pytest.fixture
-    def mock_companies_svc(self, mocker, admin_context: GlobalContext) -> MagicMock:
-        """Patch companies_service to return a known company."""
+    def company(self, mocker, admin_context: GlobalContext, fake_vclient) -> Company:
+        """Serve a known company from the API."""
         company = CompanyFactory.build(
             id="test-company-id",
             name="Acme Co",
@@ -130,45 +137,28 @@ class TestSettingsGet:
                 specialty_xp_cost_enabled=True,
             ),
         )
-        svc = MagicMock()
-        svc.get.return_value = company
         mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
-        mocker.patch(
-            "vweb.routes.admin.views.companies_service",
-            return_value=svc,
-        )
-        users_svc = MagicMock()
-        users_svc.list_all_unapproved.return_value = []
-        mocker.patch(
-            "vweb.routes.admin.services.api_services.users",
-            return_value=users_svc,
-        )
-        return svc
+        fake_vclient.set_response(Routes.COMPANIES_GET, model=company)
+        return company
 
-    def test_get_renders_company_name(
-        self, client: FlaskClient, mock_companies_svc: MagicMock
-    ) -> None:
+    def test_get_renders_company_name(self, client: FlaskClient, company: Company) -> None:
         """Verify GET /settings renders the company name in the form."""
         response = client.get("/admin/settings")
         assert response.status_code == 200
         assert b'value="Acme Co"' in response.data
 
-    def test_get_renders_company_email(
-        self, client: FlaskClient, mock_companies_svc: MagicMock
-    ) -> None:
+    def test_get_renders_company_email(self, client: FlaskClient, company: Company) -> None:
         """Verify GET /settings renders the company email in the form."""
         response = client.get("/admin/settings")
         assert b'value="admin@acme.example"' in response.data
 
-    def test_get_renders_autogen_xp_cost(
-        self, client: FlaskClient, mock_companies_svc: MagicMock
-    ) -> None:
+    def test_get_renders_autogen_xp_cost(self, client: FlaskClient, company: Company) -> None:
         """Verify GET /settings renders the autogen XP cost in the form."""
         response = client.get("/admin/settings")
         assert b'value="15"' in response.data
 
     def test_get_renders_autogen_starting_points(
-        self, client: FlaskClient, mock_companies_svc: MagicMock
+        self, client: FlaskClient, company: Company
     ) -> None:
         """Verify GET /settings renders the autogen starting-points value in the form."""
         # When loading the settings page
@@ -178,17 +168,18 @@ class TestSettingsGet:
         assert b'name="character_autogen_starting_points"' in response.data
         assert b'value="25"' in response.data
 
+    @pytest.mark.usefixtures("company")
     def test_get_calls_companies_get_with_company_id(
-        self, client: FlaskClient, mock_companies_svc: MagicMock, app: Flask
+        self, client: FlaskClient, fake_vclient
     ) -> None:
-        """Verify GET /settings calls the companies service with the correct company ID."""
+        """Verify GET /settings fetches the session's company from the API."""
         client.get("/admin/settings")
-        mock_companies_svc.get.assert_called_once()
-        called_with = mock_companies_svc.get.call_args[0][0]
-        assert called_with == "test-company-id"
+        fake_vclient.assert_called(
+            Routes.COMPANIES_GET, params={"company_id": "test-company-id"}, times=1
+        )
 
     def test_settings_page_renders_manage_npc_select(
-        self, client: FlaskClient, mock_companies_svc: MagicMock
+        self, client: FlaskClient, company: Company
     ) -> None:
         """Verify the settings page renders the Manage NPC permission control."""
         # When loading the settings page
@@ -200,7 +191,7 @@ class TestSettingsGet:
         assert 'name="permission_manage_npc"' in body
 
     def test_settings_page_renders_specialty_cost_toggle(
-        self, client: FlaskClient, mock_companies_svc: MagicMock
+        self, client: FlaskClient, company: Company
     ) -> None:
         """Verify the specialty cost toggle renders checked when the setting is on."""
         body = client.get("/admin/settings").get_data(as_text=True)
@@ -211,11 +202,11 @@ class TestSettingsGet:
         assert "checked" in tag.group(0)
 
     def test_settings_page_toggle_unchecked_when_setting_off(
-        self, client: FlaskClient, mock_companies_svc: MagicMock
+        self, client: FlaskClient, company: Company, fake_vclient
     ) -> None:
         """Verify the specialty cost toggle renders unchecked when the setting is off."""
-        company = mock_companies_svc.get.return_value
         company.settings.specialty_xp_cost_enabled = False
+        fake_vclient.set_response(Routes.COMPANIES_GET, model=company)
 
         body = client.get("/admin/settings").get_data(as_text=True)
 
@@ -227,41 +218,10 @@ class TestSettingsGet:
 class TestSettingsPostSuccess:
     """POST /settings happy path."""
 
-    @pytest.fixture
-    def admin_context(self, mock_global_context):
-        mock_global_context.users[0].role = "ADMIN"
-        return mock_global_context
-
-    @pytest.fixture
-    def mock_companies_svc(self, mocker, admin_context):
-        company = CompanyFactory.build(
-            id="test-company-id",
-            name="Acme Co",
-            email="admin@acme.example",
-            description="A test company",
-        )
-        svc = MagicMock()
-        svc.get.return_value = company
-        svc.update.return_value = company
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
-        mocker.patch(
-            "vweb.routes.admin.views.companies_service",
-            return_value=svc,
-        )
-        users_svc = MagicMock()
-        users_svc.list_all_unapproved.return_value = []
-        mocker.patch(
-            "vweb.routes.admin.services.api_services.users",
-            return_value=users_svc,
-        )
-        return svc
-
-    def test_post_valid_calls_update_and_redirects(
-        self, client: FlaskClient, mock_companies_svc
-    ) -> None:
-        """Verify valid POST calls update and redirects to /settings."""
+    @pytest.mark.usefixtures("_company_api")
+    def test_post_valid_calls_update_and_redirects(self, client: FlaskClient, fake_vclient) -> None:
+        """Verify valid POST sends the update to the API and redirects to /settings."""
         from tests.conftest import get_csrf
-        from vweb.api_client.models.companies import CompanyUpdate
 
         csrf = get_csrf(client)
 
@@ -285,29 +245,34 @@ class TestSettingsPostSuccess:
         assert response.status_code == 302
         assert response.headers["Location"].endswith("/admin/settings")
 
-        mock_companies_svc.update.assert_called_once()
-        args, kwargs = mock_companies_svc.update.call_args
-        assert args[0] == "test-company-id"
-        update_req: CompanyUpdate = kwargs["request"]
-        assert isinstance(update_req, CompanyUpdate)
-        assert update_req.name == "New Name"
-        assert update_req.email == "new@acme.example"
-        assert update_req.description == "Updated description"
-        assert update_req.settings is not None
-        assert update_req.settings.character_autogen_xp_cost == 20
-        assert update_req.settings.character_autogen_num_choices == 4
-        assert update_req.settings.character_autogen_starting_points == 30
-        assert update_req.settings.permission_manage_campaign == "STORYTELLER"
-        assert update_req.settings.permission_manage_npc == "UNRESTRICTED"
-        assert update_req.settings.permission_grant_xp == "UNRESTRICTED"
-        assert update_req.settings.permission_free_trait_changes is None
+        # A blank permission is left out of the body so the API keeps its value
+        fake_vclient.assert_called(
+            Routes.COMPANIES_UPDATE,
+            params={"company_id": "test-company-id"},
+            json={
+                "name": "New Name",
+                "email": "new@acme.example",
+                "description": "Updated description",
+                "settings": {
+                    "character_autogen_xp_cost": 20,
+                    "character_autogen_num_choices": 4,
+                    "character_autogen_starting_points": 30,
+                    "permission_manage_campaign": "STORYTELLER",
+                    "permission_manage_npc": "UNRESTRICTED",
+                    "permission_grant_xp": "UNRESTRICTED",
+                    "specialty_xp_cost_enabled": False,
+                },
+            },
+            times=1,
+        )
 
     @pytest.mark.parametrize(
         ("extra", "expected"),
         [({"specialty_xp_cost_enabled": "on"}, True), ({}, False)],
     )
+    @pytest.mark.usefixtures("_company_api")
     def test_post_specialty_cost_checkbox(
-        self, client: FlaskClient, mock_companies_svc, extra: dict[str, str], *, expected: bool
+        self, client: FlaskClient, fake_vclient, extra: dict[str, str], *, expected: bool
     ) -> None:
         """Verify a checked box sends True and an absent box sends False, never None."""
         from tests.conftest import get_csrf
@@ -317,10 +282,14 @@ class TestSettingsPostSuccess:
             data={"csrf_token": get_csrf(client), "name": "Acme Co", **extra},
         )
         assert response.status_code == 302
-        update_req = mock_companies_svc.update.call_args[1]["request"]
-        assert update_req.settings.specialty_xp_cost_enabled is expected
+        fake_vclient.assert_called(
+            Routes.COMPANIES_UPDATE,
+            json_subset={"settings": {"specialty_xp_cost_enabled": expected}},
+            times=1,
+        )
 
-    def test_post_valid_flashes_success(self, client: FlaskClient, mock_companies_svc) -> None:
+    @pytest.mark.usefixtures("_company_api")
+    def test_post_valid_flashes_success(self, client: FlaskClient) -> None:
         """Verify valid POST flashes a success message containing 'updated'."""
         from tests.conftest import get_csrf
 
@@ -344,12 +313,12 @@ class TestSettingsPostSuccess:
             flashes = sess.get("_flashes", [])
         assert any("updated" in msg.lower() for _, msg in flashes)
 
+    @pytest.mark.usefixtures("_company_api")
     def test_post_blank_optional_fields_become_none(
-        self, client: FlaskClient, mock_companies_svc
+        self, client: FlaskClient, fake_vclient
     ) -> None:
-        """Verify blank optional form fields are converted to None in the update request."""
+        """Verify blank optional form fields are left out of the update request."""
         from tests.conftest import get_csrf
-        from vweb.api_client.models.companies import CompanyUpdate
 
         csrf = get_csrf(client)
         client.post(
@@ -367,55 +336,25 @@ class TestSettingsPostSuccess:
                 "permission_free_trait_changes": "",
             },
         )
-        update_req: CompanyUpdate = mock_companies_svc.update.call_args[1]["request"]
-        assert update_req.email is None
-        assert update_req.description is None
-        assert update_req.settings.character_autogen_xp_cost is None
-        assert update_req.settings.character_autogen_num_choices is None
-        assert update_req.settings.character_autogen_starting_points is None
-        assert update_req.settings.permission_manage_campaign is None
+        fake_vclient.assert_called(
+            Routes.COMPANIES_UPDATE,
+            json={"name": "Required Name", "settings": {"specialty_xp_cost_enabled": False}},
+            times=1,
+        )
 
 
 class TestSettingsPostValidation:
     """POST /settings validation error path."""
 
-    @pytest.fixture
-    def admin_context(self, mock_global_context):
-        mock_global_context.users[0].role = "ADMIN"
-        return mock_global_context
-
-    @pytest.fixture
-    def mock_companies_svc(self, mocker, admin_context):
-        company = CompanyFactory.build(
-            id="test-company-id",
-            name="Acme Co",
-            email="admin@acme.example",
-            description="A test company",
-        )
-        svc = MagicMock()
-        svc.get.return_value = company
-        svc.update.return_value = company
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
-        mocker.patch(
-            "vweb.routes.admin.views.companies_service",
-            return_value=svc,
-        )
-        users_svc = MagicMock()
-        users_svc.list_all_unapproved.return_value = []
-        mocker.patch(
-            "vweb.routes.admin.services.api_services.users",
-            return_value=users_svc,
-        )
-        return svc
-
     @pytest.mark.parametrize(
         ("extra", "expect_checked"),
         [({"specialty_xp_cost_enabled": "on"}, True), ({}, False)],
     )
+    @pytest.mark.usefixtures("_company_api")
     def test_post_invalid_rerender_preserves_specialty_toggle(
         self,
         client: FlaskClient,
-        mock_companies_svc,
+        fake_vclient,
         extra: dict[str, str],
         *,
         expect_checked: bool,
@@ -438,10 +377,11 @@ class TestSettingsPostValidation:
         tag = re.search(r'<input[^>]*name="specialty_xp_cost_enabled"[^>]*>', body)
         assert tag is not None
         assert ("checked" in tag.group(0)) is expect_checked
-        mock_companies_svc.update.assert_not_called()
+        fake_vclient.assert_not_called(Routes.COMPANIES_UPDATE)
 
+    @pytest.mark.usefixtures("_company_api")
     def test_post_short_name_returns_400_and_preserves_input(
-        self, client: FlaskClient, mock_companies_svc
+        self, client: FlaskClient, fake_vclient
     ) -> None:
         """Verify a name shorter than 3 chars returns 400 and re-renders with the submitted value."""
         from tests.conftest import get_csrf
@@ -466,7 +406,7 @@ class TestSettingsPostValidation:
         body = response.get_data(as_text=True)
         assert 'value="Hi"' in body
         assert "text-error" in body
-        mock_companies_svc.update.assert_not_called()
+        fake_vclient.assert_not_called(Routes.COMPANIES_UPDATE)
 
     @pytest.mark.parametrize(
         "field",
@@ -476,8 +416,9 @@ class TestSettingsPostValidation:
             "character_autogen_starting_points",
         ],
     )
+    @pytest.mark.usefixtures("_company_api")
     def test_post_invalid_int_returns_400(
-        self, client: FlaskClient, mock_companies_svc, field: str
+        self, client: FlaskClient, fake_vclient, field: str
     ) -> None:
         """Verify a non-integer in an int field returns 400 with an error message."""
         # Given a CSRF token and a payload where one int field is non-numeric
@@ -505,11 +446,10 @@ class TestSettingsPostValidation:
         assert response.status_code == 400
         body = response.get_data(as_text=True)
         assert "whole number" in body.lower()
-        mock_companies_svc.update.assert_not_called()
+        fake_vclient.assert_not_called(Routes.COMPANIES_UPDATE)
 
-    def test_post_invalid_permission_returns_400(
-        self, client: FlaskClient, mock_companies_svc
-    ) -> None:
+    @pytest.mark.usefixtures("_company_api")
+    def test_post_invalid_permission_returns_400(self, client: FlaskClient, fake_vclient) -> None:
         """Verify an invalid permission enum value returns 400."""
         from tests.conftest import get_csrf
 
@@ -530,23 +470,18 @@ class TestSettingsPostValidation:
             },
         )
         assert response.status_code == 400
-        mock_companies_svc.update.assert_not_called()
+        fake_vclient.assert_not_called(Routes.COMPANIES_UPDATE)
 
-    def test_post_missing_csrf_returns_400(self, client: FlaskClient, mock_companies_svc) -> None:
+    @pytest.mark.usefixtures("_company_api")
+    def test_post_missing_csrf_returns_400(self, client: FlaskClient, fake_vclient) -> None:
         """Verify a POST without a CSRF token returns 400."""
         response = client.post("/admin/settings", data={"name": "Valid Name"})
         assert response.status_code == 400
-        mock_companies_svc.update.assert_not_called()
+        fake_vclient.assert_not_called(Routes.COMPANIES_UPDATE)
 
 
 class TestSettingsNavLink:
     """The Settings link in the user-avatar dropdown is gated to ADMIN."""
-
-    @pytest.fixture
-    def admin_context(self, mock_global_context: GlobalContext) -> GlobalContext:  # type: ignore[name-defined]
-        """Promote the test user to ADMIN."""
-        mock_global_context.users[0].role = "ADMIN"
-        return mock_global_context
 
     @pytest.fixture
     def player_context(self, mock_global_context: GlobalContext) -> GlobalContext:  # type: ignore[name-defined]
@@ -555,7 +490,7 @@ class TestSettingsNavLink:
         return mock_global_context
 
     @pytest.mark.skip(
-        reason="Admin link dropped from global nav — will be restored in a future pass; see docs/superpowers/specs/2026-04-21-global-header-redesign-design.md"
+        reason="Admin link dropped from global nav, will be restored in a future pass; see docs/superpowers/specs/2026-04-21-global-header-redesign-design.md"
     )
     def test_admin_sees_settings_link(
         self,
@@ -564,17 +499,12 @@ class TestSettingsNavLink:
         mocker,  # type: ignore[name-defined]
     ) -> None:
         """Verify admin users see the /settings link in navigation."""
-        from vweb.api_client.testing import RollStatisticsFactory
-
         mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
-        mock_users_svc = MagicMock()
-        mock_users_svc.get_statistics.return_value = RollStatisticsFactory.build()
-        mocker.patch("vweb.routes.profile.views.api_services.users", return_value=mock_users_svc)
         response = client.get(f"/profile/{admin_context.users[0].id}")
         assert b"/admin" in response.data
 
     @pytest.mark.skip(
-        reason="Admin link dropped from global nav — will be restored in a future pass; see docs/superpowers/specs/2026-04-21-global-header-redesign-design.md"
+        reason="Admin link dropped from global nav, will be restored in a future pass; see docs/superpowers/specs/2026-04-21-global-header-redesign-design.md"
     )
     def test_player_does_not_see_settings_link(
         self,
@@ -583,11 +513,6 @@ class TestSettingsNavLink:
         mocker,  # type: ignore[name-defined]
     ) -> None:
         """Verify non-admin users do not see the /admin link in navigation."""
-        from vweb.api_client.testing import RollStatisticsFactory
-
         mocker.patch("vweb.lib.cache.global_context.load", return_value=player_context)
-        mock_users_svc = MagicMock()
-        mock_users_svc.get_statistics.return_value = RollStatisticsFactory.build()
-        mocker.patch("vweb.routes.profile.views.api_services.users", return_value=mock_users_svc)
         response = client.get(f"/profile/{player_context.users[0].id}")
         assert b"/admin" not in response.data

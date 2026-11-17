@@ -144,13 +144,13 @@ class TestApproveUserEndpoint:
         client: FlaskClient,
         admin_context: GlobalContext,
         mocker,
+        fake_vclient,
     ) -> None:
-        """Verify approve_user calls the service and returns 200."""
-        # Given a pending user
+        """Verify approve_user sends the chosen role to the API and returns 200."""
+        # Given a pending user the API will approve
         mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
-        approve = mocker.patch(
-            "vweb.routes.admin.views.admin_services.approve",
-            return_value=UserFactory.build(id="pending-1", role="PLAYER"),
+        fake_vclient.set_response(
+            Routes.USERS_APPROVE, model=UserFactory.build(id="pending-1", role="PLAYER")
         )
 
         # When approving
@@ -160,8 +160,13 @@ class TestApproveUserEndpoint:
             data={"role": "PLAYER", "csrf_token": csrf},
         )
 
-        # Then the service was called
-        approve.assert_called_once_with("pending-1", "PLAYER")
+        # Then the API approves pending-1 as a PLAYER
+        fake_vclient.assert_called(
+            Routes.USERS_APPROVE,
+            params={"user_id": "pending-1"},
+            json={"role": "PLAYER"},
+            times=1,
+        )
         assert response.status_code == 200
 
     def test_approve_self_returns_403(
@@ -169,6 +174,7 @@ class TestApproveUserEndpoint:
         client: FlaskClient,
         admin_context: GlobalContext,
         mocker,
+        fake_vclient,
     ) -> None:
         """Verify the admin cannot approve themselves."""
         # Given the admin's own id
@@ -182,14 +188,16 @@ class TestApproveUserEndpoint:
             data={"role": "PLAYER", "csrf_token": csrf},
         )
 
-        # Then 403 is returned
+        # Then 403 is returned and nothing reaches the API
         assert response.status_code == 403
+        fake_vclient.assert_not_called(Routes.USERS_APPROVE)
 
     def test_approve_unapproved_role_returns_400(
         self,
         client: FlaskClient,
         admin_context: GlobalContext,
         mocker,
+        fake_vclient,
     ) -> None:
         """Verify approving with UNAPPROVED is rejected."""
         # Given an admin session
@@ -202,8 +210,9 @@ class TestApproveUserEndpoint:
             data={"role": "UNAPPROVED", "csrf_token": csrf},
         )
 
-        # Then 400 is returned
+        # Then 400 is returned and nothing reaches the API
         assert response.status_code == 400
+        fake_vclient.assert_not_called(Routes.USERS_APPROVE)
 
 
 class TestChangeRoleEndpoint:
@@ -214,13 +223,14 @@ class TestChangeRoleEndpoint:
         client: FlaskClient,
         admin_context: GlobalContext,
         mocker,
+        fake_vclient,
     ) -> None:
-        """Verify a successful role change returns the updated ApprovedUserRow."""
-        # Given a mocked change_role returning a STORYTELLER
+        """Verify a successful role change sends the role and returns the updated row."""
+        # Given the API returns the user as a STORYTELLER
         mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
-        mocker.patch(
-            "vweb.routes.admin.views.admin_services.change_role",
-            return_value=UserFactory.build(
+        fake_vclient.set_response(
+            Routes.USERS_UPDATE,
+            model=UserFactory.build(
                 id="approved-1",
                 name_first="Grace",
                 name_last="Hopper",
@@ -235,7 +245,13 @@ class TestChangeRoleEndpoint:
             data={"role": "STORYTELLER", "csrf_token": csrf},
         )
 
-        # Then the swapped row is returned with the new role selected
+        # Then only the role is sent and the swapped row shows it selected
+        fake_vclient.assert_called(
+            Routes.USERS_UPDATE,
+            params={"user_id": "approved-1"},
+            json={"role": "STORYTELLER"},
+            times=1,
+        )
         body = response.get_data(as_text=True)
         assert response.status_code == 200
         assert 'id="user-approved-1"' in body
@@ -247,6 +263,7 @@ class TestChangeRoleEndpoint:
         client: FlaskClient,
         admin_context: GlobalContext,
         mocker,
+        fake_vclient,
     ) -> None:
         """Verify the admin cannot change their own role."""
         # Given the admin's own id
@@ -260,14 +277,16 @@ class TestChangeRoleEndpoint:
             data={"role": "PLAYER", "csrf_token": csrf},
         )
 
-        # Then 403 is returned
+        # Then 403 is returned and nothing reaches the API
         assert response.status_code == 403
+        fake_vclient.assert_not_called(Routes.USERS_UPDATE)
 
     def test_change_role_unapproved_returns_400(
         self,
         client: FlaskClient,
         admin_context: GlobalContext,
         mocker,
+        fake_vclient,
     ) -> None:
         """Verify UNAPPROVED is rejected with 400."""
         # Given an admin session
@@ -280,8 +299,9 @@ class TestChangeRoleEndpoint:
             data={"role": "UNAPPROVED", "csrf_token": csrf},
         )
 
-        # Then 400 is returned
+        # Then 400 is returned and nothing reaches the API
         assert response.status_code == 400
+        fake_vclient.assert_not_called(Routes.USERS_UPDATE)
 
 
 class TestDenyUserEndpoint:
@@ -292,11 +312,11 @@ class TestDenyUserEndpoint:
         client: FlaskClient,
         admin_context: GlobalContext,
         mocker,
+        fake_vclient,
     ) -> None:
-        """Verify deny endpoint calls deny_user and returns 200."""
-        # Given an admin session and mocked deny service
+        """Verify the deny endpoint denies the user through the API and returns 200."""
+        # Given an admin session
         mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
-        deny = mocker.patch("vweb.routes.admin.views.admin_services.deny")
 
         # When denying a pending user
         csrf = get_csrf(client)
@@ -305,8 +325,8 @@ class TestDenyUserEndpoint:
             data={"csrf_token": csrf},
         )
 
-        # Then the service is called and the response is 200
-        deny.assert_called_once_with("pending-1")
+        # Then the API denies pending-1 and the response is 200
+        fake_vclient.assert_called(Routes.USERS_DENY, params={"user_id": "pending-1"}, times=1)
         assert response.status_code == 200
 
     def test_deny_self_returns_403(
@@ -314,6 +334,7 @@ class TestDenyUserEndpoint:
         client: FlaskClient,
         admin_context: GlobalContext,
         mocker,
+        fake_vclient,
     ) -> None:
         """Verify the admin cannot deny themselves."""
         # Given the admin's own id
@@ -327,8 +348,9 @@ class TestDenyUserEndpoint:
             data={"csrf_token": csrf},
         )
 
-        # Then 403 is returned
+        # Then 403 is returned and nothing reaches the API
         assert response.status_code == 403
+        fake_vclient.assert_not_called(Routes.USERS_DENY)
 
 
 class TestMergeForm:
@@ -409,11 +431,11 @@ class TestMergePost:
         client: FlaskClient,
         admin_context: GlobalContext,
         mocker,
+        fake_vclient,
     ) -> None:
-        """Verify the endpoint calls merge() and returns HX-Redirect."""
-        # Given an admin and a mocked merge service
+        """Verify the endpoint merges the pending user into the target and returns HX-Redirect."""
+        # Given an admin session
         mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
-        merge = mocker.patch("vweb.routes.admin.views.admin_services.merge")
 
         # When posting with a target user
         csrf = get_csrf(client)
@@ -422,8 +444,12 @@ class TestMergePost:
             data={"csrf_token": csrf, "target_user_id": "approved-1"},
         )
 
-        # Then merge is called with (target, pending, admin) and HX-Redirect is returned
-        merge.assert_called_once_with("approved-1", "pending-1")
+        # Then the API merges pending-1 into approved-1 and HX-Redirect is returned
+        fake_vclient.assert_called(
+            Routes.USERS_MERGE,
+            json={"primary_user_id": "approved-1", "secondary_user_id": "pending-1"},
+            times=1,
+        )
         assert response.status_code == 200
         assert response.headers["HX-Redirect"] == "/admin/users"
 
@@ -432,6 +458,7 @@ class TestMergePost:
         client: FlaskClient,
         admin_context: GlobalContext,
         mocker,
+        fake_vclient,
     ) -> None:
         """Verify an admin cannot merge into their own account."""
         # Given the admin's own id as target
@@ -445,5 +472,6 @@ class TestMergePost:
             data={"csrf_token": csrf, "target_user_id": self_id},
         )
 
-        # Then a 403 is returned
+        # Then a 403 is returned and nothing reaches the API
         assert response.status_code == 403
+        fake_vclient.assert_not_called(Routes.USERS_MERGE)
