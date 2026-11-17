@@ -7,8 +7,7 @@ from typing import TYPE_CHECKING
 from flask import Blueprint, abort, flash, redirect, request, session, url_for
 from flask.views import MethodView
 
-from vweb.api_client import books_service
-from vweb.lib import cache
+from vweb.lib import api_services, cache
 from vweb.lib.api import (
     count_notes,
     fetch_book_or_404,
@@ -103,7 +102,6 @@ class BookCreateView(MethodView):
         if not can_manage_campaign():
             abort(403)
         campaign = fetch_campaign_or_404(campaign_id)
-        user_id = session.get("user_id", "")
         from_book = request.form.get("from_book", "").strip()
 
         name = request.form.get("name", "").strip()
@@ -129,9 +127,7 @@ class BookCreateView(MethodView):
                 form_data=request.form,
             )
 
-        svc = books_service(
-            campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
-        )
+        svc = api_services.books(campaign_id)
         new_book = svc.create(name=name, description=description or None)
         cache.global_context.clear_current()
         cache.campaign_content.clear(session["company_id"], campaign_id=campaign_id)
@@ -164,12 +160,9 @@ class BookDetailView(MethodView):
                 errors=[],
             )
 
-        user_id = session.get("user_id", "")
         session["last_campaign_id"] = campaign_id
 
-        svc = books_service(
-            campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
-        )
+        svc = api_services.books(campaign_id)
         assets = svc.list_all_assets(book.id)
 
         chapters = cache.campaign_content.chapters(campaign_id, book_id)
@@ -197,7 +190,6 @@ class BookDetailView(MethodView):
             abort(403)
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
-        user_id = session.get("user_id", "")
 
         name = request.form.get("name", "").strip()
         number_str = request.form.get("number", "").strip()
@@ -223,9 +215,7 @@ class BookDetailView(MethodView):
                 form_data=request.form,
             )
 
-        svc = books_service(
-            campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
-        )
+        svc = api_services.books(campaign_id)
         updated_book = svc.update(book_id, name=name, description=description)
         if number != book.number:
             updated_book = svc.renumber(book_id, number)
@@ -255,11 +245,8 @@ class BookDetailView(MethodView):
             abort(403)
 
         book, _ = fetch_book_or_404(campaign_id, book_id)
-        user_id = session.get("user_id", "")
 
-        svc = books_service(
-            campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
-        )
+        svc = api_services.books(campaign_id)
         svc.delete(book.id)
         cache.global_context.clear_current()
         cache.campaign_content.clear(
@@ -278,10 +265,7 @@ class BookImageUploadView(MethodView):
         if not can_manage_campaign():
             abort(403)
 
-        user_id = session.get("user_id", "")
-        svc = books_service(
-            campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
-        )
+        svc = api_services.books(campaign_id)
 
         assets = upload_and_append_asset(
             svc=svc, parent_id=book_id, file=request.files.get("image")
@@ -307,10 +291,7 @@ class BookImageDeleteView(MethodView):
         if not can_manage_campaign():
             abort(403)
 
-        user_id = session.get("user_id", "")
-        svc = books_service(
-            campaign_id=campaign_id, on_behalf_of=user_id, company_id=session["company_id"]
-        )
+        svc = api_services.books(campaign_id)
 
         handle_image_delete(svc=svc, parent_id=book_id, asset_id=asset_id)
 

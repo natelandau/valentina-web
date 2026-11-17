@@ -202,7 +202,7 @@ class ApproveUserView(MethodView):
 
         role = request.form.get("role", "")
         try:
-            admin_services.approve(user_id, role, g.requesting_user.id)
+            admin_services.approve(user_id, role)
         except ValueError as exc:
             return str(exc), 400
 
@@ -224,7 +224,7 @@ class ChangeRoleView(MethodView):
 
         role = request.form.get("role", "")
         try:
-            user = admin_services.change_role(user_id, role, g.requesting_user.id)
+            user = admin_services.change_role(user_id, role)
         except ValueError as exc:
             return str(exc), 400
 
@@ -241,7 +241,7 @@ class DenyUserView(MethodView):
         if is_self(user_id):
             return "Cannot modify your own account.", 403
 
-        admin_services.deny(user_id, g.requesting_user.id)
+        admin_services.deny(user_id)
         flash("User denied.", "success")
         return htmx_response_with_flash("")
 
@@ -273,7 +273,7 @@ class MergeUserView(MethodView):
         if not target_id:
             return "target_user_id is required.", 400
 
-        admin_services.merge(target_id, user_id, g.requesting_user.id)
+        admin_services.merge(target_id, user_id)
         flash("Users merged.", "success")
         return hx_redirect(url_for("admin.users"))
 

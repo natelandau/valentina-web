@@ -5,9 +5,8 @@ from __future__ import annotations
 from flask import Blueprint, Response, abort, g, request, session, url_for
 from flask.views import MethodView
 
-from vweb.api_client import campaigns_service
 from vweb.api_client.models import CampaignCreate, CampaignUpdate
-from vweb.lib import cache
+from vweb.lib import api_services, cache
 from vweb.lib.api import (
     fetch_campaign_or_404,
     get_campaign_name,
@@ -133,9 +132,7 @@ class CampaignCreateView(MethodView):
                 form_data={"name": name, "description": description},
             )
 
-        service = campaigns_service(
-            on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
-        )
+        service = api_services.campaigns()
         new_campaign = service.create(CampaignCreate(name=name, description=description or None))
         cache.global_context.clear_current()
 
@@ -178,9 +175,7 @@ class CampaignUpdateView(MethodView):
                 campaign=campaign,
             )
 
-        service = campaigns_service(
-            on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
-        )
+        service = api_services.campaigns()
         service.update(campaign_id, CampaignUpdate(name=name, description=description or None))
         cache.global_context.clear_current()
 
@@ -211,9 +206,7 @@ class CampaignDeleteView(MethodView):
 
         fetch_campaign_or_404(campaign_id)
 
-        service = campaigns_service(
-            on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
-        )
+        service = api_services.campaigns()
         service.delete(campaign_id)
         cache.global_context.clear_current()
         session.pop("last_campaign_id", None)
@@ -264,9 +257,7 @@ class CampaignUpdateDangerDesperationView(MethodView):
         else:
             update = CampaignUpdate(desperation=value)
 
-        service = campaigns_service(
-            on_behalf_of=g.requesting_user.id, company_id=session["company_id"]
-        )
+        service = api_services.campaigns()
         campaign = service.update(campaign_id, update)
         cache.global_context.clear_current()
         return catalog.render(

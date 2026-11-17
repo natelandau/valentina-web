@@ -61,7 +61,7 @@ def book_image_entity(
         "vweb.lib.cache.campaign_content.chapters",
         return_value=mock_chapters,
     )
-    service = mocker.patch("vweb.routes.book.views.books_service").return_value
+    service = mocker.patch("vweb.routes.book.views.api_services.books").return_value
     detail_url = f"/campaign/{mock_campaign.id}/book/{mock_book.id}"
     return ImageEntityCase(
         name="book",
@@ -91,7 +91,7 @@ def chapter_image_entity(
         "vweb.lib.cache.campaign_content.chapters",
         return_value=[mock_chapter],
     )
-    service = mocker.patch("vweb.routes.chapter.views.chapters_service").return_value
+    service = mocker.patch("vweb.routes.chapter.views.api_services.chapters").return_value
     service.list_all.return_value = [mock_chapter]
     service.list_all_assets.return_value = []
     service.list_all_notes.return_value = []

@@ -36,13 +36,13 @@ class NotesHandlerCase:
 NOTES_HANDLER_CASES: dict[str, NotesHandlerCase] = {
     "book": NotesHandlerCase(
         handler_class=BookNotesHandler,
-        service_path="vweb.routes.book.handlers.books_service",
+        service_path="vweb.routes.book.handlers.api_services.books",
         parent_id="book-123",
         handler_kwargs={"campaign_id": "camp-456"},
     ),
     "chapter": NotesHandlerCase(
         handler_class=ChapterNotesHandler,
-        service_path="vweb.routes.chapter.handlers.chapters_service",
+        service_path="vweb.routes.chapter.handlers.api_services.chapters",
         parent_id="chapter-123",
         handler_kwargs={"campaign_id": "camp-456", "book_id": "book-789"},
     ),
@@ -260,7 +260,7 @@ class TestChapterNotesHandlerInit:
             seed_session()
 
             with patch(
-                "vweb.routes.chapter.handlers.chapters_service", return_value=MagicMock()
+                "vweb.lib.api_services.chapters_service", return_value=MagicMock()
             ) as patched_svc:
                 ChapterNotesHandler("chapter-123", campaign_id="camp-456", book_id="book-789")
 
@@ -295,17 +295,17 @@ class TestCharacterNotesHandlerInit:
 CAMPAIGN_CONTENT_HANDLERS: dict[str, tuple[type, str, dict[str, str]]] = {
     "campaign": (
         CampaignNotesHandler,
-        "vweb.routes.campaign_notes.handlers.campaigns_service",
+        "vweb.routes.campaign_notes.handlers.api_services.campaigns",
         {},
     ),
     "book": (
         BookNotesHandler,
-        "vweb.routes.book.handlers.books_service",
+        "vweb.routes.book.handlers.api_services.books",
         {"campaign_id": "camp-456"},
     ),
     "chapter": (
         ChapterNotesHandler,
-        "vweb.routes.chapter.handlers.chapters_service",
+        "vweb.routes.chapter.handlers.api_services.chapters",
         {"campaign_id": "camp-456", "book_id": "book-789"},
     ),
 }
@@ -358,7 +358,7 @@ class TestCampaignNotesRouteGuard:
         context = build_global_context(user_role="PLAYER", campaign=campaign)
         mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
         svc = MagicMock()
-        mocker.patch("vweb.routes.campaign_notes.handlers.campaigns_service", return_value=svc)
+        mocker.patch("vweb.routes.campaign_notes.handlers.api_services.campaigns", return_value=svc)
 
         # When the player sends the write directly
         response = getattr(client, method)(

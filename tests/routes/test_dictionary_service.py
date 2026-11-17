@@ -106,7 +106,7 @@ class TestValidateTerm:
 def mock_svc(mocker: MockerFixture) -> MagicMock:
     """Patch dictionary_service and return the mock service instance."""
     svc = MagicMock()
-    mocker.patch("vweb.routes.dictionary.services.dictionary_service", return_value=svc)
+    mocker.patch("vweb.routes.dictionary.services.api_services.dictionary", return_value=svc)
     return svc
 
 

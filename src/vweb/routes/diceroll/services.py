@@ -5,13 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from flask import g, session
+from flask import g
 
-from vweb.api_client import (
-    character_traits_service,
-    dicerolls_service,
-    users_service,
-)
+from vweb.lib import api_services
 
 if TYPE_CHECKING:
     from vweb.api_client.constants import DiceSize
@@ -41,13 +37,7 @@ def get_character_traits(*, character: Character) -> list[CharacterTrait]:
     Returns:
         The character's full list of traits.
     """
-    user_id = g.requesting_user.id
-
-    return character_traits_service(
-        on_behalf_of=user_id,
-        character_id=character.id,
-        company_id=session["company_id"],
-    ).list_all(is_rollable=True)
+    return api_services.character_traits(character.id).list_all(is_rollable=True)
 
 
 def get_roll_context(*, character: Character, campaign: Campaign) -> RollContext:
@@ -66,9 +56,7 @@ def get_roll_context(*, character: Character, campaign: Campaign) -> RollContext
     user_id = g.requesting_user.id
 
     traits = get_character_traits(character=character)
-    quickrolls = users_service(
-        on_behalf_of=user_id, company_id=session["company_id"]
-    ).list_all_quickrolls(user_id)
+    quickrolls = api_services.users().list_all_quickrolls(user_id)
 
     values_by_trait_id = {ct.trait.id: ct.value for ct in traits}
     quickroll_pools = {
@@ -111,8 +99,6 @@ def perform_custom_roll(
     """
     from vweb.api_client.models import DicerollCreate
 
-    user_id = g.requesting_user.id
-
     request = DicerollCreate(
         dice_size=dice_size,
         num_dice=num_dice,
@@ -121,7 +107,7 @@ def perform_custom_roll(
         character_id=character.id,
         campaign_id=campaign.id,
     )
-    return dicerolls_service(on_behalf_of=user_id, company_id=session["company_id"]).create(request)
+    return api_services.dicerolls().create(request)
 
 
 def perform_trait_roll(  # noqa: PLR0913
@@ -161,8 +147,6 @@ def perform_trait_roll(  # noqa: PLR0913
     """
     from vweb.api_client.models import DicerollCreate
 
-    user_id = g.requesting_user.id
-
     trait_map = {ct.trait.id: ct for ct in character_traits}
 
     char_trait_one = trait_map.get(trait_one_id)
@@ -193,7 +177,7 @@ def perform_trait_roll(  # noqa: PLR0913
         campaign_id=campaign.id,
         trait_ids=trait_ids,
     )
-    return dicerolls_service(on_behalf_of=user_id, company_id=session["company_id"]).create(request)
+    return api_services.dicerolls().create(request)
 
 
 def perform_quickroll(
@@ -221,11 +205,7 @@ def perform_quickroll(
     Returns:
         The resulting Diceroll object from the API.
     """
-    user_id = g.requesting_user.id
-
-    return dicerolls_service(
-        on_behalf_of=user_id, company_id=session["company_id"]
-    ).create_from_quickroll(
+    return api_services.dicerolls().create_from_quickroll(
         quickroll_id=quickroll_id,
         character_id=character.id,
         difficulty=difficulty,

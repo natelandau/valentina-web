@@ -161,7 +161,7 @@ class TestApproveUserEndpoint:
         )
 
         # Then the service was called
-        approve.assert_called_once_with("pending-1", "PLAYER", admin_context.users[0].id)
+        approve.assert_called_once_with("pending-1", "PLAYER")
         assert response.status_code == 200
 
     def test_approve_self_returns_403(
@@ -306,7 +306,7 @@ class TestDenyUserEndpoint:
         )
 
         # Then the service is called and the response is 200
-        deny.assert_called_once_with("pending-1", admin_context.users[0].id)
+        deny.assert_called_once_with("pending-1")
         assert response.status_code == 200
 
     def test_deny_self_returns_403(
@@ -423,11 +423,7 @@ class TestMergePost:
         )
 
         # Then merge is called with (target, pending, admin) and HX-Redirect is returned
-        merge.assert_called_once_with(
-            "approved-1",
-            "pending-1",
-            admin_context.users[0].id,
-        )
+        merge.assert_called_once_with("approved-1", "pending-1")
         assert response.status_code == 200
         assert response.headers["HX-Redirect"] == "/admin/users"
 

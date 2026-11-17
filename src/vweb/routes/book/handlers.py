@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from flask import session
-
-from vweb.api_client import books_service
+from vweb.lib import api_services
 from vweb.lib.base_notes import BaseNotesHandler
 
 
@@ -22,8 +20,4 @@ class BookNotesHandler(BaseNotesHandler):
             msg = "campaign_id is required for BookNotesHandler"
             raise ValueError(msg)
 
-        self._svc = books_service(
-            campaign_id=campaign_id,
-            on_behalf_of=session.get("user_id", ""),
-            company_id=session["company_id"],
-        )
+        self._svc = api_services.books(campaign_id)
