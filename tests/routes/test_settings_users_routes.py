@@ -6,15 +6,15 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.models.users import AppleProfile, DiscordProfile
-from vclient.testing import UserFactory
 
 from tests.conftest import get_csrf
+from vweb.api_client.models.users import AppleProfile, DiscordProfile
+from vweb.api_client.testing import UserFactory
 
 if TYPE_CHECKING:
     from flask.testing import FlaskClient
-    from vclient.models.users import User
 
+    from vweb.api_client.models.users import User
     from vweb.lib.cache.global_context import GlobalContext
 
 
@@ -38,11 +38,11 @@ def admin_context(mock_global_context: GlobalContext) -> GlobalContext:
 
 @pytest.fixture
 def patch_users_service(mocker):
-    """Return a callable that patches sync_users_service in services + views."""
+    """Return a callable that patches users_service in services + views."""
 
     def _patch(svc: MagicMock) -> None:
         mocker.patch(
-            "vweb.routes.admin.services.sync_users_service",
+            "vweb.routes.admin.services.users_service",
             return_value=svc,
         )
 

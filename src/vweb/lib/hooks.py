@@ -7,14 +7,15 @@ from typing import TYPE_CHECKING
 
 from flask import Response, abort, flash, g, redirect, request, session, url_for
 from loguru import logger
-from vclient.exceptions import AuthorizationError
 
+from vweb.api_client.exceptions import AuthorizationError
 from vweb.lib import cache
 
 if TYPE_CHECKING:
     from flask import Flask
-    from vclient.models import User
     from werkzeug.wrappers.response import Response as WerkzeugResponse
+
+    from vweb.api_client.models import User
 
 
 def _redirect_for_request(url: str) -> Response | WerkzeugResponse:

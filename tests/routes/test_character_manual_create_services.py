@@ -6,8 +6,8 @@ import logging
 
 import pytest
 from flask import session
-from vclient.exceptions import ServerError, ValidationError
 
+from vweb.api_client.exceptions import ServerError, ValidationError
 from vweb.routes.character_create.manual_services import (
     save_temp_character,
     update_character_profile,
@@ -39,7 +39,7 @@ def _field_error() -> ValidationError:
 def characters_service(mocker):
     """Patch the characters service used by the manual create flow."""
     return mocker.patch(
-        "vweb.routes.character_create.manual_services.sync_characters_service"
+        "vweb.routes.character_create.manual_services.characters_service"
     ).return_value
 
 

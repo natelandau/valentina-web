@@ -5,10 +5,10 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.models import InventoryItemCreate, InventoryItemUpdate
-from vclient.testing import CharacterFactory
 
 from tests.helpers import seed_session
+from vweb.api_client.models import InventoryItemCreate, InventoryItemUpdate
+from vweb.api_client.testing import CharacterFactory
 from vweb.routes.character_view.handlers_inventory import CharacterInventoryHandler
 
 
@@ -22,10 +22,10 @@ def mock_character(mock_global_context):
 
 @pytest.fixture
 def mock_svc(mocker):
-    """Mock the sync_characters_service for the handler module."""
+    """Mock the characters_service for the handler module."""
     svc = MagicMock()
     mocker.patch(
-        "vweb.routes.character_view.handlers_inventory.sync_characters_service", return_value=svc
+        "vweb.routes.character_view.handlers_inventory.characters_service", return_value=svc
     )
     return svc
 

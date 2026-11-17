@@ -9,13 +9,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from flask import session
-from vclient import sync_dictionary_service
-from vclient.models import DictionaryTermCreate, DictionaryTermUpdate
 
+from vweb.api_client import dictionary_service
+from vweb.api_client.models import DictionaryTermCreate, DictionaryTermUpdate
 from vweb.lib.urls import is_http_url
 
 if TYPE_CHECKING:
-    from vclient.models import DictionaryTerm
+    from vweb.api_client.models import DictionaryTerm
 
 TERM_MIN_LENGTH = 3
 TERM_MAX_LENGTH = 50
@@ -77,7 +77,7 @@ def create_term(form_data: dict[str, str]) -> DictionaryTerm:
         link=form_data.get("link", "").strip() or None,
         synonyms=parse_synonyms(form_data.get("synonyms", "")),
     )
-    return sync_dictionary_service(company_id=session["company_id"]).create(request=request_body)
+    return dictionary_service(company_id=session["company_id"]).create(request=request_body)
 
 
 def update_term(term_id: str, form_data: dict[str, str]) -> DictionaryTerm:
@@ -96,7 +96,7 @@ def update_term(term_id: str, form_data: dict[str, str]) -> DictionaryTerm:
         link=form_data.get("link", "").strip() or None,
         synonyms=parse_synonyms(form_data.get("synonyms", "")),
     )
-    return sync_dictionary_service(company_id=session["company_id"]).update(
+    return dictionary_service(company_id=session["company_id"]).update(
         term_id, request=request_body
     )
 
@@ -107,4 +107,4 @@ def delete_term(term_id: str) -> None:
     Args:
         term_id: The ID of the term to delete.
     """
-    sync_dictionary_service(company_id=session["company_id"]).delete(term_id)
+    dictionary_service(company_id=session["company_id"]).delete(term_id)

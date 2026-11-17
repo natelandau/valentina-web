@@ -7,8 +7,10 @@ from typing import TYPE_CHECKING
 import pytest
 from pydantic import BaseModel, Field
 from pydantic import ValidationError as PydanticValidationError
-from vclient.exceptions import RequestValidationError, ValidationError
-from vclient.testing import (
+
+from tests.conftest import get_csrf, make_dice_roll_result
+from vweb.api_client.exceptions import RequestValidationError, ValidationError
+from vweb.api_client.testing import (
     CampaignFactory,
     CharacterFactory,
     CharacterTraitFactory,
@@ -17,8 +19,6 @@ from vclient.testing import (
     Routes,
     TraitFactory,
 )
-
-from tests.conftest import get_csrf, make_dice_roll_result
 from vweb.routes.diceroll.services import RollContext
 
 if TYPE_CHECKING:
@@ -328,7 +328,7 @@ class TestDiceRollCustomView:
 
     def test_returns_error_on_api_failure(self, client, mock_diceroll_deps, mocker) -> None:
         """Verify custom roll handles API errors gracefully."""
-        from vclient.exceptions import APIError
+        from vweb.api_client.exceptions import APIError
 
         mocker.patch(
             "vweb.routes.diceroll.views.perform_custom_roll",

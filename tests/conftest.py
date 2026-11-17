@@ -8,22 +8,22 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
-from vclient.models.companies import CompanySettings
-from vclient.models.diceroll import DiceRollResultSchema
-from vclient.testing import (
-    CampaignBookFactory,
-    CampaignChapterFactory,
-    CampaignFactory,
-    CharacterFactory,
-    CompanyFactory,
-    SyncFakeVClient,
-    UserFactory,
-)
 
 from tests.helpers import (
     build_mock_options_service,
     build_mock_system_service,
     make_cache_store_mock,
+)
+from vweb.api_client.models.companies import CompanySettings
+from vweb.api_client.models.diceroll import DiceRollResultSchema
+from vweb.api_client.testing import (
+    CampaignBookFactory,
+    CampaignChapterFactory,
+    CampaignFactory,
+    CharacterFactory,
+    CompanyFactory,
+    FakeVClient,
+    UserFactory,
 )
 from vweb.config import APISettings, RedisSettings, Settings
 from vweb.lib.cache.global_context import GlobalContext
@@ -56,11 +56,14 @@ def _build_company_with_settings(**kwargs):  # noqa: ANN202
 
 CompanyFactory.build = staticmethod(_build_company_with_settings)  # type: ignore[method-assign]  # ty:ignore[invalid-assignment]
 
+pytest_plugins = ("tests.api_client.shared_response_fixtures",)
+
 if TYPE_CHECKING:
     from flask import Flask
     from flask.testing import FlaskClient
     from pytest_mock import MockerFixture
-    from vclient.models import Campaign, CampaignBook, CampaignChapter, Character
+
+    from vweb.api_client.models import Campaign, CampaignBook, CampaignChapter, Character
 
 
 @pytest.fixture
@@ -202,12 +205,12 @@ def mock_cache_store(mocker: MockerFixture) -> dict:
 
 @pytest.fixture
 def fake_vclient(app):
-    """Provide a SyncFakeVClient that intercepts all vclient HTTP calls.
+    """Provide a FakeVClient that intercepts all vclient HTTP calls.
 
     Depends on `app` so the fake client registers as the default AFTER create_app()
-    creates its own SyncVClient, ensuring sync_*_service() calls use the fake.
+    creates its own VClient, ensuring *_service() calls use the fake.
     """
-    with SyncFakeVClient() as client:
+    with FakeVClient() as client:
         yield client
 
 
@@ -236,25 +239,25 @@ def _mock_api(mocker, mock_global_context) -> None:
     mocker.patch("vweb.lib.cache.global_context.load", return_value=mock_global_context)
     mocker.patch("vweb.lib.cache.global_context.clear")
 
-    mock_dict_svc = mocker.patch("vweb.lib.cache.dictionary.sync_dictionary_service")
+    mock_dict_svc = mocker.patch("vweb.lib.cache.dictionary.dictionary_service")
     mock_dict_svc.return_value.list_all.return_value = []
 
     # Pages now fetch books/chapters lazily via campaign_content_cache; default to
     # empty lists so full-page renders don't reach for the real API.
-    mock_books_svc = mocker.patch("vweb.lib.cache.campaign_content.sync_books_service")
+    mock_books_svc = mocker.patch("vweb.lib.cache.campaign_content.books_service")
     mock_books_svc.return_value.list_all.return_value = []
-    mock_chapters_svc = mocker.patch("vweb.lib.cache.campaign_content.sync_chapters_service")
+    mock_chapters_svc = mocker.patch("vweb.lib.cache.campaign_content.chapters_service")
     mock_chapters_svc.return_value.list_all.return_value = []
 
     # The footer renders system health for approved users, so every page render
     # would otherwise hit the live health endpoint.
     mocker.patch(
-        "vweb.lib.cache.system_status.sync_system_service",
+        "vweb.lib.cache.system_status.system_service",
         return_value=build_mock_system_service(),
     )
 
     mocker.patch(
-        "vweb.lib.cache.options.sync_options_service",
+        "vweb.lib.cache.options.options_service",
         return_value=build_mock_options_service(),
     )
 

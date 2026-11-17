@@ -18,9 +18,9 @@
         "markdown2>=2.5.5,<3.0.0",
         "pillow>=13.0.0",
         "pydantic-settings>=2.16.2,<3.0.0",
+        "pydantic[email]>=2.14.1,<3.0.0",
         "redis>=8.1.0,<9.0.0",
         "requests>=2.34.2,<3.0.0",
-        "valentina-python-client[testing]>=3.7.0,<4.0.0",
     ]
     description = "Web client for the Valentina Noir API."
     license = { file = "LICENSE" }
@@ -41,17 +41,21 @@
         "commitizen>=4.19.3",
         "djlint>=1.47.1",
         "duty>=1.10.1",
-        "gate-cache>=0.6.0",
+        "gate-cache>=0.7.0",
+        "httpx>=0.28.1",
+        "polyfactory>=3.3.0,<4.0.0",
         "prek>=0.5.7",
         "pytest-clarity>=1.0.1",
         "pytest-cov>=7.1.0",
         "pytest-devtools>=1.3.0",
+        "pytest-httpx2>=1.0.0",
         "pytest-mock>=3.17.0",
         "pytest-repeat>=0.9.4",
         "pytest-sugar>=1.1.1",
         "pytest-timeout>=2.4.0",
         "pytest-xdist>=3.8.0",
         "python-dotenv>=1.2.4",
+        "respx>=0.23.1",
         "ruff>=0.17.3",
         "shellcheck-py>=0.11.0.1",
         "ty>=0.0.94",
@@ -108,7 +112,7 @@
 
 [tool.pytest.ini_options]
 
-    addopts = "--color=yes --doctest-modules --exitfirst --failed-first --strict-config --strict-markers"
+    addopts = "--color=yes --exitfirst --failed-first --strict-config --strict-markers"
     cache_dir = ".cache/pytest"
     filterwarnings = [
         'error',
@@ -151,7 +155,16 @@
             "TD002",  # Missing author in TODO
             "TD003",  # Missing issue link on the line following this TODO
         ]
-        per-file-ignores = { "tests/**/*.py" = [
+        per-file-ignores = { "src/vweb/api_client/services/*.py" = [
+            "PLR0913", # Service methods mirror the API surface, so many arguments is intended
+        ], "src/vweb/api_client/validate_constants.py" = [
+            "T201", # print() is intentional for report output
+        ], "scripts/validate_constants.py" = [
+            "T201", # print() is intentional for CLI output
+        ], "tests/api_client/**/*.py" = [
+            "PLR0917", # Too many positional arguments (test_base.py parametrized test)
+            "PT011",   # Broad pytest.raises(Exception) is intentional when asserting logging of arbitrary errors
+        ], "tests/**/*.py" = [
             "A002",
             "A003",
             "ANN001",  # Missing type annotation for function argument `cls`

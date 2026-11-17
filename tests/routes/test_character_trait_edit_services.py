@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from vclient.testing import CharacterFactory, CompanyFactory, TraitFactory
 
+from vweb.api_client.testing import CharacterFactory, CompanyFactory, TraitFactory
 from vweb.routes.character_trait_edit.services import (
     find_standard_trait_by_name,
     specialty_add_label,
@@ -14,8 +14,8 @@ from vweb.routes.character_trait_edit.services import (
 )
 
 if TYPE_CHECKING:
-    from vclient.constants import TraitModifyCurrency
-    from vclient.models import Character, CompanySettings, Trait
+    from vweb.api_client.constants import TraitModifyCurrency
+    from vweb.api_client.models import Character, CompanySettings, Trait
 
 
 def _settings(*, enabled: bool) -> CompanySettings:

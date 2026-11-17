@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 
 from flask import Blueprint, flash, redirect, request, session, url_for
 from flask.views import MethodView
-from vclient import sync_companies_service
-from vclient.exceptions import ServerError, UnprocessableEntityError
 
+from vweb.api_client import companies_service
+from vweb.api_client.exceptions import ServerError, UnprocessableEntityError
 from vweb.extensions import csrf
 from vweb.lib.catalog import catalog
 from vweb.lib.guards import is_active_role
@@ -58,7 +58,7 @@ class SelectCompaniesView(MethodView):
 
     def get(self) -> str:
         """Render the company selection form for new users."""
-        companies = sync_companies_service().list_all()
+        companies = companies_service().list_all()
         return catalog.render("auth.SelectCompanies", companies=companies)
 
     def post(self) -> Response:
@@ -96,7 +96,7 @@ class SelectCompaniesView(MethodView):
             flash("Registration failed. Please try again.", "error")
             return redirect(url_for("index.index"))
 
-        company_names = {c.id: c.name for c in sync_companies_service().list_all()}
+        company_names = {c.id: c.name for c in companies_service().list_all()}
         companies_mapping = {
             company_id: {
                 "user_id": resolution.user.id,

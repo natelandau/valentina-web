@@ -6,15 +6,15 @@ import threading
 from datetime import UTC, datetime
 
 import pytest
-from vclient.testing import (
+
+from tests.helpers import make_cache_store_mock
+from vweb.api_client.testing import (
     CampaignFactory,
     CharacterFactory,
     CompanyFactory,
     Routes,
     UserFactory,
 )
-
-from tests.helpers import make_cache_store_mock
 from vweb.lib.cache.global_context import (
     GlobalContext,
     _fetch_global_data,
@@ -25,7 +25,7 @@ from vweb.lib.cache.global_context import (
 
 @pytest.fixture
 def _fake_vclient_data(fake_vclient) -> None:
-    """Set up SyncFakeVClient with known data for _fetch_global_data tests."""
+    """Set up FakeVClient with known data for _fetch_global_data tests."""
     company = CompanyFactory.build(
         id="test-company-id",
         name="Test Company",
@@ -119,9 +119,7 @@ def test_load_global_context_returns_cached_on_same_timestamp(
     )
     mock_company_svc = mocker.MagicMock()
     mock_company_svc.get.return_value = mock_company
-    mocker.patch(
-        "vweb.lib.cache.global_context.sync_companies_service", return_value=mock_company_svc
-    )
+    mocker.patch("vweb.lib.cache.global_context.companies_service", return_value=mock_company_svc)
 
     mock_fetch = mocker.patch(
         "vweb.lib.cache.global_context._fetch_global_data",
@@ -152,9 +150,7 @@ def test_load_global_context_refetches_on_new_timestamp(
     )
     mock_company_svc = mocker.MagicMock()
     mock_company_svc.get.side_effect = [mock_company_v1, mock_company_v2]
-    mocker.patch(
-        "vweb.lib.cache.global_context.sync_companies_service", return_value=mock_company_svc
-    )
+    mocker.patch("vweb.lib.cache.global_context.companies_service", return_value=mock_company_svc)
 
     # Given _fetch_global_data returns different GlobalContexts
     ctx_v2 = GlobalContext(
@@ -191,9 +187,7 @@ def test_clear_global_context_cache_deletes_only_global_keys(
     )
     mock_company_svc = mocker.MagicMock()
     mock_company_svc.get.return_value = mock_company
-    mocker.patch(
-        "vweb.lib.cache.global_context.sync_companies_service", return_value=mock_company_svc
-    )
+    mocker.patch("vweb.lib.cache.global_context.companies_service", return_value=mock_company_svc)
 
     mock_fetch = mocker.patch(
         "vweb.lib.cache.global_context._fetch_global_data",
@@ -302,8 +296,8 @@ def test_fetch_global_data_returns_all_characters_unfiltered(app, fake_vclient) 
 def test_fetch_global_data_does_not_fetch_books_or_chapters(app, mocker) -> None:
     """Verify _fetch_global_data no longer eagerly fans out to books and chapters."""
     # Given the book and chapter services would raise if invoked
-    book_svc = mocker.patch("vweb.lib.cache.global_context.sync_books_service", create=True)
-    chapter_svc = mocker.patch("vweb.lib.cache.global_context.sync_chapters_service", create=True)
+    book_svc = mocker.patch("vweb.lib.cache.global_context.books_service", create=True)
+    chapter_svc = mocker.patch("vweb.lib.cache.global_context.chapters_service", create=True)
 
     # When fetching global data
     with app.app_context():
@@ -404,9 +398,7 @@ def test_load_global_context_fetches_company_once_on_cold_cache(
     )
     mock_company_svc = mocker.MagicMock()
     mock_company_svc.get.return_value = mock_company
-    mocker.patch(
-        "vweb.lib.cache.global_context.sync_companies_service", return_value=mock_company_svc
-    )
+    mocker.patch("vweb.lib.cache.global_context.companies_service", return_value=mock_company_svc)
 
     # Given _fetch_global_data is patched so we isolate the company-fetch behavior
     mocker.patch(
@@ -432,9 +424,7 @@ def test_load_global_context_passes_company_to_fetch(app, mocker, mock_global_co
     )
     mock_company_svc = mocker.MagicMock()
     mock_company_svc.get.return_value = mock_company
-    mocker.patch(
-        "vweb.lib.cache.global_context.sync_companies_service", return_value=mock_company_svc
-    )
+    mocker.patch("vweb.lib.cache.global_context.companies_service", return_value=mock_company_svc)
 
     mock_fetch = mocker.patch(
         "vweb.lib.cache.global_context._fetch_global_data",
@@ -470,9 +460,7 @@ def test_load_global_context_single_flight_collapses_concurrent_rebuilds(app, mo
     )
     mock_company_svc = mocker.MagicMock()
     mock_company_svc.get.return_value = mock_company
-    mocker.patch(
-        "vweb.lib.cache.global_context.sync_companies_service", return_value=mock_company_svc
-    )
+    mocker.patch("vweb.lib.cache.global_context.companies_service", return_value=mock_company_svc)
 
     built_context = GlobalContext(
         company=CompanyFactory.build(),

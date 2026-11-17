@@ -18,13 +18,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from flask import g, session
-from vclient import sync_books_service, sync_chapters_service
 
+from vweb.api_client import books_service, chapters_service
 from vweb.constants import CACHE_CAMPAIGN_CONTENT_TTL
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
-    from vclient.models import CampaignBook, CampaignChapter
+    from vweb.api_client.models import CampaignBook, CampaignChapter
 
 _STRATEGY = base.TimestampValidated(
     ttl=CACHE_CAMPAIGN_CONTENT_TTL,
@@ -47,7 +47,7 @@ def books(campaign_id: str) -> list[CampaignBook]:
     company_id = session["company_id"]
 
     def fetch() -> list[CampaignBook]:
-        result = sync_books_service(
+        result = books_service(
             campaign_id=campaign_id, on_behalf_of=g.requesting_user.id, company_id=company_id
         ).list_all()
         return sorted(result, key=lambda book: book.number)
@@ -65,7 +65,7 @@ def chapters(campaign_id: str, book_id: str) -> list[CampaignChapter]:
     company_id = session["company_id"]
 
     def fetch() -> list[CampaignChapter]:
-        result = sync_chapters_service(
+        result = chapters_service(
             campaign_id=campaign_id,
             book_id=book_id,
             on_behalf_of=g.requesting_user.id,

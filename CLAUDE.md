@@ -1,6 +1,6 @@
 # Valentina Web
 
-Server-rendered Flask app consuming the valentina-python-client API. HTMX for interactivity — no SPA.
+Server-rendered Flask app consuming the Valentina API through its in-repo client. HTMX for interactivity, no SPA.
 
 Specs and plans are never committed to this repo.
 
@@ -8,17 +8,17 @@ Specs and plans are never committed to this repo.
 
 ```bash
 uv run vweb           # Dev server (127.0.0.1:8089)
-uv run pytest tests/  # Tests
 duty lint             # ruff, ty, typos, pre-commit
-duty test             # Tests with coverage
+duty test             # All tests with coverage (see "Running tests" for scopes)
 duty run              # Flask + Tailwind watcher
 duty css              # Build CSS (production, minified)
 duty redis-up         # Start the dev Redis container (127.0.0.1:6380); `duty run` does this too
 duty worktree branch=<name>           # New worktree with its own Redis database and port
 duty worktree-teardown branch=<name>  # Remove a worktree and flush its Redis database
+uv run duty validate_constants company_id=<id>  # Check client constants against a running API
 ```
 
-`duty ruff/format/ty/typos/test` and `duty precommit` run through gate-cache: a gate that already passed on the identical working tree is skipped ("already passed on tree ..."). A skip is a valid pass. Force a rerun with `GATE_CACHE_DISABLE=1`. `duty test <args>` is never cached.
+`duty ruff/format/ty/typos/test` and `duty precommit` run through gate-cache: a gate that already passed on the same files is skipped ("already passed on tree ..."). A skip is a valid pass. Force a rerun with `GATE_CACHE_DISABLE=1`.
 
 ## Stack
 
@@ -26,11 +26,7 @@ duty worktree-teardown branch=<name>  # Remove a worktree and flush its Redis da
 - Tailwind v4 + daisyUI v5 via `@tailwindcss/cli` (npm)
 - pydantic-settings (`VWEB_` prefix, reads `.env.secret`) — use lazy `get_settings()`, never a module-level `settings`
 - Flask-Talisman (CSP/HSTS), flask-wtf CSRF, Authlib OAuth
-- API: valentina-python-client (`SyncVClient`)
-
-### Local vclient
-
-`duty vclient-local` installs vclient from the sibling `valentina-python-client` checkout; `duty vclient-release` switches back. While local, **never commit `pyproject.toml` or `uv.lock`**: keep making commits, stage files by name (never `git add -A` or `commit -a`), and leave those two unstaged. Hooks and CI reject any path dependency outside the repo. Never bypass them with `--no-verify` or by removing the override.
+- API: in-repo client `src/vweb/api_client/` (sync only). It changes in the same PR as the web code that needs an API change.
 
 ### CSP / No inline JS
 
@@ -52,11 +48,11 @@ Character routes split into `character_view`, `character_trait_edit` (spend type
 
 ## Key Helpers
 
-- **VClient:** `SyncVClient` is created in `create_app()` with a default `company_id`. Just call `sync_*` service factories — `sync_companies_service().list_all()`. For model shapes, service methods, exceptions, and testing helpers, use the `vclient-guide` skill; if it is not installed, read it live at https://github.com/natelandau/valentina-python-client/tree/main/vclient-guide-skill.
+- **VClient:** `VClient` is created once in `create_app()` and stored in `app.extensions["vclient"]`. Call the `<name>_service()` factories and pass `company_id` and `on_behalf_of` per call, such as `users_service(on_behalf_of=user_id, company_id=session["company_id"])`. For model shapes, service methods, exceptions, and testing helpers, read `src/vweb/api_client/` (models, services, exceptions, testing) directly.
 - **Data access:** `lib/api.get_character_and_campaign(character_id)` (reads `g.global_context`, no API call). Campaigns via `g.global_context.campaigns`. Requesting user via `g.requesting_user`.
 - **Permission guards (`lib/guards.py`):** `is_admin`, `is_storyteller`, `is_self`, `can_manage_campaign`, `can_grant_experience`, `can_edit_traits_free`, `can_edit_character`, `can_edit_trackers`, etc. **Never inline `g.requesting_user.role in (...)` or ownership checks — always call a guard** (Python and templates). Don't pass a guard result as a prop if the child already has the parent object in scope. New check? Add to `lib/guards.py`, register in `lib/jinja.py`'s `jinja_globals`, test in `tests/lib/test_guards.py`.
 - **Trait rules (`lib/trait_rules.py`):** `is_derived_trait` (V5 Willpower is read-only) and `accepts_specialties` (abilities at 1+ dots). Registered as Jinja globals in `lib/jinja.py`. Call these instead of comparing trait names or sections inline.
-- **API errors (`lib/api_errors.py`):** when a vclient call fails, show `api_error_message(error, fallback="...")` (or `api_field_errors(...)` for forms with per-field errors), never a fixed "Failed to ..." string or the raw `detail`. It shows the API's reason for errors a user can fix and the fallback for server errors. Catch `USER_FACING_API_ERRORS` where only user-fixable errors should be handled.
+- **API errors (`lib/api_errors.py`):** when an API client call fails, show `api_error_message(error, fallback="...")` (or `api_field_errors(...)` for forms with per-field errors), never a fixed "Failed to ..." string or the raw `detail`. It shows the API's reason for errors a user can fix and the fallback for server errors. Catch `USER_FACING_API_ERRORS` where only user-fixable errors should be handled.
 
 ### Caching
 
@@ -129,10 +125,28 @@ Tailwind v4's JIT scanner only sees **literal** class strings in templates at bu
 
 ## Testing
 
-- Sync pytest. `_mock_api` (autouse in `conftest.py`) prevents real API calls. Always run with a timeout to catch infinite loops. `--strict-markers` — register new markers in `pyproject.toml`.
+### Running tests
+
+Use `uv run duty test` for every check except iterating on a single test. Pick the scope from what you changed:
+
+| You changed                                                                 | Run                                 |
+| --------------------------------------------------------------------------- | ----------------------------------- |
+| Web code only: `src/vweb/` outside `api_client/`, templates, web tests      | `uv run duty test scope=web`        |
+| The API client: `src/vweb/api_client/` or `tests/api_client/`               | `uv run duty test` (web uses the client, so run both) |
+| Dependencies, `tests/conftest.py`, or you are about to commit               | `uv run duty test`                  |
+| One test file or test while iterating                                       | `uv run pytest tests/routes/test_book_view.py -k <name>` |
+
+- `scope=client` runs only `tests/api_client/`. Use it for a quick check while editing the client, then run `uv run duty test` before you commit.
+- Each scope is cached against only the files its tests read. A scope whose files did not change prints "already passed on tree ..." and exits 0. That is a pass, not a skipped check.
+- Extra pytest options after the scope (for example `uv run duty test scope=web -k book`) filter within that scope and turn off the cache, so the command always runs. Do not pass a file path to `duty test`: it adds to the scope's targets instead of narrowing them. Use bare `uv run pytest <path>` for that.
+- `pyproject.toml` sets a 10-second per-test timeout and `--exitfirst`. A timeout failure usually means an infinite loop or a real network call.
+
+### Writing tests
+
+- Sync pytest. `_mock_api` (autouse in `conftest.py`) prevents real API calls. `--strict-markers`: register new markers in `pyproject.toml`.
 - `conftest.py`'s `test_settings` fixture builds `Settings` and passes it to `create_app(settings_override=...)` — no env vars needed. **Always pass `_env_file=None`** when constructing `Settings()` directly or pydantic leaks real config from `.env.secret`.
-- **Model data:** use `vclient.testing` factories (`UserFactory`, `CampaignFactory`, `CharacterFactory`, …). `Factory.batch(n)` for multiples.
-- **`fake_vclient` fixture** (`SyncFakeVClient`) intercepts vclient HTTP in-memory — use `set_response()` / `set_error()` (never `add_route()`, deprecated). Import `Routes` from `vclient.testing`:
+- **Model data:** use `vweb.api_client.testing` factories (`UserFactory`, `CampaignFactory`, `CharacterFactory`, …). `Factory.batch(n)` for multiples.
+- **`fake_vclient` fixture** (`FakeVClient`) intercepts API client HTTP in memory. Use `set_response()` / `set_error()`; `add_route()` is a low-level escape hatch. Import `Routes` from `vweb.api_client.testing`:
 
     ```python
     fake_vclient.set_response(Routes.USERS_GET, model=UserFactory.build(id="u1"))
@@ -140,12 +154,12 @@ Tailwind v4's JIT scanner only sees **literal** class strings in templates at bu
     fake_vclient.set_error(Routes.USERS_GET, status_code=404)
     ```
 
-- **When to use which:** factories for data; `fake_vclient` for code calling `sync_*` factories; `MagicMock()` only for service objects needing `side_effect` or handler/cache mocks.
+- **When to use which:** factories for data; `fake_vclient` for code calling `<name>_service()` factories; `MagicMock()` only for service objects needing `side_effect` or handler/cache mocks.
 - Other shared fixtures: `mock_global_context` (factory-built `GlobalContext`), `get_csrf(client)`. Don't duplicate in test files.
 - **OAuth tests:** patch `oauth`, `lookup_user_companies`, and `identify_in_companies` where used (`routes.auth.views_oauth` for login/callback, `views_identity` for link/unlink, `views` for company selection); pre-seed `user_id` via `client.session_transaction()`.
 
 ## Code Style
 
-Ruff `select = ["ALL"]`, Google docstrings, line length 100, double quotes — see `pyproject.toml`. **ty ignores use `# ty:ignore[rule-name]`, NOT `# type: ignore[...]`.** Always import types from vclient when available (e.g. `CharacterInventoryType`) — never redefine Literal types locally.
+Ruff `select = ["ALL"]`, Google docstrings, line length 100, double quotes — see `pyproject.toml`. **ty ignores use `# ty:ignore[rule-name]`, NOT `# type: ignore[...]`.** Always import types from `vweb.api_client` (constants, models) when available (e.g. `CharacterInventoryType`) — never redefine Literal types locally.
 
 **`ty` (via `duty lint`) is the only authoritative type checker.** Editor `<new-diagnostics>` come from a Pyright LSP plugin this project does NOT use; Pyright ignores `# ty:ignore`, so it flags `ty`-clean lines. A Pyright-only warning is not a failure — confirm with `ty` before acting on it; never "fix" `ty`-clean code to satisfy Pyright.

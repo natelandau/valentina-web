@@ -5,10 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from vclient.exceptions import APIError, AuthorizationError, ConflictError, ServerError
-from vclient.testing import DictionaryTermFactory
 
 from tests.conftest import get_csrf
+from vweb.api_client.exceptions import APIError, AuthorizationError, ConflictError, ServerError
+from vweb.api_client.testing import DictionaryTermFactory
 
 if TYPE_CHECKING:
     from flask.testing import FlaskClient

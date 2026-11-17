@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from vclient.testing import CharacterFactory
-
+from vweb.api_client.testing import CharacterFactory
 from vweb.routes.fragments_shared_cards.character_list import (
     build_filter_options,
     filter_characters,

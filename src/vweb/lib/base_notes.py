@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from vweb.lib.guards import can_manage_campaign
 
 if TYPE_CHECKING:
-    from vclient.models import Note
+    from vweb.api_client.models import Note
 
 
 class BaseNotesHandler:

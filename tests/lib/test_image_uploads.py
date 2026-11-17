@@ -7,10 +7,10 @@ from unittest.mock import MagicMock
 
 import pytest
 from flask import get_flashed_messages
-from vclient.exceptions import APIError
 from werkzeug.datastructures import FileStorage
 
 from tests.helpers import make_image_bytes
+from vweb.api_client.exceptions import APIError
 from vweb.lib.image_uploads import handle_image_upload, image_dimensions_error
 
 

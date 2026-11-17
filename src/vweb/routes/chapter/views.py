@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 
 from flask import Blueprint, abort, flash, request, session, url_for
 from flask.views import MethodView
-from vclient import sync_chapters_service
-from vclient.exceptions import ValidationError
 
+from vweb.api_client import chapters_service
+from vweb.api_client.exceptions import ValidationError
 from vweb.lib import cache
 from vweb.lib.api import (
     count_notes,
@@ -23,8 +23,8 @@ from vweb.lib.image_uploads import handle_image_delete, upload_and_append_asset
 from vweb.routes.chapter.views_notes import ChapterNotesTableView
 
 if TYPE_CHECKING:
-    from vclient._sync.services.campaign_book_chapters import SyncChaptersService
-    from vclient.models import Asset, Campaign, CampaignBook, CampaignChapter
+    from vweb.api_client.models import Asset, Campaign, CampaignBook, CampaignChapter
+    from vweb.api_client.services.campaign_book_chapters import ChaptersService
 
 bp = Blueprint("chapter_view", __name__)
 
@@ -32,9 +32,9 @@ CHAPTER_CARD_ID = "chapter-content"
 BOOK_CHAPTERS_CARD_ID = "book-chapters-card"
 
 
-def _chapters_service(campaign_id: str, book_id: str) -> SyncChaptersService:
+def _chapters_service(campaign_id: str, book_id: str) -> ChaptersService:
     """Build a chapters service scoped to the current user and company."""
-    return sync_chapters_service(
+    return chapters_service(
         campaign_id=campaign_id,
         book_id=book_id,
         on_behalf_of=session.get("user_id", ""),
@@ -105,9 +105,9 @@ class ChapterDetailView(MethodView):
 
         session["last_campaign_id"] = campaign_id
 
-        chapters_service = _chapters_service(campaign_id, book_id)
-        assets = chapters_service.list_all_assets(chapter_id)
-        note_count = count_notes(chapters_service, chapter_id)
+        svc = _chapters_service(campaign_id, book_id)
+        assets = svc.list_all_assets(chapter_id)
+        note_count = count_notes(svc, chapter_id)
 
         return catalog.render(
             "chapter.ChapterDetail",
@@ -130,8 +130,8 @@ class ChapterDetailView(MethodView):
             abort(403)
 
         fetch_book_or_404(campaign_id, book_id)
-        chapters_service = _chapters_service(campaign_id, book_id)
-        chapters_service.delete(chapter_id)
+        svc = _chapters_service(campaign_id, book_id)
+        svc.delete(chapter_id)
         cache.global_context.clear_current()
         cache.campaign_content.clear(
             session["company_id"], campaign_id=campaign_id, book_id=book_id
@@ -168,7 +168,7 @@ class ChapterEditView(MethodView):
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
         chapter = fetch_chapter_or_404(campaign_id, book_id, chapter_id)
-        chapters_service = _chapters_service(campaign_id, book_id)
+        svc = _chapters_service(campaign_id, book_id)
 
         name = request.form.get("name", "").strip()
         number_str = request.form.get("number", "").strip()
@@ -197,7 +197,7 @@ class ChapterEditView(MethodView):
 
         character_ids = request.form.getlist("character_ids")
         try:
-            updated = chapters_service.update(
+            updated = svc.update(
                 chapter_id, name=name, description=description, character_ids=character_ids
             )
         except ValidationError as error:
@@ -211,12 +211,12 @@ class ChapterEditView(MethodView):
                 form_data=request.form,
             )
         if number != chapter.number:
-            updated = chapters_service.renumber(chapter_id, number)
+            updated = svc.renumber(chapter_id, number)
         cache.global_context.clear_current()
         cache.campaign_content.clear(session["company_id"], book_id=book_id)
 
-        assets = chapters_service.list_all_assets(chapter_id)
-        note_count = count_notes(chapters_service, chapter_id)
+        assets = svc.list_all_assets(chapter_id)
+        note_count = count_notes(svc, chapter_id)
         return _render_chapter_card(
             chapter=updated,
             book=book,
@@ -274,10 +274,10 @@ class ChapterCreateView(MethodView):
                 form_data=request.form,
             )
 
-        chapters_service = _chapters_service(campaign_id, book_id)
+        svc = _chapters_service(campaign_id, book_id)
         character_ids = request.form.getlist("character_ids")
         try:
-            new_chapter = chapters_service.create(
+            new_chapter = svc.create(
                 name=name, description=description, character_ids=character_ids
             )
         except ValidationError as error:
@@ -318,12 +318,12 @@ class ChapterImageUploadView(MethodView):
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
         chapter = fetch_chapter_or_404(campaign_id, book_id, chapter_id)
-        chapters_service = _chapters_service(campaign_id, book_id)
+        svc = _chapters_service(campaign_id, book_id)
 
         assets = upload_and_append_asset(
-            svc=chapters_service, parent_id=chapter_id, file=request.files.get("image")
+            svc=svc, parent_id=chapter_id, file=request.files.get("image")
         )
-        note_count = count_notes(chapters_service, chapter_id)
+        note_count = count_notes(svc, chapter_id)
         content_html = _render_chapter_card(
             chapter=chapter,
             book=book,
@@ -344,12 +344,12 @@ class ChapterImageDeleteView(MethodView):
 
         book, campaign = fetch_book_or_404(campaign_id, book_id)
         chapter = fetch_chapter_or_404(campaign_id, book_id, chapter_id)
-        chapters_service = _chapters_service(campaign_id, book_id)
+        svc = _chapters_service(campaign_id, book_id)
 
-        handle_image_delete(svc=chapters_service, parent_id=chapter_id, asset_id=asset_id)
+        handle_image_delete(svc=svc, parent_id=chapter_id, asset_id=asset_id)
 
-        assets = chapters_service.list_all_assets(chapter_id)
-        note_count = count_notes(chapters_service, chapter_id)
+        assets = svc.list_all_assets(chapter_id)
+        note_count = count_notes(svc, chapter_id)
         content_html = _render_chapter_card(
             chapter=chapter,
             book=book,

@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.models import SystemHealth
-from vclient.testing import SystemHealthFactory
 
+from vweb.api_client.models import SystemHealth
+from vweb.api_client.testing import SystemHealthFactory
 from vweb.lib.cache.system_status import clear, get
 
 if TYPE_CHECKING:
@@ -17,10 +17,10 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def mock_system_svc(mocker) -> MagicMock:
-    """Mock the sync_system_service factory."""
+    """Mock the system_service factory."""
     svc = MagicMock()
     svc.health.return_value = SystemHealthFactory.build(version="1.0.0")
-    mocker.patch("vweb.lib.cache.system_status.sync_system_service", return_value=svc)
+    mocker.patch("vweb.lib.cache.system_status.system_service", return_value=svc)
     return svc
 
 

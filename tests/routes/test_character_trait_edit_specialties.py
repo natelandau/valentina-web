@@ -7,10 +7,13 @@ from typing import TYPE_CHECKING, Literal
 from unittest.mock import MagicMock
 
 import pytest
-from vclient._sync.services import SyncCharacterTraitsService
-from vclient.exceptions import NotFoundError, ValidationError
-from vclient.models import CharacterTraitSpecialty
-from vclient.testing import (
+
+from tests.conftest import get_csrf
+from tests.helpers import build_global_context
+from vweb.api_client.exceptions import NotFoundError, ValidationError
+from vweb.api_client.models import CharacterTraitSpecialty
+from vweb.api_client.services import CharacterTraitsService
+from vweb.api_client.testing import (
     CharacterFactory,
     CharacterFullSheetFactory,
     CharacterTraitFactory,
@@ -20,15 +23,12 @@ from vclient.testing import (
     Routes,
     TraitFactory,
 )
-
-from tests.conftest import get_csrf
-from tests.helpers import build_global_context
 from vweb.routes.character_trait_edit.services import specialty_help_text
 
 if TYPE_CHECKING:
-    from vclient.models import Character
+    from vweb.api_client.models import Character
 
-SVC_PATH = "vweb.routes.character_trait_edit.views_specialties.sync_character_traits_service"
+SVC_PATH = "vweb.routes.character_trait_edit.views_specialties.character_traits_service"
 
 
 def _specialty(specialty_id: str, name: str) -> CharacterTraitSpecialty:
@@ -146,7 +146,7 @@ class TestSpecialties(_Base):
         fake_vclient.set_response(
             Routes.CHARACTER_TRAITS_SPECIALTY_ADD, model=CharacterTraitFactory.build()
         )
-        add = mocker.spy(SyncCharacterTraitsService, "add_specialty")
+        add = mocker.spy(CharacterTraitsService, "add_specialty")
         response = client.post(
             self._url(character, "XP"), data={"name": "Swords"}, headers=self._headers(client)
         )
@@ -338,7 +338,7 @@ class TestSpecialty(_Base):
         fake_vclient.set_response(
             Routes.CHARACTER_TRAITS_SPECIALTY_UPDATE, model=CharacterTraitFactory.build()
         )
-        update = mocker.spy(SyncCharacterTraitsService, "update_specialty")
+        update = mocker.spy(CharacterTraitsService, "update_specialty")
         client.post(
             self._url(character, "XP", specialty="sp-1"),
             data={"name": "Daggers"},
@@ -354,7 +354,7 @@ class TestSpecialty(_Base):
         """Verify remove calls the API, flashes, and clears caches."""
         character, _ = self._setup(client, mocker, real_service=True)
         fake_vclient.set_response(Routes.CHARACTER_TRAITS_SPECIALTY_DELETE)
-        delete = mocker.spy(SyncCharacterTraitsService, "delete_specialty")
+        delete = mocker.spy(CharacterTraitsService, "delete_specialty")
         client.delete(self._url(character, "XP", specialty="sp-1"), headers=self._headers(client))
         delete.assert_called_once()
         assert delete.call_args.args[1:] == ("ct-melee", "sp-1")

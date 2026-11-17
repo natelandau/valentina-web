@@ -2,12 +2,11 @@
 
 from datetime import UTC, datetime
 
-from vclient.testing import (
+from vweb.api_client.testing import (
     CampaignFactory,
     CompanyFactory,
     UserFactory,
 )
-
 from vweb.lib.cache.global_context import GlobalContext
 
 

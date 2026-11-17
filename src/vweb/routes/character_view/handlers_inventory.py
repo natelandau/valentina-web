@@ -5,14 +5,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 from flask import g, session
-from vclient import sync_characters_service
-from vclient.models import InventoryItemCreate, InventoryItemUpdate
 
+from vweb.api_client import characters_service
+from vweb.api_client.models import InventoryItemCreate, InventoryItemUpdate
 from vweb.lib.guards import can_edit_character
 
 if TYPE_CHECKING:
-    from vclient.models import InventoryItem
-    from vclient.models.characters import CharacterInventoryType
+    from vweb.api_client.models import InventoryItem
+    from vweb.api_client.models.characters import CharacterInventoryType
 
 
 class CharacterInventoryHandler:
@@ -30,7 +30,7 @@ class CharacterInventoryHandler:
             raise ValueError(msg)
         self._character = character
 
-        self._svc = sync_characters_service(
+        self._svc = characters_service(
             on_behalf_of=session.get("user_id", ""),
             company_id=session["company_id"],
         )

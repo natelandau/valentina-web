@@ -5,13 +5,13 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.testing import (
+
+from tests.conftest import get_csrf
+from vweb.api_client.testing import (
     CampaignFactory,
     CharacterFactory,
     NoteFactory,
 )
-
-from tests.conftest import get_csrf
 
 
 @pytest.fixture
@@ -165,7 +165,7 @@ class TestCharacterNotesApiErrors:
 
     def test_validation_error_shows_field_message(self, client, mock_notes_handler) -> None:
         """Verify an API 400 shows the field message instead of a generic error."""
-        from vclient.exceptions import ValidationError
+        from vweb.api_client.exceptions import ValidationError
 
         # Given the API rejects the title's length
         mock_notes_handler.create_item.side_effect = ValidationError(
@@ -194,7 +194,7 @@ class TestCharacterNotesApiErrors:
 
     def test_server_error_keeps_generic_message(self, client, mock_notes_handler) -> None:
         """Verify a server error shows the generic message, not the API detail."""
-        from vclient.exceptions import ServerError
+        from vweb.api_client.exceptions import ServerError
 
         # Given a create that fails server-side
         mock_notes_handler.create_item.side_effect = ServerError(
@@ -216,7 +216,7 @@ class TestCharacterNotesApiErrors:
 
     def test_delete_refusal_flashes_api_message(self, client, mock_notes_handler) -> None:
         """Verify a refused delete tells the user why, with the flash swapped in."""
-        from vclient.exceptions import AuthorizationError
+        from vweb.api_client.exceptions import AuthorizationError
 
         # Given the API refuses the delete
         mock_notes_handler.delete_item.side_effect = AuthorizationError(
@@ -237,7 +237,7 @@ class TestCharacterNotesApiErrors:
 
     def test_delete_server_error_flashes_fallback(self, client, mock_notes_handler) -> None:
         """Verify a server error on delete flashes the fallback, not the API detail."""
-        from vclient.exceptions import ServerError
+        from vweb.api_client.exceptions import ServerError
 
         # Given a delete that fails server-side
         mock_notes_handler.delete_item.side_effect = ServerError(

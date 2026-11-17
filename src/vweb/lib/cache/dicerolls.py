@@ -11,16 +11,16 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from flask import g, session
-from vclient import sync_dicerolls_service
 
+from vweb.api_client import dicerolls_service
 from vweb.constants import CACHE_DICEROLLS_TTL
 from vweb.lib.cache import base, blueprint
 
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from vclient.models import Character
-    from vclient.models.diceroll import RollResultType
+    from vweb.api_client.models import Character
+    from vweb.api_client.models.diceroll import RollResultType
 
 _STRATEGY = base.ShortTTL(ttl=CACHE_DICEROLLS_TTL)
 
@@ -116,7 +116,7 @@ def _fetch(
     user_id: str,
     limit: int,
 ) -> list[DiceRollDisplay]:
-    service = sync_dicerolls_service(on_behalf_of=requesting_user_id, company_id=company_id)
+    service = dicerolls_service(on_behalf_of=requesting_user_id, company_id=company_id)
     apply_player_filter = bool(campaign_id) and not (character_id or user_id)
     page = service.get_page(
         campaignid=campaign_id or None,

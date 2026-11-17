@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.models import DictionaryTermCreate, DictionaryTermUpdate
 
 from tests.helpers import seed_session
+from vweb.api_client.models import DictionaryTermCreate, DictionaryTermUpdate
 from vweb.routes.dictionary.services import (
     create_term,
     delete_term,
@@ -104,9 +104,9 @@ class TestValidateTerm:
 
 @pytest.fixture
 def mock_svc(mocker: MockerFixture) -> MagicMock:
-    """Patch sync_dictionary_service and return the mock service instance."""
+    """Patch dictionary_service and return the mock service instance."""
     svc = MagicMock()
-    mocker.patch("vweb.routes.dictionary.services.sync_dictionary_service", return_value=svc)
+    mocker.patch("vweb.routes.dictionary.services.dictionary_service", return_value=svc)
     return svc
 
 

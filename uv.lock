@@ -408,14 +408,14 @@ wheels = [
 
 [[package]]
 name = "faker"
-version = "40.44.0"
+version = "40.54.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/87/22/965c7b822f4c80f6e003c696d5fa01b48eea6cc7852d61aec8779519b346/faker-40.44.0.tar.gz", hash = "sha256:97245a3756dcaf35418b89bea9f03ae6881557db0032bf048744c2aaee2a9108", size = 2034259, upload-time = "2026-10-28T17:06:41.048Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d9/64/eace8e5941eaf51b62d56a54e3ab8380934b0ab2deef2c640ed1153ea47f/faker-40.54.0.tar.gz", hash = "sha256:38fba73e32699a9f1071724d67e5a66a84bf057987cffb27c9d0c979fda3f135", size = 2037669, upload-time = "2026-11-10T22:05:54.089Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/58/9e/3da962809aefa00ddf457d1b11bba41d7766373a0ad9e537fa0804604361/faker-40.44.0-py3-none-any.whl", hash = "sha256:db808a3ec33fe9ce5caf40b9fb61f85f46e429a56966f765209272adec83e4c6", size = 2069747, upload-time = "2026-10-28T17:06:39.109Z" },
+    { url = "https://files.pythonhosted.org/packages/85/2d/031405437c6ccdc5fb24fc8cc715fbe5fbf9af492749ad070d9cc85f69dc/faker-40.54.0-py3-none-any.whl", hash = "sha256:2dd88ee8cb63a9149e19ef48bdd73879bc3854d8ba2d6c1535e902a762e603f7", size = 2071041, upload-time = "2026-11-10T22:05:51.787Z" },
 ]
 
 [[package]]
@@ -499,14 +499,14 @@ wheels = [
 
 [[package]]
 name = "gate-cache"
-version = "0.6.0"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "platformdirs" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c5/1d/cf10017103862e1d9ad958f73bb27c8e001b6d2d907c4e9478b11b8a6da0/gate_cache-0.6.0.tar.gz", hash = "sha256:f497a7b9e71eb46879b53e6f063c208d5dc52aaf69752e705287cd611d1a5ba3", size = 25124, upload-time = "2026-10-12T22:00:38.31Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/94/58/2f1dfc15d73f003230b743d8bb15d397948980b8f9283a6b2f4c24b209f4/gate_cache-0.7.0.tar.gz", hash = "sha256:b7f123d53d3cfa2120a2ef8d830623e5c749022b65773550d77b3fa521773694", size = 34154, upload-time = "2026-11-16T20:24:04.873Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a9/db/a29706b63d669da6be65bd7b1a0aae91258e66c840ff4e7f27c5a540d2e4/gate_cache-0.6.0-py3-none-any.whl", hash = "sha256:fb200c9f100e6863df6a90e22f918e48c0cdd48849fb571708a416d60dc86ed7", size = 26502, upload-time = "2026-10-12T22:00:37.057Z" },
+    { url = "https://files.pythonhosted.org/packages/e6/40/5aa61ea523767814378d034cee942f102bec5ac087c988026d850bea67bf/gate_cache-0.7.0-py3-none-any.whl", hash = "sha256:473179c8caf47f641de6897ac61a8b431a3de8b697f38fa2ca1d69164878543e", size = 32357, upload-time = "2026-11-16T20:24:03.932Z" },
 ]
 
 [[package]]
@@ -528,6 +528,19 @@ wheels = [
 ]
 
 [[package]]
+name = "httpcore"
+version = "1.0.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "h11" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/06/94/82699a10bca87a5556c9c59b5963f2d039dbd239f25bc2a63907a05a14cb/httpcore-1.0.9.tar.gz", hash = "sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8", size = 85484, upload-time = "2025-04-24T22:06:22.219Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/httpcore-1.0.9-py3-none-any.whl", hash = "sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55", size = 78784, upload-time = "2025-04-24T22:06:20.566Z" },
+]
+
+[[package]]
 name = "httpcore2"
 version = "2.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -538,6 +551,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c0/61/afa9d6b7452f9eca73f73d45324eb0bb52f098fd5e6049bf6b8263be9b4e/httpcore2-2.16.0.tar.gz", hash = "sha256:c72cd0413563b17e1cd8354677dff887466f8ec2551679759e93126534428643", size = 69886, upload-time = "2026-10-21T07:09:45.31Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/af/c2/ce417c397afa5181f0e3c6ff01a4d01639414e1adef08730d97571297151/httpcore2-2.16.0-py3-none-any.whl", hash = "sha256:5c4358319f2602d984ad93182c9fee5160f22e9da7babdda870a5e7c4e2dc34f", size = 85070, upload-time = "2026-10-21T07:09:42.802Z" },
+]
+
+[[package]]
+name = "httpx"
+version = "0.28.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "certifi" },
+    { name = "httpcore" },
+    { name = "idna" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b1/df/48c586a5fe32a0f01324ee087459e112ebb7224f646c0b5023f5e79e9956/httpx-0.28.1.tar.gz", hash = "sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc", size = 141406, upload-time = "2024-12-06T15:37:23.222Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad", size = 73517, upload-time = "2024-12-06T15:37:21.509Z" },
 ]
 
 [[package]]
@@ -800,11 +828,11 @@ wheels = [
 
 [[package]]
 name = "platformdirs"
-version = "4.14.0"
+version = "4.14.5"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/40/28/1c058a9143d2304b3078f8dadcbb9dc27f7d3581b5d05157c84869c4cc0d/platformdirs-4.14.0.tar.gz", hash = "sha256:83f009c1e8c5fc36869b5171755b291887bd2cade7965233cdfabd23d754720b", size = 70387, upload-time = "2026-10-28T18:27:30.973Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d7/9a/8475be631fb33ca1466915e70fd594c42a4e84b512db650eaa14f90fe75d/platformdirs-4.14.5.tar.gz", hash = "sha256:32e9921db7385aa8169bee4fe9501923e5715ba9fb7ea3b9c69b0d8e0639f7a1", size = 71464, upload-time = "2026-11-04T16:54:50.358Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/69/2b/887969ef4bb53e0cb271dc7c3f4a73d50c5d58bb88aeaae311e3340cd57e/platformdirs-4.14.0-py3-none-any.whl", hash = "sha256:1dadfc59a8a5d7565b3d9270ae8fa71c065595352c4277b41c11ee6c222c4b91", size = 35259, upload-time = "2026-10-28T18:27:29.659Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/ae/ecbbbfd0e4343a6a521d49b3c8656fb4643dee2a4f6eaf941cf3280391a8/platformdirs-4.14.5-py3-none-any.whl", hash = "sha256:8e778c6fa421516f4d3369449f8df3b0e1b72c0e0005fe88e3ec772d0a14e750", size = 35402, upload-time = "2026-11-04T16:54:48.875Z" },
 ]
 
 [[package]]
@@ -1010,6 +1038,18 @@ wheels = [
 ]
 
 [[package]]
+name = "pytest-httpx2"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "respx" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/43/d1/70e7edb50679ddd34ba5e13ac1d6e1223bc4e24d0a5fc30587f8fbe884c4/pytest_httpx2-1.0.0.tar.gz", hash = "sha256:d897a14c1341d3f3014e9432c16fed366598aba06a2ba9c08460a51799cb7128", size = 2882, upload-time = "2026-05-20T08:26:41.442Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/54/e1/5e38e8de42fba9667846a43113469c7481d01db4b6511e42645385bace8f/pytest_httpx2-1.0.0-py3-none-any.whl", hash = "sha256:467dc7f6946854ffc20e1678703266b093037d8f3fb9f1fb523a2c432c64cff0", size = 4504, upload-time = "2026-05-20T08:26:40.219Z" },
+]
+
+[[package]]
 name = "pytest-mock"
 version = "3.17.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1156,6 +1196,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ac/c3/e2a2b89f2d3e2179abd6d00ebd70bff6273f37fb3e0cc209f48b39d00cbf/requests-2.34.2.tar.gz", hash = "sha256:f288924cae4e29463698d6d60bc6a4da69c89185ad1e0bcc4104f584e960b9ed", size = 142856, upload-time = "2026-05-14T19:25:27.735Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a0/f4/c67b0b3f1b9245e8d266f0f112c500d50e5b4e83cb6f3b71b6528104182a/requests-2.34.2-py3-none-any.whl", hash = "sha256:2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0", size = 73075, upload-time = "2026-05-14T19:25:26.443Z" },
+]
+
+[[package]]
+name = "respx"
+version = "0.23.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/43/98/4e55c9c486404ec12373708d015ebce157966965a5ebe7f28ff2c784d41b/respx-0.23.1.tar.gz", hash = "sha256:242dcc6ce6b5b9bf621f5870c82a63997e8e82bc7c947f9ffe272b8f3dd5a780", size = 29243, upload-time = "2026-04-08T14:37:16.008Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1d/4a/221da6ca167db45693d8d26c7dc79ccfc978a440251bf6721c9aaf251ac0/respx-0.23.1-py2.py3-none-any.whl", hash = "sha256:b18004b029935384bccfa6d7d9d74b4ec9af73a081cc28600fffc0447f4b8c1a", size = 25557, upload-time = "2026-04-08T14:37:14.613Z" },
 ]
 
 [[package]]
@@ -1317,27 +1369,6 @@ wheels = [
 ]
 
 [[package]]
-name = "valentina-python-client"
-version = "3.7.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "anyio" },
-    { name = "httpx2" },
-    { name = "loguru" },
-    { name = "polyfactory" },
-    { name = "pydantic", extra = ["email"] },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/ca/e8/9cb7746120746e4882d7f643ac8099a79fe550329777fcb6ce2ccbf0e19f/valentina_python_client-3.7.0.tar.gz", hash = "sha256:f6b008452f1914bc272f0e16253543d0e1af717c926d833051ebc2827db60ade", size = 144487, upload-time = "2026-11-09T01:43:42.066Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9b/74/e163bee39137e21247f102cd4b63ea11b6b171d153fed622f4d7526ceab0/valentina_python_client-3.7.0-py3-none-any.whl", hash = "sha256:5bc2c620d29483add43c7212c8d4a7cef775f60c060ad300243b46fe0f53e613", size = 196583, upload-time = "2026-11-09T01:43:40.763Z" },
-]
-
-[package.optional-dependencies]
-testing = [
-    { name = "polyfactory" },
-]
-
-[[package]]
 name = "vweb"
 version = "0.15.0"
 source = { editable = "." }
@@ -1358,10 +1389,10 @@ dependencies = [
     { name = "loguru" },
     { name = "markdown2" },
     { name = "pillow" },
+    { name = "pydantic", extra = ["email"] },
     { name = "pydantic-settings" },
     { name = "redis" },
     { name = "requests" },
-    { name = "valentina-python-client", extra = ["testing"] },
 ]
 
 [package.dev-dependencies]
@@ -1370,16 +1401,20 @@ dev = [
     { name = "djlint" },
     { name = "duty" },
     { name = "gate-cache" },
+    { name = "httpx" },
+    { name = "polyfactory" },
     { name = "prek" },
     { name = "pytest-clarity" },
     { name = "pytest-cov" },
     { name = "pytest-devtools" },
+    { name = "pytest-httpx2" },
     { name = "pytest-mock" },
     { name = "pytest-repeat" },
     { name = "pytest-sugar" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
     { name = "python-dotenv" },
+    { name = "respx" },
     { name = "ruff" },
     { name = "shellcheck-py" },
     { name = "ty" },
@@ -1405,10 +1440,10 @@ requires-dist = [
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "markdown2", specifier = ">=2.5.5,<3.0.0" },
     { name = "pillow", specifier = ">=13.0.0" },
+    { name = "pydantic", extras = ["email"], specifier = ">=2.14.1,<3.0.0" },
     { name = "pydantic-settings", specifier = ">=2.16.2,<3.0.0" },
     { name = "redis", specifier = ">=8.1.0,<9.0.0" },
     { name = "requests", specifier = ">=2.34.2,<3.0.0" },
-    { name = "valentina-python-client", extras = ["testing"], specifier = ">=3.7.0,<4.0.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -1416,17 +1451,21 @@ dev = [
     { name = "commitizen", specifier = ">=4.19.3" },
     { name = "djlint", specifier = ">=1.47.1" },
     { name = "duty", specifier = ">=1.10.1" },
-    { name = "gate-cache", specifier = ">=0.6.0" },
+    { name = "gate-cache", specifier = ">=0.7.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "polyfactory", specifier = ">=3.3.0,<4.0.0" },
     { name = "prek", specifier = ">=0.5.7" },
     { name = "pytest-clarity", specifier = ">=1.0.1" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "pytest-devtools", specifier = ">=1.3.0" },
+    { name = "pytest-httpx2", specifier = ">=1.0.0" },
     { name = "pytest-mock", specifier = ">=3.17.0" },
     { name = "pytest-repeat", specifier = ">=0.9.4" },
     { name = "pytest-sugar", specifier = ">=1.1.1" },
     { name = "pytest-timeout", specifier = ">=2.4.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "python-dotenv", specifier = ">=1.2.4" },
+    { name = "respx", specifier = ">=0.23.1" },
     { name = "ruff", specifier = ">=0.17.3" },
     { name = "shellcheck-py", specifier = ">=0.11.0.1" },
     { name = "ty", specifier = ">=0.0.94" },

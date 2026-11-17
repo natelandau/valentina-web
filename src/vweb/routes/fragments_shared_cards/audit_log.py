@@ -13,15 +13,14 @@ from typing import TYPE_CHECKING, Any, get_args
 
 from flask import session, url_for
 from markupsafe import Markup, escape
-from vclient import sync_companies_service
-from vclient.models.audit_logs import AuditLog
 
+from vweb.api_client import companies_service
+from vweb.api_client.models.audit_logs import AuditLog
 from vweb.constants import CACHE_AUDIT_LOG_TTL
 from vweb.lib import cache
 
 if TYPE_CHECKING:
-    from vclient.models.pagination import PaginatedResponse
-
+    from vweb.api_client.models.pagination import PaginatedResponse
     from vweb.lib.cache.global_context import GlobalContext
 
 ENTITY_TYPES: list[str] = sorted(get_args(AuditLog.model_fields["entity_type"].annotation))
@@ -321,7 +320,7 @@ def get_audit_log_page(  # noqa: PLR0913
     cache_key = f"auditlog:{company_id}:{filters_digest}"
 
     def fetch() -> PaginatedResponse[AuditLog]:
-        return sync_companies_service().get_audit_log_page(  # ty:ignore[invalid-return-type]
+        return companies_service().get_audit_log_page(  # ty:ignore[invalid-return-type]
             company_id,
             limit=limit,
             offset=offset,

@@ -6,9 +6,9 @@ import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
-from vclient.exceptions import NotFoundError, ServerError, UnprocessableEntityError
-from vclient.models import UserLookupResult
 
+from vweb.api_client.exceptions import NotFoundError, ServerError, UnprocessableEntityError
+from vweb.api_client.models import UserLookupResult
 from vweb.routes.auth.services import (
     build_companies_mapping,
     identify_in_companies,
@@ -31,7 +31,7 @@ def _make_lookup_result(**kwargs) -> UserLookupResult:
 class TestLookupUserCompanies:
     """Tests for lookup_user_companies()."""
 
-    @patch("vweb.routes.auth.services.sync_user_lookup_service")
+    @patch("vweb.routes.auth.services.user_lookup_service")
     def test_provider_id_lookup_succeeds(self, mock_svc_factory) -> None:
         """Verify lookup returns results when provider ID matches."""
         # Given a lookup service that finds a user by discord ID
@@ -52,7 +52,7 @@ class TestLookupUserCompanies:
         mock_svc.by_discord_id.assert_called_once_with("discord-123")
         mock_svc.by_email.assert_not_called()
 
-    @patch("vweb.routes.auth.services.sync_user_lookup_service")
+    @patch("vweb.routes.auth.services.user_lookup_service")
     def test_email_fallback_when_provider_returns_empty(self, mock_svc_factory) -> None:
         """Verify lookup falls back to email when provider ID returns no results."""
         # Given a lookup service where provider ID returns empty but email matches
@@ -74,7 +74,7 @@ class TestLookupUserCompanies:
         mock_svc.by_github_id.assert_called_once_with("gh-999")
         mock_svc.by_email.assert_called_once_with("found@example.com")
 
-    @patch("vweb.routes.auth.services.sync_user_lookup_service")
+    @patch("vweb.routes.auth.services.user_lookup_service")
     def test_empty_results_when_no_match(self, mock_svc_factory) -> None:
         """Verify lookup returns empty list when neither provider ID nor email matches."""
         # Given a lookup service that finds nothing
@@ -93,7 +93,7 @@ class TestLookupUserCompanies:
         # Then an empty list is returned
         assert results == []
 
-    @patch("vweb.routes.auth.services.sync_user_lookup_service")
+    @patch("vweb.routes.auth.services.user_lookup_service")
     def test_no_email_fallback_when_email_empty(self, mock_svc_factory) -> None:
         """Verify lookup skips email fallback when email is empty string."""
         # Given a lookup service where provider ID returns empty
@@ -161,7 +161,7 @@ class TestIdentifyInCompanies:
         mock_svc = MagicMock()
         mock_svc.identify.return_value = resolution
         mock_factory = mocker.patch(
-            "vweb.routes.auth.services.sync_identity_service",
+            "vweb.routes.auth.services.identity_service",
             autospec=True,
             return_value=mock_svc,
         )
@@ -183,7 +183,7 @@ class TestIdentifyInCompanies:
         mock_svc = MagicMock()
         mock_svc.identify.side_effect = [NotFoundError("nope", 404), resolution]
         mocker.patch(
-            "vweb.routes.auth.services.sync_identity_service",
+            "vweb.routes.auth.services.identity_service",
             autospec=True,
             return_value=mock_svc,
         )
@@ -211,7 +211,7 @@ class TestIdentifyInCompanies:
         mock_svc = MagicMock()
         mock_svc.identify.side_effect = exception_class(*exception_args)
         mocker.patch(
-            "vweb.routes.auth.services.sync_identity_service",
+            "vweb.routes.auth.services.identity_service",
             autospec=True,
             return_value=mock_svc,
         )

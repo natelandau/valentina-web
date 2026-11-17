@@ -19,7 +19,7 @@ Valentina Web is a server-rendered web app for running [Vampire: The Masquerade]
 - Tailwind CSS v4 and daisyUI v5
 - Redis for caching and sessions
 - Authlib for OAuth
-- valentina-python-client for API access (see the [API docs](https://docs.valentina-noir.com/))
+- An in-repo API client for the Valentina API (see the [API docs](https://docs.valentina-noir.com/))
 
 ## Prerequisites
 
@@ -119,6 +119,8 @@ Common commands:
 uv run vweb           # Start the dev server on 127.0.0.1:8089
 duty run              # Flask + Tailwind watcher
 duty test             # Run the test suite with coverage
+duty test scope=web   # Run only the web tests
+duty test scope=client  # Run only the API client tests
 duty lint             # Run ruff, ty, typos, and pre-commit
 duty css              # Build production (minified) CSS
 duty redis-up         # Start the development Redis container
@@ -129,16 +131,17 @@ uv run pytest tests/  # Run tests directly
 
 Run `duty lint` and `duty test` before opening a pull request.
 
-### Develop against a local vclient
+### Change the API client
 
-To test unreleased changes to [valentina-python-client](https://github.com/natelandau/valentina-python-client), clone it next to this repository and install it as an editable dependency:
+The client for the Valentina API lives in `src/vweb/api_client/`. When an API change needs new models or service methods, change the client in the same pull request as the web code that uses them.
+
+To check the client's constants against a running API, set `VWEB_API__BASE_URL` and `VWEB_API__API_KEY`, then run:
 
 ```bash
-duty vclient-local    # Install vclient from ../valentina-python-client
-duty vclient-release  # Go back to the published vclient
+uv run duty validate_constants company_id=<id>
 ```
 
-`duty vclient-local` adds a path override to `pyproject.toml` and `uv.lock`. That path exists only on your machine, so do not commit these two files while the override is on. Commit your other files as usual and leave these two unstaged. The pre-commit hook, the pre-push hook, and CI reject any dependency path outside the repository.
+The task exits with 0 when all constants match, 1 when they differ, and 2 on a configuration or API error.
 
 ### Work in several worktrees
 

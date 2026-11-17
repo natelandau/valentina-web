@@ -5,12 +5,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from vclient.testing import CharacterTraitFactory, TraitFactory
 
+from vweb.api_client.testing import CharacterTraitFactory, TraitFactory
 from vweb.lib.trait_rules import accepts_specialties, is_derived_trait
 
 if TYPE_CHECKING:
-    from vclient.models import CharacterTrait
+    from vweb.api_client.models import CharacterTrait
 
 
 def _character_trait(name: str, custom_for_character_id: str | None = None) -> CharacterTrait:

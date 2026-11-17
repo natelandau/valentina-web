@@ -9,8 +9,8 @@ from vweb.lib.character_profile import iter_character_traits
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from vclient.constants import TraitModifyCurrency
-    from vclient.models import Character, CharacterFullSheet, CompanySettings, Trait
+    from vweb.api_client.constants import TraitModifyCurrency
+    from vweb.api_client.models import Character, CharacterFullSheet, CompanySettings, Trait
 
 SPECIALTY_COST: Final = 3
 SPECIALTY_NAME_MIN_LENGTH: Final = 3

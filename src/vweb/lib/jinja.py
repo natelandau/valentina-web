@@ -54,8 +54,8 @@ from vweb.lib.user_profile import has_custom_avatar, user_avatar_url
 
 if TYPE_CHECKING:
     from flask import Flask
-    from vclient.models import User
 
+    from vweb.api_client.models import User
     from vweb.config import Settings
     from vweb.lib.cache.global_context import GlobalContext
 

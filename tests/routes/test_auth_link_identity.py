@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from vclient.exceptions import ConflictError, UnprocessableEntityError
+from vweb.api_client.exceptions import ConflictError, UnprocessableEntityError
 
 
 class TestLinkIdentityView:
@@ -95,9 +95,7 @@ class TestLinkModeCallback:
 
         # Given a users service that links successfully
         mock_users_svc = MagicMock()
-        mocker.patch(
-            "vweb.routes.auth.views_identity.sync_users_service", return_value=mock_users_svc
-        )
+        mocker.patch("vweb.routes.auth.views_identity.users_service", return_value=mock_users_svc)
         mock_cache_clear = mocker.patch(
             "vweb.routes.auth.views_identity.cache.global_context.clear"
         )
@@ -128,9 +126,7 @@ class TestLinkModeCallback:
         mock_users_svc.link_identity.side_effect = ConflictError(
             "conflict", 409, {"code": "IDENTITY_ALREADY_LINKED"}
         )
-        mocker.patch(
-            "vweb.routes.auth.views_identity.sync_users_service", return_value=mock_users_svc
-        )
+        mocker.patch("vweb.routes.auth.views_identity.users_service", return_value=mock_users_svc)
 
         # When the callback is hit
         response = client.get("/auth/github/callback")
@@ -152,9 +148,7 @@ class TestLinkModeCallback:
         mock_users_svc.link_identity.side_effect = UnprocessableEntityError(
             "bad", 422, {"code": "TOKEN_VERIFICATION_FAILED"}
         )
-        mocker.patch(
-            "vweb.routes.auth.views_identity.sync_users_service", return_value=mock_users_svc
-        )
+        mocker.patch("vweb.routes.auth.views_identity.users_service", return_value=mock_users_svc)
 
         # When the callback is hit
         response = client.get("/auth/github/callback")
@@ -187,7 +181,7 @@ class TestLinkModeCallback:
         # Given a link-mode session and a mock OAuth flow
         self._arm_link_mode(client)
         self._mock_github_oauth(mocker)
-        mocker.patch("vweb.routes.auth.views_identity.sync_users_service", return_value=MagicMock())
+        mocker.patch("vweb.routes.auth.views_identity.users_service", return_value=MagicMock())
         mock_lookup = mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies")
 
         # When the callback is hit
@@ -210,9 +204,7 @@ class TestLinkModeCallback:
             "vweb.routes.auth.views_oauth.build_apple_client_secret", return_value="secret"
         )
         mock_users_svc = MagicMock()
-        mocker.patch(
-            "vweb.routes.auth.views_identity.sync_users_service", return_value=mock_users_svc
-        )
+        mocker.patch("vweb.routes.auth.views_identity.users_service", return_value=mock_users_svc)
         mocker.patch("vweb.routes.auth.views_identity.cache.global_context.clear")
 
         # When the callback is POSTed
@@ -239,9 +231,7 @@ class TestLinkModeCallback:
         }
         mocker.patch("vweb.routes.auth.views_oauth.oauth", google=mock_google)
         mock_users_svc = MagicMock()
-        mocker.patch(
-            "vweb.routes.auth.views_identity.sync_users_service", return_value=mock_users_svc
-        )
+        mocker.patch("vweb.routes.auth.views_identity.users_service", return_value=mock_users_svc)
         mocker.patch("vweb.routes.auth.views_identity.cache.global_context.clear")
 
         # When the callback is hit

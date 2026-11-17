@@ -7,7 +7,8 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from flask import Flask
-from vclient import SyncVClient
+
+from vweb.api_client import VClient
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -168,7 +169,7 @@ def create_app(settings_override: Settings | None = None) -> Flask:
     for blueprint in get_blueprints():
         app.register_blueprint(blueprint)
 
-    app.extensions["vclient"] = SyncVClient(
+    app.extensions["vclient"] = VClient(
         base_url=settings.api.base_url,
         api_key=settings.api.api_key,
         timeout=settings.api.timeout,

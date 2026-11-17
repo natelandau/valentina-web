@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.models.companies import CompanySettings
-from vclient.testing import CompanyFactory
+
+from vweb.api_client.models.companies import CompanySettings
+from vweb.api_client.testing import CompanyFactory
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -52,11 +53,11 @@ class TestSettingsAccessControl:
         company = CompanyFactory.build()
         svc = MagicMock()
         svc.get.return_value = company
-        mocker.patch("vweb.routes.admin.views.sync_companies_service", return_value=svc)
+        mocker.patch("vweb.routes.admin.views.companies_service", return_value=svc)
         users_svc = MagicMock()
         users_svc.list_all_unapproved.return_value = []
         mocker.patch(
-            "vweb.routes.admin.services.sync_users_service",
+            "vweb.routes.admin.services.users_service",
             return_value=users_svc,
         )
         response = client.get("/admin/settings")
@@ -98,7 +99,7 @@ class TestSettingsTabs:
         companies_svc = MagicMock()
         companies_svc.get.return_value = company
         mocker.patch(
-            "vweb.routes.admin.views.sync_companies_service",
+            "vweb.routes.admin.views.companies_service",
             return_value=companies_svc,
         )
 
@@ -123,7 +124,7 @@ class TestSettingsGet:
 
     @pytest.fixture
     def mock_companies_svc(self, mocker, admin_context: GlobalContext) -> MagicMock:
-        """Patch sync_companies_service to return a known company."""
+        """Patch companies_service to return a known company."""
         company = CompanyFactory.build(
             id="test-company-id",
             name="Acme Co",
@@ -145,13 +146,13 @@ class TestSettingsGet:
         svc.get.return_value = company
         mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
         mocker.patch(
-            "vweb.routes.admin.views.sync_companies_service",
+            "vweb.routes.admin.views.companies_service",
             return_value=svc,
         )
         users_svc = MagicMock()
         users_svc.list_all_unapproved.return_value = []
         mocker.patch(
-            "vweb.routes.admin.services.sync_users_service",
+            "vweb.routes.admin.services.users_service",
             return_value=users_svc,
         )
         return svc
@@ -256,13 +257,13 @@ class TestSettingsPostSuccess:
         svc.update.return_value = company
         mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
         mocker.patch(
-            "vweb.routes.admin.views.sync_companies_service",
+            "vweb.routes.admin.views.companies_service",
             return_value=svc,
         )
         users_svc = MagicMock()
         users_svc.list_all_unapproved.return_value = []
         mocker.patch(
-            "vweb.routes.admin.services.sync_users_service",
+            "vweb.routes.admin.services.users_service",
             return_value=users_svc,
         )
         return svc
@@ -271,9 +272,8 @@ class TestSettingsPostSuccess:
         self, client: FlaskClient, mock_companies_svc
     ) -> None:
         """Verify valid POST calls update and redirects to /settings."""
-        from vclient.models.companies import CompanyUpdate
-
         from tests.conftest import get_csrf
+        from vweb.api_client.models.companies import CompanyUpdate
 
         csrf = get_csrf(client)
 
@@ -360,9 +360,8 @@ class TestSettingsPostSuccess:
         self, client: FlaskClient, mock_companies_svc
     ) -> None:
         """Verify blank optional form fields are converted to None in the update request."""
-        from vclient.models.companies import CompanyUpdate
-
         from tests.conftest import get_csrf
+        from vweb.api_client.models.companies import CompanyUpdate
 
         csrf = get_csrf(client)
         client.post(
@@ -410,13 +409,13 @@ class TestSettingsPostValidation:
         svc.update.return_value = company
         mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
         mocker.patch(
-            "vweb.routes.admin.views.sync_companies_service",
+            "vweb.routes.admin.views.companies_service",
             return_value=svc,
         )
         users_svc = MagicMock()
         users_svc.list_all_unapproved.return_value = []
         mocker.patch(
-            "vweb.routes.admin.services.sync_users_service",
+            "vweb.routes.admin.services.users_service",
             return_value=users_svc,
         )
         return svc
@@ -577,12 +576,12 @@ class TestSettingsNavLink:
         mocker,  # type: ignore[name-defined]
     ) -> None:
         """Verify admin users see the /settings link in navigation."""
-        from vclient.testing import RollStatisticsFactory
+        from vweb.api_client.testing import RollStatisticsFactory
 
         mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
         mock_users_svc = MagicMock()
         mock_users_svc.get_statistics.return_value = RollStatisticsFactory.build()
-        mocker.patch("vweb.routes.profile.views.sync_users_service", return_value=mock_users_svc)
+        mocker.patch("vweb.routes.profile.views.users_service", return_value=mock_users_svc)
         response = client.get(f"/profile/{admin_context.users[0].id}")
         assert b"/admin" in response.data
 
@@ -596,11 +595,11 @@ class TestSettingsNavLink:
         mocker,  # type: ignore[name-defined]
     ) -> None:
         """Verify non-admin users do not see the /admin link in navigation."""
-        from vclient.testing import RollStatisticsFactory
+        from vweb.api_client.testing import RollStatisticsFactory
 
         mocker.patch("vweb.lib.cache.global_context.load", return_value=player_context)
         mock_users_svc = MagicMock()
         mock_users_svc.get_statistics.return_value = RollStatisticsFactory.build()
-        mocker.patch("vweb.routes.profile.views.sync_users_service", return_value=mock_users_svc)
+        mocker.patch("vweb.routes.profile.views.users_service", return_value=mock_users_svc)
         response = client.get(f"/profile/{player_context.users[0].id}")
         assert b"/admin" not in response.data

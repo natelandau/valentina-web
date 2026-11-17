@@ -1,6 +1,6 @@
 """Service-layer helpers for the admin user-management page.
 
-Thin wrappers around `sync_users_service()` that the views call. Mutating helpers
+Thin wrappers around `users_service()` that the views call. Mutating helpers
 clear the global context cache after success because `GlobalContext.users` is cached
 at the company level.
 """
@@ -10,12 +10,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from flask import session
-from vclient import sync_users_service
 
+from vweb.api_client import users_service
 from vweb.lib import cache
 
 if TYPE_CHECKING:
-    from vclient.models import User
+    from vweb.api_client.models import User
 
 
 def list_pending_and_approved(
@@ -26,7 +26,7 @@ def list_pending_and_approved(
     Excludes the requesting admin from both lists so the user-management UI never
     presents an admin's own row (the admin cannot demote or merge themselves).
     """
-    svc = sync_users_service(on_behalf_of=requesting_user_id, company_id=session["company_id"])
+    svc = users_service(on_behalf_of=requesting_user_id, company_id=session["company_id"])
     pending = [u for u in svc.list_all_unapproved() if u.id != requesting_user_id]
     approved = [u for u in svc.list_all() if u.id != requesting_user_id]
     return pending, approved
@@ -40,7 +40,7 @@ def approve(user_id: str, role: str, requesting_user_id: str) -> User:
     if role == "UNAPPROVED":
         msg = "Cannot approve with role UNAPPROVED."
         raise ValueError(msg)
-    user = sync_users_service(
+    user = users_service(
         on_behalf_of=requesting_user_id, company_id=session["company_id"]
     ).approve_user(
         user_id,
@@ -60,16 +60,16 @@ def change_role(user_id: str, role: str, requesting_user_id: str) -> User:
     if role == "UNAPPROVED":
         msg = "Cannot change role to UNAPPROVED."
         raise ValueError(msg)
-    user = sync_users_service(
-        on_behalf_of=requesting_user_id, company_id=session["company_id"]
-    ).update(user_id, role=role)
+    user = users_service(on_behalf_of=requesting_user_id, company_id=session["company_id"]).update(
+        user_id, role=role
+    )
     cache.global_context.clear_current()
     return user
 
 
 def deny(user_id: str, requesting_user_id: str) -> None:
     """Deny a pending user so they can no longer access the company."""
-    sync_users_service(on_behalf_of=requesting_user_id, company_id=session["company_id"]).deny_user(
+    users_service(on_behalf_of=requesting_user_id, company_id=session["company_id"]).deny_user(
         user_id
     )
     cache.global_context.clear_current()
@@ -81,9 +81,7 @@ def merge(
     requesting_user_id: str,
 ) -> User:
     """Merge a pending user into an existing primary user via users_svc.merge."""
-    user = sync_users_service(
-        on_behalf_of=requesting_user_id, company_id=session["company_id"]
-    ).merge(
+    user = users_service(on_behalf_of=requesting_user_id, company_id=session["company_id"]).merge(
         primary_user_id=primary_user_id,
         secondary_user_id=secondary_user_id,
     )

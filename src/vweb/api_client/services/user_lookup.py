@@ -1,0 +1,79 @@
+"""Service for cross-company user lookup."""
+
+from vweb.api_client.endpoints import Endpoints
+from vweb.api_client.models import UserLookupResult
+from vweb.api_client.services.base import BaseService
+
+
+class UserLookupService(BaseService):
+    """Service for looking up users across companies.
+
+    Discover which companies a person has a user record in by searching
+    via email, Discord ID, Google ID, GitHub ID, or Apple ID.
+
+    Example:
+        with VClient() as client:
+            results = client.user_lookup.by_email("alice@example.com")
+            for r in results:
+                print(f"{r.company_name}: {r.role}")
+    """
+
+    def by_email(self, email: str) -> list[UserLookupResult]:
+        """Look up a user by email address.
+
+        Args:
+            email: Exact email address to search for.
+
+        Returns:
+            List of companies where a matching user was found. Empty list if no matches.
+        """
+        response = self._get(Endpoints.USERS_LOOKUP, params={"email": email})
+        return [UserLookupResult.model_validate(item) for item in response.json()]
+
+    def by_discord_id(self, discord_id: str) -> list[UserLookupResult]:
+        """Look up a user by Discord profile ID.
+
+        Args:
+            discord_id: Discord profile ID to search for.
+
+        Returns:
+            List of companies where a matching user was found. Empty list if no matches.
+        """
+        response = self._get(Endpoints.USERS_LOOKUP, params={"discord_id": discord_id})
+        return [UserLookupResult.model_validate(item) for item in response.json()]
+
+    def by_google_id(self, google_id: str) -> list[UserLookupResult]:
+        """Look up a user by Google profile ID.
+
+        Args:
+            google_id: Google profile ID to search for.
+
+        Returns:
+            List of companies where a matching user was found. Empty list if no matches.
+        """
+        response = self._get(Endpoints.USERS_LOOKUP, params={"google_id": google_id})
+        return [UserLookupResult.model_validate(item) for item in response.json()]
+
+    def by_github_id(self, github_id: str) -> list[UserLookupResult]:
+        """Look up a user by GitHub profile ID.
+
+        Args:
+            github_id: GitHub profile ID to search for.
+
+        Returns:
+            List of companies where a matching user was found. Empty list if no matches.
+        """
+        response = self._get(Endpoints.USERS_LOOKUP, params={"github_id": github_id})
+        return [UserLookupResult.model_validate(item) for item in response.json()]
+
+    def by_apple_id(self, apple_id: str) -> list[UserLookupResult]:
+        """Look up a user by Apple profile ID.
+
+        Args:
+            apple_id: Apple profile ID to search for.
+
+        Returns:
+            List of companies where a matching user was found. Empty list if no matches.
+        """
+        response = self._get(Endpoints.USERS_LOOKUP, params={"apple_id": apple_id})
+        return [UserLookupResult.model_validate(item) for item in response.json()]

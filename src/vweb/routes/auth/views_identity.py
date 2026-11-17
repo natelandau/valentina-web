@@ -7,15 +7,15 @@ from typing import TYPE_CHECKING
 
 from flask import abort, flash, redirect, session, url_for
 from flask.views import MethodView
-from vclient import sync_users_service
-from vclient.exceptions import (
+
+from vweb.api_client import users_service
+from vweb.api_client.exceptions import (
     AuthorizationError,
     ConflictError,
     NotFoundError,
     ServerError,
     UnprocessableEntityError,
 )
-
 from vweb.extensions import oauth
 from vweb.lib import cache
 from vweb.lib.api import API_UNAVAILABLE_ERRORS
@@ -23,9 +23,10 @@ from vweb.lib.catalog import catalog
 from vweb.lib.htmx import htmx_response_with_flash, hx_redirect
 
 if TYPE_CHECKING:
-    from vclient.constants import IdentityProvider
-    from vclient.models import User
     from werkzeug.wrappers.response import Response
+
+    from vweb.api_client.constants import IdentityProvider
+    from vweb.api_client.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ def handle_link(provider: IdentityProvider, credential: str) -> Response:
 
     profile_url = url_for("profile.profile", user_id=user_id)
     try:
-        sync_users_service(on_behalf_of=user_id, company_id=company_id).link_identity(
+        users_service(on_behalf_of=user_id, company_id=company_id).link_identity(
             user_id,
             provider=provider,
             token=credential,
@@ -145,7 +146,7 @@ class UnlinkIdentityView(MethodView):
             return hx_redirect(url_for("index.index"))
 
         try:
-            user = sync_users_service(on_behalf_of=user_id, company_id=company_id).unlink_identity(
+            user = users_service(on_behalf_of=user_id, company_id=company_id).unlink_identity(
                 user_id, provider=provider
             )
         except ConflictError:

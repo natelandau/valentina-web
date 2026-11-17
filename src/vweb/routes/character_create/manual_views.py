@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 
 from flask import flash, g, request, session, url_for
 from flask.views import MethodView
-from vclient.exceptions import APIError
 
+from vweb.api_client.exceptions import APIError
 from vweb.lib import cache
 from vweb.lib.api import fetch_campaign_or_404
 from vweb.lib.api_errors import api_error_message
@@ -31,8 +31,9 @@ from vweb.routes.character_create.manual_services import (
 from vweb.routes.character_create.profile_form import character_to_form_data, validate_profile
 
 if TYPE_CHECKING:
-    from vclient.models import Campaign
     from werkzeug.wrappers.response import Response
+
+    from vweb.api_client.models import Campaign
 
 
 class ManualProfileView(MethodView):

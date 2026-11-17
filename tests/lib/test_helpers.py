@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.testing import CampaignFactory, CharacterFactory, UserFactory
 
 from tests.helpers import (
     assert_has_element,
@@ -19,6 +18,7 @@ from tests.helpers import (
     make_cache_store_mock,
     setup_form_options,
 )
+from vweb.api_client.testing import CampaignFactory, CharacterFactory, UserFactory
 from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:

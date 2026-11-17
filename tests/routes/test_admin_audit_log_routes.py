@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.testing import AuditLogFactory, Routes
+
+from vweb.api_client.testing import AuditLogFactory, Routes
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -35,7 +36,7 @@ def _mock_audit_api(mocker, admin_context: GlobalContext, fake_vclient) -> None:
     users_svc = MagicMock()
     users_svc.list_all_unapproved.return_value = []
     mocker.patch(
-        "vweb.routes.admin.services.sync_users_service",
+        "vweb.routes.admin.services.users_service",
         return_value=users_svc,
     )
 

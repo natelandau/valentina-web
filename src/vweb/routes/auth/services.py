@@ -6,16 +6,15 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
-from vclient import sync_identity_service, sync_user_lookup_service
-from vclient.exceptions import ServerError, UnprocessableEntityError
-
+from vweb.api_client import identity_service, user_lookup_service
+from vweb.api_client.exceptions import ServerError, UnprocessableEntityError
 from vweb.lib.api import API_UNAVAILABLE_ERRORS
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from vclient.constants import IdentityProvider
-    from vclient.models import IdentityResolution, UserLookupResult
+    from vweb.api_client.constants import IdentityProvider
+    from vweb.api_client.models import IdentityResolution, UserLookupResult
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ def lookup_user_companies(
     email: str,
 ) -> list[UserLookupResult]:
     """Search for a user across all companies by provider ID, falling back to email."""
-    svc = sync_user_lookup_service()
+    svc = user_lookup_service()
     method_name = _PROVIDER_LOOKUP_METHODS[provider]
     results = getattr(svc, method_name)(provider_id)
     if not results and email:
@@ -114,7 +113,7 @@ def identify_in_companies(
     resolutions: dict[str, IdentityResolution] = {}
     for company_id in company_ids:
         try:
-            resolutions[company_id] = sync_identity_service(company_id=company_id).identify(
+            resolutions[company_id] = identity_service(company_id=company_id).identify(
                 provider=provider,
                 token=token,
                 username=username,

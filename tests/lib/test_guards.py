@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 from flask import g
-from vclient.testing import CharacterFactory, CompanyFactory, UserFactory
 
+from vweb.api_client.testing import CharacterFactory, CompanyFactory, UserFactory
 from vweb.lib.cache.global_context import GlobalContext
 from vweb.lib.guards import (
     can_edit_character,

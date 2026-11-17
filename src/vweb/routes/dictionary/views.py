@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 from flask import Blueprint, abort, request
 from flask.views import MethodView
 from pydantic import ValidationError as PydanticValidationError
-from vclient.exceptions import APIError
 
+from vweb.api_client.exceptions import APIError
 from vweb.lib import cache
 from vweb.lib.api_errors import api_error_message
 from vweb.lib.catalog import catalog
@@ -19,7 +19,7 @@ from vweb.routes.dictionary.services import update_term as svc_update_term
 from vweb.routes.dictionary.services import validate_term
 
 if TYPE_CHECKING:
-    from vclient.models import DictionaryTerm
+    from vweb.api_client.models import DictionaryTerm
 
 
 bp = Blueprint("dictionary", __name__)

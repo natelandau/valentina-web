@@ -5,17 +5,17 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.testing import TraitFactory
 
 from tests.helpers import seed_session
+from vweb.api_client.testing import TraitFactory
 from vweb.routes.profile.handlers import QuickrollDisplay, QuickrollHandler
 
 
 @pytest.fixture
 def mock_user_svc(mocker):
-    """Mock the sync_users_service for the handler module."""
+    """Mock the users_service for the handler module."""
     svc = MagicMock()
-    mocker.patch("vweb.routes.profile.handlers.sync_users_service", return_value=svc)
+    mocker.patch("vweb.routes.profile.handlers.users_service", return_value=svc)
     return svc
 
 

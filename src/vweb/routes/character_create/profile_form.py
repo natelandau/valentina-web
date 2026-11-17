@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from vclient.models.characters import (
+from vweb.api_client.models.characters import (
     HunterAttributesCreate,
     HunterAttributesUpdate,
     MageAttributes,
@@ -13,11 +13,10 @@ from vclient.models.characters import (
     WerewolfAttributesCreate,
     WerewolfAttributesUpdate,
 )
-
 from vweb.lib import cache
 
 if TYPE_CHECKING:
-    from vclient.models import Character
+    from vweb.api_client.models import Character
 
 _NAME_MIN_LENGTH: int = 3
 

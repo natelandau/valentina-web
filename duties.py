@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 
 from dotenv import dotenv_values
 from duty import duty
-from duty.exceptions import DutyFailure
 from rich.console import Console
 
 if TYPE_CHECKING:
@@ -65,15 +64,6 @@ MAIN_WORKTREE_SCRIPT = [
 PY_SRC_PATHS = (Path(_) for _ in ("src/", "tests/", "duties.py", "scripts/") if Path(_).exists())
 PY_SRC_LIST = tuple(str(_) for _ in PY_SRC_PATHS)
 CI = os.environ.get("CI", "").strip().lower() in {"1", "true", "yes"}
-PYPROJECT = PROJECT_ROOT / "pyproject.toml"
-VCLIENT_PACKAGE = "valentina-python-client"
-# The vclient repo sits beside the main checkout, which a worktree is nested inside
-VCLIENT_CHECKOUT = MAIN_ROOT.parent / VCLIENT_PACKAGE
-VCLIENT_SOURCE = (
-    "\n[tool.uv.sources]\n"
-    f'    {VCLIENT_PACKAGE} = {{ path = "{VCLIENT_CHECKOUT.relative_to(PROJECT_ROOT, walk_up=True)}", '
-    "editable = true }\n"
-)
 DEV_DIR = PROJECT_ROOT / ".dev"
 DEV_DIRECTORIES = []
 
@@ -93,17 +83,20 @@ def strip_ansi(text: str) -> str:
     return ansi_chars.sub("", text).replace("[", r"\[")
 
 
-def gated(name: str, cmd: list[str]) -> list[str]:
+def gated(name: str, cmd: list[str], paths: tuple[str, ...] = ()) -> list[str]:
     """Wrap a gate command in gate-cache so it skips on a tree where it already passed.
 
     Args:
         name (str): Marker name for the gate.
         cmd (list[str]): Command to run.
+        paths (tuple[str, ...]): Git pathspecs the gate reads. A change outside them
+            does not rerun the gate. Empty keys the gate on the whole tree.
 
     Returns:
         list[str]: The command prefixed with the gate-cache invocation.
     """
-    return ["gate-cache", "--name", name, "--", *cmd]
+    path_args = [arg for path in paths for arg in ("--path", path)]
+    return ["gate-cache", "--name", name, *path_args, "--", *cmd]
 
 
 def compose(*args: str) -> list[str]:
@@ -224,12 +217,57 @@ def update(ctx: Context) -> None:
     ctx.run(["npm", "update", "--save"], title="update npm packages")
 
 
+_SHARED_TEST_INPUTS = ("pyproject.toml", "uv.lock")
+# scope: (pytest targets, gate-cache pathspecs). Web code calls the API client, so the
+# web gate watches all of src/. The client tests also load the root test support files.
+# The web and client targets match the test matrix in .github/workflows/reusable-tests.yml.
+TEST_SCOPES: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "all": (
+        ("tests/",),
+        ("src/", "scripts/", "tests/", *_SHARED_TEST_INPUTS),
+    ),
+    "web": (
+        ("tests/", "--ignore=tests/api_client"),
+        ("src/", "scripts/", "tests/", ":(exclude)tests/api_client", *_SHARED_TEST_INPUTS),
+    ),
+    "client": (
+        ("tests/api_client/",),
+        (
+            "src/vweb/api_client/",
+            "tests/api_client/",
+            "tests/__init__.py",
+            "tests/conftest.py",
+            "tests/helpers.py",
+            *_SHARED_TEST_INPUTS,
+        ),
+    ),
+}
+
+
 @duty()
-def test(ctx: Context, *cli_args: str) -> None:
-    """Test package and generate coverage reports."""
+def test(ctx: Context, *cli_args: str, scope: str = "all") -> None:  # noqa: PT028 (a duty, not a pytest test)
+    """Run the tests for web code, API client code, or both, and report coverage.
+
+    Each scope caches its pass against only the files its tests read, so editing
+    web code does not rerun the API client tests.
+
+    Usage: duty test [scope=all|web|client] [pytest args]
+
+    Args:
+        ctx (Context): The duty context.
+        *cli_args (str): Extra pytest arguments. Any argument turns off the cache.
+        scope (str): `web`, `client`, or `all` (default).
+
+    Raises:
+        ValueError: If `scope` is not a known scope.
+    """
+    if scope not in TEST_SCOPES:
+        msg = f"Unknown test scope {scope!r}, expected one of: {', '.join(TEST_SCOPES)}"
+        raise ValueError(msg)
+    targets, paths = TEST_SCOPES[scope]
     cmd = [
         "pytest",
-        "tests/",
+        *targets,
         "-c",
         "pyproject.toml",
         "--color=yes",
@@ -241,10 +279,22 @@ def test(ctx: Context, *cli_args: str) -> None:
     ]
     # A marker covers the name, not the arguments, so a filtered pass must not skip the full suite
     ctx.run(
-        cmd if cli_args else gated("test", cmd),
-        title=pyprefix("Running tests"),
+        cmd if cli_args else gated(f"test-{scope}", cmd, paths),
+        title=pyprefix(f"Running {scope} tests"),
         capture=CI,
     )
+
+
+@duty()
+def validate_constants(ctx: Context, company_id: str = "") -> None:
+    """Validate the API client constants against the live API.
+
+    Usage: duty validate_constants company_id=<id>
+    """
+    cmd = ["uv", "run", "python", "scripts/validate_constants.py"]
+    if company_id:
+        cmd += ["--company-id", company_id]
+    ctx.run(cmd, title="validate constants")
 
 
 def _ensure_npm_deps(ctx: Context) -> None:
@@ -359,50 +409,6 @@ def css(ctx: Context) -> None:
         title="build css",
         capture=False,
     )
-
-
-@duty()
-def vclient_local(ctx: Context) -> None:
-    """Install vclient from the sibling checkout as an editable dependency.
-
-    Never commit pyproject.toml or uv.lock while this is on: the path exists only on this
-    machine. The local-dependency hooks block the commit and the push.
-    """
-    text = PYPROJECT.read_text()
-    if VCLIENT_SOURCE in text:
-        console.print("vclient already installs from the local checkout.")
-        return
-    if "[tool.uv.sources]" in text:
-        console.print("[red]pyproject.toml already has [tool.uv.sources]; edit it by hand.[/red]")
-        raise SystemExit(1)
-    if not VCLIENT_CHECKOUT.is_dir():
-        console.print(f"[red]No vclient checkout at {VCLIENT_CHECKOUT}.[/red]")
-        raise SystemExit(1)
-    PYPROJECT.write_text(text + VCLIENT_SOURCE)
-    try:
-        ctx.run(["uv", "sync"], title=f"install vclient from {VCLIENT_CHECKOUT}")
-    except DutyFailure:
-        PYPROJECT.write_text(text)
-        raise
-    console.print(
-        "[yellow]Leave pyproject.toml and uv.lock unstaged until vclient-release.[/yellow]"
-    )
-
-
-@duty()
-def vclient_release(ctx: Context) -> None:
-    """Switch vclient back to the published package that pyproject.toml pins."""
-    text = PYPROJECT.read_text()
-    if VCLIENT_SOURCE not in text:
-        if "[tool.uv.sources]" in text:
-            console.print("[red][tool.uv.sources] was edited by hand; remove it by hand.[/red]")
-            raise SystemExit(1)
-        console.print("vclient already installs from the published package.")
-        return
-    PYPROJECT.write_text(text.replace(VCLIENT_SOURCE, ""))
-    # A re-lock would resolve vclient and its dependencies afresh, so start from the staged lock
-    ctx.run(["git", "restore", "uv.lock"], title="restore the staged uv.lock")
-    ctx.run(["uv", "sync"], title="install the published vclient")
 
 
 @duty()

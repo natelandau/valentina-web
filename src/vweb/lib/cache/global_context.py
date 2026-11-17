@@ -8,19 +8,19 @@ from typing import TYPE_CHECKING
 
 from flask import session
 from loguru import logger
-from vclient import (
-    sync_campaigns_service,
-    sync_characters_service,
-    sync_companies_service,
-    sync_users_service,
-)
 
+from vweb.api_client import (
+    campaigns_service,
+    characters_service,
+    companies_service,
+    users_service,
+)
 from vweb.constants import CACHE_GLOBAL_CONTEXT_TIMESTAMP_TTL
 from vweb.extensions import cache
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
-    from vclient.models import (
+    from vweb.api_client.models import (
         Campaign,
         Character,
         Company,
@@ -58,10 +58,10 @@ def _fetch_global_data(
     logger.debug("Fetching global company data")
 
     if company is None:
-        company = sync_companies_service().get(company_id)
-    users_svc = sync_users_service(on_behalf_of=user_id, company_id=company_id)
+        company = companies_service().get(company_id)
+    users_svc = users_service(on_behalf_of=user_id, company_id=company_id)
     users = users_svc.list_all()
-    campaigns = sync_campaigns_service(on_behalf_of=user_id, company_id=company_id).list_all()
+    campaigns = campaigns_service(on_behalf_of=user_id, company_id=company_id).list_all()
 
     # Only admins have API permission to list unapproved users.
     requesting_user = next((u for u in users if u.id == user_id), None)
@@ -74,7 +74,7 @@ def _fetch_global_data(
     characters: list[Character] = []
     characters_by_campaign: dict[str, list[Character]] = defaultdict(list)
     if campaigns:
-        characters = sync_characters_service(on_behalf_of=user_id, company_id=company_id).list_all()
+        characters = characters_service(on_behalf_of=user_id, company_id=company_id).list_all()
         for char in characters:
             characters_by_campaign[char.campaign_id].append(char)
 
@@ -132,7 +132,7 @@ def load(company_id: str, user_id: str) -> GlobalContext:
         local_timestamp = cache.get(ts_key)
         company: Company | None = None
         if local_timestamp is None:
-            company = sync_companies_service().get(company_id)
+            company = companies_service().get(company_id)
             local_timestamp = (
                 company.resources_modified_at.isoformat() if company.resources_modified_at else ""
             )

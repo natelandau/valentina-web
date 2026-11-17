@@ -3,8 +3,10 @@
 import logging
 from datetime import UTC, datetime, timedelta
 
-from vclient.exceptions import APIError, ServerError, ValidationError
-from vclient.testing import (
+from tests.conftest import get_csrf
+from tests.helpers import assert_shows_error, build_global_context
+from vweb.api_client.exceptions import APIError, ServerError, ValidationError
+from vweb.api_client.testing import (
     CharacterConceptFactory,
     CharacterFactory,
     CharacterFullSheetFactory,
@@ -13,9 +15,6 @@ from vclient.testing import (
     WerewolfAuspiceFactory,
     WerewolfTribeFactory,
 )
-
-from tests.conftest import get_csrf
-from tests.helpers import assert_shows_error, build_global_context
 
 
 class TestSelectionPageView:

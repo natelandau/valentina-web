@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import pytest
-from vclient.testing import CampaignBookFactory
 from werkzeug.exceptions import NotFound
 
 from tests.conftest import get_csrf
 from tests.helpers import build_global_context
+from vweb.api_client.testing import CampaignBookFactory
 
 
 @pytest.fixture
@@ -31,7 +31,7 @@ def _mock_chapters_service(mocker, mock_chapters) -> None:
 @pytest.fixture(autouse=True)
 def _mock_books_service(mocker) -> None:
     """Mock the books service so list_all_assets does not hit the API."""
-    svc = mocker.patch("vweb.routes.book.views.sync_books_service").return_value
+    svc = mocker.patch("vweb.routes.book.views.books_service").return_value
     svc.list_all_assets.return_value = []
 
 
@@ -223,7 +223,7 @@ class TestBookCreatePost:
         """Verify a successful create responds with HX-Redirect to the new book."""
         # Given a privileged user and a books service returning the new book
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
-        svc = mocker.patch("vweb.routes.book.views.sync_books_service").return_value
+        svc = mocker.patch("vweb.routes.book.views.books_service").return_value
         svc.create.return_value = CampaignBookFactory.build(
             id="book-new", campaign_id=mock_campaign.id, name="New Book"
         )
@@ -244,7 +244,7 @@ class TestBookCreatePost:
         """Verify creating a book invalidates the global-context and book-list caches."""
         # Given a privileged user and patched cache-clears
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
-        svc = mocker.patch("vweb.routes.book.views.sync_books_service").return_value
+        svc = mocker.patch("vweb.routes.book.views.books_service").return_value
         svc.create.return_value = CampaignBookFactory.build(
             id="book-new", campaign_id=mock_campaign.id
         )
@@ -267,7 +267,7 @@ class TestBookCreatePost:
         """Verify an empty name re-renders the form with an error and no create call."""
         # Given a privileged user
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
-        svc = mocker.patch("vweb.routes.book.views.sync_books_service").return_value
+        svc = mocker.patch("vweb.routes.book.views.books_service").return_value
         csrf = get_csrf(client)
 
         # When submitting an empty name
@@ -286,7 +286,7 @@ class TestBookCreatePost:
         """Verify a blank description is sent as None (vclient rejects empty strings)."""
         # Given a privileged user and a books service returning the new book
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
-        svc = mocker.patch("vweb.routes.book.views.sync_books_service").return_value
+        svc = mocker.patch("vweb.routes.book.views.books_service").return_value
         svc.create.return_value = CampaignBookFactory.build(
             id="book-new", campaign_id=mock_campaign.id
         )
@@ -306,7 +306,7 @@ class TestBookCreatePost:
         """Verify a name shorter than the API minimum re-renders with an error, no create."""
         # Given a privileged user
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
-        svc = mocker.patch("vweb.routes.book.views.sync_books_service").return_value
+        svc = mocker.patch("vweb.routes.book.views.books_service").return_value
         csrf = get_csrf(client)
 
         # When submitting a 2-character name
@@ -386,7 +386,7 @@ class TestBookSidebarCharacters:
         self, client, mocker, mock_campaign, mock_chapters
     ) -> None:
         """Verify the book sidebar renders a link to each associated character."""
-        from vclient.testing import CharacterFactory
+        from vweb.api_client.testing import CharacterFactory
 
         # Given a campaign whose roster contains the associated character
         hero = CharacterFactory.build(

@@ -5,9 +5,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.testing import NoteFactory
 
 from tests.conftest import get_csrf
+from vweb.api_client.testing import NoteFactory
 
 
 @pytest.fixture

@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from vclient.testing import CampaignFactory, CompanyFactory
-
 from tests.helpers import build_global_context
+from vweb.api_client.testing import CampaignFactory, CompanyFactory
 
 LOAD_PATH = "vweb.lib.cache.global_context.load"
 

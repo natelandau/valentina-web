@@ -5,7 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from vclient.testing import (
+
+from tests.conftest import make_dice_roll_result
+from tests.helpers import seed_session
+from vweb.api_client.testing import (
     CampaignFactory,
     CharacterFactory,
     CharacterTraitFactory,
@@ -15,9 +18,6 @@ from vclient.testing import (
     TraitFactory,
     UserFactory,
 )
-
-from tests.conftest import make_dice_roll_result
-from tests.helpers import seed_session
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -362,7 +362,7 @@ class TestPerformTraitRoll:
         # Mock the service to capture the request object
         mock_svc = mocker.MagicMock()
         mock_svc.create.return_value = diceroll
-        mocker.patch("vweb.routes.diceroll.services.sync_dicerolls_service", return_value=mock_svc)
+        mocker.patch("vweb.routes.diceroll.services.dicerolls_service", return_value=mock_svc)
 
         # When perform_trait_roll is called
         with app.test_request_context("/"):
@@ -399,7 +399,7 @@ class TestPerformTraitRoll:
         # Mock the service to capture the request object
         mock_svc = mocker.MagicMock()
         mock_svc.create.return_value = diceroll
-        mocker.patch("vweb.routes.diceroll.services.sync_dicerolls_service", return_value=mock_svc)
+        mocker.patch("vweb.routes.diceroll.services.dicerolls_service", return_value=mock_svc)
 
         # When perform_trait_roll is called with desperation dice
         with app.test_request_context("/"):
@@ -473,7 +473,7 @@ class TestPerformQuickroll:
         # Spy on create_from_quickroll to inspect kwargs
         mock_svc = mocker.MagicMock()
         mock_svc.create_from_quickroll.return_value = diceroll
-        mocker.patch("vweb.routes.diceroll.services.sync_dicerolls_service", return_value=mock_svc)
+        mocker.patch("vweb.routes.diceroll.services.dicerolls_service", return_value=mock_svc)
 
         # When perform_quickroll is called with extra parameters
         with app.test_request_context("/"):
@@ -519,7 +519,7 @@ class TestDiceModifier:
         ]
         mock_svc = mocker.MagicMock()
         mock_svc.create.return_value = DicerollFactory.build(result=make_dice_roll_result())
-        mocker.patch("vweb.routes.diceroll.services.sync_dicerolls_service", return_value=mock_svc)
+        mocker.patch("vweb.routes.diceroll.services.dicerolls_service", return_value=mock_svc)
 
         # When rolling with dice_modifier=1
         with app.test_request_context("/"):
@@ -553,7 +553,7 @@ class TestDiceModifier:
         mock_svc.create_from_quickroll.return_value = DicerollFactory.build(
             result=make_dice_roll_result()
         )
-        mocker.patch("vweb.routes.diceroll.services.sync_dicerolls_service", return_value=mock_svc)
+        mocker.patch("vweb.routes.diceroll.services.dicerolls_service", return_value=mock_svc)
 
         # When rolling with dice_modifier=-2
         with app.test_request_context("/"):

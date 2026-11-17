@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from vclient.models.users import AppleProfile, DiscordProfile, GitHubProfile
-from vclient.testing import UserFactory
-
+from vweb.api_client.models.users import AppleProfile, DiscordProfile, GitHubProfile
+from vweb.api_client.testing import UserFactory
 from vweb.lib.user_display import user_display_name
 
 

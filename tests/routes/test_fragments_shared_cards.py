@@ -7,7 +7,9 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
-from vclient.testing import (
+
+from tests.helpers import build_global_context
+from vweb.api_client.testing import (
     AuditLogFactory,
     CampaignFactory,
     CharacterFactory,
@@ -16,8 +18,6 @@ from vclient.testing import (
     Routes,
     UserFactory,
 )
-
-from tests.helpers import build_global_context
 from vweb.lib.cache.dicerolls import DiceRollDisplay
 from vweb.lib.cache.global_context import GlobalContext
 
@@ -26,7 +26,8 @@ if TYPE_CHECKING:
 
     from flask.testing import FlaskClient
     from pytest_mock import MockerFixture
-    from vclient.models.audit_logs import AuditLog
+
+    from vweb.api_client.models.audit_logs import AuditLog
 
 
 @pytest.fixture
@@ -512,7 +513,7 @@ class TestAuditLogCardEndpoint:
         self, client: FlaskClient, fake_vclient, mock_global_context
     ) -> None:
         """Verify the empty_message is rendered when no rows match."""
-        # Given zero rows from vclient
+        # Given zero rows from vweb.api_client
         fake_vclient.set_response(Routes.COMPANIES_AUDIT_LOGS_LIST, items=[])
 
         # When requesting with a custom empty_message

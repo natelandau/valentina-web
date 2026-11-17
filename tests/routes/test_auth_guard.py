@@ -5,9 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
-from vclient.exceptions import AuthorizationError
-from vclient.testing import UserFactory
-
+from vweb.api_client.exceptions import AuthorizationError
+from vweb.api_client.testing import UserFactory
 from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:

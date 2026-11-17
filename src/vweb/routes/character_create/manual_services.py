@@ -8,10 +8,10 @@ from typing import TYPE_CHECKING, cast
 
 from flask import session
 from pydantic import ValidationError as PydanticValidationError
-from vclient import sync_character_traits_service, sync_characters_service
-from vclient.exceptions import APIError, NotFoundError
-from vclient.models import CharacterCreate, CharacterTraitAdd, CharacterUpdate
 
+from vweb.api_client import character_traits_service, characters_service
+from vweb.api_client.exceptions import APIError, NotFoundError
+from vweb.api_client.models import CharacterCreate, CharacterTraitAdd, CharacterUpdate
 from vweb.lib.api_errors import api_field_errors
 from vweb.lib.guards import can_manage_npcs, is_self, is_storyteller
 from vweb.routes.character_create.profile_form import build_class_attrs, character_to_form_data
@@ -19,8 +19,8 @@ from vweb.routes.character_create.profile_form import build_class_attrs, charact
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from vclient.constants import CharacterClass, CharacterType, GameVersion
-    from vclient.models import Character
+    from vweb.api_client.constants import CharacterClass, CharacterType, GameVersion
+    from vweb.api_client.models import Character
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ def fetch_character(character_id: str) -> Character:
     Returns:
         The requested Character.
     """
-    svc = sync_characters_service(
+    svc = characters_service(
         on_behalf_of=session["user_id"],
         company_id=session["company_id"],
     )
@@ -235,7 +235,7 @@ def update_character_profile(character_id: str, form_data: dict[str, str]) -> di
     Returns:
         Errors keyed by field name (empty when the update succeeds).
     """
-    svc = sync_characters_service(
+    svc = characters_service(
         on_behalf_of=session["user_id"],
         company_id=session["company_id"],
     )
@@ -264,7 +264,7 @@ def save_temp_character(campaign_id: str, form_data: dict[str, str]) -> dict[str
     Returns:
         Errors keyed by field name (empty when the save succeeds).
     """
-    svc = sync_characters_service(
+    svc = characters_service(
         on_behalf_of=session["user_id"],
         company_id=session["company_id"],
     )
@@ -326,7 +326,7 @@ def bulk_assign_traits(character_id: str, trait_items: list[CharacterTraitAdd]) 
     if not trait_items:
         return []
 
-    traits_svc = sync_character_traits_service(
+    traits_svc = character_traits_service(
         on_behalf_of=session["user_id"],
         character_id=character_id,
         company_id=session["company_id"],
@@ -341,7 +341,7 @@ def mark_character_permanent(character_id: str) -> None:
     Args:
         character_id: The temporary character to finalize.
     """
-    svc = sync_characters_service(
+    svc = characters_service(
         on_behalf_of=session["user_id"],
         company_id=session["company_id"],
     )

@@ -5,13 +5,13 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.testing import (
+
+from tests.conftest import get_csrf
+from vweb.api_client.testing import (
     CampaignFactory,
     CharacterFactory,
     InventoryItemFactory,
 )
-
-from tests.conftest import get_csrf
 
 
 @pytest.fixture

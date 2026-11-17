@@ -6,8 +6,8 @@ import threading
 from unittest.mock import MagicMock
 
 import pytest
-from vclient.testing import TraitFactory
 
+from vweb.api_client.testing import TraitFactory
 from vweb.lib.cache.blueprint import (
     clear,
     subcategories,
@@ -18,9 +18,9 @@ from vweb.lib.cache.blueprint import (
 
 @pytest.fixture
 def mock_bp_svc(mocker):
-    """Mock the sync_character_blueprint_service factory."""
+    """Mock the character_blueprint_service factory."""
     svc = MagicMock()
-    mocker.patch("vweb.lib.cache.blueprint.sync_character_blueprint_service", return_value=svc)
+    mocker.patch("vweb.lib.cache.blueprint.character_blueprint_service", return_value=svc)
     return svc
 
 
@@ -243,7 +243,7 @@ class TestSingleFlight:
 
         svc = MagicMock()
         svc.list_all_traits.side_effect = blocking_list_all_traits
-        mocker.patch("vweb.lib.cache.blueprint.sync_character_blueprint_service", return_value=svc)
+        mocker.patch("vweb.lib.cache.blueprint.character_blueprint_service", return_value=svc)
 
         results: dict[str, dict] = {}
 

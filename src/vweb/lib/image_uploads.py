@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING, Protocol
 
 from flask import flash
 from PIL import Image
-from vclient.exceptions import APIError
 
+from vweb.api_client.exceptions import APIError
 from vweb.constants import (
     ALLOWED_IMAGE_TYPES,
     MAX_AVATAR_SIZE,
@@ -26,8 +26,9 @@ from vweb.constants import (
 from vweb.lib.api_errors import api_error_message
 
 if TYPE_CHECKING:
-    from vclient.models import Asset
     from werkzeug.datastructures import FileStorage
+
+    from vweb.api_client.models import Asset
 
 
 MAX_IMAGE_MEGAPIXELS: int = MAX_IMAGE_PIXELS // 1_000_000

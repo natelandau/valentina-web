@@ -11,13 +11,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
 from flask import session
-from vclient import sync_dictionary_service
 
+from vweb.api_client import dictionary_service
 from vweb.constants import CACHE_DICTIONARY_TTL
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
-    from vclient.models import DictionaryTerm
+    from vweb.api_client.models import DictionaryTerm
 
 # v2: the cached value now bundles an id index alongside the sorted list, so an
 # old list-shaped value from a rolling deploy must not be read under this key.
@@ -70,6 +70,6 @@ def clear() -> None:
 
 
 def _fetch() -> _DictionaryCache:
-    result = sync_dictionary_service(company_id=session["company_id"]).list_all()
+    result = dictionary_service(company_id=session["company_id"]).list_all()
     result.sort(key=lambda t: t.term.lower())
     return _DictionaryCache(ordered=result, by_id={t.id: t for t in result})
