@@ -2,6 +2,7 @@
 
 import pytest
 
+from tests.api_client.payloads import page
 from vweb.api_client.exceptions import ConflictError, NotFoundError, UnprocessableEntityError
 from vweb.api_client.models import (
     Campaign,
@@ -114,27 +115,7 @@ class TestFakeVClientOverrides:
             client.add_route(
                 "GET",
                 Endpoints.USERS,
-                json={
-                    "items": [
-                        {
-                            "id": "custom-user",
-                            "date_created": "2024-01-01T00:00:00Z",
-                            "date_modified": "2024-01-01T00:00:00Z",
-                            "name_first": "Test",
-                            "name_last": "User",
-                            "username": "testuser",
-                            "email": "test@example.com",
-                            "role": "PLAYER",
-                            "company_id": "fake-company",
-                            "discord_profile": None,
-                            "campaign_experience": [],
-                            "asset_ids": [],
-                        }
-                    ],
-                    "total": 1,
-                    "limit": 10,
-                    "offset": 0,
-                },
+                json=page(UserFactory.build(id="custom-user")),
             )
 
             # When listing users

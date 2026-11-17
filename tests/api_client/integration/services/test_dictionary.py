@@ -5,6 +5,7 @@ import json
 import pytest
 import respx
 
+from tests.api_client.payloads import page
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.exceptions import NotFoundError
 from vweb.api_client.models import DictionaryTerm, PaginatedResponse
@@ -26,13 +27,8 @@ def dictionary_term_response_data() -> dict:
 
 @pytest.fixture
 def paginated_dictionary_terms_response(dictionary_term_response_data) -> dict:
-    """Return sample paginated dictionary terms response."""
-    return {
-        "items": [dictionary_term_response_data],
-        "limit": 10,
-        "offset": 0,
-        "total": 1,
-    }
+    """Return a one-item paginated dictionary terms response."""
+    return page(dictionary_term_response_data)
 
 
 class TestDictionaryServiceGetPage:

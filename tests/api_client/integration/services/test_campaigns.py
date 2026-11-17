@@ -5,37 +5,27 @@ from datetime import date
 import pytest
 import respx
 
+from tests.api_client.payloads import page, wire
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.exceptions import NotFoundError, RequestValidationError
 from vweb.api_client.models import Campaign, PaginatedResponse, RollStatistics
+from vweb.api_client.testing import CampaignFactory
 
 
 @pytest.fixture
 def campaign_response_data() -> dict:
-    """Return sample campaign response data."""
-    return {
-        "id": "507f1f77bcf86cd799439011",
-        "date_created": "2024-01-15T10:30:00Z",
-        "date_modified": "2024-01-15T10:30:00Z",
-        "name": "Test Campaign",
-        "description": "A test campaign description",
-        "in_game_date": "1924-03-15",
-        "asset_ids": ["asset1", "asset2"],
-        "desperation": 2,
-        "danger": 3,
-        "company_id": "company123",
-    }
+    """Return campaign response data."""
+    return wire(
+        CampaignFactory.build(
+            id="507f1f77bcf86cd799439011", name="Test Campaign", desperation=2, danger=3
+        )
+    )
 
 
 @pytest.fixture
 def paginated_campaigns_response(campaign_response_data) -> dict:
-    """Return sample paginated campaigns response."""
-    return {
-        "items": [campaign_response_data],
-        "limit": 10,
-        "offset": 0,
-        "total": 1,
-    }
+    """Return a one-item paginated campaigns response."""
+    return page(campaign_response_data)
 
 
 class TestCampaignsServiceGetPage:
@@ -74,12 +64,7 @@ class TestCampaignsServiceGetPage:
             params={"limit": "25", "offset": "50"},
         ).respond(
             200,
-            json={
-                "items": [campaign_response_data],
-                "limit": 25,
-                "offset": 50,
-                "total": 100,
-            },
+            json=page(campaign_response_data, limit=25, offset=50, total=100),
         )
 
         # When: Getting a page with custom pagination
@@ -107,12 +92,7 @@ class TestCampaignsServiceListAll:
             params={"limit": "100", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [campaign_response_data],
-                "limit": 100,
-                "offset": 0,
-                "total": 1,
-            },
+            json=page(campaign_response_data, limit=100),
         )
 
         # When: Calling list_all
@@ -143,24 +123,14 @@ class TestCampaignsServiceIterAll:
             params={"limit": "1", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [campaign_response_data],
-                "limit": 1,
-                "offset": 0,
-                "total": 2,
-            },
+            json=page(campaign_response_data, limit=1, total=2),
         )
         respx.get(
             f"{base_url}{Endpoints.CAMPAIGNS.format(company_id=company_id, user_id=user_id)}",
             params={"limit": "1", "offset": "1"},
         ).respond(
             200,
-            json={
-                "items": [campaign2],
-                "limit": 1,
-                "offset": 1,
-                "total": 2,
-            },
+            json=page(campaign2, limit=1, offset=1, total=2),
         )
 
         # When: Iterating through all campaigns

@@ -3,6 +3,7 @@
 import pytest
 import respx
 
+from tests.api_client.payloads import page
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.exceptions import AuthorizationError, NotFoundError, RequestValidationError
 from vweb.api_client.models import (
@@ -57,12 +58,7 @@ class TestCompaniesServiceGetPage:
             params={"limit": "25", "offset": "50"},
         ).respond(
             200,
-            json={
-                "items": [company_response_data],
-                "limit": 25,
-                "offset": 50,
-                "total": 100,
-            },
+            json=page(company_response_data, limit=25, offset=50, total=100),
         )
 
         # When: Getting a page with custom pagination
@@ -86,12 +82,7 @@ class TestCompaniesServiceListAll:
             params={"limit": "100", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [company_response_data],
-                "limit": 100,
-                "offset": 0,
-                "total": 1,
-            },
+            json=page(company_response_data, limit=100),
         )
 
         # When: Calling list_all
@@ -116,24 +107,14 @@ class TestCompaniesServiceIterAll:
             params={"limit": "1", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [company_response_data],
-                "limit": 1,
-                "offset": 0,
-                "total": 2,
-            },
+            json=page(company_response_data, limit=1, total=2),
         )
         respx.get(
             f"{base_url}{Endpoints.COMPANIES}",
             params={"limit": "1", "offset": "1"},
         ).respond(
             200,
-            json={
-                "items": [company2],
-                "limit": 1,
-                "offset": 1,
-                "total": 2,
-            },
+            json=page(company2, limit=1, offset=1, total=2),
         )
 
         # When: Iterating through all companies

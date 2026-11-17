@@ -56,8 +56,6 @@ def _build_company_with_settings(**kwargs):  # noqa: ANN202
 
 CompanyFactory.build = staticmethod(_build_company_with_settings)  # type: ignore[method-assign]  # ty:ignore[invalid-assignment]
 
-pytest_plugins = ("tests.api_client.shared_response_fixtures",)
-
 if TYPE_CHECKING:
     from flask import Flask
     from flask.testing import FlaskClient

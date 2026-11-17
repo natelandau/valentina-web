@@ -1,5 +1,6 @@
 """Tests for vweb.api_client.services.system."""
 
+import pytest
 import respx
 
 from vweb.api_client import VClient
@@ -7,6 +8,19 @@ from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import SystemHealth
 from vweb.api_client.registry import configure_default_client, system_service
 from vweb.api_client.services import SystemService
+
+
+@pytest.fixture
+def health_response_data() -> dict:
+    """Return health response data with every field set, so tests can assert parsing."""
+    return {
+        "database_status": "online",
+        "cache_status": "online",
+        "database_latency_ms": 1.2,
+        "cache_latency_ms": 0.5,
+        "uptime": "3d 12h 45m",
+        "version": "0.7.0",
+    }
 
 
 class TestSystemServiceHealth:

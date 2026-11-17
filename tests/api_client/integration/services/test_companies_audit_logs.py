@@ -3,61 +3,30 @@
 import pytest
 import respx
 
+from tests.api_client.payloads import page, wire
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import AuditLog, AuditLogDetail, PaginatedResponse
+from vweb.api_client.testing import AuditLogDetailFactory, AuditLogFactory
 
 COMPANY_ID = "company123"
 
 
 @pytest.fixture
 def audit_log_response_data() -> dict:
-    """Return sample audit log response data."""
-    return {
-        "id": "log123",
-        "date_created": "2024-01-15T10:30:00Z",
-        "entity_type": "CAMPAIGN",
-        "operation": "CREATE",
-        "target_entity_id": "campaign456",
-        "description": "Created campaign 'Test Campaign'",
-        "changes": None,
-        "company_id": COMPANY_ID,
-        "acting_user_id": "user111",
-        "user_id": None,
-        "campaign_id": "campaign456",
-        "book_id": None,
-        "chapter_id": None,
-        "character_id": None,
-        "request_id": "req789",
-    }
+    """Return audit log response data."""
+    return wire(AuditLogFactory.build(entity_type="CAMPAIGN", operation="CREATE"))
 
 
 @pytest.fixture
-def audit_log_detail_response_data(audit_log_response_data) -> dict:
-    """Return sample audit log detail response data with request forensics."""
-    return {
-        **audit_log_response_data,
-        "method": "POST",
-        "url": "/api/v1/companies/company123/users/user111/campaigns",
-        "request_json": {"name": "Test Campaign"},
-        "request_body": '{"name": "Test Campaign"}',
-        "path_params": {"company_id": "company123", "user_id": "user111"},
-        "query_params": {},
-        "operation_id": "create_campaign",
-        "handler_name": "CampaignsHandler.create",
-        "name": "Create Campaign",
-        "summary": "Create a new campaign",
-    }
+def audit_log_detail_response_data() -> dict:
+    """Return audit log detail response data with request forensics."""
+    return wire(AuditLogDetailFactory.build(method="POST", request_json={"name": "Test Campaign"}))
 
 
 @pytest.fixture
 def paginated_audit_logs_response(audit_log_response_data) -> dict:
-    """Return sample paginated audit logs response."""
-    return {
-        "items": [audit_log_response_data],
-        "limit": 10,
-        "offset": 0,
-        "total": 1,
-    }
+    """Return a one-item paginated audit logs response."""
+    return page(audit_log_response_data)
 
 
 class TestCompaniesServiceGetAuditLogPage:
@@ -145,12 +114,7 @@ class TestCompaniesServiceGetAuditLogPage:
             params={"limit": "10", "offset": "0", "include": "request_details"},
         ).respond(
             200,
-            json={
-                "items": [audit_log_detail_response_data],
-                "limit": 10,
-                "offset": 0,
-                "total": 1,
-            },
+            json=page(audit_log_detail_response_data),
         )
 
         result = vclient.companies.get_audit_log_page(COMPANY_ID, include=["request_details"])
@@ -172,12 +136,7 @@ class TestCompaniesServiceListAllAuditLogs:
             params={"limit": "100", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [audit_log_response_data],
-                "limit": 100,
-                "offset": 0,
-                "total": 1,
-            },
+            json=page(audit_log_response_data, limit=100),
         )
 
         result = vclient.companies.list_all_audit_logs(COMPANY_ID)
@@ -198,12 +157,7 @@ class TestCompaniesServiceIterAllAuditLogs:
             params={"limit": "100", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [audit_log_response_data],
-                "limit": 100,
-                "offset": 0,
-                "total": 1,
-            },
+            json=page(audit_log_response_data, limit=100),
         )
 
         logs = list(vclient.companies.iter_all_audit_logs(COMPANY_ID))

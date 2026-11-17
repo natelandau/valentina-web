@@ -6,6 +6,7 @@ import pytest
 import respx
 from respx import MockResponse
 
+from tests.api_client.payloads import page
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.exceptions import (
     ConflictError,
@@ -27,13 +28,8 @@ from vweb.api_client.models import (
 
 @pytest.fixture
 def paginated_character_trait_response(character_trait_response_data: dict) -> dict:
-    """Return a paginated response with character traits."""
-    return {
-        "items": [character_trait_response_data],
-        "limit": 10,
-        "offset": 0,
-        "total": 1,
-    }
+    """Return a one-item paginated character traits response."""
+    return page(character_trait_response_data)
 
 
 @pytest.fixture
@@ -242,12 +238,7 @@ class TestCharacterTraitsServiceListAll:
     ) -> None:
         """Verify list_all returns all character traits across pages."""
         # Given: A mocked endpoint that returns paginated results
-        paginated_response = {
-            "items": [character_trait_response_data],
-            "limit": 100,
-            "offset": 0,
-            "total": 1,
-        }
+        paginated_response = page(character_trait_response_data, limit=100)
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
         ).mock(return_value=MockResponse(200, json=paginated_response))
@@ -269,12 +260,7 @@ class TestCharacterTraitsServiceListAll:
     ) -> None:
         """Verify list_all filters by category_id."""
         # Given: A mocked endpoint expecting filter params
-        paginated_response = {
-            "items": [character_trait_response_data],
-            "limit": 100,
-            "offset": 0,
-            "total": 1,
-        }
+        paginated_response = page(character_trait_response_data, limit=100)
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}",
             params={"limit": "100", "offset": "0", "category_id": "cat123"},
@@ -295,12 +281,7 @@ class TestCharacterTraitsServiceListAll:
     ) -> None:
         """Verify list_all filters by is_rollable."""
         # Given: A mocked endpoint expecting is_rollable param
-        paginated_response = {
-            "items": [character_trait_response_data],
-            "limit": 100,
-            "offset": 0,
-            "total": 1,
-        }
+        paginated_response = page(character_trait_response_data, limit=100)
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}",
             params={"limit": "100", "offset": "0", "is_rollable": "true"},
@@ -325,12 +306,7 @@ class TestCharacterTraitsServiceIterAll:
     ) -> None:
         """Verify iter_all yields character traits across pages."""
         # Given: A mocked endpoint
-        paginated_response = {
-            "items": [character_trait_response_data],
-            "limit": 100,
-            "offset": 0,
-            "total": 1,
-        }
+        paginated_response = page(character_trait_response_data, limit=100)
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
         ).mock(return_value=MockResponse(200, json=paginated_response))
@@ -351,12 +327,7 @@ class TestCharacterTraitsServiceIterAll:
     def test_iter_all_with_filter(self, vclient, base_url, character_trait_response_data) -> None:
         """Verify iter_all filters by category_id."""
         # Given: A mocked endpoint expecting filter params
-        paginated_response = {
-            "items": [character_trait_response_data],
-            "limit": 100,
-            "offset": 0,
-            "total": 1,
-        }
+        paginated_response = page(character_trait_response_data, limit=100)
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}",
             params={"limit": "100", "offset": "0", "category_id": "cat456"},
@@ -379,12 +350,7 @@ class TestCharacterTraitsServiceIterAll:
     ) -> None:
         """Verify iter_all filters by is_rollable."""
         # Given: A mocked endpoint expecting is_rollable param
-        paginated_response = {
-            "items": [character_trait_response_data],
-            "limit": 100,
-            "offset": 0,
-            "total": 1,
-        }
+        paginated_response = page(character_trait_response_data, limit=100)
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}",
             params={"limit": "100", "offset": "0", "is_rollable": "false"},
@@ -709,18 +675,8 @@ class TestCharacterTraitsServiceMultiplePages:
             "trait": {**trait_response_data, "id": "trait2", "name": "Dexterity"},
         }
 
-        page1_response = {
-            "items": [trait1],
-            "limit": 1,
-            "offset": 0,
-            "total": 2,
-        }
-        page2_response = {
-            "items": [trait2],
-            "limit": 1,
-            "offset": 1,
-            "total": 2,
-        }
+        page1_response = page(trait1, limit=1, total=2)
+        page2_response = page(trait2, limit=1, offset=1, total=2)
 
         route1 = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}",

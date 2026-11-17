@@ -3,36 +3,30 @@
 import pytest
 import respx
 
+from tests.api_client.payloads import page, wire
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.exceptions import NotFoundError
 from vweb.api_client.models import CampaignChapter, PaginatedResponse
+from vweb.api_client.testing import CampaignChapterFactory
 
 
 @pytest.fixture
 def chapter_response_data() -> dict:
-    """Return sample chapter response data."""
-    return {
-        "id": "507f1f77bcf86cd799439011",
-        "date_created": "2024-01-15T10:30:00Z",
-        "date_modified": "2024-01-15T10:30:00Z",
-        "name": "Test Chapter",
-        "description": "A test chapter description",
-        "asset_ids": ["asset1", "asset2"],
-        "number": 1,
-        "book_id": "book123",
-        "character_ids": ["char1", "char2"],
-    }
+    """Return chapter response data."""
+    return wire(
+        CampaignChapterFactory.build(
+            id="507f1f77bcf86cd799439011",
+            name="Test Chapter",
+            number=1,
+            character_ids=["char1", "char2"],
+        )
+    )
 
 
 @pytest.fixture
 def paginated_chapters_response(chapter_response_data) -> dict:
-    """Return sample paginated chapters response."""
-    return {
-        "items": [chapter_response_data],
-        "limit": 10,
-        "offset": 0,
-        "total": 1,
-    }
+    """Return a one-item paginated chapters response."""
+    return page(chapter_response_data)
 
 
 class TestChaptersServiceGetPage:
@@ -77,12 +71,7 @@ class TestChaptersServiceGetPage:
             params={"limit": "25", "offset": "50"},
         ).respond(
             200,
-            json={
-                "items": [chapter_response_data],
-                "limit": 25,
-                "offset": 50,
-                "total": 100,
-            },
+            json=page(chapter_response_data, limit=25, offset=50, total=100),
         )
 
         # When: Getting a page with custom pagination
@@ -112,12 +101,7 @@ class TestChaptersServiceListAll:
             params={"limit": "100", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [chapter_response_data],
-                "limit": 100,
-                "offset": 0,
-                "total": 1,
-            },
+            json=page(chapter_response_data, limit=100),
         )
 
         # When: Calling list_all
@@ -153,24 +137,14 @@ class TestChaptersServiceIterAll:
             params={"limit": "1", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [chapter_response_data],
-                "limit": 1,
-                "offset": 0,
-                "total": 2,
-            },
+            json=page(chapter_response_data, limit=1, total=2),
         )
         respx.get(
             f"{base_url}{Endpoints.BOOK_CHAPTERS.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id, book_id=book_id)}",
             params={"limit": "1", "offset": "1"},
         ).respond(
             200,
-            json={
-                "items": [chapter2],
-                "limit": 1,
-                "offset": 1,
-                "total": 2,
-            },
+            json=page(chapter2, limit=1, offset=1, total=2),
         )
 
         # When: Iterating through all chapters

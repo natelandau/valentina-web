@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from tests.api_client.payloads import page, wire
 from vweb.api_client import VClient
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.exceptions import NotFoundError
@@ -130,15 +131,6 @@ def asset() -> Asset:
     return AssetFactory.build(id=ASSET_ID)
 
 
-def _page(items: list[Note] | list[Asset], limit: int) -> dict:
-    return {
-        "items": [item.model_dump(mode="json") for item in items],
-        "limit": limit,
-        "offset": 0,
-        "total": len(items),
-    }
-
-
 class TestNotes:
     """Tests for the shared note methods."""
 
@@ -147,7 +139,7 @@ class TestNotes:
         # Given: A mocked notes endpoint expecting the default pagination
         route = mock_api.get(
             case.url(base_url, case.notes), params={"limit": "10", "offset": "0"}
-        ).respond(200, json=_page([note], limit=10))
+        ).respond(200, json=page(note))
 
         # When: Getting a page of notes
         result = service.get_notes_page(case.parent_id)
@@ -164,7 +156,7 @@ class TestNotes:
         # Given: A mocked notes endpoint expecting the iteration page size
         route = mock_api.get(
             case.url(base_url, case.notes), params={"limit": "100", "offset": "0"}
-        ).respond(200, json=_page([note], limit=100))
+        ).respond(200, json=page(note, limit=100))
 
         # When: Listing all notes
         result = service.list_all_notes(case.parent_id)
@@ -176,9 +168,7 @@ class TestNotes:
     def test_get_note(self, case, service, mock_api, base_url, note):
         """Verify get_note fetches one note by id."""
         # Given: A mocked note endpoint
-        route = mock_api.get(case.url(base_url, case.note)).respond(
-            200, json=note.model_dump(mode="json")
-        )
+        route = mock_api.get(case.url(base_url, case.note)).respond(200, json=wire(note))
 
         # When: Getting the note
         result = service.get_note(case.parent_id, NOTE_ID)
@@ -199,9 +189,7 @@ class TestNotes:
     def test_create_note(self, case, service, mock_api, base_url, note):
         """Verify create_note POSTs the title and content and parses the created Note."""
         # Given: A mocked create endpoint
-        route = mock_api.post(case.url(base_url, case.notes)).respond(
-            201, json=note.model_dump(mode="json")
-        )
+        route = mock_api.post(case.url(base_url, case.notes)).respond(201, json=wire(note))
 
         # When: Creating a note
         result = service.create_note(case.parent_id, title="Test Note", content="Body")
@@ -218,9 +206,7 @@ class TestNotes:
         """Verify update_note PATCHes only the given fields and parses the updated Note."""
         # Given: A mocked update endpoint returning the renamed note
         updated = note.model_copy(update={"title": "Updated Title"})
-        route = mock_api.patch(case.url(base_url, case.note)).respond(
-            200, json=updated.model_dump(mode="json")
-        )
+        route = mock_api.patch(case.url(base_url, case.note)).respond(200, json=wire(updated))
 
         # When: Updating the title only
         result = service.update_note(case.parent_id, NOTE_ID, title="Updated Title")
@@ -251,7 +237,7 @@ class TestAssets:
         # Given: A mocked assets endpoint expecting the default pagination
         route = mock_api.get(
             case.url(base_url, case.assets), params={"limit": "10", "offset": "0"}
-        ).respond(200, json=_page([asset], limit=10))
+        ).respond(200, json=page(asset))
 
         # When: Getting a page of assets
         result = service.get_assets_page(case.parent_id)
@@ -268,7 +254,7 @@ class TestAssets:
         # Given: A mocked assets endpoint expecting the iteration page size
         route = mock_api.get(
             case.url(base_url, case.assets), params={"limit": "100", "offset": "0"}
-        ).respond(200, json=_page([asset], limit=100))
+        ).respond(200, json=page(asset, limit=100))
 
         # When: Listing all assets
         result = service.list_all_assets(case.parent_id)
@@ -280,9 +266,7 @@ class TestAssets:
     def test_get_asset(self, case, service, mock_api, base_url, asset):
         """Verify get_asset fetches one asset by id."""
         # Given: A mocked asset endpoint
-        route = mock_api.get(case.url(base_url, case.asset)).respond(
-            200, json=asset.model_dump(mode="json")
-        )
+        route = mock_api.get(case.url(base_url, case.asset)).respond(200, json=wire(asset))
 
         # When: Getting the asset
         result = service.get_asset(case.parent_id, ASSET_ID)
@@ -316,9 +300,7 @@ class TestAssets:
     ):
         """Verify upload_asset POSTs multipart data with the given or guessed content type."""
         # Given: A mocked upload endpoint
-        route = mock_api.post(case.url(base_url, case.upload)).respond(
-            201, json=asset.model_dump(mode="json")
-        )
+        route = mock_api.post(case.url(base_url, case.upload)).respond(201, json=wire(asset))
 
         # When: Uploading a file
         result = service.upload_asset(

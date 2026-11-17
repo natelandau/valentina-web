@@ -4,21 +4,22 @@ import pytest
 import respx
 from respx import MockResponse
 
+from tests.api_client.payloads import wire
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import Character, ChargenSessionResponse
+from vweb.api_client.testing import ChargenSessionResponseFactory
 
 
 @pytest.fixture
 def character_autogen_response_data(character_response_data: dict) -> dict:
-    """Return sample character autogen response data."""
-    return {
-        "id": "session123",
-        "expires_at": "2024-01-15T10:30:00Z",
-        "requires_selection": True,
-        "characters": [character_response_data, character_response_data],
-        "user_id": "user123",
-        "campaign_id": "campaign123",
-    }
+    """Return chargen session response data offering two characters."""
+    return wire(
+        ChargenSessionResponseFactory.build(
+            id="session123",
+            requires_selection=True,
+            characters=[character_response_data, character_response_data],
+        )
+    )
 
 
 class TestCharacterAutogenService:

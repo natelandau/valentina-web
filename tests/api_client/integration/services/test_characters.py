@@ -1,14 +1,13 @@
 """Integration tests for CharactersService."""
 
-import copy
 import json
-from collections.abc import Callable
 from datetime import UTC, date, datetime
 
 import pytest
 import respx
 from respx import MockResponse
 
+from tests.api_client.payloads import page, wire
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.exceptions import NotFoundError, RequestValidationError, ValidationError
 from vweb.api_client.models import (
@@ -18,6 +17,7 @@ from vweb.api_client.models import (
     FullSheetTraitCategory,
     Health,
     HealthStateSet,
+    HunterAttributes,
     HunterAttributesCreate,
     HunterAttributesUpdate,
     InventoryItem,
@@ -26,137 +26,75 @@ from vweb.api_client.models import (
     RollStatistics,
     VampireAttributesCreate,
     VampireAttributesUpdate,
+    WerewolfAttributes,
     WerewolfAttributesCreate,
     WerewolfAttributesUpdate,
+)
+from vweb.api_client.testing import (
+    AssetFactory,
+    CharacterFactory,
+    CharacterFullSheetFactory,
+    CharacterTraitFactory,
+    FullSheetTraitCategoryFactory,
+    FullSheetTraitSectionFactory,
+    NoteFactory,
+    TraitFactory,
 )
 
 
 @pytest.fixture
 def paginated_character_response(character_response_data: dict) -> dict:
-    """Return a paginated response with characters."""
-    return {
-        "items": [character_response_data],
-        "limit": 10,
-        "offset": 0,
-        "total": 1,
-    }
+    """Return a one-item paginated characters response."""
+    return page(character_response_data)
 
 
 @pytest.fixture
-def full_sheet_response_data() -> dict:
-    """Return sample full sheet response data."""
-    return {
-        "character": {
-            "id": "char123",
-            "date_created": "2024-01-15T10:30:00Z",
-            "date_modified": "2024-01-15T10:30:00Z",
-            "character_class": "VAMPIRE",
-            "game_version": "V5",
-            "name_first": "Marcus",
-            "name_last": "Blackwood",
-            "name": "Marcus",
-            "name_full": "Marcus Blackwood",
-            "user_creator_id": "user123",
-            "user_player_id": "user123",
-            "company_id": "company123",
-            "campaign_id": "507f1f77bcf86cd799439011",
-        },
-        "sections": [
-            {
-                "id": "sec1",
-                "name": "Physical",
-                "order": 1,
-                "show_when_empty": True,
-                "categories": [
-                    {
-                        "id": "cat1",
-                        "name": "Attributes",
-                        "initial_cost": 1,
-                        "upgrade_cost": 2,
-                        "show_when_empty": True,
-                        "order": 1,
-                        "subcategories": [],
-                        "character_traits": [
-                            {
-                                "id": "ct1",
-                                "character_id": "char123",
-                                "value": 3,
-                                "trait": {
-                                    "id": "t1",
-                                    "name": "Strength",
-                                    "date_created": "2024-01-01T00:00:00Z",
-                                    "date_modified": "2024-01-01T00:00:00Z",
-                                    "sheet_section_id": "sec1",
-                                    "category_id": "cat1",
-                                },
-                            }
-                        ],
-                    }
-                ],
-            }
-        ],
-    }
+def full_sheet_response_data(full_sheet_category_response_data: dict) -> dict:
+    """Return full sheet response data with one section and category."""
+    return _full_sheet(full_sheet_category_response_data)
 
 
 @pytest.fixture
 def full_sheet_category_response_data() -> dict:
-    """Return sample full sheet category response data."""
-    return {
-        "id": "cat1",
-        "name": "Attributes",
-        "initial_cost": 1,
-        "upgrade_cost": 2,
-        "show_when_empty": True,
-        "order": 1,
-        "subcategories": [],
-        "character_traits": [
-            {
-                "id": "ct1",
-                "character_id": "char123",
-                "value": 3,
-                "trait": {
-                    "id": "t1",
-                    "name": "Strength",
-                    "date_created": "2024-01-01T00:00:00Z",
-                    "date_modified": "2024-01-01T00:00:00Z",
-                    "sheet_section_id": "sec1",
-                    "category_id": "cat1",
-                },
-            }
-        ],
-        "available_traits": [],
-    }
+    """Return full sheet category response data holding one trait at value 3."""
+    return wire(
+        FullSheetTraitCategoryFactory.build(
+            id="cat1",
+            name="Attributes",
+            subcategories=[],
+            character_traits=[CharacterTraitFactory.build(value=3)],
+            available_traits=[],
+        )
+    )
 
 
 @pytest.fixture
 def full_sheet_category_response_data_with_available_traits(
     full_sheet_category_response_data: dict,
 ) -> dict:
-    """Return sample full sheet category response data with available traits."""
-    data = copy.deepcopy(full_sheet_category_response_data)
-    data["character_traits"] = []
-    data["available_traits"] = [
-        {
-            "id": "t2",
-            "name": "Dexterity",
-            "date_created": "2024-01-01T00:00:00Z",
-            "date_modified": "2024-01-01T00:00:00Z",
-            "sheet_section_id": "sec1",
-            "category_id": "cat1",
-        }
-    ]
-    return data
+    """Return full sheet category response data offering one available trait."""
+    return {
+        **full_sheet_category_response_data,
+        "character_traits": [],
+        "available_traits": [wire(TraitFactory.build(name="Dexterity"))],
+    }
 
 
 @pytest.fixture
 def full_sheet_response_data_with_available_traits(
-    full_sheet_response_data: dict,
     full_sheet_category_response_data_with_available_traits: dict,
 ) -> dict:
-    """Return sample full sheet response data with available traits."""
-    data = copy.deepcopy(full_sheet_response_data)
-    data["sections"][0]["categories"][0] = full_sheet_category_response_data_with_available_traits
-    return data
+    """Return full sheet response data whose category offers available traits."""
+    return _full_sheet(full_sheet_category_response_data_with_available_traits)
+
+
+def _full_sheet(category: dict) -> dict:
+    return wire(
+        CharacterFullSheetFactory.build(
+            character=CharacterFactory.build(name_first="Marcus"),
+            sections=[FullSheetTraitSectionFactory.build(name="Physical", categories=[category])],
+        )
+    )
 
 
 @pytest.fixture
@@ -175,84 +113,28 @@ def inventory_item_response_data() -> dict:
 
 @pytest.fixture
 def werewolf_character_response_data() -> dict:
-    """Return sample werewolf character response data."""
-    return {
-        "id": "char456",
-        "date_created": "2024-01-15T10:30:00Z",
-        "date_modified": "2024-01-15T10:30:00Z",
-        "date_killed": None,
-        "character_class": "WEREWOLF",
-        "type": "PLAYER",
-        "game_version": "V5",
-        "status": "ALIVE",
-        "starting_points": 0,
-        "name_first": "Wolf",
-        "name_last": "Runner",
-        "name_nick": "Howler",
-        "name": "Howler",
-        "name_full": "Wolf Runner",
-        "age": 28,
-        "biography": "A fierce werewolf.",
-        "demeanor": "Aggressive",
-        "nature": "Survivor",
-        "concept_id": "concept456",
-        "user_creator_id": "user123",
-        "user_player_id": "user456",
-        "company_id": "company123",
-        "campaign_id": "campaign123",
-        "asset_ids": [],
-        "character_trait_ids": [],
-        "specialties": [],
-        "vampire_attributes": None,
-        "werewolf_attributes": {
-            "tribe_id": "tribe123",
-            "tribe_name": "Shadow Lords",
-            "auspice_id": "auspice123",
-            "auspice_name": "Ahroun",
-            "pack_name": "Moon Runners",
-        },
-        "mage_attributes": None,
-        "hunter_attributes": None,
-    }
+    """Return werewolf character response data."""
+    return wire(
+        CharacterFactory.build(
+            id="char456",
+            character_class="WEREWOLF",
+            werewolf_attributes=WerewolfAttributes(
+                tribe_name="Shadow Lords", auspice_name="Ahroun"
+            ),
+        )
+    )
 
 
 @pytest.fixture
 def hunter_character_response_data() -> dict:
-    """Return sample hunter character response data."""
-    return {
-        "id": "char789",
-        "date_created": "2024-01-15T10:30:00Z",
-        "date_modified": "2024-01-15T10:30:00Z",
-        "date_killed": None,
-        "character_class": "HUNTER",
-        "type": "PLAYER",
-        "game_version": "V5",
-        "status": "ALIVE",
-        "starting_points": 0,
-        "name_first": "John",
-        "name_last": "Hunter",
-        "name_nick": "Slayer",
-        "name": "Slayer",
-        "name_full": "John Hunter",
-        "age": 40,
-        "biography": "A veteran hunter.",
-        "demeanor": "Determined",
-        "nature": "Avenger",
-        "concept_id": "concept789",
-        "user_creator_id": "user123",
-        "user_player_id": "user456",
-        "company_id": "company123",
-        "campaign_id": "campaign123",
-        "asset_ids": [],
-        "character_trait_ids": [],
-        "specialties": [],
-        "vampire_attributes": None,
-        "werewolf_attributes": None,
-        "mage_attributes": None,
-        "hunter_attributes": {
-            "creed": "Avenger",
-        },
-    }
+    """Return hunter character response data."""
+    return wire(
+        CharacterFactory.build(
+            id="char789",
+            character_class="HUNTER",
+            hunter_attributes=HunterAttributes(creed="Avenger"),
+        )
+    )
 
 
 class TestCharactersServiceGetPage:
@@ -349,16 +231,14 @@ def character_detail_response_data(
     character_response_data: dict,
     character_trait_response_data: dict,
     inventory_item_response_data: dict,
-    note_response_data: dict,
-    asset_response_data_factory: Callable[..., dict],
 ) -> dict:
     """Return sample character detail response with embedded resources."""
     return {
         **character_response_data,
         "traits": [character_trait_response_data],
         "inventory": [inventory_item_response_data],
-        "notes": [note_response_data],
-        "assets": [asset_response_data_factory(character_id="char123")],
+        "notes": [wire(NoteFactory.build())],
+        "assets": [wire(AssetFactory.build(character_id="char123"))],
     }
 
 
@@ -967,12 +847,7 @@ class TestCharactersServiceListAll:
     def test_list_all_characters(self, vclient, base_url, character_response_data) -> None:
         """Verify list_all returns all characters across pages."""
         # Given: A mocked endpoint that returns paginated results
-        paginated_response = {
-            "items": [character_response_data],
-            "limit": 100,
-            "offset": 0,
-            "total": 1,
-        }
+        paginated_response = page(character_response_data, limit=100)
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
         ).mock(return_value=MockResponse(200, json=paginated_response))
@@ -994,12 +869,7 @@ class TestCharactersServiceIterAll:
     def test_iter_all_characters(self, vclient, base_url, character_response_data) -> None:
         """Verify iter_all yields characters across pages."""
         # Given: A mocked endpoint
-        paginated_response = {
-            "items": [character_response_data],
-            "limit": 100,
-            "offset": 0,
-            "total": 1,
-        }
+        paginated_response = page(character_response_data, limit=100)
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
         ).mock(return_value=MockResponse(200, json=paginated_response))
@@ -1195,12 +1065,7 @@ class TestCharactersServiceInventory:
             params={"limit": "10", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [inventory_item_response_data],
-                "limit": 10,
-                "offset": 0,
-                "total": 1,
-            },
+            json=page(inventory_item_response_data),
         )
 
         # When: Getting a page of inventory items

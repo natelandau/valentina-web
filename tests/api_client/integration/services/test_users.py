@@ -5,6 +5,7 @@ import json
 import pytest
 import respx
 
+from tests.api_client.payloads import page, wire
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.exceptions import (
     AuthorizationError,
@@ -19,42 +20,25 @@ from vweb.api_client.models import (
     RollStatistics,
     User,
 )
+from vweb.api_client.testing import CampaignExperienceFactory, QuickrollFactory
 
 
 @pytest.fixture
 def paginated_users_response(user_response_data) -> dict:
-    """Return sample paginated users response."""
-    return {
-        "items": [user_response_data],
-        "limit": 10,
-        "offset": 0,
-        "total": 1,
-    }
+    """Return a one-item paginated users response."""
+    return page(user_response_data)
 
 
 @pytest.fixture
 def experience_response_data() -> dict:
-    """Return sample experience response data."""
-    return {
-        "campaign_id": "campaign123",
-        "xp_current": 50,
-        "xp_total": 100,
-        "cool_points": 5,
-    }
+    """Return campaign experience response data."""
+    return wire(CampaignExperienceFactory.build(campaign_id="campaign123"))
 
 
 @pytest.fixture
 def quickroll_response_data() -> dict:
-    """Return sample quickroll response data."""
-    return {
-        "id": "quickroll123",
-        "date_created": "2024-01-15T10:30:00Z",
-        "date_modified": "2024-01-15T10:30:00Z",
-        "name": "Test Quickroll",
-        "description": "A test quickroll",
-        "user_id": "user123",
-        "trait_ids": ["trait1", "trait2"],
-    }
+    """Return quickroll response data."""
+    return wire(QuickrollFactory.build(id="quickroll123", name="Test Quickroll"))
 
 
 class TestUsersServiceGetPage:
@@ -111,12 +95,7 @@ class TestUsersServiceGetPage:
             params={"limit": "25", "offset": "50"},
         ).respond(
             200,
-            json={
-                "items": [user_response_data],
-                "limit": 25,
-                "offset": 50,
-                "total": 100,
-            },
+            json=page(user_response_data, limit=25, offset=50, total=100),
         )
 
         # When: Getting a page with custom pagination
@@ -143,12 +122,7 @@ class TestUsersServiceListAll:
             params={"limit": "100", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [user_response_data],
-                "limit": 100,
-                "offset": 0,
-                "total": 1,
-            },
+            json=page(user_response_data, limit=100),
         )
 
         # When: Calling list_all
@@ -174,24 +148,14 @@ class TestUsersServiceIterAll:
             params={"limit": "1", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [user_response_data],
-                "limit": 1,
-                "offset": 0,
-                "total": 2,
-            },
+            json=page(user_response_data, limit=1, total=2),
         )
         respx.get(
             f"{base_url}{Endpoints.USERS.format(company_id=company_id)}",
             params={"limit": "1", "offset": "1"},
         ).respond(
             200,
-            json={
-                "items": [user2],
-                "limit": 1,
-                "offset": 1,
-                "total": 2,
-            },
+            json=page(user2, limit=1, offset=1, total=2),
         )
 
         # When: Iterating through all users
@@ -577,12 +541,7 @@ class TestUsersServiceGetUnapprovedPage:
             params={"limit": "25", "offset": "50"},
         ).respond(
             200,
-            json={
-                "items": [user_response_data],
-                "limit": 25,
-                "offset": 50,
-                "total": 100,
-            },
+            json=page(user_response_data, limit=25, offset=50, total=100),
         )
 
         # When: Getting a page with custom pagination
@@ -609,12 +568,7 @@ class TestUsersServiceListAllUnapproved:
             params={"limit": "100", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [user_response_data],
-                "limit": 100,
-                "offset": 0,
-                "total": 1,
-            },
+            json=page(user_response_data, limit=100),
         )
 
         # When: Calling list_all_unapproved
@@ -640,24 +594,14 @@ class TestUsersServiceIterAllUnapproved:
             params={"limit": "1", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [user_response_data],
-                "limit": 1,
-                "offset": 0,
-                "total": 2,
-            },
+            json=page(user_response_data, limit=1, total=2),
         )
         respx.get(
             f"{base_url}{Endpoints.USERS_UNAPPROVED_LIST.format(company_id=company_id)}",
             params={"limit": "1", "offset": "1"},
         ).respond(
             200,
-            json={
-                "items": [user2],
-                "limit": 1,
-                "offset": 1,
-                "total": 2,
-            },
+            json=page(user2, limit=1, offset=1, total=2),
         )
 
         # When: Iterating through all unapproved users
@@ -872,12 +816,7 @@ class TestUsersServiceQuickrolls:
             params={"limit": "10", "offset": "0"},
         ).respond(
             200,
-            json={
-                "items": [quickroll_response_data],
-                "limit": 10,
-                "offset": 0,
-                "total": 1,
-            },
+            json=page(quickroll_response_data),
         )
 
         # When: Getting a page of quickrolls
