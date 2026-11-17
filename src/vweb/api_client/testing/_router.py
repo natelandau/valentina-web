@@ -5,104 +5,13 @@ from __future__ import annotations
 import datetime as dt
 import re
 import secrets
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import httpx2
-
-if TYPE_CHECKING:
-    from polyfactory.factories.pydantic_factory import ModelFactory
+from polyfactory.factories.pydantic_factory import ModelFactory
 
 from vweb.api_client.constants import REQUEST_ID_HEADER
-from vweb.api_client.models import (
-    Asset,
-    AuditLog,
-    AuditLogDetail,
-    BulkAssignTraitResponse,
-    Campaign,
-    CampaignBook,
-    CampaignBookDetail,
-    CampaignChapter,
-    CampaignChapterDetail,
-    Character,
-    CharacterConcept,
-    CharacterDetail,
-    CharacterFullSheet,
-    CharacterTrait,
-    CharacterTraitValueOptionsResponse,
-    Company,
-    CompanyPermissions,
-    CounterTracker,
-    Diceroll,
-    DictionaryTerm,
-    FullSheetTraitCategory,
-    Health,
-    HealthLevel,
-    IdentityResolution,
-    InventoryItem,
-    NewCompanyResponse,
-    Note,
-    Quickroll,
-    RollStatistics,
-    SheetSection,
-    StainsTracker,
-    SystemHealth,
-    Trait,
-    TraitCategory,
-    TraitSubcategory,
-    User,
-    UserDetail,
-    UserLookupResult,
-    VampireClan,
-    WerewolfAuspice,
-    WerewolfTribe,
-)
-from vweb.api_client.models.character_autogen import ChargenSessionResponse
-from vweb.api_client.models.users import CampaignExperience
-from vweb.api_client.testing._factories import (
-    AssetFactory,
-    AuditLogDetailFactory,
-    AuditLogFactory,
-    BulkAssignTraitResponseFactory,
-    CampaignBookDetailFactory,
-    CampaignBookFactory,
-    CampaignChapterDetailFactory,
-    CampaignChapterFactory,
-    CampaignExperienceFactory,
-    CampaignFactory,
-    CharacterConceptFactory,
-    CharacterDetailFactory,
-    CharacterFactory,
-    CharacterFullSheetFactory,
-    CharacterTraitFactory,
-    CharacterTraitValueOptionsResponseFactory,
-    ChargenSessionResponseFactory,
-    CompanyFactory,
-    CompanyPermissionsFactory,
-    CounterTrackerFactory,
-    DicerollFactory,
-    DictionaryTermFactory,
-    FullSheetTraitCategoryFactory,
-    HealthFactory,
-    HealthLevelFactory,
-    IdentityResolutionFactory,
-    InventoryItemFactory,
-    NewCompanyResponseFactory,
-    NoteFactory,
-    QuickrollFactory,
-    RollStatisticsFactory,
-    SheetSectionFactory,
-    StainsTrackerFactory,
-    SystemHealthFactory,
-    TraitCategoryFactory,
-    TraitFactory,
-    TraitSubcategoryFactory,
-    UserDetailFactory,
-    UserFactory,
-    UserLookupResultFactory,
-    VampireClanFactory,
-    WerewolfAuspiceFactory,
-    WerewolfTribeFactory,
-)
+from vweb.api_client.testing import _factories
 from vweb.api_client.testing._routes import (
     LIST,
     NO_CONTENT,
@@ -113,49 +22,11 @@ from vweb.api_client.testing._routes import (
 )
 
 _FACTORY_MAP: dict[type, type[ModelFactory]] = {
-    CounterTracker: CounterTrackerFactory,
-    Health: HealthFactory,
-    HealthLevel: HealthLevelFactory,
-    StainsTracker: StainsTrackerFactory,
-    AuditLog: AuditLogFactory,
-    AuditLogDetail: AuditLogDetailFactory,
-    Asset: AssetFactory,
-    BulkAssignTraitResponse: BulkAssignTraitResponseFactory,
-    Campaign: CampaignFactory,
-    CampaignBook: CampaignBookFactory,
-    CampaignBookDetail: CampaignBookDetailFactory,
-    CampaignChapter: CampaignChapterFactory,
-    CampaignChapterDetail: CampaignChapterDetailFactory,
-    CampaignExperience: CampaignExperienceFactory,
-    Character: CharacterFactory,
-    CharacterDetail: CharacterDetailFactory,
-    CharacterConcept: CharacterConceptFactory,
-    CharacterFullSheet: CharacterFullSheetFactory,
-    FullSheetTraitCategory: FullSheetTraitCategoryFactory,
-    CharacterTrait: CharacterTraitFactory,
-    CharacterTraitValueOptionsResponse: CharacterTraitValueOptionsResponseFactory,
-    ChargenSessionResponse: ChargenSessionResponseFactory,
-    Company: CompanyFactory,
-    CompanyPermissions: CompanyPermissionsFactory,
-    Diceroll: DicerollFactory,
-    DictionaryTerm: DictionaryTermFactory,
-    IdentityResolution: IdentityResolutionFactory,
-    InventoryItem: InventoryItemFactory,
-    NewCompanyResponse: NewCompanyResponseFactory,
-    Note: NoteFactory,
-    Quickroll: QuickrollFactory,
-    RollStatistics: RollStatisticsFactory,
-    SheetSection: SheetSectionFactory,
-    SystemHealth: SystemHealthFactory,
-    Trait: TraitFactory,
-    TraitCategory: TraitCategoryFactory,
-    TraitSubcategory: TraitSubcategoryFactory,
-    User: UserFactory,
-    UserLookupResult: UserLookupResultFactory,
-    UserDetail: UserDetailFactory,
-    VampireClan: VampireClanFactory,
-    WerewolfAuspice: WerewolfAuspiceFactory,
-    WerewolfTribe: WerewolfTribeFactory,
+    factory.__model__: factory
+    for factory in vars(_factories).values()
+    if isinstance(factory, type)
+    and issubclass(factory, ModelFactory)
+    and "__model__" in vars(factory)
 }
 
 
