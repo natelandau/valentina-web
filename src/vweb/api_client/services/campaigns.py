@@ -240,8 +240,7 @@ class CampaignsService(NotesMixin, AssetsMixin):
             NotFoundError: If the campaign does not exist.
             AuthorizationError: If you don't have access.
         """
-        response = self._get(
+        return self._get_statistics(
             self._format_endpoint(Endpoints.CAMPAIGN_STATISTICS, campaign_id=campaign_id),
-            params={"num_top_traits": num_top_traits},
+            num_top_traits=num_top_traits,
         )
-        return RollStatistics.model_validate(response.json())

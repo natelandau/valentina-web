@@ -518,11 +518,10 @@ class UsersService(NotesMixin, AssetsMixin):
             NotFoundError: If the user does not exist.
             AuthorizationError: If you don't have access to the company.
         """
-        response = self._get(
+        return self._get_statistics(
             self._format_endpoint(Endpoints.USER_STATISTICS, user_id=user_id),
-            params={"num_top_traits": num_top_traits},
+            num_top_traits=num_top_traits,
         )
-        return RollStatistics.model_validate(response.json())
 
     # Avatar Methods
 

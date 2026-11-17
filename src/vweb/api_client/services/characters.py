@@ -348,11 +348,10 @@ class CharactersService(NotesMixin, AssetsMixin):
             NotFoundError: If the character does not exist.
             AuthorizationError: If you don't have access.
         """
-        response = self._get(
+        return self._get_statistics(
             self._format_endpoint(Endpoints.CHARACTER_STATISTICS, character_id=character_id),
-            params={"num_top_traits": num_top_traits},
+            num_top_traits=num_top_traits,
         )
-        return RollStatistics.model_validate(response.json())
 
     def get_full_sheet(
         self,

@@ -246,11 +246,10 @@ class CompaniesService(BaseService):
             NotFoundError: If the company does not exist.
             AuthorizationError: If you don't have access to the company.
         """
-        response = self._get(
+        return self._get_statistics(
             Endpoints.COMPANY_STATISTICS.format(company_id=company_id),
-            params={"num_top_traits": num_top_traits},
+            num_top_traits=num_top_traits,
         )
-        return RollStatistics.model_validate(response.json())
 
     def get_audit_log_page(
         self,

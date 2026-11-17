@@ -35,6 +35,7 @@ from vweb.api_client.exceptions import (
     ValidationError,
 )
 from vweb.api_client.models.pagination import PaginatedResponse
+from vweb.api_client.models.shared import RollStatistics
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -652,6 +653,19 @@ class BaseService:
         """
         params = {k: v for k, v in kwargs.items() if v is not None}
         return params or None
+
+    def _get_statistics(self, path: str, *, num_top_traits: int) -> RollStatistics:
+        """Fetch aggregated dice roll statistics from a statistics endpoint.
+
+        Args:
+            path: The formatted statistics endpoint path.
+            num_top_traits: Number of top traits to include.
+
+        Returns:
+            The parsed RollStatistics.
+        """
+        response = self._get(path, params={"num_top_traits": num_top_traits})
+        return RollStatistics.model_validate(response.json())
 
     def _post(
         self,
