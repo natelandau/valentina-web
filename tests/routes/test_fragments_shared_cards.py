@@ -475,6 +475,25 @@ class TestAuditLogCardEndpoint:
         assert kwargs["limit"] == 15
         assert kwargs["offset"] == 30
 
+    @pytest.mark.parametrize(("raw", "expected"), [("250000", 100_000), ("-5", 0)])
+    def test_offset_bounded_to_api_range(
+        self, client: FlaskClient, mock_global_context, mocker, raw: str, expected: int
+    ) -> None:
+        """Verify a hand-edited offset is bounded to what the API accepts."""
+        # Given a patched get_audit_log_page
+        mock_fn = mocker.patch(
+            "vweb.routes.fragments_shared_cards.views.get_audit_log_page",
+            autospec=True,
+            return_value=mocker.MagicMock(items=[], has_more=False, total=0),
+        )
+
+        # When requesting with an out-of-range offset
+        response = client.get(f"/cards/audit-log?offset={raw}")
+
+        # Then the helper receives the bounded offset
+        assert response.status_code == 200
+        assert mock_fn.call_args.kwargs["offset"] == expected
+
     @pytest.mark.usefixtures("_audit_log_rows")
     def test_renders_full_card_on_initial_load(
         self, client: FlaskClient, mock_global_context
