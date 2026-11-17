@@ -48,6 +48,15 @@ if TYPE_CHECKING:
     from vweb.api_client.client import VClient
 
 
+# Transient transport failures worth resending. A server that drops a pooled keep-alive
+# connection surfaces as RemoteProtocolError or ReadError, not ConnectError.
+_RETRYABLE_TRANSPORT_ERRORS = (
+    httpx2.NetworkError,
+    httpx2.RemoteProtocolError,
+    httpx2.TimeoutException,
+)
+
+
 class _RetryPlan(NamedTuple):
     """How to log and wait before retrying an error response."""
 
@@ -296,7 +305,7 @@ class BaseService:
         """Make an HTTP request with automatic retry on transient errors.
 
         Retries on rate limits (429), server errors (5xx in DEFAULT_RETRY_STATUSES),
-        and network errors (ConnectError, TimeoutException), within the
+        and transient network errors (connect, read, write, protocol, timeout), within the
         ``max_retry_delay`` and ``retry_budget`` limits described on
         `_calculate_backoff_delay`. Non-idempotent methods (POST, PATCH) only
         retry on 5xx/network errors when an idempotency key header is present. Rate limit retries (429) always
@@ -354,9 +363,9 @@ class BaseService:
                     files=files,
                 )
             except httpx2.HTTPError as exc:
-                retryable = isinstance(
-                    exc, (httpx2.ConnectError, httpx2.TimeoutException)
-                ) and self._is_retryable_method(method, headers)
+                retryable = isinstance(exc, _RETRYABLE_TRANSPORT_ERRORS) and (
+                    self._is_retryable_method(method, headers)
+                )
                 if retryable and self._wait_before_retry(
                     request_logger,
                     "Retry after network error",
@@ -942,6 +951,7 @@ class BaseService:
             return self._request(
                 route.method,
                 path,
+                params=params,
                 files=self._multipart_file(file),
                 headers=self._build_idempotency_headers(idempotency_key),
             )

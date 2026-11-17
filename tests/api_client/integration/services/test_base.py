@@ -1375,6 +1375,32 @@ class TestBaseServiceNetworkErrorRetry:
         assert route.call_count == 2
         assert response.status_code == 200
 
+    @pytest.mark.parametrize(
+        "error",
+        [
+            httpx2.RemoteProtocolError("Server disconnected without sending a response."),
+            httpx2.ReadError("Connection reset by peer"),
+        ],
+    )
+    @respx.mock
+    def test_get_retries_on_dropped_connection(self, vclient, base_url, mocker, error):
+        """Verify GET request is retried when the server drops a pooled connection."""
+        # Given: Mock time.sleep to avoid actual delays
+        mocker.patch("vweb.api_client.services.base.time.sleep")
+
+        # Given: An endpoint whose first response is lost to a dropped connection
+        route = respx.get(f"{base_url}/test").mock(
+            side_effect=[error, respx.MockResponse(200, json={"success": True})]
+        )
+
+        # When: Making a GET request
+        service = BaseService(vclient)
+        response = service._get("/test")
+
+        # Then: Request was retried and succeeded
+        assert route.call_count == 2
+        assert response.status_code == 200
+
     @respx.mock
     def test_connect_error_max_retries_exhausted(self, vclient, base_url, mocker):
         """Verify APIConnectionError wraps the ConnectError once retries are exhausted."""
@@ -1500,13 +1526,13 @@ class TestBaseServiceNetworkErrorRetry:
 
     @respx.mock
     def test_other_transport_error_is_wrapped_without_retry(self, vclient, base_url, mocker):
-        """Verify a transport error other than connect or timeout is raised at once, wrapped."""
+        """Verify a non-transient transport error is raised at once, wrapped."""
         # Given: Mock time.sleep to detect any retry
         mock_sleep = mocker.patch("vweb.api_client.services.base.time.sleep")
 
-        # Given: An endpoint whose connection drops while reading the response
+        # Given: An endpoint that fails with a configuration-level transport error
         route = respx.get(f"{base_url}/test").mock(
-            side_effect=httpx2.RemoteProtocolError("Server disconnected")
+            side_effect=httpx2.UnsupportedProtocol("Request URL has an unsupported protocol")
         )
 
         # When/Then: The failure surfaces as APIConnectionError after one call
@@ -1516,7 +1542,7 @@ class TestBaseServiceNetworkErrorRetry:
         # Then: No retry was made and the original error is the cause
         assert route.call_count == 1
         mock_sleep.assert_not_called()
-        assert isinstance(exc_info.value.__cause__, httpx2.RemoteProtocolError)
+        assert isinstance(exc_info.value.__cause__, httpx2.UnsupportedProtocol)
 
     @respx.mock
     def test_connection_error_without_message_names_the_error_type(self, base_url, api_key, mocker):

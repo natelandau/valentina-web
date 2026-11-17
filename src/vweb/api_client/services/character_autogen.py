@@ -113,10 +113,10 @@ class CharacterAutogenService(BaseService):
         )
 
     def list_all(self) -> list[ChargenSessionResponse]:
-        """List all chargen sessions for the current campaign.
+        """List the On-Behalf-Of user's chargen sessions across every campaign.
 
         Returns:
-            All chargen sessions associated with the current campaign.
+            The user's chargen sessions. Filter by ``campaign_id`` to scope them.
         """
         return self._list(Routes.CHARACTERS_CHARGEN_SESSIONS_LIST)
 
