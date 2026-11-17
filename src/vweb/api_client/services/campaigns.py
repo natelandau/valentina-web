@@ -190,11 +190,7 @@ class CampaignsService(NotesMixin, AssetsMixin):
             ValidationError: If the request data is invalid.
         """
         body = request if request is not None else self._validate_request(CampaignUpdate, **kwargs)
-        payload = body.model_dump(exclude_none=True, exclude_unset=True, mode="json")
-        # The API distinguishes an omitted key (leave unchanged) from an explicit null (clear).
-        # exclude_none drops None, so re-add in_game_date when the caller set it to None to clear it.
-        if "in_game_date" in body.model_fields_set and body.in_game_date is None:
-            payload["in_game_date"] = None
+        payload = self._update_payload(body, clearable={"in_game_date"})
         return self._call(Routes.CAMPAIGNS_UPDATE, json=payload, campaign_id=campaign_id)
 
     def delete(self, campaign_id: str) -> None:

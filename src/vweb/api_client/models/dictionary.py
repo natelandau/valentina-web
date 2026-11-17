@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from .request_types import LongText, Synonyms, Url
 from .shared import TraitPower
 
 
@@ -29,18 +30,18 @@ class DictionaryTermCreate(BaseModel):
     """Request body for creating a dictionary term."""
 
     term: str
-    definition: str | None = None
-    link: str | None = None
-    synonyms: list[str] = Field(default_factory=list)
+    definition: LongText | None = None
+    link: Url | None = None
+    synonyms: Synonyms = Field(default_factory=list)
 
 
 class DictionaryTermUpdate(BaseModel):
     """Request body for updating a dictionary term."""
 
     term: str | None = None
-    definition: str | None = None
-    link: str | None = None
-    synonyms: list[str] | None = None
+    definition: LongText | None = None
+    link: Url | None = None
+    synonyms: Synonyms | None = None
 
 
 __all__ = [

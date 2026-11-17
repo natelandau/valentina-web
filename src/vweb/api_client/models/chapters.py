@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from vweb.api_client.models.request_types import LongText
 from vweb.api_client.models.shared import Asset, Note
 
 
@@ -50,7 +51,7 @@ class ChapterCreate(BaseModel):
     """Request body for creating a new campaign chapter."""
 
     name: str = Field(..., description="Chapter name (3-50 characters).")
-    description: str | None = Field(default=None, description="Chapter description.")
+    description: LongText | None = Field(default=None, description="Chapter description.")
     character_ids: list[str] | None = Field(
         default=None,
         description="Character IDs to associate. Each must be an active character in the same campaign.",
@@ -61,7 +62,7 @@ class ChapterUpdate(BaseModel):
     """Request body for updating a campaign chapter."""
 
     name: str | None = Field(default=None, description="Chapter name (3-50 characters).")
-    description: str | None = Field(default=None, description="Chapter description.")
+    description: LongText | None = Field(default=None, description="Chapter description.")
     character_ids: list[str] | None = Field(
         default=None,
         description="Replacement character ID list. Omit to leave unchanged; send [] to clear.",

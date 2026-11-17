@@ -518,7 +518,6 @@ class TestCharacterTraitsServiceCreate:
             is_rollable=False,
             initial_cost=3,
             upgrade_cost=2,
-            count_based_cost_multiplier=4,
         )
 
         # Then: The route was called and character trait is returned
@@ -540,7 +539,6 @@ class TestCharacterTraitsServiceCreate:
         assert body["is_rollable"] is False
         assert body["initial_cost"] == 3
         assert body["upgrade_cost"] == 2
-        assert body["count_based_cost_multiplier"] == 4
         assert "value" not in body
 
     @respx.mock

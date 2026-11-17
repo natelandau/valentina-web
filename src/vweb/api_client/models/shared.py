@@ -1,7 +1,7 @@
 """Shared Pydantic models used across multiple services."""
 
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,7 @@ from vweb.api_client.constants import (
     TrackerType,
     WerewolfRenown,
 )
+from vweb.api_client.models.request_types import LongText3, Name3to50
 
 # -----------------------------------------------------------------------------
 # Utility  Models
@@ -77,8 +78,8 @@ class NoteCreate(BaseModel):
     Used to construct the JSON payload for note creation.
     """
 
-    title: str = Field(min_length=3, max_length=50)
-    content: str = Field(min_length=3)
+    title: Name3to50
+    content: LongText3
 
 
 class NoteUpdate(BaseModel):
@@ -87,8 +88,8 @@ class NoteUpdate(BaseModel):
     Only include fields that need to be changed; omitted fields remain unchanged.
     """
 
-    title: Annotated[str, Field(min_length=3, max_length=50)] | None = None
-    content: Annotated[str, Field(min_length=3)] | None = None
+    title: Name3to50 | None = None
+    content: LongText3 | None = None
 
 
 # -----------------------------------------------------------------------------

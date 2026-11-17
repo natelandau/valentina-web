@@ -1,12 +1,12 @@
 """Pydantic models for User API responses and requests."""
 
 from datetime import datetime
-from typing import Annotated
 
 from pydantic import BaseModel, Field
 
 from vweb.api_client.constants import IdentityProvider, IdentityResolutionType, UserRole
 from vweb.api_client.models.characters import Character
+from vweb.api_client.models.request_types import LongText3, Name3to50, ProviderToken
 from vweb.api_client.models.shared import Asset, Note
 
 # -----------------------------------------------------------------------------
@@ -172,7 +172,7 @@ class UserIdentifyDTO(BaseModel):
     """
 
     provider: IdentityProvider
-    token: str = Field(min_length=1)
+    token: ProviderToken
     username: str | None = None
     email: str | None = None
 
@@ -181,7 +181,7 @@ class UserIdentityLinkDTO(BaseModel):
     """Attach an additional verified provider identity to an existing user."""
 
     provider: IdentityProvider
-    token: str = Field(min_length=1)
+    token: ProviderToken
 
 
 class UserCreate(BaseModel):
@@ -190,9 +190,9 @@ class UserCreate(BaseModel):
     Used to construct the JSON payload for user creation.
     """
 
-    name_first: Annotated[str, Field(min_length=3, max_length=50)] | None = None
-    name_last: Annotated[str, Field(min_length=3, max_length=50)] | None = None
-    username: str = Field(min_length=3, max_length=50)
+    name_first: Name3to50 | None = None
+    name_last: Name3to50 | None = None
+    username: Name3to50
     email: str
     role: UserRole
 
@@ -203,9 +203,9 @@ class UserUpdate(BaseModel):
     Only include fields that need to be changed; omitted fields remain unchanged.
     """
 
-    name_first: Annotated[str, Field(min_length=3, max_length=50)] | None = None
-    name_last: Annotated[str, Field(min_length=3, max_length=50)] | None = None
-    username: Annotated[str, Field(min_length=3, max_length=50)] | None = None
+    name_first: Name3to50 | None = None
+    name_last: Name3to50 | None = None
+    username: Name3to50 | None = None
     email: str | None = None
     role: UserRole | None = None
 
@@ -246,8 +246,8 @@ class QuickrollCreate(BaseModel):
     Used to construct the JSON payload for quickroll creation.
     """
 
-    name: str = Field(min_length=3, max_length=50)
-    description: Annotated[str, Field(min_length=3)] | None = None
+    name: Name3to50
+    description: LongText3 | None = None
     trait_ids: list[str] = Field(default_factory=list)
 
 
@@ -257,8 +257,8 @@ class QuickrollUpdate(BaseModel):
     Only include fields that need to be changed; omitted fields remain unchanged.
     """
 
-    name: Annotated[str, Field(min_length=3, max_length=50)] | None = None
-    description: Annotated[str, Field(min_length=3)] | None = None
+    name: Name3to50 | None = None
+    description: LongText3 | None = None
     trait_ids: list[str] | None = None
 
 

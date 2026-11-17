@@ -5,6 +5,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
+from vweb.api_client.models.request_types import LongText, Name3to50
+
 # -----------------------------------------------------------------------------
 # Campaign Response Models
 # -----------------------------------------------------------------------------
@@ -46,8 +48,8 @@ class CampaignCreate(BaseModel):
     Used to construct the JSON payload for campaign creation.
     """
 
-    name: str = Field(min_length=3, max_length=50)
-    description: str | None = None
+    name: Name3to50
+    description: LongText | None = None
     in_game_date: date | None = None
     desperation: int = Field(default=0, ge=0, le=5)
     danger: int = Field(default=0, ge=0, le=5)
@@ -59,9 +61,9 @@ class CampaignUpdate(BaseModel):
     Only include fields that need to be changed; omitted fields remain unchanged.
     """
 
-    name: Annotated[str, Field(min_length=3, max_length=50)] | None = None
+    name: Name3to50 | None = None
     # An empty string clears the description; None leaves it unchanged
-    description: str | None = None
+    description: LongText | None = None
     in_game_date: date | None = None
     desperation: Annotated[int, Field(ge=0, le=5)] | None = None
     danger: Annotated[int, Field(ge=0, le=5)] | None = None

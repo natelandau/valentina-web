@@ -1,12 +1,13 @@
 """Pydantic models for Character Trait API responses and requests."""
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 from vweb.api_client.constants import TrackerAction, TraitModifyCurrency
 
+from .request_types import ExtraHealthLevels, LongText, Name3to50, TraitScore
 from .shared import Trait
 
 
@@ -108,7 +109,7 @@ class HealthStateSet(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    extra_levels: int = Field(default=0, ge=0)
+    extra_levels: ExtraHealthLevels = 0
     damage: int = Field(default=0, ge=0)
 
 
@@ -123,7 +124,7 @@ class CharacterCreateTraitAssign(BaseModel):
     """Request model for assigning a character trait to a new character."""
 
     trait_id: str
-    value: int
+    value: TraitScore
     tracker: TrackerStateSet | None = Field(
         default=None,
         description="Starting tracker state. Returns 400 if the trait has no tracker for the "
@@ -135,7 +136,7 @@ class CharacterTraitAdd(BaseModel):
     """Request model for adding a character trait to an already created character."""
 
     trait_id: str
-    value: int
+    value: TraitScore
     currency: TraitModifyCurrency
 
 
@@ -146,17 +147,23 @@ class TraitCreate(BaseModel):
     always created at a value of ``1``; the supplied ``currency`` pays for that first dot.
     """
 
-    name: str
+    name: Name3to50
     category_id: str
     currency: TraitModifyCurrency
-    description: str | None = None
-    max_value: Annotated[int, Field(ge=0, le=100, default=5)] = 5
-    min_value: Annotated[int, Field(ge=0, le=100, default=0)] = 0
+    description: LongText | None = None
+    max_value: TraitScore = 5
+    min_value: TraitScore = 0
     show_when_zero: bool | None = True
     is_rollable: bool = True
-    initial_cost: int | None = None
-    upgrade_cost: int | None = None
-    count_based_cost_multiplier: int | None = None
+    initial_cost: TraitScore | None = None
+    upgrade_cost: TraitScore | None = None
+
+    @model_validator(mode="after")
+    def _check_value_range(self) -> Self:
+        if self.min_value > self.max_value:
+            msg = f"min_value ({self.min_value}) must not exceed max_value ({self.max_value})"
+            raise ValueError(msg)
+        return self
 
 
 class CharacterTraitSpecialtyCreate(BaseModel):
@@ -185,7 +192,7 @@ class CharacterTraitSpecialtyUpdate(BaseModel):
 class _TraitModify(BaseModel):
     """Internal request for PUT /value endpoint."""
 
-    target_value: int
+    target_value: TraitScore
     currency: TraitModifyCurrency
 
 

@@ -4,7 +4,7 @@ import mimetypes
 import random
 import time
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Collection, Iterator, Mapping
 from functools import partial
 from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar
 
@@ -113,6 +113,31 @@ class BaseService:
             A unique idempotency key string.
         """
         return str(uuid.uuid4())
+
+    @staticmethod
+    def _update_payload(body: BaseModel, *, clearable: Collection[str]) -> dict[str, Any]:
+        """Serialize a PATCH body, keeping an explicit None only for fields the API clears on null.
+
+        The API treats an omitted key as "leave unchanged" and null as "clear", and rejects
+        null for most fields, so unset and None fields are dropped except the clearable ones
+        the caller set to None.
+
+        Args:
+            body: The update request model.
+            clearable: Field names the API clears when sent null.
+
+        Returns:
+            The JSON payload for the request.
+        """
+        payload = body.model_dump(exclude_none=True, exclude_unset=True, mode="json")
+        payload.update(
+            dict.fromkeys(
+                field
+                for field in clearable
+                if field in body.model_fields_set and getattr(body, field) is None
+            )
+        )
+        return payload
 
     def _validate_request(self, request_class: type[T], **kwargs: Any) -> T:
         """Validate and create a request model, converting Pydantic errors.
