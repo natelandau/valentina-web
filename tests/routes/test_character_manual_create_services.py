@@ -8,6 +8,7 @@ from flask import session
 
 from vweb.api_client.testing import Routes
 from vweb.routes.character_create.manual_services import (
+    build_trait_items,
     save_temp_character,
     update_character_profile,
 )
@@ -131,3 +132,25 @@ class TestSaveLogging:
         fake_vclient.assert_called(Routes.CHARACTERS_CREATE, times=1)
         assert errors == {"_general": "Failed to save profile"}
         assert len([r for r in caplog.records if r.levelno >= logging.ERROR]) == 1
+
+
+class TestBuildTraitItems:
+    """Tests for build_trait_items."""
+
+    def test_keeps_values_within_the_api_range(self) -> None:
+        """Verify only integer values from 1 to 100 become trait payloads."""
+        # Given a traits form with in-range, zero, oversized, and non-numeric values
+        form = {
+            "trait:t1": "3",
+            "trait:t2": "0",
+            "trait:t3": "101",
+            "trait:t4": "abc",
+            "trait:t5": "100",
+            "name": "ignored",
+        }
+
+        # When building the payloads
+        items = build_trait_items(form)
+
+        # Then only the traits at 3 and 100 are kept
+        assert [(item.trait_id, item.value) for item in items] == [("t1", 3), ("t5", 100)]

@@ -30,6 +30,7 @@
     <legend class="fieldset-legend">Description</legend>
     <textarea id="description"
               name="description"
+              maxlength="{{ MAX_LONG_TEXT_LENGTH }}"
               class="textarea w-full"
               rows="3"
               placeholder="Item description (optional)">{{ form_data.get('description', '') if form_data else (item.description if item else '') }}</textarea>

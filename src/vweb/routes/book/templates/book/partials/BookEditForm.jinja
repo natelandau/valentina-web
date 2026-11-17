@@ -29,7 +29,7 @@
                    class="grow"
                    required
                    minlength="1"
-                   maxlength="100"
+                   maxlength="50"
                    placeholder="Book name">
           </label>
         </fieldset>
@@ -48,6 +48,7 @@
       <fieldset class="fieldset mb-4">
         <legend class="fieldset-legend">Description</legend>
         <textarea name="description"
+                  maxlength="{{ MAX_LONG_TEXT_LENGTH }}"
                   class="textarea w-full"
                   rows="10"
                   placeholder="Book description...">{{ form_data.description if form_data else (book.description or '') }}</textarea>

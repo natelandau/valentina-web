@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
+from vweb.api_client.constants import MAX_NAME_LENGTH
 from vweb.lib.character_profile import iter_character_traits
 
 if TYPE_CHECKING:
@@ -14,7 +15,7 @@ if TYPE_CHECKING:
 
 SPECIALTY_COST: Final = 3
 SPECIALTY_NAME_MIN_LENGTH: Final = 3
-SPECIALTY_NAME_MAX_LENGTH: Final = 50
+SPECIALTY_NAME_MAX_LENGTH: Final = MAX_NAME_LENGTH
 _PAID_CURRENCIES: Final = ("XP", "STARTING_POINTS")
 
 

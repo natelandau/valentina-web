@@ -19,6 +19,7 @@
   <legend class="fieldset-legend">Description</legend>
   <input type="text"
          name="description"
+         maxlength="{{ MAX_LONG_TEXT_LENGTH }}"
          class="input input-bordered w-full"
          value="{{ form_data.get('description', '') if form_data else (item.description if item and item.description else '') }}" />
 </fieldset>

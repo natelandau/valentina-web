@@ -343,13 +343,13 @@ class CharacterTraitsView(MethodView):
                         character_id=character.id,
                         get_method_url=get_method_url,
                     )
-                custom_trait = TraitCreate(
-                    name=new_trait_name,
-                    show_when_zero=True,
-                    category_id=category_id,
-                    currency=self.spend_type,
-                )
                 try:
+                    custom_trait = TraitCreate(
+                        name=new_trait_name,
+                        show_when_zero=True,
+                        category_id=category_id,
+                        currency=self.spend_type,
+                    )
                     created = api_svc.create(custom_trait)
                 except TRAIT_API_ERRORS as error:
                     flash(
