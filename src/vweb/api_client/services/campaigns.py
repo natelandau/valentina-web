@@ -4,7 +4,6 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 from vweb.api_client.constants import DEFAULT_PAGE_LIMIT
-from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import (
     Campaign,
     CampaignCreate,
@@ -12,8 +11,9 @@ from vweb.api_client.models import (
     PaginatedResponse,
     RollStatistics,
 )
-from vweb.api_client.services._assets import AssetsMixin
-from vweb.api_client.services._notes import NotesMixin
+from vweb.api_client.routes import Routes
+from vweb.api_client.services._assets import AssetRoutes, AssetsMixin
+from vweb.api_client.services._notes import NoteRoutes, NotesMixin
 
 if TYPE_CHECKING:
     from vweb.api_client.client import VClient
@@ -39,11 +39,19 @@ class CampaignsService(NotesMixin, AssetsMixin):
     """
 
     _parent_id_param = "campaign_id"
-    _notes_endpoint = Endpoints.CAMPAIGN_NOTES
-    _note_endpoint = Endpoints.CAMPAIGN_NOTE
-    _assets_endpoint = Endpoints.CAMPAIGN_ASSETS
-    _asset_endpoint = Endpoints.CAMPAIGN_ASSET
-    _asset_upload_endpoint = Endpoints.CAMPAIGN_ASSET_UPLOAD
+    _note_routes = NoteRoutes(
+        page=Routes.CAMPAIGNS_NOTES_LIST,
+        get=Routes.CAMPAIGNS_NOTES_GET,
+        create=Routes.CAMPAIGNS_NOTES_CREATE,
+        update=Routes.CAMPAIGNS_NOTES_UPDATE,
+        delete=Routes.CAMPAIGNS_NOTES_DELETE,
+    )
+    _asset_routes = AssetRoutes(
+        page=Routes.CAMPAIGNS_ASSETS_LIST,
+        get=Routes.CAMPAIGNS_ASSETS_GET,
+        delete=Routes.CAMPAIGNS_ASSETS_DELETE,
+        upload=Routes.CAMPAIGNS_ASSETS_UPLOAD,
+    )
 
     def __init__(self, client: "VClient", company_id: str, on_behalf_of: str) -> None:
         """Initialize the service scoped to a specific company.
@@ -74,12 +82,7 @@ class CampaignsService(NotesMixin, AssetsMixin):
         Returns:
             A PaginatedResponse containing Campaign objects and pagination metadata.
         """
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.CAMPAIGNS),
-            Campaign,
-            limit=limit,
-            offset=offset,
-        )
+        return self._page(Routes.CAMPAIGNS_LIST, limit=limit, offset=offset)
 
     def list_all(self) -> list[Campaign]:
         """Retrieve all campaigns.
@@ -112,11 +115,7 @@ class CampaignsService(NotesMixin, AssetsMixin):
             for campaign in campaigns.iter_all():
                 print(campaign.name)
         """
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.CAMPAIGNS),
-            Campaign,
-            limit=limit,
-        )
+        yield from self._iter(Routes.CAMPAIGNS_LIST, limit=limit)
 
     def get(self, campaign_id: str) -> Campaign:
         """Retrieve detailed information about a specific campaign.
@@ -133,8 +132,7 @@ class CampaignsService(NotesMixin, AssetsMixin):
             NotFoundError: If the campaign does not exist.
             AuthorizationError: If you don't have access.
         """
-        response = self._get(self._format_endpoint(Endpoints.CAMPAIGN, campaign_id=campaign_id))
-        return Campaign.model_validate(response.json())
+        return self._call(Routes.CAMPAIGNS_GET, campaign_id=campaign_id)
 
     def create(
         self,
@@ -159,11 +157,10 @@ class CampaignsService(NotesMixin, AssetsMixin):
             AuthorizationError: If you don't have campaign management privileges.
         """
         body = request if request is not None else self._validate_request(CampaignCreate, **kwargs)
-        response = self._post(
-            self._format_endpoint(Endpoints.CAMPAIGNS),
+        return self._call(
+            Routes.CAMPAIGNS_CREATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
         )
-        return Campaign.model_validate(response.json())
 
     def update(
         self,
@@ -198,11 +195,7 @@ class CampaignsService(NotesMixin, AssetsMixin):
         # exclude_none drops None, so re-add in_game_date when the caller set it to None to clear it.
         if "in_game_date" in body.model_fields_set and body.in_game_date is None:
             payload["in_game_date"] = None
-        response = self._patch(
-            self._format_endpoint(Endpoints.CAMPAIGN, campaign_id=campaign_id),
-            json=payload,
-        )
-        return Campaign.model_validate(response.json())
+        return self._call(Routes.CAMPAIGNS_UPDATE, json=payload, campaign_id=campaign_id)
 
     def delete(self, campaign_id: str) -> None:
         """Remove a campaign from the system.
@@ -217,7 +210,7 @@ class CampaignsService(NotesMixin, AssetsMixin):
             NotFoundError: If the campaign does not exist.
             AuthorizationError: If you don't have campaign management privileges.
         """
-        self._delete(self._format_endpoint(Endpoints.CAMPAIGN, campaign_id=campaign_id))
+        self._send(Routes.CAMPAIGNS_DELETE, campaign_id=campaign_id)
 
     def get_statistics(
         self,
@@ -240,7 +233,8 @@ class CampaignsService(NotesMixin, AssetsMixin):
             NotFoundError: If the campaign does not exist.
             AuthorizationError: If you don't have access.
         """
-        return self._get_statistics(
-            self._format_endpoint(Endpoints.CAMPAIGN_STATISTICS, campaign_id=campaign_id),
-            num_top_traits=num_top_traits,
+        return self._call(
+            Routes.CAMPAIGNS_STATISTICS,
+            params={"num_top_traits": num_top_traits},
+            campaign_id=campaign_id,
         )

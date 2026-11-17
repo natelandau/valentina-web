@@ -1,7 +1,7 @@
 """Service for cross-company user lookup."""
 
-from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import UserLookupResult
+from vweb.api_client.routes import Routes
 from vweb.api_client.services.base import BaseService
 
 
@@ -19,8 +19,7 @@ class UserLookupService(BaseService):
     """
 
     def _lookup(self, **params: str) -> list[UserLookupResult]:
-        response = self._get(Endpoints.USERS_LOOKUP, params=params)
-        return [UserLookupResult.model_validate(item) for item in response.json()]
+        return self._list(Routes.USERS_LOOKUP, params=params)
 
     def by_email(self, email: str) -> list[UserLookupResult]:
         """Look up a user by email address.

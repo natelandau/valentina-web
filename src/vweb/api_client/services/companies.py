@@ -11,7 +11,6 @@ from vweb.api_client.constants import (
     AuditOperation,
     PermissionLevel,
 )
-from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import (
     AuditLog,
     AuditLogDetail,
@@ -24,6 +23,7 @@ from vweb.api_client.models import (
     RollStatistics,
     _GrantAccess,
 )
+from vweb.api_client.routes import Routes, RouteSpec
 from vweb.api_client.services.base import BaseService
 
 
@@ -86,12 +86,7 @@ class CompaniesService(BaseService):
         Returns:
             A PaginatedResponse containing Company objects and pagination metadata.
         """
-        return self._get_paginated_as(
-            Endpoints.COMPANIES,
-            Company,
-            limit=limit,
-            offset=offset,
-        )
+        return self._page(Routes.COMPANIES_LIST, limit=limit, offset=offset)
 
     def list_all(self) -> list[Company]:
         """Retrieve all companies you have access to.
@@ -120,7 +115,7 @@ class CompaniesService(BaseService):
             for company in client.companies.iter_all():
                 print(company.name)
         """
-        yield from self._iter_all_pages_as(Endpoints.COMPANIES, Company, limit=limit)
+        yield from self._iter(Routes.COMPANIES_LIST, limit=limit)
 
     def get(self, company_id: str) -> Company:
         """Retrieve detailed information about a specific company.
@@ -137,8 +132,7 @@ class CompaniesService(BaseService):
             NotFoundError: If the company does not exist.
             AuthorizationError: If you don't have access to the company.
         """
-        response = self._get(Endpoints.COMPANY.format(company_id=company_id))
-        return Company.model_validate(response.json())
+        return self._call(Routes.COMPANIES_GET, company_id=company_id)
 
     def create(
         self,
@@ -165,11 +159,10 @@ class CompaniesService(BaseService):
             ValidationError: If the request data is invalid.
         """
         body = request if request is not None else self._validate_request(CompanyCreate, **kwargs)
-        response = self._post(
-            Endpoints.COMPANIES,
+        return self._call(
+            Routes.COMPANIES_CREATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
         )
-        return NewCompanyResponse.model_validate(response.json())
 
     def update(
         self,
@@ -198,11 +191,11 @@ class CompaniesService(BaseService):
             ValidationError: If the request data is invalid.
         """
         body = request if request is not None else self._validate_request(CompanyUpdate, **kwargs)
-        response = self._patch(
-            Endpoints.COMPANY.format(company_id=company_id),
+        return self._call(
+            Routes.COMPANIES_UPDATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            company_id=company_id,
         )
-        return Company.model_validate(response.json())
 
     def delete(self, company_id: str) -> None:
         """Delete a company from the system.
@@ -216,7 +209,7 @@ class CompaniesService(BaseService):
             NotFoundError: If the company does not exist.
             AuthorizationError: If you don't have owner-level access.
         """
-        self._delete(Endpoints.COMPANY.format(company_id=company_id))
+        self._send(Routes.COMPANIES_DELETE, company_id=company_id)
 
     def grant_access(
         self,
@@ -248,11 +241,9 @@ class CompaniesService(BaseService):
             developer_id=developer_id,
             permission=permission,
         )
-        response = self._post(
-            Endpoints.COMPANY_ACCESS.format(company_id=company_id),
-            json=body.model_dump(mode="json"),
+        return self._call(
+            Routes.COMPANIES_ACCESS, json=body.model_dump(mode="json"), company_id=company_id
         )
-        return CompanyPermissions.model_validate(response.json())
 
     def get_statistics(
         self,
@@ -276,9 +267,10 @@ class CompaniesService(BaseService):
             NotFoundError: If the company does not exist.
             AuthorizationError: If you don't have access to the company.
         """
-        return self._get_statistics(
-            Endpoints.COMPANY_STATISTICS.format(company_id=company_id),
-            num_top_traits=num_top_traits,
+        return self._call(
+            Routes.COMPANIES_STATISTICS,
+            params={"num_top_traits": num_top_traits},
+            company_id=company_id,
         )
 
     def get_audit_log_page(
@@ -307,13 +299,13 @@ class CompaniesService(BaseService):
             NotFoundError: If the company does not exist.
             AuthorizationError: If you don't have access to the company.
         """
-        model, params = self._audit_log_query(filters)
-        return self._get_paginated_as(
-            Endpoints.COMPANY_AUDIT_LOGS.format(company_id=company_id),
-            model,
+        route, params = self._audit_log_query(filters)
+        return self._page(
+            route,
             limit=limit,
             offset=offset,
             params=params,
+            company_id=company_id,
         )
 
     def list_all_audit_logs(
@@ -334,12 +326,8 @@ class CompaniesService(BaseService):
             NotFoundError: If the company does not exist.
             AuthorizationError: If you don't have access to the company.
         """
-        model, params = self._audit_log_query(filters)
-        return list(
-            self._iter_all_pages_as(
-                Endpoints.COMPANY_AUDIT_LOGS.format(company_id=company_id), model, params=params
-            )
-        )
+        route, params = self._audit_log_query(filters)
+        return list(self._iter(route, params=params, company_id=company_id))
 
     def iter_all_audit_logs(
         self,
@@ -362,18 +350,13 @@ class CompaniesService(BaseService):
             NotFoundError: If the company does not exist.
             AuthorizationError: If you don't have access to the company.
         """
-        model, params = self._audit_log_query(filters)
-        return self._iter_all_pages_as(
-            Endpoints.COMPANY_AUDIT_LOGS.format(company_id=company_id),
-            model,
-            limit=limit,
-            params=params,
-        )
+        route, params = self._audit_log_query(filters)
+        return self._iter(route, limit=limit, params=params, company_id=company_id)
 
     def _audit_log_query(
         self, filters: AuditLogFilters
-    ) -> tuple[type[AuditLog], dict[str, Any] | None]:
-        """Pick the response model and build query params for an audit log request.
+    ) -> tuple[RouteSpec[AuditLog] | RouteSpec[AuditLogDetail], dict[str, Any] | None]:
+        """Pick the route variant and build query params for an audit log request.
 
         The API takes ``include`` as one comma-joined value and datetimes as ISO 8601.
 
@@ -381,7 +364,7 @@ class CompaniesService(BaseService):
             filters: The caller's audit log filters.
 
         Returns:
-            The model to parse entries into and the query params.
+            The route to call, which sets the model entries parse into, and the query params.
 
         Raises:
             TypeError: If ``filters`` holds a key that is not an audit log filter.
@@ -393,7 +376,11 @@ class CompaniesService(BaseService):
         include = filters.get("include")
         date_from = filters.get("date_from")
         date_to = filters.get("date_to")
-        model = AuditLogDetail if include and "request_details" in include else AuditLog
+        route = (
+            Routes.COMPANIES_AUDIT_LOGS_LIST_DETAIL
+            if include and "request_details" in include
+            else Routes.COMPANIES_AUDIT_LOGS_LIST
+        )
         params = self._build_params(
             acting_user_id=filters.get("acting_user_id"),
             user_id=filters.get("user_id"),
@@ -407,4 +394,4 @@ class CompaniesService(BaseService):
             date_to=date_to.isoformat() if date_to is not None else None,
             include=",".join(include) if include is not None else None,
         )
-        return model, params
+        return route, params

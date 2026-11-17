@@ -3,7 +3,7 @@
 import json
 from typing import TYPE_CHECKING, Any
 
-from vweb.api_client.endpoints import Endpoints
+from vweb.api_client.routes import Routes
 from vweb.api_client.services.base import BaseService
 
 if TYPE_CHECKING:
@@ -38,5 +38,5 @@ class OptionsService(BaseService):
         Returns:
             A dictionary of options and enumerations for the api.
         """
-        response = self._get(self._format_endpoint(Endpoints.OPTIONS))
+        response = self._send(Routes.OPTIONS_GET)
         return json.loads(response.content)

@@ -1,27 +1,35 @@
 """Asset methods shared by every service whose resource owns image assets."""
 
 from collections.abc import Iterator
-from typing import ClassVar
+from typing import Any, ClassVar, NamedTuple
 
 from vweb.api_client.constants import DEFAULT_PAGE_LIMIT
 from vweb.api_client.models import Asset, PaginatedResponse
+from vweb.api_client.routes import RouteSpec
 from vweb.api_client.services.base import BaseService
+
+
+class AssetRoutes(NamedTuple):
+    """The asset routes of one parent resource."""
+
+    page: RouteSpec[Asset]
+    get: RouteSpec[Asset]
+    delete: RouteSpec[Any]
+    upload: RouteSpec[Asset]
 
 
 class AssetsMixin(BaseService):
     """Add image asset methods for a parent resource (campaign, book, chapter, character, or user).
 
-    Subclasses set the endpoint templates and the name of the parent-id placeholder
-    those templates use.
+    Subclasses set the parent's asset routes and the name of the parent-id placeholder
+    those routes use.
     """
 
-    _assets_endpoint: ClassVar[str]
-    _asset_endpoint: ClassVar[str]
-    _asset_upload_endpoint: ClassVar[str]
+    _asset_routes: ClassVar[AssetRoutes]
     _parent_id_param: ClassVar[str]
 
-    def _asset_path(self, endpoint: str, parent_id: str, **kwargs: str) -> str:
-        return self._format_endpoint(endpoint, **{self._parent_id_param: parent_id}, **kwargs)
+    def _asset_parent(self, parent_id: str) -> dict[str, str]:
+        return {self._parent_id_param: parent_id}
 
     def get_assets_page(
         self,
@@ -44,11 +52,11 @@ class AssetsMixin(BaseService):
             NotFoundError: If the parent resource does not exist.
             AuthorizationError: If you don't have access.
         """
-        return self._get_paginated_as(
-            self._asset_path(self._assets_endpoint, parent_id),
-            Asset,
+        return self._page(
+            self._asset_routes.page,
             limit=limit,
             offset=offset,
+            path_ids=self._asset_parent(parent_id),
         )
 
     def list_all_assets(self, parent_id: str) -> list[Asset]:
@@ -76,8 +84,8 @@ class AssetsMixin(BaseService):
         Yields:
             Individual Asset objects.
         """
-        yield from self._iter_all_pages_as(
-            self._asset_path(self._assets_endpoint, parent_id), Asset, limit=limit
+        yield from self._iter(
+            self._asset_routes.page, limit=limit, path_ids=self._asset_parent(parent_id)
         )
 
     def get_asset(self, parent_id: str, asset_id: str) -> Asset:
@@ -94,8 +102,9 @@ class AssetsMixin(BaseService):
             NotFoundError: If the asset does not exist.
             AuthorizationError: If you don't have access.
         """
-        response = self._get(self._asset_path(self._asset_endpoint, parent_id, asset_id=asset_id))
-        return Asset.model_validate(response.json())
+        return self._call(
+            self._asset_routes.get, asset_id=asset_id, path_ids=self._asset_parent(parent_id)
+        )
 
     def delete_asset(self, parent_id: str, asset_id: str) -> None:
         """Delete an asset. The file is permanently removed and this cannot be undone.
@@ -108,7 +117,9 @@ class AssetsMixin(BaseService):
             NotFoundError: If the asset does not exist or belongs to a different resource.
             AuthorizationError: If you don't have appropriate access.
         """
-        self._delete(self._asset_path(self._asset_endpoint, parent_id, asset_id=asset_id))
+        self._send(
+            self._asset_routes.delete, asset_id=asset_id, path_ids=self._asset_parent(parent_id)
+        )
 
     def upload_asset(
         self,
@@ -138,8 +149,8 @@ class AssetsMixin(BaseService):
             AuthorizationError: If you don't have appropriate access.
             ValidationError: If the file is invalid or exceeds size limits.
         """
-        response = self._post_file(
-            self._asset_path(self._asset_upload_endpoint, parent_id),
+        return self._call(
+            self._asset_routes.upload,
             file=(filename, content, content_type),
+            path_ids=self._asset_parent(parent_id),
         )
-        return Asset.model_validate(response.json())

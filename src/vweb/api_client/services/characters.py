@@ -11,7 +11,6 @@ from vweb.api_client.constants import (
     CharacterType,
     TrackerAction,
 )
-from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import (
     Character,
     CharacterCreate,
@@ -28,8 +27,9 @@ from vweb.api_client.models import (
     RollStatistics,
     _TrackerAction,
 )
-from vweb.api_client.services._assets import AssetsMixin
-from vweb.api_client.services._notes import NotesMixin
+from vweb.api_client.routes import Routes
+from vweb.api_client.services._assets import AssetRoutes, AssetsMixin
+from vweb.api_client.services._notes import NoteRoutes, NotesMixin
 
 if TYPE_CHECKING:
     from vweb.api_client.client import VClient
@@ -51,11 +51,19 @@ class CharactersService(NotesMixin, AssetsMixin):
     """
 
     _parent_id_param = "character_id"
-    _notes_endpoint = Endpoints.CHARACTER_NOTES
-    _note_endpoint = Endpoints.CHARACTER_NOTE
-    _assets_endpoint = Endpoints.CHARACTER_ASSETS
-    _asset_endpoint = Endpoints.CHARACTER_ASSET
-    _asset_upload_endpoint = Endpoints.CHARACTER_ASSET_UPLOAD
+    _note_routes = NoteRoutes(
+        page=Routes.CHARACTERS_NOTES_LIST,
+        get=Routes.CHARACTERS_NOTES_GET,
+        create=Routes.CHARACTERS_NOTES_CREATE,
+        update=Routes.CHARACTERS_NOTES_UPDATE,
+        delete=Routes.CHARACTERS_NOTES_DELETE,
+    )
+    _asset_routes = AssetRoutes(
+        page=Routes.CHARACTERS_ASSETS_LIST,
+        get=Routes.CHARACTERS_ASSETS_GET,
+        delete=Routes.CHARACTERS_ASSETS_DELETE,
+        upload=Routes.CHARACTERS_ASSETS_UPLOAD,
+    )
 
     def __init__(self, client: "VClient", company_id: str, on_behalf_of: str) -> None:
         """Initialize the service scoped to a specific company.
@@ -98,9 +106,8 @@ class CharactersService(NotesMixin, AssetsMixin):
         Returns:
             A PaginatedResponse containing Character objects and pagination metadata.
         """
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.CHARACTERS),
-            Character,
+        return self._page(
+            Routes.CHARACTERS_LIST,
             limit=limit,
             offset=offset,
             params=self._build_params(
@@ -188,9 +195,8 @@ class CharactersService(NotesMixin, AssetsMixin):
             for character in characters.iter_all():
                 print(character.name)
         """
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.CHARACTERS),
-            Character,
+        yield from self._iter(
+            Routes.CHARACTERS_LIST,
             limit=limit,
             params=self._build_params(
                 campaign_id=campaign_id,
@@ -226,11 +232,11 @@ class CharactersService(NotesMixin, AssetsMixin):
             NotFoundError: If the character does not exist.
             AuthorizationError: If you don't have access.
         """
-        response = self._get(
-            self._format_endpoint(Endpoints.CHARACTER, character_id=character_id),
+        return self._call(
+            Routes.CHARACTERS_GET,
             params=self._build_params(include=list(include) if include else None),
+            character_id=character_id,
         )
-        return CharacterDetail.model_validate(response.json())
 
     def create(
         self,
@@ -262,11 +268,10 @@ class CharactersService(NotesMixin, AssetsMixin):
             AuthorizationError: If you don't have appropriate access.
         """
         body = request if request is not None else self._validate_request(CharacterCreate, **kwargs)
-        response = self._post(
-            self._format_endpoint(Endpoints.CHARACTERS),
+        return self._call(
+            Routes.CHARACTERS_CREATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
         )
-        return Character.model_validate(response.json())
 
     def update(
         self,
@@ -305,11 +310,7 @@ class CharactersService(NotesMixin, AssetsMixin):
         # exclude_none drops None, so re-add date_of_birth when the caller set it to None to clear it.
         if "date_of_birth" in body.model_fields_set and body.date_of_birth is None:
             payload["date_of_birth"] = None
-        response = self._patch(
-            self._format_endpoint(Endpoints.CHARACTER, character_id=character_id),
-            json=payload,
-        )
-        return Character.model_validate(response.json())
+        return self._call(Routes.CHARACTERS_UPDATE, json=payload, character_id=character_id)
 
     def delete(self, character_id: str) -> None:
         """Remove a character from the campaign.
@@ -325,7 +326,7 @@ class CharactersService(NotesMixin, AssetsMixin):
             NotFoundError: If the character does not exist.
             AuthorizationError: If you don't have appropriate access.
         """
-        self._delete(self._format_endpoint(Endpoints.CHARACTER, character_id=character_id))
+        self._send(Routes.CHARACTERS_DELETE, character_id=character_id)
 
     def get_statistics(
         self,
@@ -348,9 +349,10 @@ class CharactersService(NotesMixin, AssetsMixin):
             NotFoundError: If the character does not exist.
             AuthorizationError: If you don't have access.
         """
-        return self._get_statistics(
-            self._format_endpoint(Endpoints.CHARACTER_STATISTICS, character_id=character_id),
-            num_top_traits=num_top_traits,
+        return self._call(
+            Routes.CHARACTERS_STATISTICS,
+            params={"num_top_traits": num_top_traits},
+            character_id=character_id,
         )
 
     def get_full_sheet(
@@ -380,11 +382,7 @@ class CharactersService(NotesMixin, AssetsMixin):
         params = self._build_params(
             include_available_traits=include_available_traits or None,
         )
-        response = self._get(
-            self._format_endpoint(Endpoints.CHARACTER_FULL_SHEET, character_id=character_id),
-            params=params,
-        )
-        return CharacterFullSheet.model_validate(response.json())
+        return self._call(Routes.CHARACTERS_FULL_SHEET, params=params, character_id=character_id)
 
     def get_full_sheet_category(
         self,
@@ -414,15 +412,12 @@ class CharactersService(NotesMixin, AssetsMixin):
         params = self._build_params(
             include_available_traits=include_available_traits or None,
         )
-        response = self._get(
-            self._format_endpoint(
-                Endpoints.CHARACTER_FULL_SHEET_CATEGORY,
-                character_id=character_id,
-                category_id=category_id,
-            ),
+        return self._call(
+            Routes.CHARACTERS_FULL_SHEET_CATEGORY,
             params=params,
+            character_id=character_id,
+            category_id=category_id,
         )
-        return FullSheetTraitCategory.model_validate(response.json())
 
     # Character Inventory Methods
 
@@ -447,11 +442,8 @@ class CharactersService(NotesMixin, AssetsMixin):
             NotFoundError: If the character does not exist.
             AuthorizationError: If you don't have access.
         """
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.CHARACTER_INVENTORY, character_id=character_id),
-            InventoryItem,
-            limit=limit,
-            offset=offset,
+        return self._page(
+            Routes.CHARACTERS_INVENTORY_LIST, limit=limit, offset=offset, character_id=character_id
         )
 
     def list_all_inventory(
@@ -497,10 +489,8 @@ class CharactersService(NotesMixin, AssetsMixin):
             for item in characters.iter_all_inventory("character_id"):
                 print(item.name)
         """
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.CHARACTER_INVENTORY, character_id=character_id),
-            InventoryItem,
-            limit=limit,
+        yield from self._iter(
+            Routes.CHARACTERS_INVENTORY_LIST, limit=limit, character_id=character_id
         )
 
     def get_inventory_item(
@@ -521,12 +511,9 @@ class CharactersService(NotesMixin, AssetsMixin):
             NotFoundError: If the inventory item does not exist.
             AuthorizationError: If you don't have access.
         """
-        response = self._get(
-            self._format_endpoint(
-                Endpoints.CHARACTER_INVENTORY_ITEM, character_id=character_id, item_id=item_id
-            )
+        return self._call(
+            Routes.CHARACTERS_INVENTORY_GET, character_id=character_id, item_id=item_id
         )
-        return InventoryItem.model_validate(response.json())
 
     def create_inventory_item(
         self,
@@ -557,11 +544,11 @@ class CharactersService(NotesMixin, AssetsMixin):
             if request is not None
             else self._validate_request(InventoryItemCreate, **kwargs)
         )
-        response = self._post(
-            self._format_endpoint(Endpoints.CHARACTER_INVENTORY, character_id=character_id),
+        return self._call(
+            Routes.CHARACTERS_INVENTORY_CREATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            character_id=character_id,
         )
-        return InventoryItem.model_validate(response.json())
 
     def update_inventory_item(
         self,
@@ -596,13 +583,12 @@ class CharactersService(NotesMixin, AssetsMixin):
             if request is not None
             else self._validate_request(InventoryItemUpdate, **kwargs)
         )
-        response = self._patch(
-            self._format_endpoint(
-                Endpoints.CHARACTER_INVENTORY_ITEM, character_id=character_id, item_id=item_id
-            ),
+        return self._call(
+            Routes.CHARACTERS_INVENTORY_UPDATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            character_id=character_id,
+            item_id=item_id,
         )
-        return InventoryItem.model_validate(response.json())
 
     def delete_inventory_item(
         self,
@@ -621,11 +607,7 @@ class CharactersService(NotesMixin, AssetsMixin):
             NotFoundError: If the inventory item does not exist.
             AuthorizationError: If you don't have appropriate access.
         """
-        self._delete(
-            self._format_endpoint(
-                Endpoints.CHARACTER_INVENTORY_ITEM, character_id=character_id, item_id=item_id
-            )
-        )
+        self._send(Routes.CHARACTERS_INVENTORY_DELETE, character_id=character_id, item_id=item_id)
 
     # -------------------------------------------------------------------------
     # Health Methods
@@ -647,10 +629,7 @@ class CharactersService(NotesMixin, AssetsMixin):
             NotFoundError: If the character does not exist or has no health track.
             AuthorizationError: If you don't have access to the character.
         """
-        response = self._get(
-            self._format_endpoint(Endpoints.CHARACTER_HEALTH, character_id=character_id)
-        )
-        return Health.model_validate(response.json())
+        return self._call(Routes.CHARACTERS_HEALTH_GET, character_id=character_id)
 
     def set_health(
         self,
@@ -679,11 +658,11 @@ class CharactersService(NotesMixin, AssetsMixin):
             ValidationError: If the damage exceeds the track size.
         """
         body = request if request is not None else self._validate_request(HealthStateSet, **kwargs)
-        response = self._put(
-            self._format_endpoint(Endpoints.CHARACTER_HEALTH, character_id=character_id),
+        return self._call(
+            Routes.CHARACTERS_HEALTH_SET,
             json=body.model_dump(mode="json"),
+            character_id=character_id,
         )
-        return Health.model_validate(response.json())
 
     def apply_health_action(
         self,
@@ -712,8 +691,8 @@ class CharactersService(NotesMixin, AssetsMixin):
             ValidationError: If the action does not apply to health.
         """
         body = self._validate_request(_TrackerAction, action=action, amount=amount)
-        response = self._post(
-            self._format_endpoint(Endpoints.CHARACTER_HEALTH_ACTIONS, character_id=character_id),
+        return self._call(
+            Routes.CHARACTERS_HEALTH_ACTION,
             json=body.model_dump(exclude_none=True, mode="json"),
+            character_id=character_id,
         )
-        return Health.model_validate(response.json())

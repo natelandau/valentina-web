@@ -2,8 +2,8 @@
 
 from typing import TYPE_CHECKING
 
-from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import IdentityResolution, UserIdentifyDTO
+from vweb.api_client.routes import Routes
 from vweb.api_client.services.base import BaseService
 
 if TYPE_CHECKING:
@@ -74,8 +74,7 @@ class IdentityService(BaseService):
             ServerError: If the provider is unreachable (503, code PROVIDER_UNAVAILABLE).
         """
         body = request if request is not None else self._validate_request(UserIdentifyDTO, **kwargs)
-        response = self._post(
-            self._format_endpoint(Endpoints.AUTH_IDENTIFY),
+        return self._call(
+            Routes.IDENTITY_IDENTIFY,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
         )
-        return IdentityResolution.model_validate(response.json())

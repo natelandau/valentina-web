@@ -10,7 +10,6 @@ from vweb.api_client.constants import (
     CharacterClass,
     GameVersion,
 )
-from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import (
     CharacterConcept,
     PaginatedResponse,
@@ -22,6 +21,7 @@ from vweb.api_client.models import (
     WerewolfAuspice,
     WerewolfTribe,
 )
+from vweb.api_client.routes import Routes
 from vweb.api_client.services.base import BaseService
 
 if TYPE_CHECKING:
@@ -52,9 +52,8 @@ class CharacterBlueprintService(BaseService):
         character_class: CharacterClass | None = None,
     ) -> PaginatedResponse[SheetSection]:
         """Get a paginated page of character blueprint sections."""
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.BLUEPRINT_SECTIONS),
-            SheetSection,
+        return self._page(
+            Routes.BLUEPRINT_SECTIONS_LIST,
             limit=limit,
             offset=offset,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
@@ -79,9 +78,8 @@ class CharacterBlueprintService(BaseService):
         character_class: CharacterClass | None = None,
     ) -> Iterator[SheetSection]:
         """Iterate through all character blueprint sections."""
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.BLUEPRINT_SECTIONS),
-            SheetSection,
+        yield from self._iter(
+            Routes.BLUEPRINT_SECTIONS_LIST,
             limit=MAX_REFERENCE_PAGE_LIMIT,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
             params=self._build_params(game_version=game_version, character_class=character_class),
@@ -89,13 +87,7 @@ class CharacterBlueprintService(BaseService):
 
     def get_section(self, *, section_id: str) -> SheetSection:
         """Get a character blueprint section by ID."""
-        response = self._get(
-            self._format_endpoint(
-                Endpoints.BLUEPRINT_SECTION_DETAIL,
-                section_id=section_id,
-            ),
-        )
-        return SheetSection.model_validate(response.json())
+        return self._call(Routes.BLUEPRINT_SECTIONS_GET, section_id=section_id)
 
     # Character Sheet Categories
 
@@ -109,9 +101,8 @@ class CharacterBlueprintService(BaseService):
         character_class: CharacterClass | None = None,
     ) -> PaginatedResponse[TraitCategory]:
         """Get a paginated page of character blueprint categories."""
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.BLUEPRINT_CATEGORIES),
-            TraitCategory,
+        return self._page(
+            Routes.BLUEPRINT_CATEGORIES_LIST,
             limit=limit,
             offset=offset,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
@@ -146,9 +137,8 @@ class CharacterBlueprintService(BaseService):
         character_class: CharacterClass | None = None,
     ) -> Iterator[TraitCategory]:
         """Iterate through all character blueprint categories."""
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.BLUEPRINT_CATEGORIES),
-            TraitCategory,
+        yield from self._iter(
+            Routes.BLUEPRINT_CATEGORIES_LIST,
             limit=MAX_REFERENCE_PAGE_LIMIT,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
             params=self._build_params(
@@ -160,13 +150,7 @@ class CharacterBlueprintService(BaseService):
 
     def get_category(self, *, category_id: str) -> TraitCategory:
         """Get a character blueprint category by ID."""
-        response = self._get(
-            self._format_endpoint(
-                Endpoints.BLUEPRINT_CATEGORY_DETAIL,
-                category_id=category_id,
-            ),
-        )
-        return TraitCategory.model_validate(response.json())
+        return self._call(Routes.BLUEPRINT_CATEGORIES_GET, category_id=category_id)
 
     # Character Sheet Subcategories
 
@@ -180,9 +164,8 @@ class CharacterBlueprintService(BaseService):
         character_class: CharacterClass | None = None,
     ) -> PaginatedResponse[TraitSubcategory]:
         """Get a paginated page of character blueprint subcategories."""
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.BLUEPRINT_SUBCATEGORIES),
-            TraitSubcategory,
+        return self._page(
+            Routes.BLUEPRINT_SUBCATEGORIES_LIST,
             limit=limit,
             offset=offset,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
@@ -217,9 +200,8 @@ class CharacterBlueprintService(BaseService):
         character_class: CharacterClass | None = None,
     ) -> Iterator[TraitSubcategory]:
         """Iterate through all character blueprint subcategories."""
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.BLUEPRINT_SUBCATEGORIES),
-            TraitSubcategory,
+        yield from self._iter(
+            Routes.BLUEPRINT_SUBCATEGORIES_LIST,
             limit=MAX_REFERENCE_PAGE_LIMIT,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
             params=self._build_params(
@@ -231,13 +213,7 @@ class CharacterBlueprintService(BaseService):
 
     def get_subcategory(self, *, subcategory_id: str) -> TraitSubcategory:
         """Get a character blueprint subcategory by ID."""
-        response = self._get(
-            self._format_endpoint(
-                Endpoints.BLUEPRINT_SUBCATEGORY_DETAIL,
-                subcategory_id=subcategory_id,
-            ),
-        )
-        return TraitSubcategory.model_validate(response.json())
+        return self._call(Routes.BLUEPRINT_SUBCATEGORIES_GET, subcategory_id=subcategory_id)
 
     # Character Traits
 
@@ -255,9 +231,8 @@ class CharacterBlueprintService(BaseService):
         exclude_subcategory_traits: bool = False,
     ) -> PaginatedResponse[Trait]:
         """Get a paginated page of character blueprint traits."""
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.BLUEPRINT_TRAITS),
-            Trait,
+        return self._page(
+            Routes.BLUEPRINT_TRAITS_LIST,
             limit=limit,
             offset=offset,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
@@ -308,9 +283,8 @@ class CharacterBlueprintService(BaseService):
         exclude_subcategory_traits: bool = False,
     ) -> Iterator[Trait]:
         """Iterate through all character blueprint traits."""
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.BLUEPRINT_TRAITS),
-            Trait,
+        yield from self._iter(
+            Routes.BLUEPRINT_TRAITS_LIST,
             limit=MAX_REFERENCE_PAGE_LIMIT,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
             params=self._build_params(
@@ -326,10 +300,7 @@ class CharacterBlueprintService(BaseService):
 
     def get_trait(self, *, trait_id: str) -> Trait:
         """Get a character blueprint trait by ID."""
-        response = self._get(
-            self._format_endpoint(Endpoints.BLUEPRINT_TRAIT_DETAIL, trait_id=trait_id),
-        )
-        return Trait.model_validate(response.json())
+        return self._call(Routes.BLUEPRINT_TRAITS_GET, trait_id=trait_id)
 
     # Character Concepts
 
@@ -340,9 +311,8 @@ class CharacterBlueprintService(BaseService):
         offset: int = 0,
     ) -> PaginatedResponse[CharacterConcept]:
         """Get a paginated page of character concepts."""
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.CONCEPTS),
-            CharacterConcept,
+        return self._page(
+            Routes.BLUEPRINT_CONCEPTS_LIST,
             limit=limit,
             offset=offset,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
@@ -354,19 +324,15 @@ class CharacterBlueprintService(BaseService):
 
     def iter_all_concepts(self) -> Iterator[CharacterConcept]:
         """Iterate through all character concepts."""
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.CONCEPTS),
-            CharacterConcept,
+        yield from self._iter(
+            Routes.BLUEPRINT_CONCEPTS_LIST,
             limit=MAX_REFERENCE_PAGE_LIMIT,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
         )
 
     def get_concept(self, *, concept_id: str) -> CharacterConcept:
         """Get a character concept by ID."""
-        response = self._get(
-            self._format_endpoint(Endpoints.CONCEPT_DETAIL, concept_id=concept_id),
-        )
-        return CharacterConcept.model_validate(response.json())
+        return self._call(Routes.BLUEPRINT_CONCEPTS_GET, concept_id=concept_id)
 
     # -----------------------------------------------------------------------------
     # Vampire Clans
@@ -379,9 +345,8 @@ class CharacterBlueprintService(BaseService):
         game_version: GameVersion | None = None,
     ) -> PaginatedResponse[VampireClan]:
         """Get a paginated page of vampire clans."""
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.VAMPIRE_CLANS),
-            VampireClan,
+        return self._page(
+            Routes.BLUEPRINT_VAMPIRE_CLANS_LIST,
             limit=limit,
             offset=offset,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
@@ -398,9 +363,8 @@ class CharacterBlueprintService(BaseService):
         self, *, game_version: GameVersion | None = None
     ) -> Iterator[VampireClan]:
         """Iterate through all vampire clans."""
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.VAMPIRE_CLANS),
-            VampireClan,
+        yield from self._iter(
+            Routes.BLUEPRINT_VAMPIRE_CLANS_LIST,
             limit=MAX_REFERENCE_PAGE_LIMIT,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
             params=self._build_params(game_version=game_version),
@@ -408,10 +372,7 @@ class CharacterBlueprintService(BaseService):
 
     def get_vampire_clan(self, *, vampire_clan_id: str) -> VampireClan:
         """Get a vampire clan by ID."""
-        response = self._get(
-            self._format_endpoint(Endpoints.VAMPIRE_CLAN_DETAIL, vampire_clan_id=vampire_clan_id),
-        )
-        return VampireClan.model_validate(response.json())
+        return self._call(Routes.BLUEPRINT_VAMPIRE_CLANS_GET, vampire_clan_id=vampire_clan_id)
 
     # -----------------------------------------------------------------------------
     # Werewolf Auspices
@@ -424,9 +385,8 @@ class CharacterBlueprintService(BaseService):
         game_version: GameVersion | None = None,
     ) -> PaginatedResponse[WerewolfAuspice]:
         """Get a paginated page of werewolf auspices."""
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.WEREWOLF_AUSPICES),
-            WerewolfAuspice,
+        return self._page(
+            Routes.BLUEPRINT_WEREWOLF_AUSPICES_LIST,
             limit=limit,
             offset=offset,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
@@ -443,9 +403,8 @@ class CharacterBlueprintService(BaseService):
         self, *, game_version: GameVersion | None = None
     ) -> Iterator[WerewolfAuspice]:
         """Iterate through all werewolf auspices."""
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.WEREWOLF_AUSPICES),
-            WerewolfAuspice,
+        yield from self._iter(
+            Routes.BLUEPRINT_WEREWOLF_AUSPICES_LIST,
             limit=MAX_REFERENCE_PAGE_LIMIT,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
             params=self._build_params(game_version=game_version),
@@ -453,12 +412,9 @@ class CharacterBlueprintService(BaseService):
 
     def get_werewolf_auspice(self, *, werewolf_auspice_id: str) -> WerewolfAuspice:
         """Get a werewolf auspice by ID."""
-        response = self._get(
-            self._format_endpoint(
-                Endpoints.WEREWOLF_AUSPICE_DETAIL, werewolf_auspice_id=werewolf_auspice_id
-            ),
+        return self._call(
+            Routes.BLUEPRINT_WEREWOLF_AUSPICES_GET, werewolf_auspice_id=werewolf_auspice_id
         )
-        return WerewolfAuspice.model_validate(response.json())
 
     # -----------------------------------------------------------------------------
     # Werewolf Tribes
@@ -471,9 +427,8 @@ class CharacterBlueprintService(BaseService):
         game_version: GameVersion | None = None,
     ) -> PaginatedResponse[WerewolfTribe]:
         """Get a paginated page of werewolf tribes."""
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.WEREWOLF_TRIBES),
-            WerewolfTribe,
+        return self._page(
+            Routes.BLUEPRINT_WEREWOLF_TRIBES_LIST,
             limit=limit,
             offset=offset,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
@@ -490,9 +445,8 @@ class CharacterBlueprintService(BaseService):
         self, *, game_version: GameVersion | None = None
     ) -> Iterator[WerewolfTribe]:
         """Iterate through all werewolf tribes."""
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.WEREWOLF_TRIBES),
-            WerewolfTribe,
+        yield from self._iter(
+            Routes.BLUEPRINT_WEREWOLF_TRIBES_LIST,
             limit=MAX_REFERENCE_PAGE_LIMIT,
             max_limit=MAX_REFERENCE_PAGE_LIMIT,
             params=self._build_params(game_version=game_version),
@@ -500,9 +454,4 @@ class CharacterBlueprintService(BaseService):
 
     def get_werewolf_tribe(self, *, werewolf_tribe_id: str) -> WerewolfTribe:
         """Get a werewolf tribe by ID."""
-        response = self._get(
-            self._format_endpoint(
-                Endpoints.WEREWOLF_TRIBE_DETAIL, werewolf_tribe_id=werewolf_tribe_id
-            ),
-        )
-        return WerewolfTribe.model_validate(response.json())
+        return self._call(Routes.BLUEPRINT_WEREWOLF_TRIBES_GET, werewolf_tribe_id=werewolf_tribe_id)

@@ -4,7 +4,7 @@ import mimetypes
 import random
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from typing import TYPE_CHECKING, Any, NamedTuple, TypeVar
 
 import httpx2
@@ -39,7 +39,6 @@ from vweb.api_client.exceptions import (
     ValidationError,
 )
 from vweb.api_client.models.pagination import PaginatedResponse
-from vweb.api_client.models.shared import RollStatistics
 from vweb.api_client.routes import ResponseStyle, RouteSpec
 
 T = TypeVar("T", bound=BaseModel)
@@ -707,19 +706,6 @@ class BaseService:
         params = {k: v for k, v in kwargs.items() if v is not None}
         return params or None
 
-    def _get_statistics(self, path: str, *, num_top_traits: int) -> RollStatistics:
-        """Fetch aggregated dice roll statistics from a statistics endpoint.
-
-        Args:
-            path: The formatted statistics endpoint path.
-            num_top_traits: Number of top traits to include.
-
-        Returns:
-            The parsed RollStatistics.
-        """
-        response = self._get(path, params={"num_top_traits": num_top_traits})
-        return RollStatistics.model_validate(response.json())
-
     def _post(
         self,
         path: str,
@@ -849,90 +835,43 @@ class BaseService:
             content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
         return {"data": (filename, content, content_type)}
 
-    def _post_file(
-        self,
-        path: str,
-        *,
-        file: tuple[str, bytes, str | None],
-        idempotency_key: str | None = None,
-    ) -> httpx2.Response:
-        """Make a POST request with a file upload (multipart/form-data).
-
-        Args:
-            path: API endpoint path.
-            file: Tuple of (filename, content, content_type) for the file to upload. A
-                None content_type is guessed from the filename.
-            idempotency_key: Optional idempotency key for safe retries.
-
-        Returns:
-            The HTTP response.
-
-        Raises:
-            ServerError: When server error occurs and max retries are exhausted.
-            ConflictError: For a 409 response, or when an idempotent request is
-                still in progress after max retries are exhausted.
-            RateLimitError: When rate limit is exceeded and max retries are exhausted.
-            APIError: For other API error responses.
-        """
-        return self._request(
-            "POST",
-            path,
-            files=self._multipart_file(file),
-            headers=self._build_idempotency_headers(idempotency_key),
-        )
-
-    def _put_file(
-        self,
-        path: str,
-        *,
-        file: tuple[str, bytes, str | None],
-        idempotency_key: str | None = None,
-    ) -> httpx2.Response:
-        """Make a PUT request with a file upload (multipart/form-data).
-
-        Mirrors ``_post_file``: an idempotency key is sent only when supplied.
-
-        Args:
-            path: API endpoint path.
-            file: Tuple of (filename, content, content_type) for the file to upload. A
-                None content_type is guessed from the filename.
-            idempotency_key: Optional idempotency key for safe retries.
-
-        Returns:
-            The HTTP response.
-
-        Raises:
-            ServerError: When server error occurs and max retries are exhausted.
-            ConflictError: For a 409 response, or when an idempotent request is
-                still in progress after max retries are exhausted.
-            RateLimitError: When rate limit is exceeded and max retries are exhausted.
-            APIError: For other API error responses.
-        """
-        return self._request(
-            "PUT",
-            path,
-            files=self._multipart_file(file),
-            headers=self._build_idempotency_headers(idempotency_key),
-        )
-
     # -------------------------------------------------------------------------
     # Route Methods
     # -------------------------------------------------------------------------
 
     @staticmethod
-    def _require_style(route: RouteSpec[Any], style: ResponseStyle) -> None:
+    def _require_style(route: RouteSpec[Any], *styles: ResponseStyle) -> None:
         """Reject a route whose response style does not fit the helper reading it.
 
         Args:
             route: The route a helper was asked to call.
-            style: The style that helper parses.
+            *styles: The styles that helper reads.
 
         Raises:
-            TypeError: If the route's style is not ``style``.
+            TypeError: If the route's style is not one of ``styles``.
         """
-        if route.style is not style:
-            msg = f"Route {route.method} {route.pattern} returns {route.style}, not {style}"
+        if route.style not in styles:
+            expected = " or ".join(styles)
+            msg = f"Route {route.method} {route.pattern} returns {route.style}, not {expected}"
             raise TypeError(msg)
+
+    def _route_path(
+        self,
+        route: RouteSpec[Any],
+        path_ids: Mapping[str, str] | None,
+        path_params: Mapping[str, str],
+    ) -> str:
+        """Fill a route's path template with the service scope and the call's path IDs.
+
+        Args:
+            route: The route to call.
+            path_ids: Path parameters whose names are known only at runtime.
+            path_params: Path parameters passed by keyword.
+
+        Returns:
+            The formatted path.
+        """
+        return self._format_endpoint(route.pattern, **(path_ids or {}), **path_params)
 
     def _send(
         self,
@@ -942,6 +881,7 @@ class BaseService:
         json: dict[str, Any] | list[Any] | None = None,
         file: tuple[str, bytes, str | None] | None = None,
         idempotency_key: str | None = None,
+        path_ids: Mapping[str, str] | None = None,
         **path_params: str,
     ) -> httpx2.Response:
         """Call a route and return the raw response.
@@ -958,14 +898,16 @@ class BaseService:
             file: Tuple of (filename, content, content_type) to upload as multipart
                 form data. A None content_type is guessed from the filename.
             idempotency_key: Explicit idempotency key for safe retries.
+            path_ids: Path parameters whose names are known only at runtime.
             **path_params: Path parameters beyond the service's scope.
 
         Returns:
             The HTTP response.
         """
+        self._require_style(route, ResponseStyle.NO_CONTENT, ResponseStyle.RAW_JSON)
         return self._dispatch(
             route,
-            self._format_endpoint(route.pattern, **path_params),
+            self._route_path(route, path_ids, path_params),
             params=params,
             json=json,
             file=file,
@@ -1022,6 +964,7 @@ class BaseService:
         json: dict[str, Any] | list[Any] | None = None,
         file: tuple[str, bytes, str | None] | None = None,
         idempotency_key: str | None = None,
+        path_ids: Mapping[str, str] | None = None,
         **path_params: str,
     ) -> M:
         """Call a route that returns one object and parse it into the route's model.
@@ -1032,6 +975,7 @@ class BaseService:
             json: JSON body.
             file: Tuple of (filename, content, content_type) to upload.
             idempotency_key: Explicit idempotency key for safe retries.
+            path_ids: Path parameters whose names are known only at runtime.
             **path_params: Path parameters beyond the service's scope.
 
         Returns:
@@ -1040,7 +984,7 @@ class BaseService:
         self._require_style(route, ResponseStyle.SINGLE)
         response = self._dispatch(
             route,
-            self._format_endpoint(route.pattern, **path_params),
+            self._route_path(route, path_ids, path_params),
             params=params,
             json=json,
             file=file,
@@ -1053,6 +997,7 @@ class BaseService:
         route: RouteSpec[M],
         *,
         params: dict[str, Any] | None = None,
+        path_ids: Mapping[str, str] | None = None,
         **path_params: str,
     ) -> list[M]:
         """Call a route that returns a bare JSON array and parse each item.
@@ -1060,6 +1005,7 @@ class BaseService:
         Args:
             route: A LIST-style route.
             params: Query parameters.
+            path_ids: Path parameters whose names are known only at runtime.
             **path_params: Path parameters beyond the service's scope.
 
         Returns:
@@ -1067,7 +1013,7 @@ class BaseService:
         """
         self._require_style(route, ResponseStyle.LIST)
         response = self._dispatch(
-            route, self._format_endpoint(route.pattern, **path_params), params=params
+            route, self._route_path(route, path_ids, path_params), params=params
         )
         return [route.parse(item) for item in response.json()]
 
@@ -1079,6 +1025,7 @@ class BaseService:
         offset: int = 0,
         params: dict[str, Any] | None = None,
         max_limit: int = MAX_PAGE_LIMIT,
+        path_ids: Mapping[str, str] | None = None,
         **path_params: str,
     ) -> PaginatedResponse[M]:
         """Fetch one page of a paginated route and parse its items.
@@ -1090,6 +1037,7 @@ class BaseService:
             params: Additional query parameters.
             max_limit: Upper bound the limit is clamped to (default 100). Reference/catalog
                 endpoints pass a higher bound (MAX_REFERENCE_PAGE_LIMIT).
+            path_ids: Path parameters whose names are known only at runtime.
             **path_params: Path parameters beyond the service's scope.
 
         Returns:
@@ -1097,7 +1045,7 @@ class BaseService:
         """
         self._require_style(route, ResponseStyle.PAGINATED)
         page = self._get_paginated(
-            self._format_endpoint(route.pattern, **path_params),
+            self._route_path(route, path_ids, path_params),
             limit=limit,
             offset=offset,
             params=params,
@@ -1117,6 +1065,7 @@ class BaseService:
         limit: int = MAX_PAGE_LIMIT,
         params: dict[str, Any] | None = None,
         max_limit: int = MAX_PAGE_LIMIT,
+        path_ids: Mapping[str, str] | None = None,
         **path_params: str,
     ) -> Iterator[M]:
         """Iterate through every page of a paginated route, parsing each item.
@@ -1126,6 +1075,7 @@ class BaseService:
             limit: Items per page (default 100 for efficiency).
             params: Additional query parameters.
             max_limit: Upper bound the per-page limit is clamped to (default 100).
+            path_ids: Path parameters whose names are known only at runtime.
             **path_params: Path parameters beyond the service's scope.
 
         Yields:
@@ -1133,7 +1083,7 @@ class BaseService:
         """
         self._require_style(route, ResponseStyle.PAGINATED)
         for item in self._iter_all_pages(
-            self._format_endpoint(route.pattern, **path_params),
+            self._route_path(route, path_ids, path_params),
             limit=limit,
             params=params,
             max_limit=max_limit,
@@ -1174,40 +1124,6 @@ class BaseService:
 
         response = self._get(path, params=request_params)
         return PaginatedResponse.from_dict(response.json())
-
-    def _get_paginated_as(
-        self,
-        path: str,
-        model_class: type[T],
-        *,
-        limit: int = DEFAULT_PAGE_LIMIT,
-        offset: int = 0,
-        params: dict[str, Any] | None = None,
-        max_limit: int = MAX_PAGE_LIMIT,
-    ) -> PaginatedResponse[T]:
-        """Make a paginated GET request and parse items into the given model class.
-
-        Args:
-            path: API endpoint path.
-            model_class: Pydantic model class to validate each item into.
-            limit: Maximum number of items to return (default 10).
-            offset: Number of items to skip from the beginning (default 0).
-            params: Additional query parameters.
-            max_limit: Upper bound the limit is clamped to (default 100). Reference/catalog
-                endpoints pass a higher bound (MAX_REFERENCE_PAGE_LIMIT).
-
-        Returns:
-            A PaginatedResponse containing validated model instances.
-        """
-        response = self._get_paginated(
-            path, limit=limit, offset=offset, params=params, max_limit=max_limit
-        )
-        return PaginatedResponse(
-            items=[model_class.model_validate(item) for item in response.items],
-            limit=response.limit,
-            offset=response.offset,
-            total=response.total,
-        )
 
     def _iter_all_pages(
         self,
@@ -1255,27 +1171,3 @@ class BaseService:
                 break
 
             offset = page.next_offset
-
-    def _iter_all_pages_as(
-        self,
-        path: str,
-        model_class: type[T],
-        *,
-        limit: int = MAX_PAGE_LIMIT,
-        params: dict[str, Any] | None = None,
-        max_limit: int = MAX_PAGE_LIMIT,
-    ) -> Iterator[T]:
-        """Iterate through all pages of a paginated endpoint, parsing items into a model.
-
-        Args:
-            path: API endpoint path.
-            model_class: Pydantic model class to validate each item into.
-            limit: Items per page (default 100 for efficiency).
-            params: Additional query parameters.
-            max_limit: Upper bound the per-page limit is clamped to (default 100).
-
-        Yields:
-            Validated model instances, one per item.
-        """
-        for item in self._iter_all_pages(path, limit=limit, params=params, max_limit=max_limit):
-            yield model_class.model_validate(item)

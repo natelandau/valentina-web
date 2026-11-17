@@ -4,7 +4,6 @@ from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING
 
 from vweb.api_client.constants import DEFAULT_PAGE_LIMIT, ChapterInclude
-from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import (
     CampaignChapter,
     CampaignChapterDetail,
@@ -13,8 +12,9 @@ from vweb.api_client.models import (
     PaginatedResponse,
     _ChapterRenumber,
 )
-from vweb.api_client.services._assets import AssetsMixin
-from vweb.api_client.services._notes import NotesMixin
+from vweb.api_client.routes import Routes
+from vweb.api_client.services._assets import AssetRoutes, AssetsMixin
+from vweb.api_client.services._notes import NoteRoutes, NotesMixin
 
 if TYPE_CHECKING:
     from vweb.api_client.client import VClient
@@ -28,11 +28,19 @@ class ChaptersService(NotesMixin, AssetsMixin):
     """
 
     _parent_id_param = "chapter_id"
-    _notes_endpoint = Endpoints.BOOK_CHAPTER_NOTES
-    _note_endpoint = Endpoints.BOOK_CHAPTER_NOTE
-    _assets_endpoint = Endpoints.BOOK_CHAPTER_ASSETS
-    _asset_endpoint = Endpoints.BOOK_CHAPTER_ASSET
-    _asset_upload_endpoint = Endpoints.BOOK_CHAPTER_ASSET_UPLOAD
+    _note_routes = NoteRoutes(
+        page=Routes.CHAPTERS_NOTES_LIST,
+        get=Routes.CHAPTERS_NOTES_GET,
+        create=Routes.CHAPTERS_NOTES_CREATE,
+        update=Routes.CHAPTERS_NOTES_UPDATE,
+        delete=Routes.CHAPTERS_NOTES_DELETE,
+    )
+    _asset_routes = AssetRoutes(
+        page=Routes.CHAPTERS_ASSETS_LIST,
+        get=Routes.CHAPTERS_ASSETS_GET,
+        delete=Routes.CHAPTERS_ASSETS_DELETE,
+        upload=Routes.CHAPTERS_ASSETS_UPLOAD,
+    )
 
     def __init__(
         self,
@@ -70,12 +78,7 @@ class ChaptersService(NotesMixin, AssetsMixin):
         offset: int = 0,
     ) -> PaginatedResponse[CampaignChapter]:
         """Retrieve a paginated page of campaign book chapters."""
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.BOOK_CHAPTERS),
-            CampaignChapter,
-            limit=limit,
-            offset=offset,
-        )
+        return self._page(Routes.CHAPTERS_LIST, limit=limit, offset=offset)
 
     def list_all(self) -> list[CampaignChapter]:
         """Retrieve all campaign book chapters."""
@@ -87,11 +90,7 @@ class ChaptersService(NotesMixin, AssetsMixin):
         limit: int = 100,
     ) -> Iterator[CampaignChapter]:
         """Iterate through all campaign book chapters."""
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.BOOK_CHAPTERS),
-            CampaignChapter,
-            limit=limit,
-        )
+        yield from self._iter(Routes.CHAPTERS_LIST, limit=limit)
 
     def get(
         self,
@@ -116,11 +115,11 @@ class ChaptersService(NotesMixin, AssetsMixin):
             NotFoundError: If the chapter does not exist.
             AuthorizationError: If you don't have access.
         """
-        response = self._get(
-            self._format_endpoint(Endpoints.BOOK_CHAPTER, chapter_id=chapter_id),
+        return self._call(
+            Routes.CHAPTERS_GET,
             params=self._build_params(include=list(include) if include else None),
+            chapter_id=chapter_id,
         )
-        return CampaignChapterDetail.model_validate(response.json())
 
     def create(
         self,
@@ -135,11 +134,10 @@ class ChaptersService(NotesMixin, AssetsMixin):
                 Accepts: name (str, required), description (str | None), character_ids (list[str] | None).
         """
         body = request if request is not None else ChapterCreate(**kwargs)
-        response = self._post(
-            self._format_endpoint(Endpoints.BOOK_CHAPTERS),
+        return self._call(
+            Routes.CHAPTERS_CREATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
         )
-        return CampaignChapter.model_validate(response.json())
 
     def update(
         self,
@@ -156,22 +154,22 @@ class ChaptersService(NotesMixin, AssetsMixin):
                 Accepts: name (str | None), description (str | None), character_ids (list[str] | None).
         """
         body = request if request is not None else ChapterUpdate(**kwargs)
-        response = self._patch(
-            self._format_endpoint(Endpoints.BOOK_CHAPTER, chapter_id=chapter_id),
+        return self._call(
+            Routes.CHAPTERS_UPDATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            chapter_id=chapter_id,
         )
-        return CampaignChapter.model_validate(response.json())
 
     def delete(self, chapter_id: str) -> None:
         """Delete a campaign book chapter."""
-        self._delete(self._format_endpoint(Endpoints.BOOK_CHAPTER, chapter_id=chapter_id))
+        self._send(Routes.CHAPTERS_DELETE, chapter_id=chapter_id)
 
     def renumber(self, chapter_id: str, number: int) -> CampaignChapter:
         """Renumber a campaign book chapter."""
-        response = self._put(
-            self._format_endpoint(Endpoints.BOOK_CHAPTER_NUMBER, chapter_id=chapter_id),
+        return self._call(
+            Routes.CHAPTERS_RENUMBER,
             json=_ChapterRenumber(number=number).model_dump(
                 exclude_none=True, exclude_unset=True, mode="json"
             ),
+            chapter_id=chapter_id,
         )
-        return CampaignChapter.model_validate(response.json())

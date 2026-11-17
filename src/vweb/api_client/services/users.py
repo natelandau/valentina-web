@@ -4,7 +4,6 @@ from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING
 
 from vweb.api_client.constants import DEFAULT_PAGE_LIMIT, IdentityProvider, UserInclude, UserRole
-from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import (
     CampaignExperience,
     PaginatedResponse,
@@ -21,8 +20,9 @@ from vweb.api_client.models import (
     UserUpdate,
     _ExperienceAddRemove,
 )
-from vweb.api_client.services._assets import AssetsMixin
-from vweb.api_client.services._notes import NotesMixin
+from vweb.api_client.routes import Routes
+from vweb.api_client.services._assets import AssetRoutes, AssetsMixin
+from vweb.api_client.services._notes import NoteRoutes, NotesMixin
 
 if TYPE_CHECKING:
     from vweb.api_client.client import VClient
@@ -45,11 +45,19 @@ class UsersService(NotesMixin, AssetsMixin):
     """
 
     _parent_id_param = "user_id"
-    _notes_endpoint = Endpoints.USER_NOTES
-    _note_endpoint = Endpoints.USER_NOTE
-    _assets_endpoint = Endpoints.USER_ASSETS
-    _asset_endpoint = Endpoints.USER_ASSET
-    _asset_upload_endpoint = Endpoints.USER_ASSET_UPLOAD
+    _note_routes = NoteRoutes(
+        page=Routes.USERS_NOTES_LIST,
+        get=Routes.USERS_NOTES_GET,
+        create=Routes.USERS_NOTES_CREATE,
+        update=Routes.USERS_NOTES_UPDATE,
+        delete=Routes.USERS_NOTES_DELETE,
+    )
+    _asset_routes = AssetRoutes(
+        page=Routes.USERS_ASSETS_LIST,
+        get=Routes.USERS_ASSETS_GET,
+        delete=Routes.USERS_ASSETS_DELETE,
+        upload=Routes.USERS_ASSETS_UPLOAD,
+    )
 
     def __init__(self, client: "VClient", company_id: str, on_behalf_of: str) -> None:
         """Initialize the service scoped to a specific company.
@@ -80,12 +88,7 @@ class UsersService(NotesMixin, AssetsMixin):
         Returns:
             A PaginatedResponse containing User objects and pagination metadata.
         """
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.USERS_UNAPPROVED_LIST),
-            User,
-            limit=limit,
-            offset=offset,
-        )
+        return self._page(Routes.USERS_UNAPPROVED_LIST, limit=limit, offset=offset)
 
     def list_all_unapproved(self) -> list[User]:
         """Retrieve all unapproved users within a company.
@@ -114,11 +117,7 @@ class UsersService(NotesMixin, AssetsMixin):
         Yields:
             Individual User objects.
         """
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.USERS_UNAPPROVED_LIST),
-            User,
-            limit=limit,
-        )
+        yield from self._iter(Routes.USERS_UNAPPROVED_LIST, limit=limit)
 
     def approve_user(
         self,
@@ -144,11 +143,7 @@ class UsersService(NotesMixin, AssetsMixin):
                 the requested role under the hierarchy.
         """
         body = UserApproveDTO(role=role)
-        response = self._post(
-            self._format_endpoint(Endpoints.USER_APPROVE, user_id=user_id),
-            json=body.model_dump(mode="json"),
-        )
-        return User.model_validate(response.json())
+        return self._call(Routes.USERS_APPROVE, json=body.model_dump(mode="json"), user_id=user_id)
 
     def deny_user(
         self,
@@ -163,9 +158,7 @@ class UsersService(NotesMixin, AssetsMixin):
             NotFoundError: If the user does not exist.
             AuthorizationError: If you don't have appropriate access.
         """
-        self._post(
-            self._format_endpoint(Endpoints.USER_DENY, user_id=user_id),
-        )
+        self._send(Routes.USERS_DENY, user_id=user_id)
 
     def merge(
         self,
@@ -192,11 +185,10 @@ class UsersService(NotesMixin, AssetsMixin):
             primary_user_id=primary_user_id,
             secondary_user_id=secondary_user_id,
         )
-        response = self._post(
-            self._format_endpoint(Endpoints.USER_MERGE),
+        return self._call(
+            Routes.USERS_MERGE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
         )
-        return User.model_validate(response.json())
 
     def link_identity(
         self,
@@ -233,11 +225,11 @@ class UsersService(NotesMixin, AssetsMixin):
                 (code TOKEN_VERIFICATION_FAILED).
         """
         body = self._validate_request(UserIdentityLinkDTO, provider=provider, token=token)
-        response = self._post(
-            self._format_endpoint(Endpoints.USER_IDENTITIES, user_id=user_id),
+        return self._call(
+            Routes.USERS_IDENTITY_LINK,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            user_id=user_id,
         )
-        return User.model_validate(response.json())
 
     def unlink_identity(
         self,
@@ -270,10 +262,7 @@ class UsersService(NotesMixin, AssetsMixin):
             ConflictError: If the provider is the user's only linked identity,
                 which cannot be removed (code LAST_IDENTITY).
         """
-        response = self._delete(
-            self._format_endpoint(Endpoints.USER_IDENTITY, user_id=user_id, provider=provider),
-        )
-        return User.model_validate(response.json())
+        return self._call(Routes.USERS_IDENTITY_UNLINK, user_id=user_id, provider=provider)
 
     # User CRUD Methods
 
@@ -299,9 +288,8 @@ class UsersService(NotesMixin, AssetsMixin):
         Returns:
             A PaginatedResponse containing User objects and pagination metadata.
         """
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.USERS),
-            User,
+        return self._page(
+            Routes.USERS_LIST,
             limit=limit,
             offset=offset,
             params=self._build_params(user_role=user_role, email=email),
@@ -351,9 +339,8 @@ class UsersService(NotesMixin, AssetsMixin):
             for user in users.iter_all():
                 print(user.name)
         """
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.USERS),
-            User,
+        yield from self._iter(
+            Routes.USERS_LIST,
             limit=limit,
             params=self._build_params(user_role=user_role, email=email),
         )
@@ -383,11 +370,11 @@ class UsersService(NotesMixin, AssetsMixin):
             NotFoundError: If the user does not exist.
             AuthorizationError: If you don't have access to the company.
         """
-        response = self._get(
-            self._format_endpoint(Endpoints.USER, user_id=user_id),
+        return self._call(
+            Routes.USERS_GET,
             params=self._build_params(include=list(include) if include else None),
+            user_id=user_id,
         )
-        return UserDetail.model_validate(response.json())
 
     def create(
         self,
@@ -422,11 +409,10 @@ class UsersService(NotesMixin, AssetsMixin):
             AuthorizationError: If you don't have admin-level access to the company.
         """
         body = request if request is not None else self._validate_request(UserCreate, **kwargs)
-        response = self._post(
-            self._format_endpoint(Endpoints.USERS),
+        return self._call(
+            Routes.USERS_CREATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
         )
-        return User.model_validate(response.json())
 
     def update(
         self,
@@ -471,11 +457,11 @@ class UsersService(NotesMixin, AssetsMixin):
             ValidationError: If the request data is invalid.
         """
         body = request if request is not None else self._validate_request(UserUpdate, **kwargs)
-        response = self._patch(
-            self._format_endpoint(Endpoints.USER, user_id=user_id),
+        return self._call(
+            Routes.USERS_UPDATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            user_id=user_id,
         )
-        return User.model_validate(response.json())
 
     def delete(
         self,
@@ -492,9 +478,7 @@ class UsersService(NotesMixin, AssetsMixin):
             NotFoundError: If the user does not exist.
             AuthorizationError: If you don't have appropriate access.
         """
-        self._delete(
-            self._format_endpoint(Endpoints.USER, user_id=user_id),
-        )
+        self._send(Routes.USERS_DELETE, user_id=user_id)
 
     def get_statistics(
         self,
@@ -517,9 +501,8 @@ class UsersService(NotesMixin, AssetsMixin):
             NotFoundError: If the user does not exist.
             AuthorizationError: If you don't have access to the company.
         """
-        return self._get_statistics(
-            self._format_endpoint(Endpoints.USER_STATISTICS, user_id=user_id),
-            num_top_traits=num_top_traits,
+        return self._call(
+            Routes.USERS_STATISTICS, params={"num_top_traits": num_top_traits}, user_id=user_id
         )
 
     # Avatar Methods
@@ -547,11 +530,9 @@ class UsersService(NotesMixin, AssetsMixin):
         Returns:
             The updated User object with the new ``avatar_url``.
         """
-        response = self._put_file(
-            self._format_endpoint(Endpoints.USER_AVATAR, user_id=user_id),
-            file=(filename, content, content_type),
+        return self._call(
+            Routes.USERS_AVATAR_UPLOAD, file=(filename, content, content_type), user_id=user_id
         )
-        return User.model_validate(response.json())
 
     def delete_avatar(self, user_id: str) -> User:
         """Remove a user's custom avatar.
@@ -567,10 +548,7 @@ class UsersService(NotesMixin, AssetsMixin):
         Returns:
             The updated User object with the resolved ``avatar_url``.
         """
-        response = self._delete(
-            self._format_endpoint(Endpoints.USER_AVATAR, user_id=user_id),
-        )
-        return User.model_validate(response.json())
+        return self._call(Routes.USERS_AVATAR_DELETE, user_id=user_id)
 
     # Experience Methods
 
@@ -594,12 +572,7 @@ class UsersService(NotesMixin, AssetsMixin):
             NotFoundError: If the user does not exist.
             AuthorizationError: If you don't have access to the company.
         """
-        response = self._get(
-            self._format_endpoint(
-                Endpoints.USER_EXPERIENCE_CAMPAIGN, user_id=user_id, campaign_id=campaign_id
-            )
-        )
-        return CampaignExperience.model_validate(response.json())
+        return self._call(Routes.USERS_EXPERIENCE_GET, user_id=user_id, campaign_id=campaign_id)
 
     def add_xp(
         self,
@@ -630,11 +603,9 @@ class UsersService(NotesMixin, AssetsMixin):
             amount=amount,
             campaign_id=campaign_id,
         )
-        response = self._post(
-            self._format_endpoint(Endpoints.USER_EXPERIENCE_XP_ADD, user_id=user_id),
-            json=body.model_dump(mode="json"),
+        return self._call(
+            Routes.USERS_EXPERIENCE_XP_ADD, json=body.model_dump(mode="json"), user_id=user_id
         )
-        return CampaignExperience.model_validate(response.json())
 
     def remove_xp(
         self,
@@ -665,11 +636,9 @@ class UsersService(NotesMixin, AssetsMixin):
             amount=amount,
             campaign_id=campaign_id,
         )
-        response = self._post(
-            self._format_endpoint(Endpoints.USER_EXPERIENCE_XP_REMOVE, user_id=user_id),
-            json=body.model_dump(mode="json"),
+        return self._call(
+            Routes.USERS_EXPERIENCE_XP_REMOVE, json=body.model_dump(mode="json"), user_id=user_id
         )
-        return CampaignExperience.model_validate(response.json())
 
     def add_cool_points(
         self,
@@ -700,11 +669,9 @@ class UsersService(NotesMixin, AssetsMixin):
             amount=amount,
             campaign_id=campaign_id,
         )
-        response = self._post(
-            self._format_endpoint(Endpoints.USER_EXPERIENCE_CP_ADD, user_id=user_id),
-            json=body.model_dump(mode="json"),
+        return self._call(
+            Routes.USERS_EXPERIENCE_CP_ADD, json=body.model_dump(mode="json"), user_id=user_id
         )
-        return CampaignExperience.model_validate(response.json())
 
     # Quickroll Methods
 
@@ -732,12 +699,7 @@ class UsersService(NotesMixin, AssetsMixin):
             NotFoundError: If the user does not exist.
             AuthorizationError: If you don't have access to the company.
         """
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.USER_QUICKROLLS, user_id=user_id),
-            Quickroll,
-            limit=limit,
-            offset=offset,
-        )
+        return self._page(Routes.USERS_QUICKROLLS_LIST, limit=limit, offset=offset, user_id=user_id)
 
     def list_all_quickrolls(
         self,
@@ -782,11 +744,7 @@ class UsersService(NotesMixin, AssetsMixin):
             for qr in users.iter_all_quickrolls("user_id"):
                 print(qr.name)
         """
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.USER_QUICKROLLS, user_id=user_id),
-            Quickroll,
-            limit=limit,
-        )
+        yield from self._iter(Routes.USERS_QUICKROLLS_LIST, limit=limit, user_id=user_id)
 
     def get_quickroll(
         self,
@@ -807,12 +765,7 @@ class UsersService(NotesMixin, AssetsMixin):
                 ``user_id``.
             AuthorizationError: If you don't have access to the company.
         """
-        response = self._get(
-            self._format_endpoint(
-                Endpoints.USER_QUICKROLL, user_id=user_id, quickroll_id=quickroll_id
-            )
-        )
-        return Quickroll.model_validate(response.json())
+        return self._call(Routes.USERS_QUICKROLLS_GET, user_id=user_id, quickroll_id=quickroll_id)
 
     def create_quickroll(
         self,
@@ -842,11 +795,11 @@ class UsersService(NotesMixin, AssetsMixin):
             ValidationError: If the request data is invalid.
         """
         body = request if request is not None else self._validate_request(QuickrollCreate, **kwargs)
-        response = self._post(
-            self._format_endpoint(Endpoints.USER_QUICKROLLS, user_id=user_id),
+        return self._call(
+            Routes.USERS_QUICKROLLS_CREATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            user_id=user_id,
         )
-        return Quickroll.model_validate(response.json())
 
     def update_quickroll(
         self,
@@ -878,13 +831,12 @@ class UsersService(NotesMixin, AssetsMixin):
             ValidationError: If the request data is invalid.
         """
         body = request if request is not None else self._validate_request(QuickrollUpdate, **kwargs)
-        response = self._patch(
-            self._format_endpoint(
-                Endpoints.USER_QUICKROLL, user_id=user_id, quickroll_id=quickroll_id
-            ),
+        return self._call(
+            Routes.USERS_QUICKROLLS_UPDATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            user_id=user_id,
+            quickroll_id=quickroll_id,
         )
-        return Quickroll.model_validate(response.json())
 
     def delete_quickroll(
         self,
@@ -904,8 +856,4 @@ class UsersService(NotesMixin, AssetsMixin):
                 ``user_id``.
             AuthorizationError: If you don't have appropriate access.
         """
-        self._delete(
-            self._format_endpoint(
-                Endpoints.USER_QUICKROLL, user_id=user_id, quickroll_id=quickroll_id
-            )
-        )
+        self._send(Routes.USERS_QUICKROLLS_DELETE, user_id=user_id, quickroll_id=quickroll_id)

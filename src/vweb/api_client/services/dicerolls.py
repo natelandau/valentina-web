@@ -4,13 +4,13 @@ from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 from vweb.api_client.constants import DEFAULT_PAGE_LIMIT, CharacterType
-from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import (
     Diceroll,
     DicerollCreate,
     PaginatedResponse,
     _DicerollQuickrollCreate,
 )
+from vweb.api_client.routes import Routes
 from vweb.api_client.services.base import BaseService
 
 if TYPE_CHECKING:
@@ -58,9 +58,8 @@ class DicerollService(BaseService):
         Returns:
             A PaginatedResponse containing Diceroll objects and pagination metadata.
         """
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.DICEROLLS),
-            Diceroll,
+        return self._page(
+            Routes.DICEROLLS_LIST,
             limit=limit,
             offset=offset,
             params=self._build_params(
@@ -122,9 +121,8 @@ class DicerollService(BaseService):
         Yields:
             Individual Diceroll objects.
         """
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.DICEROLLS),
-            Diceroll,
+        yield from self._iter(
+            Routes.DICEROLLS_LIST,
             limit=limit,
             params=self._build_params(
                 userid=userid,
@@ -136,8 +134,7 @@ class DicerollService(BaseService):
 
     def get(self, diceroll_id: str) -> Diceroll:
         """Retrieve a specific dice roll."""
-        response = self._get(self._format_endpoint(Endpoints.DICEROLL, diceroll_id=diceroll_id))
-        return Diceroll.model_validate(response.json())
+        return self._call(Routes.DICEROLLS_GET, diceroll_id=diceroll_id)
 
     def create(
         self,
@@ -156,11 +153,10 @@ class DicerollService(BaseService):
                 character_id (str | None), campaign_id (str | None).
         """
         body = request if request is not None else DicerollCreate(**kwargs)
-        response = self._post(
-            self._format_endpoint(Endpoints.DICEROLLS),
+        return self._call(
+            Routes.DICEROLLS_CREATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
         )
-        return Diceroll.model_validate(response.json())
 
     def create_from_quickroll(
         self,
@@ -173,8 +169,8 @@ class DicerollService(BaseService):
         dice_modifier: int = 0,
     ) -> Diceroll:
         """Create a new dice roll using a quickroll template."""
-        response = self._post(
-            self._format_endpoint(Endpoints.DICEROLL_QUICKROLL),
+        return self._call(
+            Routes.DICEROLLS_QUICKROLL,
             json=_DicerollQuickrollCreate(
                 quickroll_id=quickroll_id,
                 character_id=character_id,
@@ -184,4 +180,3 @@ class DicerollService(BaseService):
                 dice_modifier=dice_modifier,
             ).model_dump(exclude_none=True, exclude_unset=True, mode="json"),
         )
-        return Diceroll.model_validate(response.json())

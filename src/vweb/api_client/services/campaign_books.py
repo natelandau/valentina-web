@@ -4,7 +4,6 @@ from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING
 
 from vweb.api_client.constants import DEFAULT_PAGE_LIMIT, BookInclude
-from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import (
     BookCreate,
     BookUpdate,
@@ -13,8 +12,9 @@ from vweb.api_client.models import (
     PaginatedResponse,
     _BookRenumber,
 )
-from vweb.api_client.services._assets import AssetsMixin
-from vweb.api_client.services._notes import NotesMixin
+from vweb.api_client.routes import Routes
+from vweb.api_client.services._assets import AssetRoutes, AssetsMixin
+from vweb.api_client.services._notes import NoteRoutes, NotesMixin
 
 if TYPE_CHECKING:
     from vweb.api_client.client import VClient
@@ -40,11 +40,19 @@ class BooksService(NotesMixin, AssetsMixin):
     """
 
     _parent_id_param = "book_id"
-    _notes_endpoint = Endpoints.BOOK_NOTES
-    _note_endpoint = Endpoints.BOOK_NOTE
-    _assets_endpoint = Endpoints.BOOK_ASSETS
-    _asset_endpoint = Endpoints.BOOK_ASSET
-    _asset_upload_endpoint = Endpoints.BOOK_ASSET_UPLOAD
+    _note_routes = NoteRoutes(
+        page=Routes.BOOKS_NOTES_LIST,
+        get=Routes.BOOKS_NOTES_GET,
+        create=Routes.BOOKS_NOTES_CREATE,
+        update=Routes.BOOKS_NOTES_UPDATE,
+        delete=Routes.BOOKS_NOTES_DELETE,
+    )
+    _asset_routes = AssetRoutes(
+        page=Routes.BOOKS_ASSETS_LIST,
+        get=Routes.BOOKS_ASSETS_GET,
+        delete=Routes.BOOKS_ASSETS_DELETE,
+        upload=Routes.BOOKS_ASSETS_UPLOAD,
+    )
 
     def __init__(
         self,
@@ -84,12 +92,7 @@ class BooksService(NotesMixin, AssetsMixin):
         Returns:
             A PaginatedResponse containing CampaignBook objects and pagination metadata.
         """
-        return self._get_paginated_as(
-            self._format_endpoint(Endpoints.CAMPAIGN_BOOKS),
-            CampaignBook,
-            limit=limit,
-            offset=offset,
-        )
+        return self._page(Routes.BOOKS_LIST, limit=limit, offset=offset)
 
     def list_all(self) -> list[CampaignBook]:
         """Retrieve all campaign books.
@@ -122,11 +125,7 @@ class BooksService(NotesMixin, AssetsMixin):
             for book in books.iter_all():
                 print(book.name)
         """
-        yield from self._iter_all_pages_as(
-            self._format_endpoint(Endpoints.CAMPAIGN_BOOKS),
-            CampaignBook,
-            limit=limit,
-        )
+        yield from self._iter(Routes.BOOKS_LIST, limit=limit)
 
     def get(
         self,
@@ -151,11 +150,11 @@ class BooksService(NotesMixin, AssetsMixin):
             NotFoundError: If the book does not exist.
             AuthorizationError: If you don't have access.
         """
-        response = self._get(
-            self._format_endpoint(Endpoints.CAMPAIGN_BOOK, book_id=book_id),
+        return self._call(
+            Routes.BOOKS_GET,
             params=self._build_params(include=list(include) if include else None),
+            book_id=book_id,
         )
-        return CampaignBookDetail.model_validate(response.json())
 
     def create(
         self,
@@ -178,11 +177,10 @@ class BooksService(NotesMixin, AssetsMixin):
             AuthorizationError: If you don't have book management privileges.
         """
         body = request if request is not None else self._validate_request(BookCreate, **kwargs)
-        response = self._post(
-            self._format_endpoint(Endpoints.CAMPAIGN_BOOKS),
+        return self._call(
+            Routes.BOOKS_CREATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
         )
-        return CampaignBook.model_validate(response.json())
 
     def update(
         self,
@@ -210,11 +208,11 @@ class BooksService(NotesMixin, AssetsMixin):
             ValidationError: If the request data is invalid.
         """
         body = request if request is not None else self._validate_request(BookUpdate, **kwargs)
-        response = self._patch(
-            self._format_endpoint(Endpoints.CAMPAIGN_BOOK, book_id=book_id),
+        return self._call(
+            Routes.BOOKS_UPDATE,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            book_id=book_id,
         )
-        return CampaignBook.model_validate(response.json())
 
     def delete(self, book_id: str) -> None:
         """Remove a campaign book from the system.
@@ -229,7 +227,7 @@ class BooksService(NotesMixin, AssetsMixin):
             NotFoundError: If the book does not exist.
             AuthorizationError: If you don't have book management privileges.
         """
-        self._delete(self._format_endpoint(Endpoints.CAMPAIGN_BOOK, book_id=book_id))
+        self._send(Routes.BOOKS_DELETE, book_id=book_id)
 
     def renumber(self, book_id: str, number: int) -> CampaignBook:
         """Change the book's position number within the campaign.
@@ -251,8 +249,8 @@ class BooksService(NotesMixin, AssetsMixin):
             ValidationError: If the request data is invalid.
         """
         body = self._validate_request(_BookRenumber, number=number)
-        response = self._put(
-            self._format_endpoint(Endpoints.CAMPAIGN_BOOK_NUMBER, book_id=book_id),
+        return self._call(
+            Routes.BOOKS_RENUMBER,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            book_id=book_id,
         )
-        return CampaignBook.model_validate(response.json())

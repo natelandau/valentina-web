@@ -1,26 +1,36 @@
 """Notes methods shared by every service whose resource owns notes."""
 
 from collections.abc import Iterator
-from typing import ClassVar
+from typing import Any, ClassVar, NamedTuple
 
 from vweb.api_client.constants import DEFAULT_PAGE_LIMIT
 from vweb.api_client.models import Note, NoteCreate, NoteUpdate, PaginatedResponse
+from vweb.api_client.routes import RouteSpec
 from vweb.api_client.services.base import BaseService
+
+
+class NoteRoutes(NamedTuple):
+    """The note routes of one parent resource."""
+
+    page: RouteSpec[Note]
+    get: RouteSpec[Note]
+    create: RouteSpec[Note]
+    update: RouteSpec[Note]
+    delete: RouteSpec[Any]
 
 
 class NotesMixin(BaseService):
     """Add note CRUD for a parent resource (campaign, book, chapter, character, or user).
 
-    Subclasses set the endpoint templates and the name of the parent-id placeholder
-    those templates use.
+    Subclasses set the parent's note routes and the name of the parent-id placeholder
+    those routes use.
     """
 
-    _notes_endpoint: ClassVar[str]
-    _note_endpoint: ClassVar[str]
+    _note_routes: ClassVar[NoteRoutes]
     _parent_id_param: ClassVar[str]
 
-    def _note_path(self, endpoint: str, parent_id: str, **kwargs: str) -> str:
-        return self._format_endpoint(endpoint, **{self._parent_id_param: parent_id}, **kwargs)
+    def _note_parent(self, parent_id: str) -> dict[str, str]:
+        return {self._parent_id_param: parent_id}
 
     def get_notes_page(
         self,
@@ -43,11 +53,11 @@ class NotesMixin(BaseService):
             NotFoundError: If the parent resource does not exist.
             AuthorizationError: If you don't have access.
         """
-        return self._get_paginated_as(
-            self._note_path(self._notes_endpoint, parent_id),
-            Note,
+        return self._page(
+            self._note_routes.page,
             limit=limit,
             offset=offset,
+            path_ids=self._note_parent(parent_id),
         )
 
     def list_all_notes(self, parent_id: str) -> list[Note]:
@@ -75,8 +85,8 @@ class NotesMixin(BaseService):
         Yields:
             Individual Note objects.
         """
-        yield from self._iter_all_pages_as(
-            self._note_path(self._notes_endpoint, parent_id), Note, limit=limit
+        yield from self._iter(
+            self._note_routes.page, limit=limit, path_ids=self._note_parent(parent_id)
         )
 
     def get_note(self, parent_id: str, note_id: str) -> Note:
@@ -93,8 +103,9 @@ class NotesMixin(BaseService):
             NotFoundError: If the note does not exist.
             AuthorizationError: If you don't have access.
         """
-        response = self._get(self._note_path(self._note_endpoint, parent_id, note_id=note_id))
-        return Note.model_validate(response.json())
+        return self._call(
+            self._note_routes.get, note_id=note_id, path_ids=self._note_parent(parent_id)
+        )
 
     def create_note(
         self,
@@ -120,11 +131,11 @@ class NotesMixin(BaseService):
             ValidationError: If the request data is invalid.
         """
         body = request if request is not None else self._validate_request(NoteCreate, **kwargs)
-        response = self._post(
-            self._note_path(self._notes_endpoint, parent_id),
+        return self._call(
+            self._note_routes.create,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            path_ids=self._note_parent(parent_id),
         )
-        return Note.model_validate(response.json())
 
     def update_note(
         self,
@@ -152,11 +163,12 @@ class NotesMixin(BaseService):
             ValidationError: If the request data is invalid.
         """
         body = request if request is not None else self._validate_request(NoteUpdate, **kwargs)
-        response = self._patch(
-            self._note_path(self._note_endpoint, parent_id, note_id=note_id),
+        return self._call(
+            self._note_routes.update,
             json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            note_id=note_id,
+            path_ids=self._note_parent(parent_id),
         )
-        return Note.model_validate(response.json())
 
     def delete_note(self, parent_id: str, note_id: str) -> None:
         """Remove a note. This action cannot be undone.
@@ -169,4 +181,4 @@ class NotesMixin(BaseService):
             NotFoundError: If the note does not exist.
             AuthorizationError: If you don't have appropriate access.
         """
-        self._delete(self._note_path(self._note_endpoint, parent_id, note_id=note_id))
+        self._send(self._note_routes.delete, note_id=note_id, path_ids=self._note_parent(parent_id))
