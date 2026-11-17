@@ -69,18 +69,12 @@ class CharacterTraitsService(BaseService):
         Returns:
             A PaginatedResponse containing CharacterTrait objects and pagination metadata.
         """
-        params: dict[str, str | int] = {}
-        if category_id is not None:
-            params["category_id"] = category_id
-        if is_rollable is not None:
-            params["is_rollable"] = is_rollable
-
         return self._get_paginated_as(
             self._format_endpoint(Endpoints.CHARACTER_TRAITS),
             CharacterTrait,
             limit=limit,
             offset=offset,
-            params=params or None,
+            params=self._build_params(category_id=category_id, is_rollable=is_rollable),
         )
 
     def list_all(
@@ -121,17 +115,11 @@ class CharacterTraitsService(BaseService):
             for trait in character_traits.iter_all():
                 print(trait.name)
         """
-        params: dict[str, str | int] = {}
-        if category_id is not None:
-            params["category_id"] = category_id
-        if is_rollable is not None:
-            params["is_rollable"] = is_rollable
-
         yield from self._iter_all_pages_as(
             self._format_endpoint(Endpoints.CHARACTER_TRAITS),
             CharacterTrait,
             limit=limit,
-            params=params or None,
+            params=self._build_params(category_id=category_id, is_rollable=is_rollable),
         )
 
     def get(self, character_trait_id: str) -> CharacterTrait:
@@ -172,13 +160,9 @@ class CharacterTraitsService(BaseService):
             ConflictError: If recouping ``XP`` or ``STARTING_POINTS`` and another request
                 changed the trait's value first. Refetch the trait and retry.
         """
-        params: dict[str, str | int] = {}
-        if currency is not None:
-            params["currency"] = currency
-
         self._delete(
             self._format_endpoint(Endpoints.CHARACTER_TRAIT, character_trait_id=character_trait_id),
-            params=params or None,
+            params=self._build_params(currency=currency),
         )
 
     def assign(self, trait_id: str, value: int, currency: TraitModifyCurrency) -> CharacterTrait:

@@ -1,6 +1,5 @@
 """Service for interacting with the Users API."""
 
-import mimetypes
 from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING
 
@@ -548,9 +547,6 @@ class UsersService(NotesMixin, AssetsMixin):
         Returns:
             The updated User object with the new ``avatar_url``.
         """
-        if content_type is None:
-            content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-
         response = self._put_file(
             self._format_endpoint(Endpoints.USER_AVATAR, user_id=user_id),
             file=(filename, content, content_type),

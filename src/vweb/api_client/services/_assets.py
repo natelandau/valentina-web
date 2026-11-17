@@ -1,6 +1,5 @@
 """Asset methods shared by every service whose resource owns image assets."""
 
-import mimetypes
 from collections.abc import Iterator
 from typing import ClassVar
 
@@ -139,9 +138,6 @@ class AssetsMixin(BaseService):
             AuthorizationError: If you don't have appropriate access.
             ValidationError: If the file is invalid or exceeds size limits.
         """
-        if content_type is None:
-            content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
-
         response = self._post_file(
             self._asset_path(self._asset_upload_endpoint, parent_id),
             file=(filename, content, content_type),

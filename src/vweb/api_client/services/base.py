@@ -1,5 +1,6 @@
 """Base service class for API services."""
 
+import mimetypes
 import random
 import time
 import uuid
@@ -792,18 +793,34 @@ class BaseService:
         """
         return self._request("DELETE", path, params=params)
 
+    @staticmethod
+    def _multipart_file(file: tuple[str, bytes, str | None]) -> dict[str, tuple[str, bytes, str]]:
+        """Build the multipart ``files`` mapping, guessing a missing content type.
+
+        Args:
+            file: Tuple of (filename, content, content_type).
+
+        Returns:
+            The ``files`` mapping with the upload under the ``data`` field.
+        """
+        filename, content, content_type = file
+        if content_type is None:
+            content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        return {"data": (filename, content, content_type)}
+
     def _post_file(
         self,
         path: str,
         *,
-        file: tuple[str, bytes, str],
+        file: tuple[str, bytes, str | None],
         idempotency_key: str | None = None,
     ) -> httpx2.Response:
         """Make a POST request with a file upload (multipart/form-data).
 
         Args:
             path: API endpoint path.
-            file: Tuple of (filename, content, content_type) for the file to upload.
+            file: Tuple of (filename, content, content_type) for the file to upload. A
+                None content_type is guessed from the filename.
             idempotency_key: Optional idempotency key for safe retries.
 
         Returns:
@@ -816,12 +833,10 @@ class BaseService:
             RateLimitError: When rate limit is exceeded and max retries are exhausted.
             APIError: For other API error responses.
         """
-        filename, content, content_type = file
-
         return self._request(
             "POST",
             path,
-            files={"data": (filename, content, content_type)},
+            files=self._multipart_file(file),
             headers=self._build_idempotency_headers(idempotency_key),
         )
 
@@ -829,7 +844,7 @@ class BaseService:
         self,
         path: str,
         *,
-        file: tuple[str, bytes, str],
+        file: tuple[str, bytes, str | None],
         idempotency_key: str | None = None,
     ) -> httpx2.Response:
         """Make a PUT request with a file upload (multipart/form-data).
@@ -838,7 +853,8 @@ class BaseService:
 
         Args:
             path: API endpoint path.
-            file: Tuple of (filename, content, content_type) for the file to upload.
+            file: Tuple of (filename, content, content_type) for the file to upload. A
+                None content_type is guessed from the filename.
             idempotency_key: Optional idempotency key for safe retries.
 
         Returns:
@@ -851,12 +867,10 @@ class BaseService:
             RateLimitError: When rate limit is exceeded and max retries are exhausted.
             APIError: For other API error responses.
         """
-        filename, content, content_type = file
-
         return self._request(
             "PUT",
             path,
-            files={"data": (filename, content, content_type)},
+            files=self._multipart_file(file),
             headers=self._build_idempotency_headers(idempotency_key),
         )
 
