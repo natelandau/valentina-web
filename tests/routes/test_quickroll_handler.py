@@ -2,21 +2,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from tests.helpers import seed_session
-from vweb.api_client.testing import TraitFactory
+from vweb.api_client.testing import QuickrollFactory, Routes, TraitFactory
 from vweb.routes.profile.handlers import QuickrollDisplay, QuickrollHandler
-
-
-@pytest.fixture
-def mock_user_svc(mocker):
-    """Mock the users_service for the handler module."""
-    svc = MagicMock()
-    mocker.patch("vweb.routes.profile.handlers.api_services.users", return_value=svc)
-    return svc
 
 
 @pytest.fixture
@@ -25,30 +15,18 @@ def mock_get_all_traits(mocker):
     return mocker.patch("vweb.lib.cache.blueprint.traits")
 
 
-def _make_quickroll(
-    *, id: str, name: str, description: str | None = None, trait_ids: list[str]
-) -> MagicMock:
-    """Build a MagicMock quickroll with the given attributes."""
-    qr = MagicMock()
-    qr.id = id
-    qr.name = name
-    qr.description = description
-    qr.trait_ids = trait_ids
-    return qr
-
-
 class TestListItems:
     """Tests for QuickrollHandler.list_items()."""
 
-    def test_two_traits_resolved(self, app, mock_user_svc, mock_get_all_traits) -> None:
+    def test_two_traits_resolved(self, app, fake_vclient, mock_get_all_traits) -> None:
         """Verify list_items resolves both trait names from the blueprint cache."""
         with app.test_request_context("/"):
             seed_session()
             # Given a quickroll with two trait IDs
-            qr = _make_quickroll(
+            qr = QuickrollFactory.build(
                 id="qr-1", name="Attack", description="Quick attack", trait_ids=["t1", "t2"]
             )
-            mock_user_svc.list_all_quickrolls.return_value = [qr]
+            fake_vclient.set_response(Routes.USERS_QUICKROLLS_LIST, items=[qr])
 
             trait1 = TraitFactory.build(id="t1", name="Strength")
             trait2 = TraitFactory.build(id="t2", name="Brawl")
@@ -59,7 +37,8 @@ class TestListItems:
             # When listing items
             result = handler.list_items()
 
-            # Then one QuickrollDisplay is returned with both trait names
+            # Then the user's quickrolls are fetched and one QuickrollDisplay is returned
+            fake_vclient.assert_called(Routes.USERS_QUICKROLLS_LIST, params={"user_id": "user-1"})
             assert len(result) == 1
             assert isinstance(result[0], QuickrollDisplay)
             assert result[0].name == "Attack"
@@ -67,13 +46,13 @@ class TestListItems:
             assert result[0].trait_one_name == "Strength"
             assert result[0].trait_two_name == "Brawl"
 
-    def test_one_trait_resolved(self, app, mock_user_svc, mock_get_all_traits) -> None:
+    def test_one_trait_resolved(self, app, fake_vclient, mock_get_all_traits) -> None:
         """Verify list_items handles a quickroll with only one trait."""
         with app.test_request_context("/"):
             seed_session()
             # Given a quickroll with one trait ID
-            qr = _make_quickroll(id="qr-2", name="Dodge", trait_ids=["t1"])
-            mock_user_svc.list_all_quickrolls.return_value = [qr]
+            qr = QuickrollFactory.build(id="qr-2", name="Dodge", trait_ids=["t1"])
+            fake_vclient.set_response(Routes.USERS_QUICKROLLS_LIST, items=[qr])
 
             trait1 = TraitFactory.build(id="t1", name="Dexterity")
             mock_get_all_traits.return_value = {"t1": trait1}
@@ -87,13 +66,13 @@ class TestListItems:
             assert result[0].trait_one_name == "Dexterity"
             assert result[0].trait_two_name == "-"
 
-    def test_zero_traits(self, app, mock_user_svc, mock_get_all_traits) -> None:
+    def test_zero_traits(self, app, fake_vclient, mock_get_all_traits) -> None:
         """Verify list_items handles a quickroll with no traits."""
         with app.test_request_context("/"):
             seed_session()
             # Given a quickroll with no trait IDs
-            qr = _make_quickroll(id="qr-3", name="Empty", trait_ids=[])
-            mock_user_svc.list_all_quickrolls.return_value = [qr]
+            qr = QuickrollFactory.build(id="qr-3", name="Empty", trait_ids=[])
+            fake_vclient.set_response(Routes.USERS_QUICKROLLS_LIST, items=[qr])
             mock_get_all_traits.return_value = {}
 
             handler = QuickrollHandler("user-1")
@@ -105,13 +84,13 @@ class TestListItems:
             assert result[0].trait_one_name == "-"
             assert result[0].trait_two_name == "-"
 
-    def test_unknown_trait_returns_dash(self, app, mock_user_svc, mock_get_all_traits) -> None:
+    def test_unknown_trait_returns_dash(self, app, fake_vclient, mock_get_all_traits) -> None:
         """Verify trait resolution falls back to dash when trait ID is not found."""
         with app.test_request_context("/"):
             seed_session()
             # Given a quickroll with an unknown trait ID
-            qr = _make_quickroll(id="qr-5", name="Broken", trait_ids=["bad-id"])
-            mock_user_svc.list_all_quickrolls.return_value = [qr]
+            qr = QuickrollFactory.build(id="qr-5", name="Broken", trait_ids=["bad-id"])
+            fake_vclient.set_response(Routes.USERS_QUICKROLLS_LIST, items=[qr])
             mock_get_all_traits.return_value = {}
 
             handler = QuickrollHandler("user-1")
@@ -126,8 +105,8 @@ class TestListItems:
 class TestCrudOperations:
     """Tests for QuickrollHandler create, update, delete, and get_item."""
 
-    def test_create_item_delegates_to_service(self, app, mock_user_svc) -> None:
-        """Verify create_item calls the service with correct arguments."""
+    def test_create_item_delegates_to_service(self, app, fake_vclient) -> None:
+        """Verify create_item sends the parsed form to the API."""
         with app.test_request_context("/"):
             seed_session()
             handler = QuickrollHandler("user-1")
@@ -142,16 +121,20 @@ class TestCrudOperations:
                 }
             )
 
-            # Then the service is called with stripped values and trait IDs list
-            call_args = mock_user_svc.create_quickroll.call_args
-            assert call_args[0][0] == "user-1"
-            request = call_args[1]["request"]
-            assert request.name == "Attack Roll"
-            assert request.description == "Quick attack"
-            assert request.trait_ids == ["t1", "t2"]
+            # Then the API receives stripped values and the trait IDs list for the user
+            fake_vclient.assert_called(
+                Routes.USERS_QUICKROLLS_CREATE,
+                params={"user_id": "user-1"},
+                json={
+                    "name": "Attack Roll",
+                    "description": "Quick attack",
+                    "trait_ids": ["t1", "t2"],
+                },
+                times=1,
+            )
 
-    def test_create_item_omits_empty_description(self, app, mock_user_svc) -> None:
-        """Verify create_item sets description to None when empty."""
+    def test_create_item_omits_empty_description(self, app, fake_vclient) -> None:
+        """Verify create_item omits an empty description."""
         with app.test_request_context("/"):
             seed_session()
             handler = QuickrollHandler("user-1")
@@ -159,11 +142,14 @@ class TestCrudOperations:
             # When creating with empty description
             handler.create_item({"name": "Roll", "description": "", "trait_one_id": "t1"})
 
-            # Then description is None
-            request = mock_user_svc.create_quickroll.call_args[1]["request"]
-            assert request.description is None
+            # Then no description is sent
+            fake_vclient.assert_called(
+                Routes.USERS_QUICKROLLS_CREATE,
+                json={"name": "Roll", "trait_ids": ["t1"]},
+                times=1,
+            )
 
-    def test_create_item_filters_empty_trait_ids(self, app, mock_user_svc) -> None:
+    def test_create_item_filters_empty_trait_ids(self, app, fake_vclient) -> None:
         """Verify create_item excludes empty trait ID strings."""
         with app.test_request_context("/"):
             seed_session()
@@ -179,11 +165,12 @@ class TestCrudOperations:
             )
 
             # Then only the non-empty trait ID is included
-            request = mock_user_svc.create_quickroll.call_args[1]["request"]
-            assert request.trait_ids == ["t1"]
+            fake_vclient.assert_called(
+                Routes.USERS_QUICKROLLS_CREATE, json_subset={"trait_ids": ["t1"]}, times=1
+            )
 
-    def test_update_item_delegates_to_service(self, app, mock_user_svc) -> None:
-        """Verify update_item calls the service with correct arguments."""
+    def test_update_item_delegates_to_service(self, app, fake_vclient) -> None:
+        """Verify update_item sends the parsed form to the quickroll's API path."""
         with app.test_request_context("/"):
             seed_session()
             handler = QuickrollHandler("user-1")
@@ -199,15 +186,16 @@ class TestCrudOperations:
                 },
             )
 
-            # Then the service is called with the quickroll ID and updated data
-            call_args = mock_user_svc.update_quickroll.call_args
-            assert call_args[0] == ("user-1", "qr-1")
-            request = call_args[1]["request"]
-            assert request.name == "Updated"
-            assert request.trait_ids == ["t3", "t4"]
+            # Then the API receives the updated data for that user's quickroll
+            fake_vclient.assert_called(
+                Routes.USERS_QUICKROLLS_UPDATE,
+                params={"user_id": "user-1", "quickroll_id": "qr-1"},
+                json_subset={"name": "Updated", "trait_ids": ["t3", "t4"]},
+                times=1,
+            )
 
-    def test_delete_item_delegates_to_service(self, app, mock_user_svc) -> None:
-        """Verify delete_item calls the service with correct IDs."""
+    def test_delete_item_delegates_to_service(self, app, fake_vclient) -> None:
+        """Verify delete_item deletes the quickroll through the API."""
         with app.test_request_context("/"):
             seed_session()
             handler = QuickrollHandler("user-1")
@@ -215,11 +203,15 @@ class TestCrudOperations:
             # When deleting a quickroll
             handler.delete_item("qr-1")
 
-            # Then the service is called
-            mock_user_svc.delete_quickroll.assert_called_once_with("user-1", "qr-1")
+            # Then the API receives a delete for that user's quickroll
+            fake_vclient.assert_called(
+                Routes.USERS_QUICKROLLS_DELETE,
+                params={"user_id": "user-1", "quickroll_id": "qr-1"},
+                times=1,
+            )
 
-    def test_get_item_delegates_to_service(self, app, mock_user_svc) -> None:
-        """Verify get_item calls the service with correct IDs."""
+    def test_get_item_delegates_to_service(self, app, fake_vclient) -> None:
+        """Verify get_item fetches the quickroll through the API."""
         with app.test_request_context("/"):
             seed_session()
             handler = QuickrollHandler("user-1")
@@ -227,8 +219,12 @@ class TestCrudOperations:
             # When getting a quickroll
             handler.get_item("qr-1")
 
-            # Then the service is called
-            mock_user_svc.get_quickroll.assert_called_once_with("user-1", "qr-1")
+            # Then the API receives a fetch for that user's quickroll
+            fake_vclient.assert_called(
+                Routes.USERS_QUICKROLLS_GET,
+                params={"user_id": "user-1", "quickroll_id": "qr-1"},
+                times=1,
+            )
 
 
 class TestValidate:

@@ -10,6 +10,7 @@ from vweb.api_client.testing import (
     CampaignFactory,
     CharacterFactory,
     CompanyFactory,
+    Routes,
     UserFactory,
 )
 from vweb.lib.cache.global_context import GlobalContext
@@ -180,14 +181,11 @@ class TestCampaignCreateView:
 
     def test_creates_campaign_and_redirects(self, client, mocker, fake_vclient) -> None:
         """Verify successful creation returns HX-Redirect."""
-        # Given a STORYTELLER user and a mocked campaign service
+        # Given a STORYTELLER user and an API returning the new campaign
         ctx = build_global_context(user_role="STORYTELLER")
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
         new_campaign = CampaignFactory.build(name="New Campaign")
-        mock_service = mocker.MagicMock()
-        mock_service.create.return_value = new_campaign
-        mocker.patch("vweb.routes.campaign.views.api_services.campaigns", return_value=mock_service)
-        mocker.patch("vweb.lib.cache.global_context.clear")
+        fake_vclient.set_response(Routes.CAMPAIGNS_CREATE, model=new_campaign)
 
         # When submitting a valid campaign creation form
         csrf = get_csrf(client)
@@ -200,7 +198,11 @@ class TestCampaignCreateView:
         # Then the response redirects to the new campaign
         assert response.status_code == 200
         assert f"/campaign/{new_campaign.id}" in response.headers.get("HX-Redirect", "")
-        mock_service.create.assert_called_once()
+        fake_vclient.assert_called(
+            Routes.CAMPAIGNS_CREATE,
+            json={"name": "New Campaign", "description": "A test campaign"},
+            times=1,
+        )
 
     def test_returns_403_for_player_role(self, client, mocker) -> None:
         """Verify players cannot create campaigns."""
@@ -343,14 +345,11 @@ class TestCampaignUpdateView:
 
     def test_updates_campaign_and_redirects(self, client, mocker, fake_vclient) -> None:
         """Verify successful update returns HX-Redirect."""
-        # Given a STORYTELLER user and a mocked campaign service
+        # Given a STORYTELLER user and an API returning the updated campaign
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mock_service = mocker.MagicMock()
-        mock_service.update.return_value = campaign
-        mocker.patch("vweb.routes.campaign.views.api_services.campaigns", return_value=mock_service)
-        mocker.patch("vweb.lib.cache.global_context.clear")
+        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=campaign)
 
         # When submitting a valid update form
         csrf = get_csrf(client)
@@ -363,7 +362,12 @@ class TestCampaignUpdateView:
         # Then the response redirects to the campaign page
         assert response.status_code == 200
         assert f"/campaign/{campaign.id}" in response.headers.get("HX-Redirect", "")
-        mock_service.update.assert_called_once()
+        fake_vclient.assert_called(
+            Routes.CAMPAIGNS_UPDATE,
+            params={"campaign_id": campaign.id},
+            json={"name": "Updated Name", "description": "Updated desc"},
+            times=1,
+        )
 
     def test_returns_validation_errors(self, client, mocker) -> None:
         """Verify validation errors re-render the form."""
@@ -429,17 +433,14 @@ class TestCampaignUpdateView:
 class TestCampaignUpdateDangerDesperationView:
     """Tests for POST /campaign/<campaign_id>/update/<field>."""
 
-    def test_updates_danger_and_returns_badge(self, client, mocker) -> None:
+    def test_updates_danger_and_returns_badge(self, client, mocker, fake_vclient) -> None:
         """Verify a storyteller can update danger and receive re-rendered badges."""
         # Given a STORYTELLER user
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mock_service = mocker.MagicMock()
         updated_campaign = CampaignFactory.build(id=campaign.id, danger=3, desperation=0)
-        mock_service.update.return_value = updated_campaign
-        mocker.patch("vweb.routes.campaign.views.api_services.campaigns", return_value=mock_service)
-        mocker.patch("vweb.lib.cache.global_context.clear")
+        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=updated_campaign)
 
         # When posting a danger value update
         csrf = get_csrf(client)
@@ -452,18 +453,20 @@ class TestCampaignUpdateDangerDesperationView:
         # Then the badge partial is returned
         assert response.status_code == 200
         assert_has_element(response, id="danger-desperation-badges")
-        mock_service.update.assert_called_once()
+        fake_vclient.assert_called(
+            Routes.CAMPAIGNS_UPDATE,
+            params={"campaign_id": campaign.id},
+            json={"danger": 3},
+            times=1,
+        )
 
-    def test_updates_desperation(self, client, mocker) -> None:
+    def test_updates_desperation(self, client, mocker, fake_vclient) -> None:
         """Verify a storyteller can update desperation."""
         # Given a STORYTELLER user
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mock_service = mocker.MagicMock()
-        mock_service.update.return_value = campaign
-        mocker.patch("vweb.routes.campaign.views.api_services.campaigns", return_value=mock_service)
-        mocker.patch("vweb.lib.cache.global_context.clear")
+        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=campaign)
 
         # When posting a desperation value update
         csrf = get_csrf(client)
@@ -475,17 +478,20 @@ class TestCampaignUpdateDangerDesperationView:
 
         # Then the response succeeds
         assert response.status_code == 200
-        mock_service.update.assert_called_once()
+        fake_vclient.assert_called(
+            Routes.CAMPAIGNS_UPDATE,
+            params={"campaign_id": campaign.id},
+            json={"desperation": 4},
+            times=1,
+        )
 
-    def test_clears_global_context_cache(self, client, mocker) -> None:
+    def test_clears_global_context_cache(self, client, mocker, fake_vclient) -> None:
         """Verify cache is cleared after a successful update."""
         # Given a STORYTELLER user
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mock_service = mocker.MagicMock()
-        mock_service.update.return_value = campaign
-        mocker.patch("vweb.routes.campaign.views.api_services.campaigns", return_value=mock_service)
+        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=campaign)
         mock_clear = mocker.patch("vweb.lib.cache.global_context.clear")
 
         # When posting a valid update
@@ -551,13 +557,10 @@ class TestCampaignDeleteView:
 
     def test_deletes_campaign_and_redirects(self, client, mocker, fake_vclient) -> None:
         """Verify successful delete returns HX-Redirect to home."""
-        # Given a STORYTELLER user and a mocked campaign service
+        # Given a STORYTELLER user
         ctx = build_global_context(user_role="STORYTELLER")
         campaign = ctx.campaigns[0]
         mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mock_service = mocker.MagicMock()
-        mocker.patch("vweb.routes.campaign.views.api_services.campaigns", return_value=mock_service)
-        mocker.patch("vweb.lib.cache.global_context.clear")
 
         # Given the session has the campaign stored
         with client.session_transaction() as sess:
@@ -573,7 +576,9 @@ class TestCampaignDeleteView:
         # Then the response redirects to home
         assert response.status_code == 200
         assert response.headers.get("HX-Redirect") == "/"
-        mock_service.delete.assert_called_once_with(campaign.id)
+        fake_vclient.assert_called(
+            Routes.CAMPAIGNS_DELETE, params={"campaign_id": campaign.id}, times=1
+        )
 
         # And the session no longer has the campaign ID
         with client.session_transaction() as sess:

@@ -1,11 +1,9 @@
 """Tests for character creation service."""
 
-from unittest.mock import MagicMock
-
 import pytest
 from flask import Flask
 
-from tests.helpers import make_cache_store_mock
+from tests.helpers import make_cache_store_mock, seed_session
 from vweb.api_client.testing import (
     CharacterConceptFactory,
     CharacterFactory,
@@ -20,63 +18,43 @@ from vweb.api_client.testing import (
 class TestGenerateSingle:
     """Tests for generate_single()."""
 
-    def test_calls_autogen_with_required_fields_only(self, app: Flask, mocker) -> None:
+    def test_calls_autogen_with_required_fields_only(self, app: Flask, fake_vclient) -> None:
         """Verify generate_single passes character_type and skips None optionals."""
-        # Given a mocked autogen service
-        mock_service = MagicMock()
+        # Given an API that returns a generated character
         expected_character = CharacterFactory.build()
-        mock_service.generate_character.return_value = expected_character
-        mocker.patch(
-            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
-            return_value=mock_service,
-        )
+        fake_vclient.set_response(Routes.CHARACTERS_AUTOGENERATE, model=expected_character)
 
         from vweb.routes.character_create.autogen_services import generate_single
 
         # When calling with only required fields
         with app.test_request_context():
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "u1"
+            seed_session(user_id="u1")
             result = generate_single(
                 campaign_id="c1",
                 character_type="PLAYER",
             )
 
-        # Then the service is called with character_type and no optionals
-        mock_service.generate_character.assert_called_once_with(
-            campaign_id="c1",
-            character_type="PLAYER",
-            character_class=None,
-            experience_level=None,
-            skill_focus=None,
-            concept_id=None,
-            vampire_clan_id=None,
-            werewolf_tribe_id=None,
-            werewolf_auspice_id=None,
+        # Then the API receives the campaign and character_type and no optionals
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_AUTOGENERATE,
+            params={"company_id": "test-company-id"},
+            query={"campaign_id": "c1"},
+            json={"character_type": "PLAYER"},
+            times=1,
         )
         assert result == expected_character
 
-    def test_passes_all_optional_fields(self, app: Flask, mocker) -> None:
+    def test_passes_all_optional_fields(self, app: Flask, fake_vclient) -> None:
         """Verify generate_single forwards all optional parameters."""
-        # Given a mocked autogen service
-        mock_service = MagicMock()
+        # Given an API that returns a generated character
         expected_character = CharacterFactory.build()
-        mock_service.generate_character.return_value = expected_character
-        mocker.patch(
-            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
-            return_value=mock_service,
-        )
+        fake_vclient.set_response(Routes.CHARACTERS_AUTOGENERATE, model=expected_character)
 
         from vweb.routes.character_create.autogen_services import generate_single
 
         # When calling with all optional fields
         with app.test_request_context():
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "u1"
+            seed_session(user_id="u1")
             result = generate_single(
                 campaign_id="c1",
                 character_type="NPC",
@@ -87,17 +65,19 @@ class TestGenerateSingle:
                 vampire_clan_id="clan-456",
             )
 
-        # Then all fields are forwarded
-        mock_service.generate_character.assert_called_once_with(
-            campaign_id="c1",
-            character_type="NPC",
-            character_class="VAMPIRE",
-            experience_level="ADVANCED",
-            skill_focus="SPECIALIST",
-            concept_id="concept-123",
-            vampire_clan_id="clan-456",
-            werewolf_tribe_id=None,
-            werewolf_auspice_id=None,
+        # Then all given fields reach the API
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_AUTOGENERATE,
+            query={"campaign_id": "c1"},
+            json={
+                "character_type": "NPC",
+                "character_class": "VAMPIRE",
+                "experience_level": "ADVANCED",
+                "skill_focus": "SPECIALIST",
+                "concept_id": "concept-123",
+                "vampire_clan_id": "clan-456",
+            },
+            times=1,
         )
         assert result == expected_character
 
@@ -105,64 +85,51 @@ class TestGenerateSingle:
 class TestStartSession:
     """Tests for start_session()."""
 
-    def test_starts_chargen_session(self, app: Flask, mocker) -> None:
+    def test_starts_chargen_session(self, app: Flask, fake_vclient) -> None:
         """Verify start_session calls the chargen start endpoint."""
-        # Given a mocked autogen service
-        mock_service = MagicMock()
+        # Given an API that starts a chargen session
         expected_response = ChargenSessionResponseFactory.build()
-        mock_service.start_chargen_session.return_value = expected_response
-        mocker.patch(
-            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
-            return_value=mock_service,
-        )
+        fake_vclient.set_response(Routes.CHARACTERS_CHARGEN_START, model=expected_response)
 
         from vweb.routes.character_create.autogen_services import start_session
 
         # When starting a session
         with app.test_request_context():
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "u1"
+            seed_session(user_id="u1")
             result = start_session(campaign_id="c1")
 
-        # Then the session response is returned
-        mock_service.start_chargen_session.assert_called_once()
+        # Then the session is started for the campaign and its response is returned
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_CHARGEN_START, query={"campaign_id": "c1"}, times=1
+        )
         assert result == expected_response
 
 
 class TestFinalizeSession:
     """Tests for finalize_session()."""
 
-    def test_finalizes_with_selected_character(self, app: Flask, mocker) -> None:
+    def test_finalizes_with_selected_character(self, app: Flask, fake_vclient) -> None:
         """Verify finalize_session passes session_id and selected_character_id."""
-        # Given a mocked autogen service
-        mock_service = MagicMock()
+        # Given an API that finalizes a chargen session
         expected_character = CharacterFactory.build()
-        mock_service.finalize_chargen_session.return_value = expected_character
-        mocker.patch(
-            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
-            return_value=mock_service,
-        )
+        fake_vclient.set_response(Routes.CHARACTERS_CHARGEN_FINALIZE, model=expected_character)
 
         from vweb.routes.character_create.autogen_services import finalize_session
 
         # When finalizing
         with app.test_request_context():
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "u1"
+            seed_session(user_id="u1")
             result = finalize_session(
                 campaign_id="c1",
                 session_id="sess-1",
                 selected_character_id="char-2",
             )
 
-        # Then the correct IDs are passed
-        mock_service.finalize_chargen_session.assert_called_once_with(
-            session_id="sess-1",
-            selected_character_id="char-2",
+        # Then the correct IDs are sent
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_CHARGEN_FINALIZE,
+            json={"session_id": "sess-1", "selected_character_id": "char-2"},
+            times=1,
         )
         assert result == expected_character
 
@@ -263,41 +230,34 @@ class TestListSessions:
 class TestGetSession:
     """Tests for get_session."""
 
-    def test_returns_session_from_api(self, app: Flask, mocker) -> None:
+    def test_returns_session_from_api(self, app: Flask, fake_vclient) -> None:
         """Verify get_session returns the requested session."""
-        # Given a mocked autogen service
-        mock_service = MagicMock()
-        expected = ChargenSessionResponseFactory.build(id="sess-123", campaign_id="c1")
-        mock_service.get.return_value = expected
-        mocker.patch(
-            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
-            return_value=mock_service,
+        # Given an API holding the session in campaign c1
+        fake_vclient.set_response(
+            Routes.CHARACTERS_CHARGEN_SESSION_GET,
+            model=ChargenSessionResponseFactory.build(id="sess-123", campaign_id="c1"),
+            params={"session_id": "sess-123"},
         )
 
         from vweb.routes.character_create.autogen_services import get_session
 
         # When getting the session
         with app.test_request_context():
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "u1"
+            seed_session(user_id="u1")
             result = get_session(campaign_id="c1", session_id="sess-123")
 
-        # Then the session is returned
+        # Then the session is fetched by ID and returned
         assert result.id == "sess-123"
-        mock_service.get.assert_called_once_with("sess-123")
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_CHARGEN_SESSION_GET, params={"session_id": "sess-123"}, times=1
+        )
 
-    def test_rejects_session_from_another_campaign(self, app: Flask, mocker) -> None:
+    def test_rejects_session_from_another_campaign(self, app: Flask, fake_vclient) -> None:
         """Verify get_session raises NotFoundError for a session in a different campaign."""
         # Given a session that belongs to another campaign
-        mock_service = MagicMock()
-        mock_service.get.return_value = ChargenSessionResponseFactory.build(
-            id="sess-123", campaign_id="c2"
-        )
-        mocker.patch(
-            "vweb.routes.character_create.autogen_services.api_services.character_autogen",
-            return_value=mock_service,
+        fake_vclient.set_response(
+            Routes.CHARACTERS_CHARGEN_SESSION_GET,
+            model=ChargenSessionResponseFactory.build(id="sess-123", campaign_id="c2"),
         )
 
         from vweb.api_client.exceptions import NotFoundError
@@ -305,10 +265,7 @@ class TestGetSession:
 
         # When getting it under campaign c1
         with app.test_request_context():
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "u1"
+            seed_session(user_id="u1")
 
             # Then it is refused as not found
             with pytest.raises(NotFoundError):

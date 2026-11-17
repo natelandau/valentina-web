@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
-
 import pytest
 
 from tests.helpers import seed_session
-from vweb.api_client.models import DictionaryTermCreate, DictionaryTermUpdate
+from vweb.api_client.testing import Routes
 from vweb.routes.dictionary.services import (
     create_term,
     delete_term,
@@ -16,9 +13,6 @@ from vweb.routes.dictionary.services import (
     update_term,
     validate_term,
 )
-
-if TYPE_CHECKING:
-    from pytest_mock import MockerFixture
 
 
 class TestParseSynonyms:
@@ -102,76 +96,84 @@ class TestValidateTerm:
         assert errors == {}
 
 
-@pytest.fixture
-def mock_svc(mocker: MockerFixture) -> MagicMock:
-    """Patch dictionary_service and return the mock service instance."""
-    svc = MagicMock()
-    mocker.patch("vweb.routes.dictionary.services.api_services.dictionary", return_value=svc)
-    return svc
-
-
 class TestCreateTerm:
     """Tests for create_term."""
 
-    def test_creates_term_via_api(self, app, mock_svc: MagicMock) -> None:
-        """Verify create_term calls the API with parsed form data."""
+    def test_creates_term_via_api(self, app, fake_vclient) -> None:
+        """Verify create_term sends the parsed form data to the API."""
+        # Given a filled-in term form
         form_data = {
             "term": "Auspex",
             "definition": "A vampiric discipline.",
             "link": "https://example.com",
             "synonyms": "sight, vision",
         }
+
+        # When creating the term
         with app.test_request_context("/"):
             seed_session()
             create_term(form_data)
 
-        mock_svc.create.assert_called_once()
-        call_arg = mock_svc.create.call_args[1]["request"]
-        assert isinstance(call_arg, DictionaryTermCreate)
-        assert call_arg.term == "Auspex"
-        assert call_arg.definition == "A vampiric discipline."
-        assert call_arg.link == "https://example.com"
-        assert call_arg.synonyms == ["sight", "vision"]
+        # Then the API receives every parsed field
+        fake_vclient.assert_called(
+            Routes.DICTIONARY_CREATE,
+            params={"company_id": "test-company-id"},
+            json={
+                "term": "Auspex",
+                "definition": "A vampiric discipline.",
+                "link": "https://example.com",
+                "synonyms": ["sight", "vision"],
+            },
+            times=1,
+        )
 
-    def test_empty_optional_fields(self, app, mock_svc: MagicMock) -> None:
-        """Verify empty optional fields are passed as None."""
+    def test_empty_optional_fields(self, app, fake_vclient) -> None:
+        """Verify empty optional fields are left out of the request."""
+        # Given a form with only the term filled in
         form_data = {"term": "Auspex", "definition": "", "link": "", "synonyms": ""}
+
+        # When creating the term
         with app.test_request_context("/"):
             seed_session()
             create_term(form_data)
 
-        call_arg = mock_svc.create.call_args[1]["request"]
-        assert call_arg.definition is None
-        assert call_arg.link is None
-        assert call_arg.synonyms == []
+        # Then the API receives no definition or link and an empty synonym list
+        fake_vclient.assert_called(
+            Routes.DICTIONARY_CREATE, json={"term": "Auspex", "synonyms": []}, times=1
+        )
 
 
 class TestUpdateTerm:
     """Tests for update_term."""
 
-    def test_updates_term_via_api(self, app, mock_svc: MagicMock) -> None:
-        """Verify update_term calls the API with parsed form data."""
+    def test_updates_term_via_api(self, app, fake_vclient) -> None:
+        """Verify update_term sends the parsed form data to the term's API path."""
+        # Given an edited term form
         form_data = {"term": "Auspex", "definition": "Updated.", "link": "", "synonyms": "a, b"}
+
+        # When updating the term
         with app.test_request_context("/"):
             seed_session()
             update_term("term-1", form_data)
 
-        mock_svc.update.assert_called_once()
-        args = mock_svc.update.call_args
-        assert args[0][0] == "term-1"
-        call_arg = args[1]["request"]
-        assert isinstance(call_arg, DictionaryTermUpdate)
-        assert call_arg.term == "Auspex"
-        assert call_arg.synonyms == ["a", "b"]
+        # Then the API receives the update for term-1
+        fake_vclient.assert_called(
+            Routes.DICTIONARY_UPDATE,
+            params={"company_id": "test-company-id", "term_id": "term-1"},
+            json={"term": "Auspex", "definition": "Updated.", "synonyms": ["a", "b"]},
+            times=1,
+        )
 
 
 class TestDeleteTerm:
     """Tests for delete_term."""
 
-    def test_deletes_term_via_api(self, app, mock_svc: MagicMock) -> None:
-        """Verify delete_term calls the API."""
+    def test_deletes_term_via_api(self, app, fake_vclient) -> None:
+        """Verify delete_term deletes the term through the API."""
+        # When deleting a term
         with app.test_request_context("/"):
             seed_session()
             delete_term("term-1")
 
-        mock_svc.delete.assert_called_once_with("term-1")
+        # Then the API receives a delete for that term
+        fake_vclient.assert_called(Routes.DICTIONARY_DELETE, params={"term_id": "term-1"}, times=1)

@@ -141,22 +141,26 @@ class TestBookUpdate:
     """Tests for book update cache invalidation."""
 
     def test_update_clears_campaign_content_cache(
-        self, client, mocker, mock_book, mock_campaign
+        self, client, mocker, fake_vclient, mock_book, mock_campaign
     ) -> None:
         """Verify updating a book invalidates the campaign's book-list cache."""
         # Given a privileged user and a patched cache-clear
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
-        mocker.patch("vweb.routes.book.views.api_services.books")
         clear_cache = mocker.patch("vweb.lib.cache.campaign_content.clear")
         csrf = get_csrf(client)
 
         # When submitting the book edit form
         client.post(
             f"/campaign/{mock_campaign.id}/book/{mock_book.id}",
-            data={"name": "Updated Name", "csrf_token": csrf},
+            data={"name": "Updated Name", "description": "A new tale", "csrf_token": csrf},
         )
 
-        # Then the campaign's book cache is invalidated
+        # Then the book is updated and the campaign's book cache is invalidated
+        fake_vclient.assert_called(
+            Routes.BOOKS_UPDATE,
+            params={"campaign_id": mock_campaign.id, "book_id": mock_book.id},
+            json_subset={"name": "Updated Name", "description": "A new tale"},
+        )
         _, kwargs = clear_cache.call_args
         assert kwargs["campaign_id"] == mock_campaign.id
 
@@ -219,13 +223,17 @@ class TestBookCreatePost:
         )
         assert response.status_code == 403
 
-    def test_create_redirects_to_new_book(self, client, mocker, mock_campaign) -> None:
+    def test_create_redirects_to_new_book(
+        self, client, mocker, fake_vclient, mock_campaign
+    ) -> None:
         """Verify a successful create responds with HX-Redirect to the new book."""
-        # Given a privileged user and a books service returning the new book
+        # Given a privileged user and an API returning the new book
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
-        svc = mocker.patch("vweb.routes.book.views.api_services.books").return_value
-        svc.create.return_value = CampaignBookFactory.build(
-            id="book-new", campaign_id=mock_campaign.id, name="New Book"
+        fake_vclient.set_response(
+            Routes.BOOKS_CREATE,
+            model=CampaignBookFactory.build(
+                id="book-new", campaign_id=mock_campaign.id, name="New Book"
+            ),
         )
         csrf = get_csrf(client)
 
@@ -238,15 +246,20 @@ class TestBookCreatePost:
         # Then the book is created and the client is redirected to it
         assert response.status_code == 200
         assert response.headers.get("HX-Redirect") == f"/campaign/{mock_campaign.id}/book/book-new"
-        svc.create.assert_called_once_with(name="New Book", description="A fresh start")
+        fake_vclient.assert_called(
+            Routes.BOOKS_CREATE,
+            params={"campaign_id": mock_campaign.id},
+            json={"name": "New Book", "description": "A fresh start"},
+            times=1,
+        )
 
-    def test_create_clears_caches(self, client, mocker, mock_campaign) -> None:
+    def test_create_clears_caches(self, client, mocker, fake_vclient, mock_campaign) -> None:
         """Verify creating a book invalidates the global-context and book-list caches."""
         # Given a privileged user and patched cache-clears
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
-        svc = mocker.patch("vweb.routes.book.views.api_services.books").return_value
-        svc.create.return_value = CampaignBookFactory.build(
-            id="book-new", campaign_id=mock_campaign.id
+        fake_vclient.set_response(
+            Routes.BOOKS_CREATE,
+            model=CampaignBookFactory.build(id="book-new", campaign_id=mock_campaign.id),
         )
         clear_content = mocker.patch("vweb.lib.cache.campaign_content.clear")
         clear_context = mocker.patch("vweb.lib.cache.global_context.clear")
@@ -263,11 +276,12 @@ class TestBookCreatePost:
         assert kwargs["campaign_id"] == mock_campaign.id
         clear_context.assert_called_once()
 
-    def test_empty_name_rerenders_form_with_error(self, client, mocker, mock_campaign) -> None:
+    def test_empty_name_rerenders_form_with_error(
+        self, client, mocker, fake_vclient, mock_campaign
+    ) -> None:
         """Verify an empty name re-renders the form with an error and no create call."""
         # Given a privileged user
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
-        svc = mocker.patch("vweb.routes.book.views.api_services.books").return_value
         csrf = get_csrf(client)
 
         # When submitting an empty name
@@ -280,15 +294,17 @@ class TestBookCreatePost:
         assert response.status_code == 200
         assert b"Name is required" in response.data
         assert b"Create Book" in response.data
-        svc.create.assert_not_called()
+        fake_vclient.assert_not_called(Routes.BOOKS_CREATE)
 
-    def test_blank_description_creates_with_none(self, client, mocker, mock_campaign) -> None:
-        """Verify a blank description is sent as None (vclient rejects empty strings)."""
-        # Given a privileged user and a books service returning the new book
+    def test_blank_description_creates_with_none(
+        self, client, mocker, fake_vclient, mock_campaign
+    ) -> None:
+        """Verify a blank description is omitted rather than sent as an empty string."""
+        # Given a privileged user and an API returning the new book
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
-        svc = mocker.patch("vweb.routes.book.views.api_services.books").return_value
-        svc.create.return_value = CampaignBookFactory.build(
-            id="book-new", campaign_id=mock_campaign.id
+        fake_vclient.set_response(
+            Routes.BOOKS_CREATE,
+            model=CampaignBookFactory.build(id="book-new", campaign_id=mock_campaign.id),
         )
         csrf = get_csrf(client)
 
@@ -298,15 +314,21 @@ class TestBookCreatePost:
             data={"name": "New Book", "description": "", "csrf_token": csrf},
         )
 
-        # Then the book is created with description=None (not an empty string)
+        # Then the book is created without a description (not an empty string)
         assert response.status_code == 200
-        svc.create.assert_called_once_with(name="New Book", description=None)
+        fake_vclient.assert_called(
+            Routes.BOOKS_CREATE,
+            params={"campaign_id": mock_campaign.id},
+            json={"name": "New Book"},
+            times=1,
+        )
 
-    def test_short_name_rerenders_with_error(self, client, mocker, mock_campaign) -> None:
+    def test_short_name_rerenders_with_error(
+        self, client, mocker, fake_vclient, mock_campaign
+    ) -> None:
         """Verify a name shorter than the API minimum re-renders with an error, no create."""
         # Given a privileged user
         mocker.patch("vweb.routes.book.views.can_manage_campaign", return_value=True)
-        svc = mocker.patch("vweb.routes.book.views.api_services.books").return_value
         csrf = get_csrf(client)
 
         # When submitting a 2-character name
@@ -318,7 +340,7 @@ class TestBookCreatePost:
         # Then the form re-renders with a length error and nothing is created
         assert response.status_code == 200
         assert b"between 3 and 50" in response.data
-        svc.create.assert_not_called()
+        fake_vclient.assert_not_called(Routes.BOOKS_CREATE)
 
 
 @pytest.mark.usefixtures("_mock_book_lookup", "_mock_chapters_service")

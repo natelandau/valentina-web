@@ -169,3 +169,38 @@ class TestFakeRouterOverrides:
         )
         body = json.loads(response.content)
         assert body["id"] == "generic"
+
+
+class TestFakeRouterPathHandling:
+    """Router should honor custom methods and encoded path values."""
+
+    def test_add_route_with_unlisted_method_on_known_pattern(self):
+        """Verify an override answers a method that no default route has for its pattern."""
+        # Given a PUT override on a pattern whose only default is GET
+        router = _FakeRouter()
+        router.add_route("PUT", Endpoints.CAMPAIGN, json={"id": "put"})
+
+        # When a PUT request hits that pattern
+        response = router.handle(
+            httpx2.Request("PUT", "https://fake.test/api/v1/companies/co1/campaigns/c1")
+        )
+
+        # Then the override answers it
+        assert response.status_code == 200
+        assert json.loads(response.content) == {"id": "put"}
+
+    def test_encoded_slash_in_path_value_stays_one_segment(self):
+        """Verify a percent-encoded slash in an id resolves the route and decodes the value."""
+        # Given a router
+        router = _FakeRouter()
+
+        # When the campaign id holds an encoded slash
+        response = router.handle(
+            httpx2.Request("GET", "https://fake.test/api/v1/companies/co1/campaigns/a%2Fb")
+        )
+
+        # Then the route resolves and the captured value is decoded
+        assert response.status_code == 200
+        (recorded,) = router.requests
+        assert recorded.route is not None
+        assert recorded.params["campaign_id"] == "a/b"

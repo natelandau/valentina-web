@@ -12,7 +12,7 @@ from werkzeug.exceptions import NotFound
 from tests.conftest import make_dice_roll_result
 from tests.helpers import build_global_context
 from vweb.api_client import campaigns_service
-from vweb.api_client.exceptions import APIConnectionError, ServerError, ValidationError
+from vweb.api_client.exceptions import APIConnectionError
 from vweb.api_client.testing import (
     CampaignBookFactory,
     CampaignChapterFactory,
@@ -291,19 +291,13 @@ class TestRecentDicerolls:
         assert result[0].trait_names == ["Strength", "Brawl"]
         assert result[1].trait_names == []
 
-    def test_passes_campaignid_and_limit_to_service(self, app, mocker) -> None:
-        """Verify the campaign id scope and limit are forwarded to the dicerolls service."""
+    def test_passes_campaignid_and_limit_to_service(self, app, fake_vclient, mocker) -> None:
+        """Verify the campaign id scope and limit are forwarded to the dicerolls API."""
         campaign = CampaignFactory.build(id="camp-1")
         user = UserFactory.build(id="user-1", role="PLAYER")
 
         mocker.patch("vweb.lib.cache.blueprint.traits", return_value={})
-
-        page = mocker.MagicMock(items=[])
-        fake_service = mocker.MagicMock()
-        fake_service.get_page.return_value = page
-        service_factory = mocker.patch(
-            "vweb.lib.api_services.dicerolls_service", return_value=fake_service
-        )
+        fake_vclient.set_response(Routes.DICEROLLS_LIST, items=[])
 
         ctx = self._make_context(user=user, characters=[], campaign=campaign)
 
@@ -315,21 +309,22 @@ class TestRecentDicerolls:
 
             recent(campaign.id, limit=25)
 
-        # Then the service is scoped to the requesting user and company
-        service_factory.assert_called_once_with(on_behalf_of=user.id, company_id="test-company-id")
+        # Then the request is scoped to the requesting user and company
+        (request,) = fake_vclient.assert_called(
+            Routes.DICEROLLS_LIST, params={"company_id": "test-company-id"}, times=1
+        )
+        assert request.headers["on-behalf-of"] == user.id
         # And the page fetch is scoped to the campaign with the requested limit,
         # with character_type="PLAYER" so the API drops storyteller/NPC rolls
         # before applying the limit.
-        fake_service.get_page.assert_called_once_with(
-            campaignid=campaign.id,
-            characterid=None,
-            userid=None,
-            character_type="PLAYER",
-            limit=25,
-            offset=0,
-        )
+        assert request.query == {
+            "campaignid": campaign.id,
+            "character_type": "PLAYER",
+            "limit": "25",
+            "offset": "0",
+        }
 
-    def test_caches_per_scope_and_user(self, app, mocker) -> None:
+    def test_caches_per_scope_and_user(self, app, fake_vclient, mocker) -> None:
         """Verify repeated identical scope+user reads hit the dicerolls service once."""
         # Given a request context with a requesting user and company
         with app.test_request_context("/"):
@@ -341,20 +336,19 @@ class TestRecentDicerolls:
 
             cache.clear()
 
-            svc = mocker.patch("vweb.lib.cache.dicerolls.api_services.dicerolls")
-            page = mocker.MagicMock()
-            page.items = []
-            svc.return_value.get_page.return_value = page
+            fake_vclient.set_response(Routes.DICEROLLS_LIST, items=[])
             mocker.patch("vweb.lib.cache.blueprint.traits", return_value={})
 
             # When called twice with the same scope
             recent(campaign_id="camp-1", limit=25)
             recent(campaign_id="camp-1", limit=25)
 
-            # Then the underlying service is hit only once
-            svc.return_value.get_page.assert_called_once()
+            # Then the API is hit only once
+            fake_vclient.assert_called(
+                Routes.DICEROLLS_LIST, query={"campaignid": "camp-1"}, times=1
+            )
 
-    def test_cache_isolates_per_requesting_user(self, app, mocker) -> None:
+    def test_cache_isolates_per_requesting_user(self, app, fake_vclient, mocker) -> None:
         """Verify the same scope cached for two different users triggers two service calls."""
         # Given a request context with a requesting user and company
         with app.test_request_context("/"):
@@ -366,10 +360,7 @@ class TestRecentDicerolls:
 
             cache.clear()
 
-            svc = mocker.patch("vweb.lib.cache.dicerolls.api_services.dicerolls")
-            page = mocker.MagicMock()
-            page.items = []
-            svc.return_value.get_page.return_value = page
+            fake_vclient.set_response(Routes.DICEROLLS_LIST, items=[])
             mocker.patch("vweb.lib.cache.blueprint.traits", return_value={})
 
             # When called for two different requesting users in the same scope
@@ -377,8 +368,10 @@ class TestRecentDicerolls:
             session["user_id"] = "user-2"
             recent(campaign_id="camp-1", limit=25)
 
-            # Then each user triggers its own service call
-            assert svc.return_value.get_page.call_count == 2
+            # Then each user triggers its own API call
+            (first, second) = fake_vclient.assert_called(Routes.DICEROLLS_LIST, times=2)
+            assert first.headers["on-behalf-of"] == "user-1"
+            assert second.headers["on-behalf-of"] == "user-2"
 
 
 class TestRecentDicerollsScopes:
@@ -421,17 +414,12 @@ class TestRecentDicerollsScopes:
         assert len(result) == 1
         assert result[0].id == "r-npc"
 
-    def test_user_id_scope_passes_userid_filter(self, app, mock_global_context, mocker) -> None:
+    def test_user_id_scope_passes_userid_filter(
+        self, app, mock_global_context, fake_vclient, mocker
+    ) -> None:
         """Verify user-scoped calls pass userid to the underlying API."""
-        # Given a mocked dicerolls service so we can inspect the API call
-        from unittest.mock import MagicMock
-
-        fake_service = MagicMock()
-        fake_service.get_page.return_value = MagicMock(items=[])
-        mocker.patch(
-            "vweb.lib.cache.dicerolls.api_services.dicerolls",
-            autospec=True,
-        ).return_value = fake_service
+        # Given the API returns no rolls
+        fake_vclient.set_response(Routes.DICEROLLS_LIST, items=[])
         mocker.patch("vweb.lib.cache.blueprint.traits", return_value={})
 
         # When requesting rolls scoped by user_id
@@ -442,16 +430,10 @@ class TestRecentDicerollsScopes:
             session["user_id"] = mock_global_context.users[0].id
             recent(campaign_id="", user_id="u-42")
 
-        # Then userid="u-42" is forwarded to get_page, and character_type is unset
+        # Then userid="u-42" is sent, and character_type is unset
         # so non-player rolls for that user are still returned.
-        fake_service.get_page.assert_called_once_with(
-            campaignid=None,
-            characterid=None,
-            userid="u-42",
-            character_type=None,
-            limit=25,
-            offset=0,
-        )
+        (request,) = fake_vclient.assert_called(Routes.DICEROLLS_LIST, times=1)
+        assert request.query == {"userid": "u-42", "limit": "25", "offset": "0"}
 
 
 class TestGetCharactersForCampaign:
@@ -582,12 +564,9 @@ class TestValidateAndSubmitExperience:
         ids=["negative-xp", "negative-cool-points", "all-zero"],
     )
     def test_rejects_amounts_below_one_without_calling_the_api(
-        self, app, mocker, form_data: dict, expected_error: str
+        self, app, fake_vclient, form_data: dict, expected_error: str
     ) -> None:
         """Verify zero and negative amounts return an error and send nothing."""
-        # Given a mocked users service
-        users_service = mocker.patch("vweb.lib.api_services.users_service")
-
         # When submitting the form data
         with app.test_request_context():
             session["company_id"] = "company-1"
@@ -596,12 +575,11 @@ class TestValidateAndSubmitExperience:
 
         # Then the error is returned and the API is not called
         assert errors == [expected_error]
-        users_service.assert_not_called()
+        assert fake_vclient.requests == []
 
-    def test_submits_only_positive_amounts(self, app, mocker) -> None:
+    def test_submits_only_positive_amounts(self, app, fake_vclient, mocker) -> None:
         """Verify a positive XP amount is sent and a zero cool point amount is skipped."""
-        # Given a mocked users service
-        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
+        # Given the cache clear is stubbed
         mocker.patch("vweb.lib.api.cache.global_context.clear_current")
 
         # When submitting 3 XP and no cool points
@@ -612,23 +590,26 @@ class TestValidateAndSubmitExperience:
                 {"xp": "3", "cool_points": "0"}, user_id="u1", campaign_id="c1"
             )
 
-        # Then only XP is added
+        # Then only XP is added, as the signed-in user
         assert errors == []
-        users_service.add_xp.assert_called_once_with("u1", "c1", amount=3)
-        users_service.add_cool_points.assert_not_called()
+        (request,) = fake_vclient.assert_called(
+            Routes.USERS_EXPERIENCE_XP_ADD,
+            params={"company_id": "company-1", "user_id": "u1"},
+            json={"amount": 3, "campaign_id": "c1"},
+            times=1,
+        )
+        assert request.headers["on-behalf-of"] == "st1"
+        fake_vclient.assert_not_called(Routes.USERS_EXPERIENCE_CP_ADD)
 
-    def test_refused_xp_returns_field_error_and_skips_cool_points(self, app, mocker) -> None:
+    def test_refused_xp_returns_field_error_and_skips_cool_points(self, app, fake_vclient) -> None:
         """Verify an API field error on XP is returned and cool points are not sent."""
         # Given an XP grant the API refuses
-        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
-        users_service.add_xp.side_effect = ValidationError(
-            "bad",
-            400,
-            {
-                "invalid_parameters": [
-                    {"field": "amount", "message": "Input should be less than or equal to 10000"}
-                ]
-            },
+        fake_vclient.set_error(
+            Routes.USERS_EXPERIENCE_XP_ADD,
+            status_code=400,
+            invalid_parameters=[
+                {"field": "amount", "message": "Input should be less than or equal to 10000"}
+            ],
         )
 
         # When submitting both amounts
@@ -643,16 +624,18 @@ class TestValidateAndSubmitExperience:
 
         # Then the field error is returned and cool points are not granted
         assert errors == ["XP: Input should be less than or equal to 10000"]
-        users_service.add_cool_points.assert_not_called()
+        fake_vclient.assert_called(Routes.USERS_EXPERIENCE_XP_ADD, json_subset={"amount": 99999})
+        fake_vclient.assert_not_called(Routes.USERS_EXPERIENCE_CP_ADD)
 
-    def test_refused_cool_points_after_xp_reports_partial_grant(self, app, mocker) -> None:
+    def test_refused_cool_points_after_xp_reports_partial_grant(
+        self, app, fake_vclient, mocker
+    ) -> None:
         """Verify a cool point failure after XP succeeds resets XP and clears the cache."""
         # Given XP that succeeds and cool points the API refuses
-        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
-        users_service.add_cool_points.side_effect = ValidationError(
-            "bad",
-            400,
-            {"invalid_parameters": [{"field": "amount", "message": "Too many"}]},
+        fake_vclient.set_error(
+            Routes.USERS_EXPERIENCE_CP_ADD,
+            status_code=400,
+            invalid_parameters=[{"field": "amount", "message": "Too many"}],
         )
         clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
         form_data = {"xp": "5", "cool_points": "99999"}
@@ -667,18 +650,17 @@ class TestValidateAndSubmitExperience:
         assert errors == ["XP was granted, but cool points were not. Cool points: Too many"]
         assert form_data["xp"] == "0"
         clear.assert_called_once()
+        fake_vclient.assert_called(Routes.USERS_EXPERIENCE_XP_ADD, json_subset={"amount": 5})
+        fake_vclient.assert_called(Routes.USERS_EXPERIENCE_CP_ADD, json_subset={"amount": 99999})
 
-    def test_refused_xp_bound_reads_as_xp_sentence(self, app, mocker) -> None:
+    def test_refused_xp_bound_reads_as_xp_sentence(self, app, fake_vclient) -> None:
         """Verify an API bound on the XP amount names XP instead of the amount field."""
         # Given an XP grant the API refuses with its constraint text
-        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
-        users_service.add_xp.side_effect = ValidationError(
-            "bad",
-            400,
-            {
-                "detail": "Validation failed for one or more fields.",
-                "invalid_parameters": [{"field": "amount", "message": "Must be at most 10000."}],
-            },
+        fake_vclient.set_error(
+            Routes.USERS_EXPERIENCE_XP_ADD,
+            status_code=400,
+            detail="Validation failed for one or more fields.",
+            invalid_parameters=[{"field": "amount", "message": "Must be at most 10000."}],
         )
 
         # When submitting XP
@@ -762,11 +744,12 @@ class TestValidateAndSubmitExperience:
         clear.assert_called_once()
         assert form_data["xp"] == "0"
 
-    def test_server_error_on_xp_reports_unknown_outcome(self, app, mocker) -> None:
+    def test_server_error_on_xp_reports_unknown_outcome(self, app, fake_vclient, mocker) -> None:
         """Verify a 500 on XP is treated as an unknown outcome without the API detail."""
         # Given an XP grant that fails server-side, possibly after the grant was applied
-        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
-        users_service.add_xp.side_effect = ServerError("boom", 500, {"detail": "db exploded"})
+        fake_vclient.set_error(
+            Routes.USERS_EXPERIENCE_XP_ADD, status_code=500, detail="db exploded"
+        )
         clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
         form_data = {"xp": "3", "cool_points": "0"}
 
@@ -784,12 +767,11 @@ class TestValidateAndSubmitExperience:
         clear.assert_called_once()
 
     def test_server_error_on_cool_points_after_xp_reports_unknown_outcome(
-        self, app, mocker
+        self, app, fake_vclient, mocker
     ) -> None:
         """Verify a 500 on cool points after XP succeeds is treated as an unknown outcome."""
         # Given XP that succeeds and a cool point grant that fails server-side
-        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
-        users_service.add_cool_points.side_effect = ServerError("boom", 502, {})
+        fake_vclient.set_error(Routes.USERS_EXPERIENCE_CP_ADD, status_code=502)
         mocker.patch("vweb.lib.api.cache.global_context.clear_current")
         form_data = {"xp": "5", "cool_points": "2"}
 
@@ -803,14 +785,13 @@ class TestValidateAndSubmitExperience:
         assert errors == [_COOL_POINTS_UNCONFIRMED_AFTER_XP]
         assert form_data["xp"] == "0"
 
-    def test_refused_cool_points_alone_returns_field_error(self, app, mocker) -> None:
+    def test_refused_cool_points_alone_returns_field_error(self, app, fake_vclient, mocker) -> None:
         """Verify a cool point refusal with no XP returns the field message and keeps the cache."""
         # Given cool points the API refuses and no XP requested
-        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
-        users_service.add_cool_points.side_effect = ValidationError(
-            "bad",
-            400,
-            {"invalid_parameters": [{"field": "amount", "message": "Too many"}]},
+        fake_vclient.set_error(
+            Routes.USERS_EXPERIENCE_CP_ADD,
+            status_code=400,
+            invalid_parameters=[{"field": "amount", "message": "Too many"}],
         )
         clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
 
@@ -824,7 +805,7 @@ class TestValidateAndSubmitExperience:
 
         # Then the field message is returned and nothing else happens
         assert errors == ["Cool points: Too many"]
-        users_service.add_xp.assert_not_called()
+        fake_vclient.assert_not_called(Routes.USERS_EXPERIENCE_XP_ADD)
         clear.assert_not_called()
 
 

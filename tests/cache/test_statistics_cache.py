@@ -3,104 +3,96 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 
-from vweb.api_client.testing import RollStatisticsFactory
+from tests.helpers import seed_session
+from vweb.api_client.testing import RollStatisticsFactory, Routes
 from vweb.lib.cache.statistics import get
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
+    from vweb.api_client.testing import FakeVClient
+
 
 class TestGetStatistics:
     """Tests for get(scope_type, scope_id)."""
 
-    def test_campaign_scope_calls_campaigns_service(self, app, mocker: MockerFixture) -> None:
-        """Verify campaign scope dispatches to campaigns_service.get_statistics."""
-        # Given a mocked campaigns service
+    def test_campaign_scope_calls_campaigns_service(self, app, fake_vclient: FakeVClient) -> None:
+        """Verify campaign scope requests the campaign's statistics."""
+        # Given campaign statistics on the API
         stats = RollStatisticsFactory.build()
-        svc = MagicMock()
-        svc.get_statistics.return_value = stats
-        mock_factory = mocker.patch(
-            "vweb.lib.cache.statistics.api_services.campaigns", autospec=True
-        )
-        mock_factory.return_value = svc
+        fake_vclient.set_response(Routes.CAMPAIGNS_STATISTICS, model=stats)
 
         # When requesting campaign-scoped statistics
         with app.test_request_context():
-            from flask import g, session
-
-            g.requesting_user = MagicMock(id="user-1")
-            session["company_id"] = "comp-1"
+            seed_session(user_id="user-1", company_id="comp-1")
             result = get("campaign", "camp-1")
 
-        # Then the campaigns service is called with the right ID and num_top_traits=1
-        svc.get_statistics.assert_called_once_with("camp-1", num_top_traits=1)
-        assert result is stats
+        # Then the campaign's statistics are requested with num_top_traits=1
+        fake_vclient.assert_called(
+            Routes.CAMPAIGNS_STATISTICS,
+            params={"company_id": "comp-1", "campaign_id": "camp-1"},
+            query={"num_top_traits": 1},
+            times=1,
+        )
+        assert result == stats
 
-    def test_user_scope_calls_users_service(self, app, mocker: MockerFixture) -> None:
-        """Verify user scope dispatches to users_service.get_statistics."""
-        # Given a mocked users service
+    def test_user_scope_calls_users_service(self, app, fake_vclient: FakeVClient) -> None:
+        """Verify user scope requests the user's statistics."""
+        # Given user statistics on the API
         stats = RollStatisticsFactory.build()
-        svc = MagicMock()
-        svc.get_statistics.return_value = stats
-        mock_factory = mocker.patch("vweb.lib.cache.statistics.api_services.users", autospec=True)
-        mock_factory.return_value = svc
+        fake_vclient.set_response(Routes.USERS_STATISTICS, model=stats)
 
         # When requesting user-scoped statistics
         with app.test_request_context():
-            from flask import g, session
-
-            g.requesting_user = MagicMock(id="user-1")
-            session["company_id"] = "comp-1"
+            seed_session(user_id="user-1", company_id="comp-1")
             result = get("user", "user-2")
 
-        # Then the users service is called with the right ID
-        svc.get_statistics.assert_called_once_with("user-2", num_top_traits=1)
-        assert result is stats
-
-    def test_character_scope_calls_characters_service(self, app, mocker: MockerFixture) -> None:
-        """Verify character scope dispatches to characters_service.get_statistics."""
-        # Given a mocked characters service
-        stats = RollStatisticsFactory.build()
-        svc = MagicMock()
-        svc.get_statistics.return_value = stats
-        mock_factory = mocker.patch(
-            "vweb.lib.cache.statistics.api_services.characters", autospec=True
+        # Then the requested user's statistics are fetched
+        fake_vclient.assert_called(
+            Routes.USERS_STATISTICS,
+            params={"company_id": "comp-1", "user_id": "user-2"},
+            query={"num_top_traits": 1},
+            times=1,
         )
-        mock_factory.return_value = svc
+        assert result == stats
+
+    def test_character_scope_calls_characters_service(self, app, fake_vclient: FakeVClient) -> None:
+        """Verify character scope requests the character's statistics."""
+        # Given character statistics on the API
+        stats = RollStatisticsFactory.build()
+        fake_vclient.set_response(Routes.CHARACTERS_STATISTICS, model=stats)
 
         # When requesting character-scoped statistics
         with app.test_request_context():
-            from flask import g, session
-
-            g.requesting_user = MagicMock(id="user-1")
-            session["company_id"] = "comp-1"
+            seed_session(user_id="user-1", company_id="comp-1")
             result = get("character", "char-1")
 
-        # Then the characters service is called with the right ID
-        svc.get_statistics.assert_called_once_with("char-1", num_top_traits=1)
-        assert result is stats
+        # Then the character's statistics are fetched
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_STATISTICS,
+            params={"company_id": "comp-1", "character_id": "char-1"},
+            query={"num_top_traits": 1},
+            times=1,
+        )
+        assert result == stats
 
-    def test_cache_hit_returns_without_api_call(self, app, mocker: MockerFixture) -> None:
+    def test_cache_hit_returns_without_api_call(
+        self, app, mocker: MockerFixture, fake_vclient: FakeVClient
+    ) -> None:
         """Verify a cache hit skips the API call entirely."""
         # Given a value already in the cache
         stats = RollStatisticsFactory.build()
         mocker.patch("vweb.lib.cache.base.cache.get", return_value=stats)
-        svc = MagicMock()
-        mock_factory = mocker.patch(
-            "vweb.lib.cache.statistics.api_services.campaigns", autospec=True
-        )
-        mock_factory.return_value = svc
 
         # When requesting statistics (cache hit happens before Flask state needed)
         with app.app_context():
             result = get("campaign", "camp-1")
 
         # Then no API call was made and the cached value is returned
-        svc.get_statistics.assert_not_called()
+        assert fake_vclient.requests == []
         assert result is stats
 
     def test_unknown_scope_type_raises(self, app) -> None:

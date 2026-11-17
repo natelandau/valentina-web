@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -51,15 +50,13 @@ class TestApprove:
     def test_approve_calls_users_service_and_clears_cache(
         self,
         app: Flask,
+        fake_vclient,
         mocker,
     ) -> None:
-        """Verify approve() forwards args and invalidates cache."""
-        # Given a mocked users service
-        svc = MagicMock()
-        svc.approve_user.return_value = UserFactory.build(id="u1", role="PLAYER")
-        mocker.patch(
-            "vweb.routes.admin.services.api_services.users",
-            return_value=svc,
+        """Verify approve() sends the role to the approve endpoint and invalidates cache."""
+        # Given the API approves the user
+        fake_vclient.set_response(
+            Routes.USERS_APPROVE, model=UserFactory.build(id="u1", role="PLAYER")
         )
         clear_cache = mocker.patch(
             "vweb.lib.cache.global_context.clear",
@@ -72,8 +69,13 @@ class TestApprove:
             seed_session(user_id="admin-id")
             result = approve("u1", "PLAYER")
 
-        # Then users_svc.approve_user is called with the right args
-        svc.approve_user.assert_called_once_with("u1", "PLAYER")
+        # Then the API approves u1 with the PLAYER role
+        fake_vclient.assert_called(
+            Routes.USERS_APPROVE,
+            params={"user_id": "u1"},
+            json={"role": "PLAYER"},
+            times=1,
+        )
         clear_cache.assert_called_once()
         assert result.id == "u1"
 
@@ -92,15 +94,13 @@ class TestChangeRole:
     def test_change_role_calls_update_and_clears_cache(
         self,
         app: Flask,
+        fake_vclient,
         mocker,
     ) -> None:
-        """Verify change_role forwards args correctly."""
-        # Given a mocked users service
-        svc = MagicMock()
-        svc.update.return_value = UserFactory.build(id="u1", role="STORYTELLER")
-        mocker.patch(
-            "vweb.routes.admin.services.api_services.users",
-            return_value=svc,
+        """Verify change_role sends only the new role to the user update endpoint."""
+        # Given the API returns the updated user
+        fake_vclient.set_response(
+            Routes.USERS_UPDATE, model=UserFactory.build(id="u1", role="STORYTELLER")
         )
         clear_cache = mocker.patch(
             "vweb.lib.cache.global_context.clear",
@@ -113,8 +113,13 @@ class TestChangeRole:
             seed_session(user_id="admin-id")
             result = change_role("u1", "STORYTELLER")
 
-        # Then users_svc.update is called with keyword args and cache is cleared
-        svc.update.assert_called_once_with("u1", role="STORYTELLER")
+        # Then the API updates only u1's role and the cache is cleared
+        fake_vclient.assert_called(
+            Routes.USERS_UPDATE,
+            params={"user_id": "u1"},
+            json={"role": "STORYTELLER"},
+            times=1,
+        )
         clear_cache.assert_called_once()
         assert result.role == "STORYTELLER"
 
@@ -130,14 +135,9 @@ class TestChangeRole:
 class TestDeny:
     """deny() wraps users_svc.deny_user."""
 
-    def test_deny_calls_users_service(self, app: Flask, mocker) -> None:
-        """Verify deny forwards args and clears cache."""
-        # Given a mocked users service and cache clearer
-        svc = MagicMock()
-        mocker.patch(
-            "vweb.routes.admin.services.api_services.users",
-            return_value=svc,
-        )
+    def test_deny_calls_users_service(self, app: Flask, fake_vclient, mocker) -> None:
+        """Verify deny calls the deny endpoint for the user and clears cache."""
+        # Given a cache clearer
         clear_cache = mocker.patch(
             "vweb.lib.cache.global_context.clear",
         )
@@ -149,8 +149,8 @@ class TestDeny:
             seed_session(user_id="admin-id")
             deny("u1")
 
-        # Then deny_user is called and cache is cleared
-        svc.deny_user.assert_called_once_with("u1")
+        # Then the API denies u1 and the cache is cleared
+        fake_vclient.assert_called(Routes.USERS_DENY, params={"user_id": "u1"}, times=1)
         clear_cache.assert_called_once()
 
 
@@ -160,16 +160,12 @@ class TestMerge:
     def test_merge_forwards_args_and_clears_cache(
         self,
         app: Flask,
+        fake_vclient,
         mocker,
     ) -> None:
-        """Verify merge() calls users_svc.merge with the primary and secondary users."""
-        # Given a mocked users service
-        svc = MagicMock()
-        svc.merge.return_value = UserFactory.build(id="primary")
-        mocker.patch(
-            "vweb.routes.admin.services.api_services.users",
-            return_value=svc,
-        )
+        """Verify merge() sends the primary and secondary users to the merge endpoint."""
+        # Given the API returns the merged primary user
+        fake_vclient.set_response(Routes.USERS_MERGE, model=UserFactory.build(id="primary"))
         clear_cache = mocker.patch(
             "vweb.lib.cache.global_context.clear",
         )
@@ -181,10 +177,11 @@ class TestMerge:
             seed_session(user_id="admin-id")
             result = merge("primary", "pending-1")
 
-        # Then the service is called and cache cleared
-        svc.merge.assert_called_once_with(
-            primary_user_id="primary",
-            secondary_user_id="pending-1",
+        # Then the API merges pending-1 into primary and the cache is cleared
+        fake_vclient.assert_called(
+            Routes.USERS_MERGE,
+            json={"primary_user_id": "primary", "secondary_user_id": "pending-1"},
+            times=1,
         )
         clear_cache.assert_called_once()
         assert result.id == "primary"

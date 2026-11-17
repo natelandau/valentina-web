@@ -351,7 +351,7 @@ class TestPerformTraitRoll:
                     difficulty=6,
                 )
 
-    def test_trait_roll_always_uses_d10(self, app: Flask, fake_vclient, mocker) -> None:
+    def test_trait_roll_always_uses_d10(self, app: Flask, fake_vclient) -> None:
         """Verify perform_trait_roll always passes dice_size=10 to the API."""
         from flask import g
 
@@ -364,11 +364,7 @@ class TestPerformTraitRoll:
         campaign = CampaignFactory.build()
         user = UserFactory.build(id="test-user-id")
         diceroll = DicerollFactory.build(dice_size=10, result=make_dice_roll_result())
-
-        # Mock the service to capture the request object
-        mock_svc = mocker.MagicMock()
-        mock_svc.create.return_value = diceroll
-        mocker.patch("vweb.routes.diceroll.services.api_services.dicerolls", return_value=mock_svc)
+        fake_vclient.set_response(Routes.DICEROLLS_CREATE, model=diceroll)
 
         # When perform_trait_roll is called
         with app.test_request_context("/"):
@@ -385,11 +381,12 @@ class TestPerformTraitRoll:
                 difficulty=7,
             )
 
-        # Then the request passed to create() has dice_size=10
-        request_arg = mock_svc.create.call_args.args[0]
-        assert request_arg.dice_size == 10
+        # Then the API receives dice_size=10
+        fake_vclient.assert_called(
+            Routes.DICEROLLS_CREATE, json_subset={"dice_size": 10, "num_dice": 3}, times=1
+        )
 
-    def test_trait_roll_with_desperation_dice(self, app: Flask, fake_vclient, mocker) -> None:
+    def test_trait_roll_with_desperation_dice(self, app: Flask, fake_vclient) -> None:
         """Verify perform_trait_roll passes num_desperation_dice to the API."""
         from flask import g
 
@@ -402,11 +399,7 @@ class TestPerformTraitRoll:
         campaign = CampaignFactory.build()
         user = UserFactory.build(id="test-user-id")
         diceroll = DicerollFactory.build(result=make_dice_roll_result())
-
-        # Mock the service to capture the request object
-        mock_svc = mocker.MagicMock()
-        mock_svc.create.return_value = diceroll
-        mocker.patch("vweb.routes.diceroll.services.api_services.dicerolls", return_value=mock_svc)
+        fake_vclient.set_response(Routes.DICEROLLS_CREATE, model=diceroll)
 
         # When perform_trait_roll is called with desperation dice
         with app.test_request_context("/"):
@@ -424,9 +417,10 @@ class TestPerformTraitRoll:
                 num_desperation_dice=2,
             )
 
-        # Then num_desperation_dice=2 was passed in the request
-        request_arg = mock_svc.create.call_args.args[0]
-        assert request_arg.num_desperation_dice == 2
+        # Then the API receives num_desperation_dice=2
+        fake_vclient.assert_called(
+            Routes.DICEROLLS_CREATE, json_subset={"num_desperation_dice": 2}, times=1
+        )
 
 
 # ===== perform_quickroll Tests =====
@@ -465,7 +459,7 @@ class TestPerformQuickroll:
         # Then the returned diceroll is from the API
         assert result.id == diceroll.id
 
-    def test_quickroll_with_desperation_and_comment(self, app: Flask, fake_vclient, mocker) -> None:
+    def test_quickroll_with_desperation_and_comment(self, app: Flask, fake_vclient) -> None:
         """Verify perform_quickroll passes desperation dice and comment to the API."""
         from flask import g
 
@@ -478,11 +472,6 @@ class TestPerformQuickroll:
         diceroll = DicerollFactory.build(result=make_dice_roll_result())
 
         fake_vclient.set_response(Routes.DICEROLLS_QUICKROLL, model=diceroll)
-
-        # Spy on create_from_quickroll to inspect kwargs
-        mock_svc = mocker.MagicMock()
-        mock_svc.create_from_quickroll.return_value = diceroll
-        mocker.patch("vweb.routes.diceroll.services.api_services.dicerolls", return_value=mock_svc)
 
         # When perform_quickroll is called with extra parameters
         with app.test_request_context("/"):
@@ -499,14 +488,18 @@ class TestPerformQuickroll:
                 comment="boss fight",
             )
 
-        # Then create_from_quickroll was called with the right kwargs
-        mock_svc.create_from_quickroll.assert_called_once_with(
-            quickroll_id=quickroll.id,
-            character_id=character.id,
-            difficulty=7,
-            num_desperation_dice=1,
-            dice_modifier=0,
-            comment="boss fight",
+        # Then the API receives every quickroll parameter
+        fake_vclient.assert_called(
+            Routes.DICEROLLS_QUICKROLL,
+            json={
+                "quickroll_id": quickroll.id,
+                "character_id": character.id,
+                "difficulty": 7,
+                "num_desperation_dice": 1,
+                "dice_modifier": 0,
+                "comment": "boss fight",
+            },
+            times=1,
         )
         assert result.id == diceroll.id
 
@@ -514,9 +507,9 @@ class TestPerformQuickroll:
 class TestDiceModifier:
     """The dice modifier is forwarded to the API unchanged."""
 
-    def test_trait_roll_with_dice_modifier(self, app: Flask, fake_vclient, mocker) -> None:
+    def test_trait_roll_with_dice_modifier(self, app: Flask, fake_vclient) -> None:
         """Verify perform_trait_roll sends the modifier and the unmodified pool."""
-        from flask import g, session
+        from flask import g
 
         from vweb.routes.diceroll.services import perform_trait_roll
 
@@ -527,13 +520,13 @@ class TestDiceModifier:
             CharacterTraitFactory.build(value=3, trait=trait_one),
             CharacterTraitFactory.build(value=2, trait=trait_two),
         ]
-        mock_svc = mocker.MagicMock()
-        mock_svc.create.return_value = DicerollFactory.build(result=make_dice_roll_result())
-        mocker.patch("vweb.routes.diceroll.services.api_services.dicerolls", return_value=mock_svc)
+        fake_vclient.set_response(
+            Routes.DICEROLLS_CREATE, model=DicerollFactory.build(result=make_dice_roll_result())
+        )
 
         # When rolling with dice_modifier=1
         with app.test_request_context("/"):
-            session["company_id"] = "test-company-id"
+            seed_session()
             g.requesting_user = UserFactory.build(id="test-user-id")
             perform_trait_roll(
                 character=CharacterFactory.build(),
@@ -546,28 +539,26 @@ class TestDiceModifier:
             )
 
         # Then num_dice is the base pool and the modifier is sent separately
-        request_arg = mock_svc.create.call_args.args[0]
-        assert request_arg.num_dice == 5
-        assert request_arg.dice_modifier == 1
+        fake_vclient.assert_called(
+            Routes.DICEROLLS_CREATE, json_subset={"num_dice": 5, "dice_modifier": 1}, times=1
+        )
 
-    def test_quickroll_with_dice_modifier(self, app: Flask, fake_vclient, mocker) -> None:
+    def test_quickroll_with_dice_modifier(self, app: Flask, fake_vclient) -> None:
         """Verify perform_quickroll forwards dice_modifier."""
-        from flask import g, session
+        from flask import g
 
         from vweb.routes.diceroll.services import perform_quickroll
 
         # Given a quickroll
         character = CharacterFactory.build()
         quickroll = QuickrollFactory.build()
-        mock_svc = mocker.MagicMock()
-        mock_svc.create_from_quickroll.return_value = DicerollFactory.build(
-            result=make_dice_roll_result()
+        fake_vclient.set_response(
+            Routes.DICEROLLS_QUICKROLL, model=DicerollFactory.build(result=make_dice_roll_result())
         )
-        mocker.patch("vweb.routes.diceroll.services.api_services.dicerolls", return_value=mock_svc)
 
         # When rolling with dice_modifier=-2
         with app.test_request_context("/"):
-            session["company_id"] = "test-company-id"
+            seed_session()
             g.requesting_user = UserFactory.build(id="test-user-id")
             perform_quickroll(
                 character=character,
@@ -576,12 +567,15 @@ class TestDiceModifier:
                 dice_modifier=-2,
             )
 
-        # Then the kwarg reaches the client
-        mock_svc.create_from_quickroll.assert_called_once_with(
-            quickroll_id=quickroll.id,
-            character_id=character.id,
-            difficulty=6,
-            num_desperation_dice=0,
-            dice_modifier=-2,
-            comment=None,
+        # Then the modifier reaches the API and no comment is sent
+        fake_vclient.assert_called(
+            Routes.DICEROLLS_QUICKROLL,
+            json={
+                "quickroll_id": quickroll.id,
+                "character_id": character.id,
+                "difficulty": 6,
+                "num_desperation_dice": 0,
+                "dice_modifier": -2,
+            },
+            times=1,
         )

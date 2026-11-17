@@ -10,13 +10,19 @@ import pytest
 
 from tests.conftest import get_csrf
 from tests.helpers import make_image_bytes
-from vweb.api_client.testing import AssetFactory, CampaignChapterFactory, CharacterFactory, Routes
+from vweb.api_client.testing import (
+    AssetFactory,
+    CampaignChapterFactory,
+    CharacterFactory,
+    RecordedFile,
+    Routes,
+)
 from vweb.constants import MAX_IMAGE_SIZE
 
 if TYPE_CHECKING:
-    from unittest.mock import MagicMock
-
     from pytest_mock import MockerFixture
+
+    from vweb.api_client.routes import RouteSpec
 
 
 VALID_JPEG = make_image_bytes(image_format="JPEG")
@@ -32,8 +38,10 @@ class ImageEntityCase:
     images_url: str
     carousel_id: str
     guard_path: str
-    asset_parent_id: str
-    service: MagicMock
+    assets_list_route: RouteSpec
+    asset_upload_route: RouteSpec
+    asset_delete_route: RouteSpec
+    path_params: dict[str, str]
 
 
 @pytest.fixture
@@ -50,9 +58,9 @@ def mock_chapter():
 
 @pytest.fixture
 def book_image_entity(
-    mocker: MockerFixture, mock_book, mock_campaign, mock_chapters
+    mocker: MockerFixture, fake_vclient, mock_book, mock_campaign, mock_chapters
 ) -> ImageEntityCase:
-    """Mock the book lookups and books service factory for image tests."""
+    """Mock the book lookups and serve an empty asset list for image tests."""
     mocker.patch(
         "vweb.routes.book.views.fetch_book_or_404",
         return_value=(mock_book, mock_campaign),
@@ -61,7 +69,7 @@ def book_image_entity(
         "vweb.lib.cache.campaign_content.chapters",
         return_value=mock_chapters,
     )
-    service = mocker.patch("vweb.routes.book.views.api_services.books").return_value
+    fake_vclient.set_response(Routes.BOOKS_ASSETS_LIST, items=[])
     detail_url = f"/campaign/{mock_campaign.id}/book/{mock_book.id}"
     return ImageEntityCase(
         name="book",
@@ -69,16 +77,18 @@ def book_image_entity(
         images_url=f"{detail_url}/images",
         carousel_id="book-carousel",
         guard_path="vweb.routes.book.views.can_manage_campaign",
-        asset_parent_id=mock_book.id,
-        service=service,
+        assets_list_route=Routes.BOOKS_ASSETS_LIST,
+        asset_upload_route=Routes.BOOKS_ASSETS_UPLOAD,
+        asset_delete_route=Routes.BOOKS_ASSETS_DELETE,
+        path_params={"campaign_id": mock_campaign.id, "book_id": mock_book.id},
     )
 
 
 @pytest.fixture
 def chapter_image_entity(
-    mocker: MockerFixture, mock_book, mock_campaign, mock_chapter
+    mocker: MockerFixture, fake_vclient, mock_book, mock_campaign, mock_chapter
 ) -> ImageEntityCase:
-    """Mock the chapter lookups and chapters service factory for image tests."""
+    """Mock the chapter lookups and serve empty asset and note lists for image tests."""
     mocker.patch(
         "vweb.routes.chapter.views.fetch_book_or_404",
         return_value=(mock_book, mock_campaign),
@@ -91,10 +101,8 @@ def chapter_image_entity(
         "vweb.lib.cache.campaign_content.chapters",
         return_value=[mock_chapter],
     )
-    service = mocker.patch("vweb.routes.chapter.views.api_services.chapters").return_value
-    service.list_all.return_value = [mock_chapter]
-    service.list_all_assets.return_value = []
-    service.list_all_notes.return_value = []
+    fake_vclient.set_response(Routes.CHAPTERS_ASSETS_LIST, items=[])
+    fake_vclient.set_response(Routes.CHAPTERS_NOTES_LIST, items=[])
     detail_url = f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/{mock_chapter.id}"
     return ImageEntityCase(
         name="chapter",
@@ -102,8 +110,14 @@ def chapter_image_entity(
         images_url=f"{detail_url}/images",
         carousel_id="chapter-carousel",
         guard_path="vweb.routes.chapter.views.can_manage_campaign",
-        asset_parent_id=mock_chapter.id,
-        service=service,
+        assets_list_route=Routes.CHAPTERS_ASSETS_LIST,
+        asset_upload_route=Routes.CHAPTERS_ASSETS_UPLOAD,
+        asset_delete_route=Routes.CHAPTERS_ASSETS_DELETE,
+        path_params={
+            "campaign_id": mock_campaign.id,
+            "book_id": mock_book.id,
+            "chapter_id": mock_chapter.id,
+        },
     )
 
 
@@ -117,11 +131,13 @@ class TestImageCarousel:
     """Tests for carousel rendering on the entity detail page."""
 
     def test_detail_renders_carousel_when_assets_present(
-        self, client, image_entity, mock_asset
+        self, client, fake_vclient, image_entity, mock_asset
     ) -> None:
         """Verify carousel renders when assets exist."""
         # Given the entity has one asset
-        image_entity.service.list_all_assets.return_value = [mock_asset]
+        fake_vclient.set_response(
+            image_entity.assets_list_route, items=[mock_asset], params=image_entity.path_params
+        )
 
         # When fetching the detail page
         response = client.get(image_entity.detail_url)
@@ -134,8 +150,7 @@ class TestImageCarousel:
 
     def test_detail_hides_carousel_when_no_assets(self, client, image_entity) -> None:
         """Verify carousel is absent when no assets exist."""
-        # Given no assets
-        image_entity.service.list_all_assets.return_value = []
+        # Given no assets (the fixture's default)
 
         # When fetching the detail page
         response = client.get(image_entity.detail_url)
@@ -149,12 +164,12 @@ class TestImageUpload:
     """Tests for image upload on books and chapters."""
 
     def test_book_image_upload_happy_path(
-        self, client, mocker, book_image_entity, mock_asset
+        self, client, mocker, fake_vclient, book_image_entity, mock_asset
     ) -> None:
         """Verify a valid book upload re-renders the partial with the new asset."""
-        # Given a privileged user and a successful upload
+        # Given a privileged user and an API that accepts the upload
         mocker.patch(book_image_entity.guard_path, return_value=True)
-        book_image_entity.service.list_all_assets.return_value = [mock_asset]
+        fake_vclient.set_response(book_image_entity.asset_upload_route, model=mock_asset)
         csrf = get_csrf(client)
 
         # When uploading an image
@@ -167,19 +182,20 @@ class TestImageUpload:
             content_type="multipart/form-data",
         )
 
-        # Then upload is called and the response renders the new asset
+        # Then the image is uploaded to the book and the response renders the new asset
         assert response.status_code == 200
-        book_image_entity.service.upload_asset.assert_called_once()
+        fake_vclient.assert_called(
+            book_image_entity.asset_upload_route, params=book_image_entity.path_params, times=1
+        )
         assert mock_asset.public_url in response.get_data(as_text=True)
 
     def test_chapter_image_upload_happy_path(
-        self, client, mocker, chapter_image_entity, mock_asset
+        self, client, mocker, fake_vclient, chapter_image_entity, mock_asset
     ) -> None:
         """Verify a valid chapter upload re-renders the partial with the new asset."""
-        # Given a privileged user; assets list goes from empty to populated after upload
+        # Given a privileged user, no existing assets, and an API that accepts the upload
         mocker.patch(chapter_image_entity.guard_path, return_value=True)
-        # side_effect proves the view re-fetches AFTER mutation rather than reusing a stale list
-        chapter_image_entity.service.list_all_assets.side_effect = [[mock_asset]]
+        fake_vclient.set_response(chapter_image_entity.asset_upload_route, model=mock_asset)
         csrf = get_csrf(client)
 
         # When uploading an image
@@ -192,18 +208,25 @@ class TestImageUpload:
             content_type="multipart/form-data",
         )
 
-        # Then upload is called with the expected kwargs and the new asset is rendered
+        # Then the file reaches the chapter's upload route and the new asset is rendered
         assert response.status_code == 200
-        chapter_image_entity.service.upload_asset.assert_called_once_with(
-            "ch-1", "img.jpg", VALID_JPEG, "image/jpeg"
+        (upload,) = fake_vclient.assert_called(
+            chapter_image_entity.asset_upload_route,
+            params=chapter_image_entity.path_params,
+            times=1,
+        )
+        assert upload.params["chapter_id"] == "ch-1"
+        assert upload.files["data"] == RecordedFile(
+            filename="img.jpg", content_type="image/jpeg", content=VALID_JPEG
         )
         assert mock_asset.public_url in response.get_data(as_text=True)
 
-    def test_image_upload_rejects_wrong_type(self, client, mocker, image_entity) -> None:
+    def test_image_upload_rejects_wrong_type(
+        self, client, mocker, fake_vclient, image_entity
+    ) -> None:
         """Verify upload of an unsupported MIME type does not call the API."""
         # Given a privileged user
         mocker.patch(image_entity.guard_path, return_value=True)
-        image_entity.service.list_all_assets.return_value = []
         csrf = get_csrf(client)
 
         # When uploading a non-image file
@@ -218,13 +241,14 @@ class TestImageUpload:
 
         # Then upload was not called
         assert response.status_code == 200
-        image_entity.service.upload_asset.assert_not_called()
+        fake_vclient.assert_not_called(image_entity.asset_upload_route)
 
-    def test_image_upload_rejects_over_pixel_cap(self, client, mocker, image_entity) -> None:
+    def test_image_upload_rejects_over_pixel_cap(
+        self, client, mocker, fake_vclient, image_entity
+    ) -> None:
         """Verify an image over 24 megapixels does not call the API."""
         # Given a privileged user
         mocker.patch(image_entity.guard_path, return_value=True)
-        image_entity.service.list_all_assets.return_value = []
         csrf = get_csrf(client)
 
         # When uploading a 6000 x 4001 image
@@ -239,10 +263,12 @@ class TestImageUpload:
 
         # Then upload was not called and the limit is explained
         assert response.status_code == 200
-        image_entity.service.upload_asset.assert_not_called()
+        fake_vclient.assert_not_called(image_entity.asset_upload_route)
         assert "max 24 megapixels" in response.get_data(as_text=True)
 
-    def test_image_upload_forbidden_for_non_editor(self, client, mocker, image_entity) -> None:
+    def test_image_upload_forbidden_for_non_editor(
+        self, client, mocker, fake_vclient, image_entity
+    ) -> None:
         """Verify non-privileged users get 403 on upload."""
         # Given an unprivileged user
         mocker.patch(image_entity.guard_path, return_value=False)
@@ -260,17 +286,16 @@ class TestImageUpload:
 
         # Then access is forbidden
         assert response.status_code == 403
-        image_entity.service.upload_asset.assert_not_called()
+        fake_vclient.assert_not_called(image_entity.asset_upload_route)
 
 
 class TestImageDelete:
     """Tests for image delete on books and chapters."""
 
-    def test_image_delete_happy_path(self, client, mocker, image_entity) -> None:
-        """Verify deletion calls the service and re-renders without the carousel."""
+    def test_image_delete_happy_path(self, client, mocker, fake_vclient, image_entity) -> None:
+        """Verify deletion reaches the API and re-renders without the carousel."""
         # Given a privileged user and an empty asset list after delete
         mocker.patch(image_entity.guard_path, return_value=True)
-        image_entity.service.list_all_assets.return_value = []
         csrf = get_csrf(client)
 
         # When deleting an asset
@@ -281,8 +306,10 @@ class TestImageDelete:
 
         # Then delete is called and the carousel is gone
         assert response.status_code == 200
-        image_entity.service.delete_asset.assert_called_once_with(
-            image_entity.asset_parent_id, "asset-1"
+        fake_vclient.assert_called(
+            image_entity.asset_delete_route,
+            params={**image_entity.path_params, "asset_id": "asset-1"},
+            times=1,
         )
         assert image_entity.carousel_id not in response.get_data(as_text=True)
 
@@ -380,16 +407,13 @@ class TestCharacterImageUpload:
     """Tests for POST /character/<character_id>/images."""
 
     def test_owner_can_upload_image(
-        self, client, mocker, mock_character_lookup, sample_assets
+        self, client, fake_vclient, mock_character_lookup, sample_assets
     ) -> None:
         """Verify character owner can upload an image and gets updated carousel."""
-        # Given a mocked character service
+        # Given existing assets and an API that accepts the upload
         char, _ = mock_character_lookup
-        mock_svc = mocker.patch(
-            "vweb.routes.character_view.views.api_services.characters",
-        ).return_value
-        mock_svc.upload_asset.return_value = sample_assets[0]
-        mock_svc.list_all_assets.return_value = sample_assets
+        fake_vclient.set_response(Routes.CHARACTERS_ASSETS_LIST, items=sample_assets[1:])
+        fake_vclient.set_response(Routes.CHARACTERS_ASSETS_UPLOAD, model=sample_assets[0])
         csrf = get_csrf(client)
 
         # When uploading an image
@@ -401,11 +425,15 @@ class TestCharacterImageUpload:
             headers={"X-CSRFToken": csrf, "HX-Request": "true"},
         )
 
-        # Then the upload succeeds and returns updated content
+        # Then the file reaches the character's upload route and the carousel holds the new asset
         assert response.status_code == 200
-        mock_svc.upload_asset.assert_called_once()
+        (upload,) = fake_vclient.assert_called(
+            Routes.CHARACTERS_ASSETS_UPLOAD, params={"character_id": char.id}, times=1
+        )
+        assert upload.files["data"].content == VALID_PNG
         body = response.get_data(as_text=True)
         assert "carousel" in body
+        assert sample_assets[0].public_url in body
 
     def test_non_owner_non_admin_gets_403(self, client, mocker, mock_campaign) -> None:
         """Verify non-owner non-admin cannot upload."""
@@ -433,14 +461,13 @@ class TestCharacterImageUpload:
         # Then a 403 is returned
         assert response.status_code == 403
 
-    def test_invalid_mime_type_flashes_error(self, client, mocker, mock_character_lookup) -> None:
+    def test_invalid_mime_type_flashes_error(
+        self, client, fake_vclient, mock_character_lookup
+    ) -> None:
         """Verify uploading a non-image file type flashes an error."""
-        # Given a mocked character service
+        # Given a character with no images
         char, _ = mock_character_lookup
-        mock_svc = mocker.patch(
-            "vweb.routes.character_view.views.api_services.characters",
-        ).return_value
-        mock_svc.list_all_assets.return_value = []
+        fake_vclient.set_response(Routes.CHARACTERS_ASSETS_LIST, items=[])
         csrf = get_csrf(client)
 
         # When uploading a non-image file
@@ -454,16 +481,13 @@ class TestCharacterImageUpload:
 
         # Then the response succeeds but contains a flash error
         assert response.status_code == 200
-        mock_svc.upload_asset.assert_not_called()
+        fake_vclient.assert_not_called(Routes.CHARACTERS_ASSETS_UPLOAD)
 
-    def test_missing_file_flashes_error(self, client, mocker, mock_character_lookup) -> None:
+    def test_missing_file_flashes_error(self, client, fake_vclient, mock_character_lookup) -> None:
         """Verify submitting without a file flashes an error."""
-        # Given a mocked character service
+        # Given a character with no images
         char, _ = mock_character_lookup
-        mock_svc = mocker.patch(
-            "vweb.routes.character_view.views.api_services.characters",
-        ).return_value
-        mock_svc.list_all_assets.return_value = []
+        fake_vclient.set_response(Routes.CHARACTERS_ASSETS_LIST, items=[])
         csrf = get_csrf(client)
 
         # When submitting without a file
@@ -476,16 +500,15 @@ class TestCharacterImageUpload:
 
         # Then the response succeeds but upload was not called
         assert response.status_code == 200
-        mock_svc.upload_asset.assert_not_called()
+        fake_vclient.assert_not_called(Routes.CHARACTERS_ASSETS_UPLOAD)
 
-    def test_oversized_file_flashes_error(self, client, mocker, mock_character_lookup) -> None:
+    def test_oversized_file_flashes_error(
+        self, client, fake_vclient, mock_character_lookup
+    ) -> None:
         """Verify uploading a file over the size limit flashes an error."""
-        # Given a mocked character service
+        # Given a character with no images
         char, _ = mock_character_lookup
-        mock_svc = mocker.patch(
-            "vweb.routes.character_view.views.api_services.characters",
-        ).return_value
-        mock_svc.list_all_assets.return_value = []
+        fake_vclient.set_response(Routes.CHARACTERS_ASSETS_LIST, items=[])
         csrf = get_csrf(client)
 
         # When uploading an oversized file
@@ -500,20 +523,17 @@ class TestCharacterImageUpload:
 
         # Then the upload is rejected
         assert response.status_code == 200
-        mock_svc.upload_asset.assert_not_called()
+        fake_vclient.assert_not_called(Routes.CHARACTERS_ASSETS_UPLOAD)
 
 
 class TestCharacterImageDelete:
     """Tests for DELETE /character/<character_id>/images/<asset_id>."""
 
-    def test_owner_can_delete_image(self, client, mocker, mock_character_lookup) -> None:
+    def test_owner_can_delete_image(self, client, fake_vclient, mock_character_lookup) -> None:
         """Verify character owner can delete an image."""
-        # Given a mocked character service
+        # Given a character with no images
         char, _ = mock_character_lookup
-        mock_svc = mocker.patch(
-            "vweb.routes.character_view.views.api_services.characters",
-        ).return_value
-        mock_svc.list_all_assets.return_value = []
+        fake_vclient.set_response(Routes.CHARACTERS_ASSETS_LIST, items=[])
         csrf = get_csrf(client)
 
         # When deleting an image
@@ -524,7 +544,11 @@ class TestCharacterImageDelete:
 
         # Then the delete succeeds
         assert response.status_code == 200
-        mock_svc.delete_asset.assert_called_once_with(char.id, "asset-1")
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_ASSETS_DELETE,
+            params={"character_id": char.id, "asset_id": "asset-1"},
+            times=1,
+        )
 
     def test_non_owner_non_admin_gets_403(self, client, mocker, mock_campaign) -> None:
         """Verify non-owner non-admin cannot delete."""

@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import io
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 
 from tests.helpers import make_image_bytes
 from vweb.api_client.models.users import GitHubProfile
-from vweb.api_client.testing import UserFactory
+from vweb.api_client.testing import Routes, UserFactory
 from vweb.constants import MAX_AVATAR_SIZE, MAX_AVATAR_SIZE_MB
 from vweb.lib.cache.global_context import GlobalContext
 
@@ -59,25 +58,10 @@ def profile_context(mock_global_context, profile_user, other_user) -> GlobalCont
 
 
 @pytest.fixture
-def _mock_profile_api(mocker, profile_context) -> MagicMock:
-    """Mock API calls for profile routes.
-
-    Override the autouse _mock_api fixture to provide a two-user GlobalContext.
-    """
+def _mock_profile_api(mocker, profile_context) -> None:
+    """Override the autouse _mock_api fixture to provide a two-user GlobalContext."""
     mocker.patch("vweb.lib.cache.global_context.load", return_value=profile_context)
     mocker.patch("vweb.lib.cache.global_context.clear")
-
-    mock_svc = MagicMock()
-    mock_svc.list_all_quickrolls.return_value = []
-    mocker.patch("vweb.routes.profile.views.api_services.users", return_value=mock_svc)
-
-    return mock_svc
-
-
-@pytest.fixture
-def mock_profile_svc(_mock_profile_api: MagicMock) -> MagicMock:
-    """Expose the mock users service for assertion in tests."""
-    return _mock_profile_api
 
 
 class TestProfileGet:
@@ -200,12 +184,10 @@ class TestProfileEdit:
 class TestProfilePost:
     """Tests for POST /profile/<user_id>."""
 
-    def test_post_own_profile_updates_user(
-        self, client: FlaskClient, mock_profile_svc: MagicMock
-    ) -> None:
-        """Verify successful profile update calls svc.update with a UserUpdate object."""
+    @pytest.mark.usefixtures("_mock_profile_api")
+    def test_post_own_profile_updates_user(self, client: FlaskClient, fake_vclient) -> None:
+        """Verify a successful profile update sends the new fields to the API."""
         from tests.conftest import get_csrf
-        from vweb.api_client.models.users import UserUpdate
 
         csrf = get_csrf(client)
 
@@ -223,26 +205,28 @@ class TestProfilePost:
         assert response.status_code == 200
         assert "HX-Redirect" in response.headers
 
-        mock_profile_svc.update.assert_called_once()
-        call_args = mock_profile_svc.update.call_args
-        assert call_args[0][0] == "test-user-id"
-        update_req: UserUpdate = call_args[1]["request"]
-        assert isinstance(update_req, UserUpdate)
-        assert update_req.username == "updateduser"
-        assert update_req.email == "updated@example.com"
-        assert update_req.name_first == "Updated"
-        assert update_req.name_last == "Name"
+        fake_vclient.assert_called(
+            Routes.USERS_UPDATE,
+            params={"user_id": "test-user-id"},
+            json={
+                "username": "updateduser",
+                "email": "updated@example.com",
+                "name_first": "Updated",
+                "name_last": "Name",
+            },
+            times=1,
+        )
 
+    @pytest.mark.usefixtures("_mock_profile_api")
     def test_post_conflict_rerenders_form_with_api_message(
-        self, client: FlaskClient, mock_profile_svc: MagicMock
+        self, client: FlaskClient, fake_vclient
     ) -> None:
         """Verify a taken username re-renders the form with the API's message."""
         from tests.conftest import get_csrf
-        from vweb.api_client.exceptions import ConflictError
 
         # Given the API refuses the username as taken
-        mock_profile_svc.update.side_effect = ConflictError(
-            "Conflict", 409, {"detail": "Username is already in use"}
+        fake_vclient.set_error(
+            Routes.USERS_UPDATE, status_code=409, detail="Username is already in use"
         )
         csrf = get_csrf(client)
 
@@ -261,16 +245,16 @@ class TestProfilePost:
         assert "HX-Redirect" not in response.headers
         assert "Username is already in use" in response.get_data(as_text=True)
 
+    @pytest.mark.usefixtures("_mock_profile_api")
     def test_post_conflict_after_avatar_change_swaps_flash_and_clears_cache(
-        self, client: FlaskClient, mock_profile_svc: MagicMock, mocker
+        self, client: FlaskClient, fake_vclient, mocker
     ) -> None:
         """Verify a refused update still shows the avatar flash now and drops the stale context."""
         from tests.conftest import get_csrf
-        from vweb.api_client.exceptions import ConflictError
 
         # Given an avatar removal that succeeds and an update the API refuses
-        mock_profile_svc.update.side_effect = ConflictError(
-            "Conflict", 409, {"detail": "Username is already in use"}
+        fake_vclient.set_error(
+            Routes.USERS_UPDATE, status_code=409, detail="Username is already in use"
         )
         csrf = get_csrf(client)
         clear = mocker.patch("vweb.routes.profile.views.cache.global_context.clear_current")
@@ -294,16 +278,16 @@ class TestProfilePost:
         assert "Username is already in use" in body
         clear.assert_called_once()
 
+    @pytest.mark.usefixtures("_mock_profile_api")
     def test_post_conflict_without_avatar_change_keeps_cache(
-        self, client: FlaskClient, mock_profile_svc: MagicMock, mocker
+        self, client: FlaskClient, fake_vclient, mocker
     ) -> None:
         """Verify a refused update with no avatar change leaves the cached context alone."""
         from tests.conftest import get_csrf
-        from vweb.api_client.exceptions import ConflictError
 
         # Given an update the API refuses and no avatar change
-        mock_profile_svc.update.side_effect = ConflictError(
-            "Conflict", 409, {"detail": "Username is already in use"}
+        fake_vclient.set_error(
+            Routes.USERS_UPDATE, status_code=409, detail="Username is already in use"
         )
         csrf = get_csrf(client)
         clear = mocker.patch("vweb.routes.profile.views.cache.global_context.clear_current")
@@ -318,8 +302,9 @@ class TestProfilePost:
         # Then the cache is not cleared
         clear.assert_not_called()
 
+    @pytest.mark.usefixtures("_mock_profile_api")
     def test_post_short_first_name_rerenders_form_with_message(
-        self, client: FlaskClient, mock_profile_svc: MagicMock
+        self, client: FlaskClient, fake_vclient
     ) -> None:
         """Verify a first name the request model refuses re-renders the form instead of a 500."""
         from tests.conftest import get_csrf
@@ -341,7 +326,7 @@ class TestProfilePost:
         # Then the form is shown again with the field message and no update is sent
         assert response.status_code == 200
         assert "Name first" in response.get_data(as_text=True)
-        mock_profile_svc.update.assert_not_called()
+        fake_vclient.assert_not_called(Routes.USERS_UPDATE)
 
     @pytest.mark.usefixtures("_mock_profile_api")
     def test_post_other_profile_returns_403(self, client: FlaskClient) -> None:
@@ -446,9 +431,8 @@ class TestConnectionsCard:
 class TestProfileAvatar:
     """Tests for avatar upload/remove via POST /profile/<user_id>."""
 
-    def test_owner_can_upload_avatar(
-        self, client: FlaskClient, mock_profile_svc: MagicMock
-    ) -> None:
+    @pytest.mark.usefixtures("_mock_profile_api")
+    def test_owner_can_upload_avatar(self, client: FlaskClient, fake_vclient) -> None:
         """Verify a user can upload an avatar and the service is called."""
         from tests.conftest import get_csrf
 
@@ -469,12 +453,13 @@ class TestProfileAvatar:
         # Then the avatar is uploaded and the page redirects
         assert response.status_code == 200
         assert "HX-Redirect" in response.headers
-        mock_profile_svc.upload_avatar.assert_called_once()
-        assert mock_profile_svc.upload_avatar.call_args[0][0] == "test-user-id"
+        (upload,) = fake_vclient.assert_called(
+            Routes.USERS_AVATAR_UPLOAD, params={"user_id": "test-user-id"}, times=1
+        )
+        assert upload.files["data"].filename == "me.png"
 
-    def test_remove_avatar_calls_delete(
-        self, client: FlaskClient, mock_profile_svc: MagicMock
-    ) -> None:
+    @pytest.mark.usefixtures("_mock_profile_api")
+    def test_remove_avatar_calls_delete(self, client: FlaskClient, fake_vclient) -> None:
         """Verify the remove checkbox triggers delete_avatar."""
         from tests.conftest import get_csrf
 
@@ -494,10 +479,13 @@ class TestProfileAvatar:
 
         # Then the custom avatar is deleted
         assert response.status_code == 200
-        mock_profile_svc.delete_avatar.assert_called_once_with("test-user-id")
+        fake_vclient.assert_called(
+            Routes.USERS_AVATAR_DELETE, params={"user_id": "test-user-id"}, times=1
+        )
 
+    @pytest.mark.usefixtures("_mock_profile_api")
     def test_uploaded_file_takes_priority_over_remove(
-        self, client: FlaskClient, mock_profile_svc: MagicMock
+        self, client: FlaskClient, fake_vclient
     ) -> None:
         """Verify a new file is uploaded even if remove is also set."""
         from tests.conftest import get_csrf
@@ -516,11 +504,14 @@ class TestProfileAvatar:
         client.post("/profile/test-user-id", data=data, content_type="multipart/form-data")
 
         # Then upload wins and delete is not called
-        mock_profile_svc.upload_avatar.assert_called_once()
-        mock_profile_svc.delete_avatar.assert_not_called()
+        fake_vclient.assert_called(
+            Routes.USERS_AVATAR_UPLOAD, params={"user_id": "test-user-id"}, times=1
+        )
+        fake_vclient.assert_not_called(Routes.USERS_AVATAR_DELETE)
 
+    @pytest.mark.usefixtures("_mock_profile_api")
     def test_rejected_file_with_remove_checked_does_not_delete(
-        self, client: FlaskClient, mock_profile_svc: MagicMock
+        self, client: FlaskClient, fake_vclient
     ) -> None:
         """Verify a rejected upload never falls through to deleting the avatar."""
         from tests.conftest import get_csrf
@@ -539,12 +530,11 @@ class TestProfileAvatar:
         client.post("/profile/test-user-id", data=data, content_type="multipart/form-data")
 
         # Then neither upload nor delete touches the existing avatar
-        mock_profile_svc.upload_avatar.assert_not_called()
-        mock_profile_svc.delete_avatar.assert_not_called()
+        fake_vclient.assert_not_called(Routes.USERS_AVATAR_UPLOAD)
+        fake_vclient.assert_not_called(Routes.USERS_AVATAR_DELETE)
 
-    def test_invalid_avatar_type_is_rejected(
-        self, client: FlaskClient, mock_profile_svc: MagicMock
-    ) -> None:
+    @pytest.mark.usefixtures("_mock_profile_api")
+    def test_invalid_avatar_type_is_rejected(self, client: FlaskClient, fake_vclient) -> None:
         """Verify a non-image file is not uploaded."""
         from tests.conftest import get_csrf
 
@@ -564,11 +554,10 @@ class TestProfileAvatar:
 
         # Then the upload is rejected
         assert response.status_code == 200
-        mock_profile_svc.upload_avatar.assert_not_called()
+        fake_vclient.assert_not_called(Routes.USERS_AVATAR_UPLOAD)
 
-    def test_oversized_avatar_is_rejected(
-        self, client: FlaskClient, mock_profile_svc: MagicMock
-    ) -> None:
+    @pytest.mark.usefixtures("_mock_profile_api")
+    def test_oversized_avatar_is_rejected(self, client: FlaskClient, fake_vclient) -> None:
         """Verify a file over the avatar size limit is not uploaded."""
         from tests.conftest import get_csrf
 
@@ -589,11 +578,10 @@ class TestProfileAvatar:
 
         # Then the upload is rejected
         assert response.status_code == 200
-        mock_profile_svc.upload_avatar.assert_not_called()
+        fake_vclient.assert_not_called(Routes.USERS_AVATAR_UPLOAD)
 
-    def test_avatar_over_pixel_cap_is_rejected(
-        self, client: FlaskClient, mock_profile_svc: MagicMock
-    ) -> None:
+    @pytest.mark.usefixtures("_mock_profile_api")
+    def test_avatar_over_pixel_cap_is_rejected(self, client: FlaskClient, fake_vclient) -> None:
         """Verify an avatar over 24 megapixels is not uploaded."""
         from tests.conftest import get_csrf
 
@@ -613,7 +601,7 @@ class TestProfileAvatar:
 
         # Then the upload is rejected
         assert response.status_code == 200
-        mock_profile_svc.upload_avatar.assert_not_called()
+        fake_vclient.assert_not_called(Routes.USERS_AVATAR_UPLOAD)
 
     @pytest.mark.usefixtures("_mock_profile_api")
     def test_non_self_avatar_upload_returns_403(self, client: FlaskClient) -> None:

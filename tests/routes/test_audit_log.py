@@ -13,6 +13,7 @@ from vweb.api_client.testing import (
     CampaignBookFactory,
     CampaignChapterFactory,
     CharacterFactory,
+    Routes,
 )
 from vweb.routes.fragments_shared_cards.audit_log import (
     FieldDiff,
@@ -453,17 +454,8 @@ class TestResolveChapter:
 class TestGetAuditLogPage:
     """Tests for the canonical vclient wrapper."""
 
-    def test_all_filters_forwarded(self, app: Flask, mocker) -> None:
+    def test_all_filters_forwarded(self, app: Flask, fake_vclient) -> None:
         """Verify all non-empty filters are forwarded with dates parsed."""
-        # Given a mocked companies service
-        mock_svc = mocker.MagicMock()
-        mock_svc.get_audit_log_page.return_value = mocker.MagicMock()
-        mocker.patch(
-            "vweb.routes.fragments_shared_cards.audit_log.companies_service",
-            autospec=True,
-            return_value=mock_svc,
-        )
-
         with app.test_request_context():
             session["company_id"] = "test-company-id"
 
@@ -483,101 +475,80 @@ class TestGetAuditLogPage:
                 date_to="2026-01-31",
             )
 
-        # Then the API receives parsed kwargs including datetimes
-        mock_svc.get_audit_log_page.assert_called_once_with(
-            "test-company-id",
-            limit=25,
-            offset=50,
-            acting_user_id="u-1",
-            user_id="u-2",
-            campaign_id="c-1",
-            book_id="b-1",
-            chapter_id="ch-1",
-            character_id="char-1",
-            entity_type="CAMPAIGN",
-            operation="UPDATE",
-            date_from=datetime.fromisoformat("2026-01-01"),
-            date_to=datetime.fromisoformat("2026-01-31"),
+        # Then the API receives every filter, with dates as ISO datetimes
+        (request,) = fake_vclient.assert_called(
+            Routes.COMPANIES_AUDIT_LOGS_LIST,
+            params={"company_id": "test-company-id"},
+            times=1,
         )
+        assert request.query == {
+            "limit": "25",
+            "offset": "50",
+            "acting_user_id": "u-1",
+            "user_id": "u-2",
+            "campaign_id": "c-1",
+            "book_id": "b-1",
+            "chapter_id": "ch-1",
+            "character_id": "char-1",
+            "entity_type": "CAMPAIGN",
+            "operation": "UPDATE",
+            "date_from": "2026-01-01T00:00:00",
+            "date_to": "2026-01-31T00:00:00",
+        }
 
-    def test_get_audit_log_page_caches_per_company_and_filters(self, app, mocker):
-        """Verify repeated identical audit-log queries hit the companies service once."""
+    def test_get_audit_log_page_caches_per_company_and_filters(self, app, fake_vclient):
+        """Verify repeated identical audit-log queries hit the API once."""
         # Given a request context with a company and an empty cache
         with app.test_request_context("/"):
             session["company_id"] = "comp-1"
             from vweb.extensions import cache
 
             cache.clear()
-
-            from vweb.api_client.models.audit_logs import AuditLog
-            from vweb.api_client.models.pagination import PaginatedResponse
-
-            svc = mocker.patch("vweb.routes.fragments_shared_cards.audit_log.companies_service")
-            svc.return_value.get_audit_log_page.return_value = PaginatedResponse[AuditLog](
-                items=[], total=0, limit=10, offset=0
-            )
+            fake_vclient.set_response(Routes.COMPANIES_AUDIT_LOGS_LIST, items=[])
 
             # When called twice with identical filters
             get_audit_log_page(limit=10, offset=0, campaign_id="camp-1")
             get_audit_log_page(limit=10, offset=0, campaign_id="camp-1")
 
-            # Then the underlying service is hit only once
-            svc.return_value.get_audit_log_page.assert_called_once()
+        # Then the API is hit only once
+        fake_vclient.assert_called(
+            Routes.COMPANIES_AUDIT_LOGS_LIST,
+            params={"company_id": "comp-1"},
+            query={"campaign_id": "camp-1"},
+            times=1,
+        )
 
-    def test_get_audit_log_page_caches_distinct_filters_separately(self, app, mocker):
-        """Verify differing filter args miss the cache and hit the service each time."""
+    def test_get_audit_log_page_caches_distinct_filters_separately(self, app, fake_vclient):
+        """Verify differing filter args miss the cache and hit the API each time."""
         # Given a request context with a company and an empty cache
         with app.test_request_context("/"):
             session["company_id"] = "comp-1"
             from vweb.extensions import cache
 
             cache.clear()
-
-            from vweb.api_client.models.audit_logs import AuditLog
-            from vweb.api_client.models.pagination import PaginatedResponse
-
-            svc = mocker.patch("vweb.routes.fragments_shared_cards.audit_log.companies_service")
-            svc.return_value.get_audit_log_page.return_value = PaginatedResponse[AuditLog](
-                items=[], total=0, limit=10, offset=0
-            )
+            fake_vclient.set_response(Routes.COMPANIES_AUDIT_LOGS_LIST, items=[])
 
             # When called twice with different offsets
             get_audit_log_page(limit=10, offset=0)
             get_audit_log_page(limit=10, offset=10)
 
-            # Then the underlying service is hit once per distinct filter set
-            assert svc.return_value.get_audit_log_page.call_count == 2
+        # Then the API is hit once per distinct filter set
+        fake_vclient.assert_called(Routes.COMPANIES_AUDIT_LOGS_LIST, times=2)
+        fake_vclient.assert_called(Routes.COMPANIES_AUDIT_LOGS_LIST, query={"offset": 0}, times=1)
+        fake_vclient.assert_called(Routes.COMPANIES_AUDIT_LOGS_LIST, query={"offset": 10}, times=1)
 
-    def test_empty_filters_become_none(self, app: Flask, mocker) -> None:
-        """Verify empty-string filters are coerced to None before the API call."""
-        # Given a mocked companies service
-        mock_svc = mocker.MagicMock()
-        mock_svc.get_audit_log_page.return_value = mocker.MagicMock()
-        mocker.patch(
-            "vweb.routes.fragments_shared_cards.audit_log.companies_service",
-            autospec=True,
-            return_value=mock_svc,
-        )
-
+    def test_empty_filters_become_none(self, app: Flask, fake_vclient) -> None:
+        """Verify empty-string filters are left out of the API call."""
         with app.test_request_context():
             session["company_id"] = "test-company-id"
 
             # When calling with no filters set
             get_audit_log_page(limit=10, offset=0)
 
-        # Then all filters are None and dates are absent
-        mock_svc.get_audit_log_page.assert_called_once_with(
-            "test-company-id",
-            limit=10,
-            offset=0,
-            acting_user_id=None,
-            user_id=None,
-            campaign_id=None,
-            book_id=None,
-            chapter_id=None,
-            character_id=None,
-            entity_type=None,
-            operation=None,
-            date_from=None,
-            date_to=None,
+        # Then only paging reaches the API, with no filters or dates
+        (request,) = fake_vclient.assert_called(
+            Routes.COMPANIES_AUDIT_LOGS_LIST,
+            params={"company_id": "test-company-id"},
+            times=1,
         )
+        assert request.query == {"limit": "10", "offset": "0"}

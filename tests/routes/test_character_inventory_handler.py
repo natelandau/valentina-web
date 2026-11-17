@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from tests.helpers import seed_session
-from vweb.api_client.models import InventoryItemCreate, InventoryItemUpdate
-from vweb.api_client.testing import CharacterFactory
+from vweb.api_client.testing import CharacterFactory, Routes
 from vweb.routes.character_view.handlers_inventory import CharacterInventoryHandler
 
 
@@ -21,13 +18,14 @@ def mock_character(mock_global_context):
 
 
 @pytest.fixture
-def mock_svc(mocker):
-    """Mock the characters_service for the handler module."""
-    svc = MagicMock()
-    mocker.patch(
-        "vweb.routes.character_view.handlers_inventory.api_services.characters", return_value=svc
-    )
-    return svc
+def handler(app, fake_vclient, mock_character, mock_global_context):
+    """Build a handler for char-123 inside a seeded request context."""
+    from flask import g
+
+    with app.test_request_context():
+        g.global_context = mock_global_context
+        seed_session()
+        yield CharacterInventoryHandler("char-123")
 
 
 class TestCharacterInventoryHandlerValidation:
@@ -82,129 +80,85 @@ class TestCharacterInventoryHandlerValidation:
 class TestCharacterInventoryHandlerOperations:
     """Tests for CharacterInventoryHandler CRUD operations."""
 
-    def test_list_items_calls_service(
-        self, app, mock_character, mock_global_context, mock_svc
-    ) -> None:
-        """Verify list_items delegates to the vclient service."""
-        with app.test_request_context():
-            # Given a handler with a mocked service
-            from flask import g
+    def test_list_items_calls_service(self, handler, fake_vclient) -> None:
+        """Verify list_items fetches the parent character's inventory."""
+        # When listing items
+        handler.list_items()
 
-            g.global_context = mock_global_context
-            seed_session()
-            handler = CharacterInventoryHandler("char-123")
-
-            # When listing items
-            handler.list_items()
-
-            # Then the service is called with the parent character ID
-            mock_svc.list_all_inventory.assert_called_once_with("char-123")
+        # Then the inventory list route is requested for the parent character
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_INVENTORY_LIST,
+            params={"company_id": "test-company-id", "character_id": "char-123"},
+        )
 
     def test_create_item_strips_whitespace_and_omits_empty_description(
-        self, app, mock_character, mock_global_context, mock_svc
+        self, handler, fake_vclient
     ) -> None:
         """Verify create_item strips name whitespace and omits empty description."""
-        with app.test_request_context():
-            # Given a handler with a mocked service
-            from flask import g
+        # When creating an item with padded name and empty description
+        handler.create_item({"name": "  Sword  ", "type": "WEAPON", "description": ""})
 
-            g.global_context = mock_global_context
-            seed_session()
-            handler = CharacterInventoryHandler("char-123")
+        # Then the API receives a stripped name and no description
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_INVENTORY_CREATE,
+            params={"character_id": "char-123"},
+            json={"name": "Sword", "type": "WEAPON"},
+            times=1,
+        )
 
-            # When creating an item with padded name and empty description
-            handler.create_item({"name": "  Sword  ", "type": "WEAPON", "description": ""})
-
-            # Then the service receives a model with stripped name and no description
-            mock_svc.create_inventory_item.assert_called_once_with(
-                "char-123",
-                request=InventoryItemCreate(name="Sword", type="WEAPON", description=None),
-            )
-
-    def test_create_item_includes_description_when_provided(
-        self, app, mock_character, mock_global_context, mock_svc
-    ) -> None:
+    def test_create_item_includes_description_when_provided(self, handler, fake_vclient) -> None:
         """Verify create_item passes description when non-empty."""
-        with app.test_request_context():
-            # Given a handler with a mocked service
-            from flask import g
+        # When creating an item with a description
+        handler.create_item({"name": "Sword", "type": "WEAPON", "description": "  Sharp blade  "})
 
-            g.global_context = mock_global_context
-            seed_session()
-            handler = CharacterInventoryHandler("char-123")
+        # Then the API receives the stripped description
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_INVENTORY_CREATE,
+            params={"character_id": "char-123"},
+            json={"name": "Sword", "type": "WEAPON", "description": "Sharp blade"},
+            times=1,
+        )
 
-            # When creating an item with a description
-            handler.create_item(
-                {"name": "Sword", "type": "WEAPON", "description": "  Sharp blade  "}
-            )
-
-            # Then the service receives a model with the stripped description
-            mock_svc.create_inventory_item.assert_called_once_with(
-                "char-123",
-                request=InventoryItemCreate(name="Sword", type="WEAPON", description="Sharp blade"),
-            )
-
-    def test_update_item_sets_empty_description_to_none(
-        self, app, mock_character, mock_global_context, mock_svc
-    ) -> None:
+    def test_update_item_sets_empty_description_to_none(self, handler, fake_vclient) -> None:
         """Verify update_item converts empty description to None."""
-        with app.test_request_context():
-            # Given a handler with a mocked service
-            from flask import g
+        # When updating with an empty description
+        handler.update_item(
+            "inv-1", {"name": "  Updated Sword  ", "type": "WEAPON", "description": "  "}
+        )
 
-            g.global_context = mock_global_context
-            seed_session()
-            handler = CharacterInventoryHandler("char-123")
+        # Then the API receives a stripped name and no description
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_INVENTORY_UPDATE,
+            params={"character_id": "char-123", "item_id": "inv-1"},
+            json={"name": "Updated Sword", "type": "WEAPON"},
+            times=1,
+        )
 
-            # When updating with an empty description
-            handler.update_item(
-                "inv-1", {"name": "  Updated Sword  ", "type": "WEAPON", "description": "  "}
-            )
+    def test_delete_item_calls_service(self, handler, fake_vclient) -> None:
+        """Verify delete_item deletes the item on the parent character."""
+        # When deleting an item
+        handler.delete_item("inv-1")
 
-            # Then the service receives a model with stripped name and None description
-            mock_svc.update_inventory_item.assert_called_once_with(
-                "char-123",
-                "inv-1",
-                request=InventoryItemUpdate(name="Updated Sword", type="WEAPON", description=None),
-            )
+        # Then the delete route is requested with both IDs
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_INVENTORY_DELETE,
+            params={"character_id": "char-123", "item_id": "inv-1"},
+            times=1,
+        )
 
-    def test_delete_item_calls_service(
-        self, app, mock_character, mock_global_context, mock_svc
-    ) -> None:
-        """Verify delete_item delegates to the vclient service."""
-        with app.test_request_context():
-            # Given a handler with a mocked service
-            from flask import g
+    def test_get_item_calls_service(self, handler, fake_vclient) -> None:
+        """Verify get_item fetches the item on the parent character."""
+        # When getting a single item
+        handler.get_item("inv-1")
 
-            g.global_context = mock_global_context
-            seed_session()
-            handler = CharacterInventoryHandler("char-123")
+        # Then the item route is requested with both IDs
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_INVENTORY_GET,
+            params={"character_id": "char-123", "item_id": "inv-1"},
+            times=1,
+        )
 
-            # When deleting an item
-            handler.delete_item("inv-1")
-
-            # Then the service is called with the correct IDs
-            mock_svc.delete_inventory_item.assert_called_once_with("char-123", "inv-1")
-
-    def test_get_item_calls_service(
-        self, app, mock_character, mock_global_context, mock_svc
-    ) -> None:
-        """Verify get_item delegates to the vclient service."""
-        with app.test_request_context():
-            # Given a handler with a mocked service
-            from flask import g
-
-            g.global_context = mock_global_context
-            seed_session()
-            handler = CharacterInventoryHandler("char-123")
-
-            # When getting a single item
-            handler.get_item("inv-1")
-
-            # Then the service is called with the correct IDs
-            mock_svc.get_inventory_item.assert_called_once_with("char-123", "inv-1")
-
-    def test_init_raises_for_unknown_character(self, app, mock_global_context, mock_svc) -> None:
+    def test_init_raises_for_unknown_character(self, app, mock_global_context) -> None:
         """Verify constructor raises ValueError for a character not in global context."""
         with app.test_request_context():
             # Given an empty characters list in global context

@@ -1,15 +1,13 @@
 """Tests for the account-unlinking (connections) flow."""
 
-from unittest.mock import MagicMock
-
 from werkzeug.test import TestResponse
 
 from tests.conftest import get_csrf
-from vweb.api_client.exceptions import AuthorizationError, ConflictError, NotFoundError
 from vweb.api_client.testing import (
     AppleProfileFactory,
     GitHubProfileFactory,
     GoogleProfileFactory,
+    Routes,
     UserFactory,
 )
 from vweb.lib.catalog import catalog
@@ -25,12 +23,12 @@ class TestUnlinkIdentityView:
             headers={"X-CSRFToken": get_csrf(client)},
         )
 
-    def test_unlink_disconnects_identity_and_returns_card(self, client, mocker):
+    def test_unlink_disconnects_identity_and_returns_card(self, client, mocker, fake_vclient):
         """Verify unlinking removes the provider, clears cache, and swaps the card in."""
-        # Given a users service that unlinks successfully
-        mock_users_svc = MagicMock()
-        mock_users_svc.unlink_identity.return_value = UserFactory.build(id="test-user-id")
-        mocker.patch("vweb.routes.auth.views_identity.users_service", return_value=mock_users_svc)
+        # Given an unlink endpoint that succeeds
+        fake_vclient.set_response(
+            Routes.USERS_IDENTITY_UNLINK, model=UserFactory.build(id="test-user-id")
+        )
         mock_cache_clear = mocker.patch(
             "vweb.routes.auth.views_identity.cache.global_context.clear"
         )
@@ -39,21 +37,26 @@ class TestUnlinkIdentityView:
         response = self._post_unlink(client)
 
         # Then the identity was unlinked, cache invalidated, and the card returned
-        mock_users_svc.unlink_identity.assert_called_once_with("test-user-id", provider="github")
+        (request,) = fake_vclient.assert_called(
+            Routes.USERS_IDENTITY_UNLINK,
+            params={
+                "company_id": "test-company-id",
+                "user_id": "test-user-id",
+                "provider": "github",
+            },
+            times=1,
+        )
+        assert request.headers["on-behalf-of"] == "test-user-id"
         mock_cache_clear.assert_called_once_with("test-company-id", "test-user-id")
         assert response.status_code == 200
         assert b'id="connections-card"' in response.data
 
     def test_unlink_last_identity_conflict_returns_card_without_clearing_cache(
-        self, client, mocker
+        self, client, mocker, fake_vclient
     ):
         """Verify LAST_IDENTITY is reported and the card returns unchanged."""
         # Given the provider is the user's only sign-in method
-        mock_users_svc = MagicMock()
-        mock_users_svc.unlink_identity.side_effect = ConflictError(
-            "conflict", 409, {"code": "LAST_IDENTITY"}
-        )
-        mocker.patch("vweb.routes.auth.views_identity.users_service", return_value=mock_users_svc)
+        fake_vclient.set_error(Routes.USERS_IDENTITY_UNLINK, status_code=409, code="LAST_IDENTITY")
         mock_cache_clear = mocker.patch(
             "vweb.routes.auth.views_identity.cache.global_context.clear"
         )
@@ -64,16 +67,15 @@ class TestUnlinkIdentityView:
         # Then the card comes back and the cache is left untouched
         assert response.status_code == 200
         assert b'id="connections-card"' in response.data
+        assert b"only sign-in method" in response.data
         mock_cache_clear.assert_not_called()
 
-    def test_unlink_not_found_returns_card(self, client, mocker):
+    def test_unlink_not_found_returns_card(self, client, fake_vclient):
         """Verify unlinking a provider that is not connected returns the card."""
         # Given the provider has no linked identity
-        mock_users_svc = MagicMock()
-        mock_users_svc.unlink_identity.side_effect = NotFoundError(
-            "missing", 404, {"code": "IDENTITY_NOT_LINKED"}
+        fake_vclient.set_error(
+            Routes.USERS_IDENTITY_UNLINK, status_code=404, code="IDENTITY_NOT_LINKED"
         )
-        mocker.patch("vweb.routes.auth.views_identity.users_service", return_value=mock_users_svc)
 
         # When the unlink route is hit
         response = self._post_unlink(client)
@@ -81,13 +83,12 @@ class TestUnlinkIdentityView:
         # Then the card is returned without error
         assert response.status_code == 200
         assert b'id="connections-card"' in response.data
+        assert b"is not connected to your account" in response.data
 
-    def test_unlink_authorization_error_returns_card(self, client, mocker):
+    def test_unlink_authorization_error_returns_card(self, client, fake_vclient):
         """Verify a denied unlink returns the card rather than crashing."""
         # Given the acting user is not permitted to unlink
-        mock_users_svc = MagicMock()
-        mock_users_svc.unlink_identity.side_effect = AuthorizationError("denied", 403, {})
-        mocker.patch("vweb.routes.auth.views_identity.users_service", return_value=mock_users_svc)
+        fake_vclient.set_error(Routes.USERS_IDENTITY_UNLINK, status_code=403)
 
         # When the unlink route is hit
         response = self._post_unlink(client)
@@ -95,6 +96,7 @@ class TestUnlinkIdentityView:
         # Then the card is returned
         assert response.status_code == 200
         assert b'id="connections-card"' in response.data
+        assert b"not allowed to change these connections" in response.data
 
     def test_unlink_rejects_logged_out_user(self, client):
         """Verify an unlink request without an active session redirects to the landing page."""
@@ -119,19 +121,23 @@ class TestUnlinkIdentityView:
         # Then it 404s
         assert response.status_code == 404
 
-    def test_unlink_apple_disconnects_identity_and_returns_card(self, client, mocker):
+    def test_unlink_apple_disconnects_identity_and_returns_card(self, client, mocker, fake_vclient):
         """Verify Apple can be disconnected like the other providers."""
-        # Given a users service that unlinks successfully
-        mock_users_svc = MagicMock()
-        mock_users_svc.unlink_identity.return_value = UserFactory.build(id="test-user-id")
-        mocker.patch("vweb.routes.auth.views_identity.users_service", return_value=mock_users_svc)
+        # Given an unlink endpoint that succeeds
+        fake_vclient.set_response(
+            Routes.USERS_IDENTITY_UNLINK, model=UserFactory.build(id="test-user-id")
+        )
         mocker.patch("vweb.routes.auth.views_identity.cache.global_context.clear")
 
         # When the Apple unlink route is hit
         response = self._post_unlink(client, provider="apple")
 
         # Then the Apple identity was unlinked and the card returned
-        mock_users_svc.unlink_identity.assert_called_once_with("test-user-id", provider="apple")
+        fake_vclient.assert_called(
+            Routes.USERS_IDENTITY_UNLINK,
+            params={"user_id": "test-user-id", "provider": "apple"},
+            times=1,
+        )
         assert response.status_code == 200
         assert b'id="connections-card"' in response.data
 

@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import logging
-from unittest.mock import MagicMock, patch
 
 import pytest
 
-from vweb.api_client.exceptions import NotFoundError, ServerError, UnprocessableEntityError
+from vweb.api_client.exceptions import ServerError, UnprocessableEntityError
 from vweb.api_client.models import UserLookupResult
-from vweb.api_client.testing import Routes
+from vweb.api_client.testing import IdentityResolutionFactory, Routes
 from vweb.routes.auth.services import (
     build_companies_mapping,
     identify_in_companies,
@@ -32,14 +31,13 @@ def _make_lookup_result(**kwargs) -> UserLookupResult:
 class TestLookupUserCompanies:
     """Tests for lookup_user_companies()."""
 
-    @patch("vweb.routes.auth.services.user_lookup_service")
-    def test_provider_id_lookup_succeeds(self, mock_svc_factory) -> None:
+    def test_provider_id_lookup_succeeds(self, fake_vclient) -> None:
         """Verify lookup returns results when provider ID matches."""
-        # Given a lookup service that finds a user by discord ID
+        # Given a lookup endpoint that finds a user by discord ID
         expected = [_make_lookup_result()]
-        mock_svc = MagicMock()
-        mock_svc.by_discord_id.return_value = expected
-        mock_svc_factory.return_value = mock_svc
+        fake_vclient.set_response(
+            Routes.USERS_LOOKUP, items=expected, query={"discord_id": "discord-123"}
+        )
 
         # When looking up by discord provider
         results = lookup_user_companies(
@@ -50,18 +48,19 @@ class TestLookupUserCompanies:
 
         # Then the provider ID results are returned without email fallback
         assert results == expected
-        mock_svc.by_discord_id.assert_called_once_with("discord-123")
-        mock_svc.by_email.assert_not_called()
+        fake_vclient.assert_called(
+            Routes.USERS_LOOKUP, query={"discord_id": "discord-123"}, times=1
+        )
+        fake_vclient.assert_not_called(Routes.USERS_LOOKUP, query={"email": "test@example.com"})
 
-    @patch("vweb.routes.auth.services.user_lookup_service")
-    def test_email_fallback_when_provider_returns_empty(self, mock_svc_factory) -> None:
+    def test_email_fallback_when_provider_returns_empty(self, fake_vclient) -> None:
         """Verify lookup falls back to email when provider ID returns no results."""
-        # Given a lookup service where provider ID returns empty but email matches
+        # Given a lookup endpoint where provider ID returns empty but email matches
         email_results = [_make_lookup_result(user_id="user-via-email")]
-        mock_svc = MagicMock()
-        mock_svc.by_github_id.return_value = []
-        mock_svc.by_email.return_value = email_results
-        mock_svc_factory.return_value = mock_svc
+        fake_vclient.set_response(Routes.USERS_LOOKUP, items=[], query={"github_id": "gh-999"})
+        fake_vclient.set_response(
+            Routes.USERS_LOOKUP, items=email_results, query={"email": "found@example.com"}
+        )
 
         # When looking up by github provider
         results = lookup_user_companies(
@@ -72,8 +71,10 @@ class TestLookupUserCompanies:
 
         # Then email fallback results are returned
         assert results == email_results
-        mock_svc.by_github_id.assert_called_once_with("gh-999")
-        mock_svc.by_email.assert_called_once_with("found@example.com")
+        fake_vclient.assert_called(Routes.USERS_LOOKUP, query={"github_id": "gh-999"}, times=1)
+        fake_vclient.assert_called(
+            Routes.USERS_LOOKUP, query={"email": "found@example.com"}, times=1
+        )
 
     def test_empty_results_when_no_match(self, fake_vclient) -> None:
         """Verify lookup returns empty list when neither provider ID nor email matches."""
@@ -90,13 +91,10 @@ class TestLookupUserCompanies:
         # Then an empty list is returned
         assert results == []
 
-    @patch("vweb.routes.auth.services.user_lookup_service")
-    def test_no_email_fallback_when_email_empty(self, mock_svc_factory) -> None:
+    def test_no_email_fallback_when_email_empty(self, fake_vclient) -> None:
         """Verify lookup skips email fallback when email is empty string."""
-        # Given a lookup service where provider ID returns empty
-        mock_svc = MagicMock()
-        mock_svc.by_discord_id.return_value = []
-        mock_svc_factory.return_value = mock_svc
+        # Given a lookup endpoint where provider ID returns empty
+        fake_vclient.set_response(Routes.USERS_LOOKUP, items=[])
 
         # When looking up with empty email
         results = lookup_user_companies(
@@ -107,7 +105,8 @@ class TestLookupUserCompanies:
 
         # Then no email fallback is attempted
         assert results == []
-        mock_svc.by_email.assert_not_called()
+        (request,) = fake_vclient.requests_for(Routes.USERS_LOOKUP)
+        assert request.query == {"discord_id": "disc-1"}
 
 
 class TestBuildCompaniesMapping:
@@ -151,38 +150,37 @@ _TEST_TOKEN = "test-oauth-access-token"
 class TestIdentifyInCompanies:
     """Tests for identify_in_companies."""
 
-    def test_identify_in_companies_resolves_each_company(self, mocker) -> None:
+    def test_identify_in_companies_resolves_each_company(self, fake_vclient) -> None:
         """Verify identify is called once per company and resolutions are keyed by company ID."""
-        # Given an identity service that resolves successfully
-        resolution = MagicMock()
-        mock_svc = MagicMock()
-        mock_svc.identify.return_value = resolution
-        mock_factory = mocker.patch(
-            "vweb.routes.auth.services.identity_service",
-            autospec=True,
-            return_value=mock_svc,
-        )
+        # Given an identify endpoint that resolves in each company
+        resolutions = {cid: IdentityResolutionFactory.build() for cid in ("c1", "c2")}
+        for cid, resolution in resolutions.items():
+            fake_vclient.set_response(
+                Routes.IDENTITY_IDENTIFY, model=resolution, params={"company_id": cid}
+            )
 
         # When identifying in two companies
         result = identify_in_companies(["c1", "c2"], provider="discord", token=_TEST_TOKEN)
 
-        # Then the service was scoped to each company and both resolutions returned
-        assert mock_factory.call_args_list == [
-            mocker.call(company_id="c1"),
-            mocker.call(company_id="c2"),
-        ]
-        assert result == {"c1": resolution, "c2": resolution}
+        # Then each company received the credential once and both resolutions returned
+        for cid in ("c1", "c2"):
+            fake_vclient.assert_called(
+                Routes.IDENTITY_IDENTIFY,
+                params={"company_id": cid},
+                json={"provider": "discord", "token": _TEST_TOKEN},
+                times=1,
+            )
+        assert result == resolutions
 
-    def test_identify_in_companies_skips_company_level_failure(self, mocker, caplog) -> None:
+    def test_identify_in_companies_skips_company_level_failure(self, fake_vclient, caplog) -> None:
         """Verify a company-level API failure is logged and skipped, not raised."""
         # Given the first company fails with a non-token error and the second succeeds
-        resolution = MagicMock()
-        mock_svc = MagicMock()
-        mock_svc.identify.side_effect = [NotFoundError("nope", 404), resolution]
-        mocker.patch(
-            "vweb.routes.auth.services.identity_service",
-            autospec=True,
-            return_value=mock_svc,
+        resolution = IdentityResolutionFactory.build()
+        fake_vclient.set_error(
+            Routes.IDENTITY_IDENTIFY, status_code=404, params={"company_id": "c1"}
+        )
+        fake_vclient.set_response(
+            Routes.IDENTITY_IDENTIFY, model=resolution, params={"company_id": "c2"}
         )
 
         # When identifying in two companies
@@ -194,25 +192,21 @@ class TestIdentifyInCompanies:
         assert "identify failed for company c1" in caplog.text
 
     @pytest.mark.parametrize(
-        ("exception_class", "exception_args"),
+        ("exception_class", "status_code", "code"),
         [
-            (UnprocessableEntityError, ("bad token", 422, {"code": "TOKEN_VERIFICATION_FAILED"})),
-            (ServerError, ("provider unreachable", 503, {"code": "PROVIDER_UNAVAILABLE"})),
+            (UnprocessableEntityError, 422, "TOKEN_VERIFICATION_FAILED"),
+            (ServerError, 503, "PROVIDER_UNAVAILABLE"),
         ],
     )
     def test_identify_in_companies_raises_token_level_failure(
-        self, mocker, exception_class, exception_args
+        self, fake_vclient, exception_class, status_code, code
     ) -> None:
         """Verify token- and provider-level failures propagate so callers can branch on the code."""
-        # Given the identity service rejects the credential outright
-        mock_svc = MagicMock()
-        mock_svc.identify.side_effect = exception_class(*exception_args)
-        mocker.patch(
-            "vweb.routes.auth.services.identity_service",
-            autospec=True,
-            return_value=mock_svc,
-        )
+        # Given the identify endpoint rejects the credential outright
+        fake_vclient.set_error(Routes.IDENTITY_IDENTIFY, status_code=status_code, code=code)
 
-        # When identifying, then the error is raised to the caller
-        with pytest.raises(exception_class):
+        # When identifying, then the error is raised to the caller with its code
+        with pytest.raises(exception_class) as exc_info:
             identify_in_companies(["c1", "c2"], provider="discord", token=_TEST_TOKEN)
+        assert exc_info.value.code == code
+        fake_vclient.assert_not_called(Routes.IDENTITY_IDENTIFY, params={"company_id": "c2"})

@@ -21,6 +21,7 @@ from vweb.api_client.testing import (
     CampaignFactory,
     CharacterFactory,
     CompanyFactory,
+    FakeResponse,
     Routes,
     UserFactory,
 )
@@ -109,7 +110,6 @@ def test_fetch_global_data_non_admin_skips_pending_user_count(app, fake_vclient)
 
     fake_vclient.set_response(Routes.COMPANIES_GET, model=company)
     fake_vclient.set_response(Routes.USERS_LIST, items=[player])
-    # The unapproved-users route is intentionally not registered — calling it would 404
     fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[])
 
     # When fetching global data
@@ -118,20 +118,19 @@ def test_fetch_global_data_non_admin_skips_pending_user_count(app, fake_vclient)
 
     # Then pending_user_count is 0 and the unapproved endpoint was never called
     assert result.pending_user_count == 0
+    fake_vclient.assert_not_called(Routes.USERS_UNAPPROVED_LIST)
 
 
 @pytest.mark.usefixtures("mock_cache_store")
 def test_load_global_context_returns_cached_on_same_timestamp(
-    app, mocker, mock_global_context
+    app, mocker, mock_global_context, fake_vclient
 ) -> None:
     """Verify load returns cached data when company timestamp hasn't changed."""
     # Given a company whose timestamp stays the same
     mock_company = CompanyFactory.build(
         resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
     )
-    mock_company_svc = mocker.MagicMock()
-    mock_company_svc.get.return_value = mock_company
-    mocker.patch("vweb.lib.cache.global_context.companies_service", return_value=mock_company_svc)
+    fake_vclient.set_response(Routes.COMPANIES_GET, model=mock_company)
 
     mock_fetch = mocker.patch(
         "vweb.lib.cache.global_context._fetch_global_data",
@@ -147,10 +146,13 @@ def test_load_global_context_returns_cached_on_same_timestamp(
     # Then _fetch_global_data is called only once
     assert first is second
     mock_fetch.assert_called_once()
+    fake_vclient.assert_called(
+        Routes.COMPANIES_GET, params={"company_id": "test-company-id"}, times=1
+    )
 
 
 def test_load_global_context_refetches_on_new_timestamp(
-    app, mocker, mock_global_context, mock_cache_store
+    app, mocker, mock_global_context, mock_cache_store, fake_vclient
 ) -> None:
     """Verify load re-fetches data when company timestamp changes."""
     # Given a company whose timestamp changes between calls
@@ -160,9 +162,10 @@ def test_load_global_context_refetches_on_new_timestamp(
     mock_company_v2 = CompanyFactory.build(
         resources_modified_at=datetime(2026, 1, 2, 0, 0, tzinfo=UTC),
     )
-    mock_company_svc = mocker.MagicMock()
-    mock_company_svc.get.side_effect = [mock_company_v1, mock_company_v2]
-    mocker.patch("vweb.lib.cache.global_context.companies_service", return_value=mock_company_svc)
+    fake_vclient.set_responses(
+        Routes.COMPANIES_GET,
+        [FakeResponse(model=mock_company_v1), FakeResponse(model=mock_company_v2)],
+    )
 
     # Given _fetch_global_data returns different GlobalContexts
     ctx_v2 = GlobalContext(
@@ -186,20 +189,19 @@ def test_load_global_context_refetches_on_new_timestamp(
     # Then _fetch_global_data is called twice (data was refreshed)
     assert first is not second
     assert mock_fetch.call_count == 2
+    fake_vclient.assert_called(Routes.COMPANIES_GET, times=2)
 
 
 @pytest.mark.usefixtures("mock_cache_store")
 def test_clear_global_context_cache_deletes_only_global_keys(
-    app, mocker, mock_global_context, mock_cache_store
+    app, mocker, mock_global_context, mock_cache_store, fake_vclient
 ) -> None:
     """Verify clear deletes only global context keys."""
     # Given a company with a stable timestamp
     mock_company = CompanyFactory.build(
         resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
     )
-    mock_company_svc = mocker.MagicMock()
-    mock_company_svc.get.return_value = mock_company
-    mocker.patch("vweb.lib.cache.global_context.companies_service", return_value=mock_company_svc)
+    fake_vclient.set_response(Routes.COMPANIES_GET, model=mock_company)
 
     mock_fetch = mocker.patch(
         "vweb.lib.cache.global_context._fetch_global_data",
@@ -305,20 +307,16 @@ def test_fetch_global_data_returns_all_characters_unfiltered(app, fake_vclient) 
 
 
 @pytest.mark.usefixtures("_fake_vclient_data")
-def test_fetch_global_data_does_not_fetch_books_or_chapters(app, mocker) -> None:
-    """Verify _fetch_global_data no longer eagerly fans out to books and chapters."""
-    # Given the book and chapter services would raise if invoked
-    book_svc = mocker.patch("vweb.lib.cache.global_context.books_service", create=True)
-    chapter_svc = mocker.patch("vweb.lib.cache.global_context.chapters_service", create=True)
-
+def test_fetch_global_data_does_not_fetch_books_or_chapters(app, fake_vclient) -> None:
+    """Verify _fetch_global_data does not eagerly fan out to books and chapters."""
     # When fetching global data
     with app.app_context():
         result = _fetch_global_data("test-company-id", "test-user-id")
 
     # Then characters are still populated but no book/chapter fetch occurred
     assert len(result.characters) == 1
-    book_svc.assert_not_called()
-    chapter_svc.assert_not_called()
+    fake_vclient.assert_not_called(Routes.BOOKS_LIST)
+    fake_vclient.assert_not_called(Routes.CHAPTERS_LIST)
 
 
 def test_hook_retries_on_user_not_found(app, mocker) -> None:
@@ -401,16 +399,14 @@ def test_hook_redirects_when_user_not_found_after_retry(app, mocker) -> None:
 
 @pytest.mark.usefixtures("mock_cache_store")
 def test_load_global_context_fetches_company_once_on_cold_cache(
-    app, mocker, mock_global_context
+    app, mocker, mock_global_context, fake_vclient
 ) -> None:
     """Verify a cold load fetches the company once, not twice (timestamp + fetch)."""
     # Given a company service and a real _fetch_global_data that reuses the company
     mock_company = CompanyFactory.build(
         resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
     )
-    mock_company_svc = mocker.MagicMock()
-    mock_company_svc.get.return_value = mock_company
-    mocker.patch("vweb.lib.cache.global_context.companies_service", return_value=mock_company_svc)
+    fake_vclient.set_response(Routes.COMPANIES_GET, model=mock_company)
 
     # Given _fetch_global_data is patched so we isolate the company-fetch behavior
     mocker.patch(
@@ -424,19 +420,21 @@ def test_load_global_context_fetches_company_once_on_cold_cache(
         load("test-company-id", "test-user-id")
 
     # Then the company is fetched exactly once (reused for the timestamp and fetch)
-    mock_company_svc.get.assert_called_once()
+    fake_vclient.assert_called(
+        Routes.COMPANIES_GET, params={"company_id": "test-company-id"}, times=1
+    )
 
 
 @pytest.mark.usefixtures("mock_cache_store")
-def test_load_global_context_passes_company_to_fetch(app, mocker, mock_global_context) -> None:
+def test_load_global_context_passes_company_to_fetch(
+    app, mocker, mock_global_context, fake_vclient
+) -> None:
     """Verify the cold-path company is handed to _fetch_global_data to avoid a refetch."""
     # Given a known company returned for the timestamp lookup
     mock_company = CompanyFactory.build(
         resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
     )
-    mock_company_svc = mocker.MagicMock()
-    mock_company_svc.get.return_value = mock_company
-    mocker.patch("vweb.lib.cache.global_context.companies_service", return_value=mock_company_svc)
+    fake_vclient.set_response(Routes.COMPANIES_GET, model=mock_company)
 
     mock_fetch = mocker.patch(
         "vweb.lib.cache.global_context._fetch_global_data",
@@ -449,7 +447,7 @@ def test_load_global_context_passes_company_to_fetch(app, mocker, mock_global_co
         load("test-company-id", "test-user-id")
 
     # Then the pre-fetched company is forwarded so _fetch_global_data skips its own get
-    assert mock_fetch.call_args.kwargs["company"] is mock_company
+    assert mock_fetch.call_args.kwargs["company"] == mock_company
 
 
 def test_single_flight_lock_registry_stable_per_key() -> None:
@@ -462,7 +460,9 @@ def test_single_flight_lock_registry_stable_per_key() -> None:
     assert _lock_for("global_ctx:a:b") is not _lock_for("global_ctx:c:d")
 
 
-def test_load_global_context_single_flight_collapses_concurrent_rebuilds(app, mocker) -> None:
+def test_load_global_context_single_flight_collapses_concurrent_rebuilds(
+    app, mocker, fake_vclient
+) -> None:
     """Verify concurrent cold rebuilds for one user trigger exactly one full fetch."""
     from vweb.extensions import cache
 
@@ -470,9 +470,7 @@ def test_load_global_context_single_flight_collapses_concurrent_rebuilds(app, mo
     mock_company = CompanyFactory.build(
         resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
     )
-    mock_company_svc = mocker.MagicMock()
-    mock_company_svc.get.return_value = mock_company
-    mocker.patch("vweb.lib.cache.global_context.companies_service", return_value=mock_company_svc)
+    fake_vclient.set_response(Routes.COMPANIES_GET, model=mock_company)
 
     built_context = GlobalContext(
         company=CompanyFactory.build(),

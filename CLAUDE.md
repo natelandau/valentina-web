@@ -156,7 +156,9 @@ Use `uv run duty test` for every check except iterating on a single test. Pick t
     fake_vclient.set_error(Routes.USERS_GET, status_code=404)
     ```
 
-- **When to use which:** factories for data; `fake_vclient` for code that calls API services (`api_services.*()` or `<name>_service()`); `MagicMock()` only for service objects needing `side_effect` or handler/cache mocks.
+- **Assert on the wire, not on service mocks.** The fake records every request. `fake_vclient.assert_called(route, params=..., query=..., json=..., json_subset=..., times=...)` and `assert_not_called(route, ...)` check the route, path ids, query, and body; `requests_for(route)` returns the `RecordedRequest`s for custom checks.
+- **More fake responses:** `set_responses(route, [FakeError(status_code=404), FakeResponse(model=user)])` returns one step per call, and the last repeats. `set_error(..., invalid_parameters=[{"field": ..., "message": ...}])` fakes a 400 with field errors. `query={...}` on `set_response`/`set_error` narrows an override by query value. The override that pins the most `params` and `query` values wins; a tie goes to the latest. The fake never retries, so a faked 5xx is sent once.
+- **When to use which:** factories for data; `fake_vclient` for code that calls API services (`api_services.*()` or `<name>_service()`); `MagicMock()` only for service objects passed in as arguments, or handler and cache mocks.
 - Other shared fixtures: `mock_global_context` (factory-built `GlobalContext`), `get_csrf(client)`. Don't duplicate in test files.
 - **OAuth tests:** patch `oauth`, `lookup_user_companies`, and `identify_in_companies` where used (`routes.auth.views_oauth` for login/callback, `views_identity` for link/unlink, `views` for company selection); pre-seed `user_id` via `client.session_transaction()`.
 

@@ -242,7 +242,7 @@ class TestSelectCompaniesView:
         body = response.get_data(as_text=True)
         assert "Join a Company" in body
 
-    def test_post_registers_user_redirects_to_pending(self, client, mocker):
+    def test_post_registers_user_redirects_to_pending(self, client, mocker, fake_vclient):
         """Verify POST /select-companies resolves identities and redirects to pending."""
         from vweb.api_client.models import IdentityResolution
 
@@ -262,11 +262,11 @@ class TestSelectCompaniesView:
             return_value={"comp-1": IdentityResolution(resolution="created", user=new_user)},
         )
 
-        # Given a mock companies service for name lookup
-        mock_company = CompanyFactory.build(id="comp-1", name="Test Company")
-        mock_companies_svc = MagicMock()
-        mock_companies_svc.list_all.return_value = [mock_company]
-        mocker.patch("vweb.routes.auth.views.companies_service", return_value=mock_companies_svc)
+        # Given the API lists the company for the name lookup
+        fake_vclient.set_response(
+            Routes.COMPANIES_LIST,
+            items=[CompanyFactory.build(id="comp-1", name="Test Company")],
+        )
 
         # Given a CSRF token
         csrf_token = get_csrf(client)

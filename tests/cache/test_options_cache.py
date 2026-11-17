@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 
+from vweb.api_client.testing import FakeResponse, Routes
 from vweb.lib.cache.options import (
     ApiOptions,
     AssetOptions,
@@ -22,6 +22,8 @@ from vweb.lib.cache.options import (
 
 if TYPE_CHECKING:
     from flask import Flask
+
+    from vweb.api_client.testing import FakeVClient
 
 SAMPLE_RAW: dict = {
     "companies": {
@@ -56,12 +58,10 @@ SAMPLE_RAW: dict = {
 
 
 @pytest.fixture
-def mock_options_svc(mocker):
-    """Mock the options_service factory."""
-    svc = MagicMock()
-    svc.get_options.return_value = SAMPLE_RAW
-    mocker.patch("vweb.lib.cache.options.api_services.options", return_value=svc)
-    return svc
+def fake_options(real_cache_services, fake_vclient: FakeVClient) -> FakeVClient:
+    """Serve SAMPLE_RAW from the fake API and route the options cache through it."""
+    fake_vclient.set_response(Routes.OPTIONS_GET, model=SAMPLE_RAW)
+    return fake_vclient
 
 
 class TestParseOptions:
@@ -147,7 +147,7 @@ class TestGet:
     """Tests for get()."""
 
     def test_fetches_from_api_on_cache_miss(
-        self, app: Flask, mock_cache_store: dict, mock_options_svc: MagicMock
+        self, app: Flask, mock_cache_store: dict, fake_options: FakeVClient
     ) -> None:
         """Verify get calls the API when the cache is empty."""
         with app.test_request_context("/"):
@@ -165,10 +165,12 @@ class TestGet:
             "GHOUL",
             "MORTAL",
         ]
-        mock_options_svc.get_options.assert_called_once()
+        fake_options.assert_called(
+            Routes.OPTIONS_GET, params={"company_id": "test-company-id"}, times=1
+        )
 
     def test_returns_cached_on_hit(
-        self, app: Flask, mock_cache_store: dict, mock_options_svc: MagicMock
+        self, app: Flask, mock_cache_store: dict, fake_options: FakeVClient
     ) -> None:
         """Verify get returns cached value without calling the API again."""
         with app.test_request_context("/"):
@@ -179,10 +181,12 @@ class TestGet:
             second = get()
 
         assert first is second
-        mock_options_svc.get_options.assert_called_once()
+        fake_options.assert_called(
+            Routes.OPTIONS_GET, params={"company_id": "test-company-id"}, times=1
+        )
 
     def test_caches_with_correct_key(
-        self, app: Flask, mock_cache_store: dict, mock_options_svc: MagicMock
+        self, app: Flask, mock_cache_store: dict, fake_options: FakeVClient
     ) -> None:
         """Verify the cached value is stored under the expected key."""
         with app.test_request_context("/"):
@@ -199,14 +203,16 @@ class TestClear:
     """Tests for clear()."""
 
     def test_forces_refetch_on_next_call(
-        self, app: Flask, mock_cache_store: dict, mock_options_svc: MagicMock
+        self, app: Flask, mock_cache_store: dict, fake_options: FakeVClient
     ) -> None:
         """Verify clear forces a fresh API fetch on next access."""
         raw_v2 = {
             **SAMPLE_RAW,
             "characters": {**SAMPLE_RAW["characters"], "CharacterClass": ["VAMPIRE"]},
         }
-        mock_options_svc.get_options.side_effect = [SAMPLE_RAW, raw_v2]
+        fake_options.set_responses(
+            Routes.OPTIONS_GET, [FakeResponse(model=SAMPLE_RAW), FakeResponse(model=raw_v2)]
+        )
 
         with app.test_request_context("/"):
             from flask import session
@@ -220,21 +226,24 @@ class TestClear:
             second = get()
             assert len(second.characters.character_class) == 1
 
-        assert mock_options_svc.get_options.call_count == 2
+        fake_options.assert_called(Routes.OPTIONS_GET, times=2)
 
 
 class TestTrackerActionsFor:
     """Tests for tracker_actions_for()."""
 
     def test_returns_actions_for_known_type(
-        self, app: Flask, mock_cache_store: dict, mock_options_svc: MagicMock
+        self, app: Flask, mock_cache_store: dict, fake_options: FakeVClient
     ) -> None:
         """Verify the actions come from the cached tracker rules."""
-        mock_options_svc.get_options.return_value = {
-            "characters": {
-                "TrackerRules": {"V4": {"DAMAGE": {"actions": ["damage", "heal", "reset"]}}},
+        fake_options.set_response(
+            Routes.OPTIONS_GET,
+            model={
+                "characters": {
+                    "TrackerRules": {"V4": {"DAMAGE": {"actions": ["damage", "heal", "reset"]}}},
+                },
             },
-        }
+        )
 
         with app.test_request_context("/"):
             from flask import session
@@ -245,7 +254,7 @@ class TestTrackerActionsFor:
         assert result == ["damage", "heal", "reset"]
 
     def test_unknown_type_or_version_is_empty(
-        self, app: Flask, mock_cache_store: dict, mock_options_svc: MagicMock
+        self, app: Flask, mock_cache_store: dict, fake_options: FakeVClient
     ) -> None:
         """Verify an unknown tracker type or game version yields an empty list."""
         with app.test_request_context("/"):
