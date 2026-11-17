@@ -13,8 +13,10 @@ from vweb.api_client import (
     campaigns_service,
     characters_service,
     companies_service,
+    default_client,
     users_service,
 )
+from vweb.api_client.exceptions import APIError
 from vweb.constants import CACHE_GLOBAL_CONTEXT_TIMESTAMP_TTL
 from vweb.extensions import cache
 from vweb.lib.cache import base
@@ -46,6 +48,9 @@ def _fetch_global_data(
 ) -> GlobalContext:
     """Fetch all global company data from the API.
 
+    Fetch the company, users, campaigns, and characters concurrently, since none
+    depends on another. Characters are discarded when there are no campaigns.
+
     Args:
         company_id: The company to fetch data for.
         user_id: The user whose perspective determines visible campaigns/characters.
@@ -57,35 +62,56 @@ def _fetch_global_data(
     """
     logger.debug("Fetching global company data")
 
-    if company is None:
-        company = companies_service().get(company_id)
+    companies_svc = companies_service()
     users_svc = users_service(on_behalf_of=user_id, company_id=company_id)
-    users = users_svc.list_all()
-    campaigns = campaigns_service(on_behalf_of=user_id, company_id=company_id).list_all()
+    campaigns_svc = campaigns_service(on_behalf_of=user_id, company_id=company_id)
+    characters_svc = characters_service(on_behalf_of=user_id, company_id=company_id)
 
-    # Only admins have API permission to list unapproved users.
-    requesting_user = next((u for u in users if u.id == user_id), None)
-    pending_user_count = (
-        users_svc.get_unapproved_page(limit=1).total
-        if requesting_user is not None and requesting_user.role == "ADMIN"
-        else 0
+    def fetch_company() -> Company:
+        return company if company is not None else companies_svc.get(company_id)
+
+    def fetch_users() -> tuple[list[User], int]:
+        users = users_svc.list_all()
+        # Only admins have API permission to list unapproved users.
+        requesting_user = next((u for u in users if u.id == user_id), None)
+        pending_user_count = (
+            users_svc.get_unapproved_page(limit=1).total
+            if requesting_user is not None and requesting_user.role == "ADMIN"
+            else 0
+        )
+        return users, pending_user_count
+
+    def fetch_characters() -> list[Character] | APIError:
+        # Fetched alongside campaigns and used only when campaigns exist, so its error
+        # is held until then rather than failing a company that has no campaigns.
+        try:
+            return characters_svc.list_all()
+        except APIError as error:
+            return error
+
+    (users, pending_user_count), campaigns, characters_result, fetched_company = (
+        default_client().run_parallel(
+            fetch_users, campaigns_svc.list_all, fetch_characters, fetch_company
+        )
     )
 
     characters: list[Character] = []
     characters_by_campaign: dict[str, list[Character]] = defaultdict(list)
     if campaigns:
-        characters = characters_service(on_behalf_of=user_id, company_id=company_id).list_all()
+        if isinstance(characters_result, APIError):
+            raise characters_result
+        characters = characters_result
         for char in characters:
             characters_by_campaign[char.campaign_id].append(char)
 
     return GlobalContext(
-        company=company,
+        company=fetched_company,
         users=users,
         campaigns=campaigns,
         characters_by_campaign=characters_by_campaign,
         characters=characters,
-        resources_modified_at=company.resources_modified_at.isoformat()
-        if company.resources_modified_at
+        resources_modified_at=fetched_company.resources_modified_at.isoformat()
+        if fetched_company.resources_modified_at
         else "",
         pending_user_count=pending_user_count,
     )

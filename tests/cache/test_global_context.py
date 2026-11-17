@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import threading
+import time
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import pytest
 
 from tests.helpers import make_cache_store_mock
+from vweb.api_client import (
+    campaigns_service,
+    characters_service,
+    companies_service,
+    users_service,
+)
+from vweb.api_client.exceptions import AuthorizationError
 from vweb.api_client.testing import (
     CampaignFactory,
     CharacterFactory,
@@ -21,6 +30,9 @@ from vweb.lib.cache.global_context import (
     clear,
     load,
 )
+
+if TYPE_CHECKING:
+    import httpx2
 
 
 @pytest.fixture
@@ -537,3 +549,121 @@ def test_hook_clears_legacy_session_without_company(app, mocker) -> None:
     with client.session_transaction() as sess:
         assert "user_id" not in sess
     mock_load.assert_not_called()
+
+
+@pytest.mark.usefixtures("_fake_vclient_data")
+def test_fetch_global_data_matches_sequential_fetches(app) -> None:
+    """Verify the concurrent fetch builds the same context as calling each service in turn."""
+    # Given the services the global context reads, called one after another
+    with app.app_context():
+        company = companies_service().get("test-company-id")
+        users = users_service(on_behalf_of="test-user-id", company_id="test-company-id").list_all()
+        campaigns = campaigns_service(
+            on_behalf_of="test-user-id", company_id="test-company-id"
+        ).list_all()
+        characters = characters_service(
+            on_behalf_of="test-user-id", company_id="test-company-id"
+        ).list_all()
+
+        # When fetching global data
+        result = _fetch_global_data("test-company-id", "test-user-id")
+
+    # Then every field matches the sequential results
+    assert result.company == company
+    assert result.users == users
+    assert result.campaigns == campaigns
+    assert result.characters == characters
+    assert result.characters_by_campaign == {characters[0].campaign_id: characters}
+    assert result.pending_user_count == 0
+
+
+@pytest.mark.usefixtures("_fake_vclient_data")
+def test_fetch_global_data_sends_requests_concurrently(app, fake_vclient, mocker) -> None:
+    """Verify the independent fetches overlap instead of waiting on each other."""
+    # Given a fake API where every response takes a moment and in-flight calls are counted
+    router = fake_vclient._router
+    finalize = router._finalize
+    lock = threading.Lock()
+    in_flight = 0
+    peak = 0
+
+    def slow_finalize(response: httpx2.Response) -> httpx2.Response:
+        nonlocal in_flight, peak
+        with lock:
+            in_flight += 1
+            peak = max(peak, in_flight)
+        time.sleep(0.05)
+        with lock:
+            in_flight -= 1
+        return finalize(response)
+
+    mocker.patch.object(router, "_finalize", side_effect=slow_finalize)
+
+    # When fetching global data without a pre-fetched company
+    with app.app_context():
+        _fetch_global_data("test-company-id", "test-user-id")
+
+    # Then more than one request was in flight at once
+    assert peak > 1
+
+
+def test_fetch_global_data_drops_characters_without_campaigns(app, fake_vclient) -> None:
+    """Verify characters fetched alongside campaigns are not exposed when there are none."""
+    # Given a company with no campaigns but a character the API would list
+    fake_vclient.set_response(Routes.COMPANIES_GET, model=CompanyFactory.build())
+    fake_vclient.set_response(Routes.USERS_LIST, items=[UserFactory.build(id="test-user-id")])
+    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[])
+    fake_vclient.set_response(Routes.CHARACTERS_LIST, items=[CharacterFactory.build()])
+
+    # When fetching global data
+    with app.app_context():
+        result = _fetch_global_data("test-company-id", "test-user-id")
+
+    # Then no characters are exposed
+    assert result.characters == []
+    assert result.characters_by_campaign == {}
+
+
+def test_fetch_global_data_ignores_character_error_without_campaigns(app, fake_vclient) -> None:
+    """Verify a failed character list does not fail a company that has no campaigns."""
+    # Given a company with no campaigns where listing characters fails
+    fake_vclient.set_response(Routes.COMPANIES_GET, model=CompanyFactory.build())
+    fake_vclient.set_response(Routes.USERS_LIST, items=[UserFactory.build(id="test-user-id")])
+    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[])
+    fake_vclient.set_error(Routes.CHARACTERS_LIST, status_code=403)
+
+    # When fetching global data
+    with app.app_context():
+        result = _fetch_global_data("test-company-id", "test-user-id")
+
+    # Then the context builds without characters
+    assert result.characters == []
+
+
+def test_fetch_global_data_raises_character_error_with_campaigns(app, fake_vclient) -> None:
+    """Verify a failed character list still fails when campaigns need those characters."""
+    # Given a company with a campaign where listing characters fails
+    fake_vclient.set_response(Routes.COMPANIES_GET, model=CompanyFactory.build())
+    fake_vclient.set_response(Routes.USERS_LIST, items=[UserFactory.build(id="test-user-id")])
+    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[CampaignFactory.build()])
+    fake_vclient.set_error(Routes.CHARACTERS_LIST, status_code=403)
+
+    # When/Then fetching global data raises the character error
+    with app.app_context(), pytest.raises(AuthorizationError):
+        _fetch_global_data("test-company-id", "test-user-id")
+
+
+def test_fetch_global_data_reuses_given_company(app, fake_vclient) -> None:
+    """Verify a pre-fetched company is used instead of requesting it again."""
+    # Given a pre-fetched company and an API whose company route would fail
+    company = CompanyFactory.build(id="test-company-id", name="Prefetched")
+    fake_vclient.set_error(Routes.COMPANIES_GET, status_code=500)
+    fake_vclient.set_response(Routes.USERS_LIST, items=[UserFactory.build(id="test-user-id")])
+    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[])
+
+    # When fetching global data with that company
+    with app.app_context():
+        result = _fetch_global_data("test-company-id", "test-user-id", company=company)
+
+    # Then the given company is in the context
+    assert result.company.name == "Prefetched"
