@@ -13,13 +13,13 @@ import httpx2
 from pydantic import BaseModel
 
 from vweb.api_client.client import VClient
+from vweb.api_client.routes import LIST, NO_CONTENT, PAGINATED
 from vweb.api_client.testing._router import _FakeRouter
-from vweb.api_client.testing._routes import LIST, NO_CONTENT, PAGINATED
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from vweb.api_client.testing._routes import RouteSpec
+    from vweb.api_client.routes import RouteSpec
 
 
 class FakeVClient(VClient):

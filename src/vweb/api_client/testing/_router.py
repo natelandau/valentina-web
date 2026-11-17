@@ -11,8 +11,7 @@ import httpx2
 from polyfactory.factories.pydantic_factory import ModelFactory
 
 from vweb.api_client.constants import REQUEST_ID_HEADER
-from vweb.api_client.testing import _factories
-from vweb.api_client.testing._routes import (
+from vweb.api_client.routes import (
     LIST,
     NO_CONTENT,
     PAGINATED,
@@ -20,6 +19,7 @@ from vweb.api_client.testing._routes import (
     Routes,
     RouteSpec,
 )
+from vweb.api_client.testing import _factories
 
 _FACTORY_MAP: dict[type, type[ModelFactory]] = {
     factory.__model__: factory

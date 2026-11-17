@@ -1,5 +1,6 @@
 """In-memory testing helpers for the API client: `FakeVClient`, model factories, and `Routes`."""
 
+from vweb.api_client.routes import Routes, RouteSpec
 from vweb.api_client.testing._client import FakeVClient
 from vweb.api_client.testing._factories import (
     AppleProfileFactory,
@@ -53,7 +54,6 @@ from vweb.api_client.testing._factories import (
     WerewolfAuspiceFactory,
     WerewolfTribeFactory,
 )
-from vweb.api_client.testing._routes import Routes, RouteSpec
 
 __all__ = [
     "AppleProfileFactory",

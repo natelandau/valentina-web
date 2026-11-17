@@ -1,13 +1,23 @@
-"""Named route constants for use with FakeVClient's set_response() and set_error()."""
+"""Every Valentina API route the client calls, stated once.
 
-from __future__ import annotations
+A ``RouteSpec`` names a route's HTTP method, path template, response style, and
+response model. Services build requests and parse responses from it, and
+``FakeVClient`` serves fake responses from the same specs, so the two cannot
+disagree about a route.
+"""
 
-from typing import NamedTuple
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import Any, Literal
+
+from pydantic import BaseModel, TypeAdapter
 
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import (
+    _TRACKER_ADAPTER,
     Asset,
     AuditLog,
+    AuditLogDetail,
     BulkAssignTraitResponse,
     Campaign,
     CampaignBook,
@@ -35,6 +45,7 @@ from vweb.api_client.models import (
     RollStatistics,
     SheetSection,
     SystemHealth,
+    Tracker,
     Trait,
     TraitCategory,
     TraitSubcategory,
@@ -48,36 +59,73 @@ from vweb.api_client.models import (
 from vweb.api_client.models.character_autogen import ChargenSessionResponse
 from vweb.api_client.models.users import CampaignExperience
 
-# Response style constants
-PAGINATED = "paginated"
-SINGLE = "single"
-NO_CONTENT = "no_content"
-RAW_JSON = "raw_json"
-LIST = "list"
+type HttpMethod = Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
 
 
-class RouteSpec(NamedTuple):
-    """Identify an API route by HTTP method, URL pattern, response style, and model class.
+class ResponseStyle(StrEnum):
+    """Shape of a route's response body."""
+
+    PAGINATED = "paginated"
+    SINGLE = "single"
+    LIST = "list"
+    NO_CONTENT = "no_content"
+    RAW_JSON = "raw_json"
+
+
+PAGINATED = ResponseStyle.PAGINATED
+SINGLE = ResponseStyle.SINGLE
+LIST = ResponseStyle.LIST
+NO_CONTENT = ResponseStyle.NO_CONTENT
+RAW_JSON = ResponseStyle.RAW_JSON
+
+
+@dataclass(frozen=True, slots=True)
+class RouteSpec[M: BaseModel]:
+    """Describe one API route: how to call it and how to read its response.
 
     Attributes:
-        method: HTTP method (GET, POST, PATCH, PUT, DELETE).
-        pattern: Endpoint URL pattern from the Endpoints class.
-        style: Response style: one of PAGINATED, SINGLE, LIST, NO_CONTENT, or RAW_JSON.
-        model_class: The Pydantic model class used for auto-generating responses,
-            or None for NO_CONTENT and RAW_JSON routes.
+        method: HTTP method.
+        pattern: Path template from ``Endpoints``.
+        style: Shape of the response body.
+        model_class: Model for each response object, or None for NO_CONTENT and RAW_JSON
+            routes. For a route that returns a union, the variant ``FakeVClient`` serves
+            by default.
+        adapter: Validator for a route whose response is a union of models. When set,
+            responses are parsed with it instead of ``model_class``.
     """
 
-    method: str
+    method: HttpMethod
     pattern: str
-    style: str
-    model_class: type | None
+    style: ResponseStyle
+    model_class: type[M] | None = None
+    adapter: TypeAdapter[M] | None = None
+
+    def parse(self, data: Any) -> M:
+        """Validate one response object into this route's model.
+
+        Args:
+            data: A decoded JSON object from the response body.
+
+        Returns:
+            The validated model instance.
+
+        Raises:
+            TypeError: If the route has no response model.
+        """
+        if self.adapter is not None:
+            return self.adapter.validate_python(data)
+        if self.model_class is None:
+            msg = f"Route {self.method} {self.pattern} has no response model"
+            raise TypeError(msg)
+        return self.model_class.model_validate(data)
 
 
 class Routes:
-    """Named constants for every API route supported by FakeVClient.
+    """Named specs for every API route the client calls.
 
-    Use these with ``set_response()`` and ``set_error()`` to override the default
-    fake responses for specific endpoints.
+    Services call routes through these specs. In tests, pass them to
+    ``FakeVClient.set_response()`` and ``set_error()`` to override the default fake
+    response for a route.
 
     Example::
 
@@ -85,7 +133,7 @@ class Routes:
 
         with FakeVClient() as client:
             # Override the campaigns list endpoint
-            client.set_response(Routes.CAMPAIGNS_LIST, json={"items": [], "total": 0, "limit": 10, "offset": 0})
+            client.set_response(Routes.CAMPAIGNS_LIST, items=[])
 
             # Make a specific route return an error
             client.set_error(Routes.CHARACTERS_GET, status_code=404, detail="Not found")
@@ -103,6 +151,10 @@ class Routes:
     COMPANIES_ACCESS = RouteSpec("POST", Endpoints.COMPANY_ACCESS, SINGLE, CompanyPermissions)
     COMPANIES_STATISTICS = RouteSpec("GET", Endpoints.COMPANY_STATISTICS, SINGLE, RollStatistics)
     COMPANIES_AUDIT_LOGS_LIST = RouteSpec("GET", Endpoints.COMPANY_AUDIT_LOGS, PAGINATED, AuditLog)
+    # The same route with ``include=request_details``, which adds request forensics to each entry
+    COMPANIES_AUDIT_LOGS_LIST_DETAIL = RouteSpec(
+        "GET", Endpoints.COMPANY_AUDIT_LOGS, PAGINATED, AuditLogDetail
+    )
 
     # Users
     USERS_LIST = RouteSpec("GET", Endpoints.USERS, PAGINATED, User)
@@ -315,15 +367,15 @@ class Routes:
     CHARACTER_TRAITS_SPECIALTY_DELETE = RouteSpec(
         "DELETE", Endpoints.CHARACTER_TRAIT_SPECIALTY, NO_CONTENT, None
     )
-    # Tracker routes return any tracker variant; the default response is a CounterTracker.
-    CHARACTER_TRAITS_TRACKER_GET = RouteSpec(
-        "GET", Endpoints.CHARACTER_TRAIT_TRACKER, SINGLE, CounterTracker
+    # Tracker routes return any tracker variant; the default fake response is a CounterTracker.
+    CHARACTER_TRAITS_TRACKER_GET = RouteSpec[Tracker](
+        "GET", Endpoints.CHARACTER_TRAIT_TRACKER, SINGLE, CounterTracker, _TRACKER_ADAPTER
     )
-    CHARACTER_TRAITS_TRACKER_SET = RouteSpec(
-        "PUT", Endpoints.CHARACTER_TRAIT_TRACKER, SINGLE, CounterTracker
+    CHARACTER_TRAITS_TRACKER_SET = RouteSpec[Tracker](
+        "PUT", Endpoints.CHARACTER_TRAIT_TRACKER, SINGLE, CounterTracker, _TRACKER_ADAPTER
     )
-    CHARACTER_TRAITS_TRACKER_ACTION = RouteSpec(
-        "POST", Endpoints.CHARACTER_TRAIT_TRACKER_ACTIONS, SINGLE, CounterTracker
+    CHARACTER_TRAITS_TRACKER_ACTION = RouteSpec[Tracker](
+        "POST", Endpoints.CHARACTER_TRAIT_TRACKER_ACTIONS, SINGLE, CounterTracker, _TRACKER_ADAPTER
     )
 
     # Blueprint sections
@@ -383,7 +435,7 @@ class Routes:
     DICTIONARY_LIST = RouteSpec("GET", Endpoints.DICTIONARY_TERMS, PAGINATED, DictionaryTerm)
     DICTIONARY_GET = RouteSpec("GET", Endpoints.DICTIONARY_TERM, SINGLE, DictionaryTerm)
     DICTIONARY_CREATE = RouteSpec("POST", Endpoints.DICTIONARY_TERMS, SINGLE, DictionaryTerm)
-    DICTIONARY_UPDATE = RouteSpec("PUT", Endpoints.DICTIONARY_TERM, SINGLE, DictionaryTerm)
+    DICTIONARY_UPDATE = RouteSpec("PATCH", Endpoints.DICTIONARY_TERM, SINGLE, DictionaryTerm)
     DICTIONARY_DELETE = RouteSpec("DELETE", Endpoints.DICTIONARY_TERM, NO_CONTENT, None)
 
     # Dicerolls

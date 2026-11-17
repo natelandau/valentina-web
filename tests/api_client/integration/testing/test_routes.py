@@ -6,8 +6,8 @@ from vweb.api_client.constants import REQUEST_ID_HEADER
 from vweb.api_client.exceptions import NotFoundError
 from vweb.api_client.models import CampaignBook, PaginatedResponse, User
 from vweb.api_client.registry import books_service, campaigns_service, users_service
+from vweb.api_client.routes import Routes
 from vweb.api_client.testing import CampaignBookFactory, CampaignFactory, FakeVClient, UserFactory
-from vweb.api_client.testing._routes import Routes
 
 
 class TestSetResponsePaginated:
