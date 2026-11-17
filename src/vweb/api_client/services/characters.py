@@ -48,10 +48,10 @@ class CharactersService(BaseService):
     Provides methods to create, retrieve, update, and delete characters.
 
     Example:
-        >>> with VClient() as client:
-        ...     characters = client.characters("company_id")
-        ...     all_characters = characters.list_all()
-        ...     character = characters.get("character_id")
+        with VClient() as client:
+            characters = client.characters("company_id")
+            all_characters = characters.list_all()
+            character = characters.get("character_id")
     """
 
     def __init__(self, client: "VClient", company_id: str, on_behalf_of: str) -> None:
@@ -191,8 +191,8 @@ class CharactersService(BaseService):
             Individual Character objects.
 
         Example:
-            >>> for character in characters.iter_all():
-            ...     print(character.name)
+            for character in characters.iter_all():
+                print(character.name)
         """
         for item in self._iter_all_pages(
             self._format_endpoint(Endpoints.CHARACTERS),
@@ -501,8 +501,8 @@ class CharactersService(BaseService):
             Individual Asset objects.
 
         Example:
-            >>> for asset in characters.iter_all_assets("character_id"):
-            ...     print(asset.original_filename)
+            for asset in characters.iter_all_assets("character_id"):
+                print(asset.original_filename)
         """
         for item in self._iter_all_pages(
             self._format_endpoint(Endpoints.CHARACTER_ASSETS, character_id=character_id),
@@ -670,8 +670,8 @@ class CharactersService(BaseService):
             Individual Note objects.
 
         Example:
-            >>> for note in characters.iter_all_notes("character_id"):
-            ...     print(note.title)
+            for note in characters.iter_all_notes("character_id"):
+                print(note.title)
         """
         for item in self._iter_all_pages(
             self._format_endpoint(Endpoints.CHARACTER_NOTES, character_id=character_id),
@@ -865,8 +865,8 @@ class CharactersService(BaseService):
             Individual InventoryItem objects.
 
         Example:
-            >>> for item in characters.iter_all_inventory("character_id"):
-            ...     print(item.name)
+            for item in characters.iter_all_inventory("character_id"):
+                print(item.name)
         """
         for item in self._iter_all_pages(
             self._format_endpoint(Endpoints.CHARACTER_INVENTORY, character_id=character_id),

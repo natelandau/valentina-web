@@ -296,9 +296,9 @@ class VClient:
             ValueError: If no company_id provided and no default configured.
 
         Example:
-            >>> users = client.users("user_id", "company_id")
-            >>> all_users = users.list_all()
-            >>> user = users.get("user_id")
+            users = client.users("user_id", "company_id")
+            all_users = users.list_all()
+            user = users.get("user_id")
         """
         from vweb.api_client.services.users import UsersService
 
@@ -324,8 +324,8 @@ class VClient:
             ValueError: If no company_id provided and no default configured.
 
         Example:
-            >>> identity = client.identity()
-            >>> result = identity.identify(provider="google", token="<id-token>")
+            identity = client.identity()
+            result = identity.identify(provider="google", token="<id-token>")
         """
         from vweb.api_client.services.identity import IdentityService
 
@@ -354,9 +354,9 @@ class VClient:
             ValueError: If no company_id provided and no default configured.
 
         Example:
-            >>> campaigns = client.campaigns("user_id")
-            >>> all_campaigns = campaigns.list_all()
-            >>> campaign = campaigns.get("campaign_id")
+            campaigns = client.campaigns("user_id")
+            all_campaigns = campaigns.list_all()
+            campaign = campaigns.get("campaign_id")
         """
         from vweb.api_client.services.campaigns import CampaignsService
 
@@ -389,9 +389,9 @@ class VClient:
             ValueError: If no company_id provided and no default configured.
 
         Example:
-            >>> books = client.books("campaign_id", "user_id")
-            >>> all_books = books.list_all()
-            >>> book = books.get("book_id")
+            books = client.books("campaign_id", "user_id")
+            all_books = books.list_all()
+            book = books.get("book_id")
         """
         from vweb.api_client.services.campaign_books import BooksService
 
@@ -429,9 +429,9 @@ class VClient:
             ValueError: If no company_id provided and no default configured.
 
         Example:
-            >>> chapters = client.chapters("campaign_id", "book_id", "user_id")
-            >>> all_chapters = chapters.list_all()
-            >>> chapter = chapters.get("chapter_id")
+            chapters = client.chapters("campaign_id", "book_id", "user_id")
+            all_chapters = chapters.list_all()
+            chapter = chapters.get("chapter_id")
         """
         from vweb.api_client.services.campaign_book_chapters import ChaptersService
 
@@ -466,9 +466,9 @@ class VClient:
             ValueError: If no company_id provided and no default configured.
 
         Example:
-            >>> characters = client.characters("user_id")
-            >>> all_characters = characters.list_all()
-            >>> character = characters.get("character_id")
+            characters = client.characters("user_id")
+            all_characters = characters.list_all()
+            character = characters.get("character_id")
         """
         from vweb.api_client.services.characters import CharactersService
 
@@ -501,9 +501,9 @@ class VClient:
             ValueError: If no company_id provided and no default configured.
 
         Example:
-            >>> character_traits = client.character_traits("character_id", "user_id")
-            >>> all_character_traits = character_traits.list_all()
-            >>> character_trait = character_traits.get("character_trait_id")
+            character_traits = client.character_traits("character_id", "user_id")
+            all_character_traits = character_traits.list_all()
+            character_trait = character_traits.get("character_trait_id")
         """
         from vweb.api_client.services.character_traits import CharacterTraitsService
 

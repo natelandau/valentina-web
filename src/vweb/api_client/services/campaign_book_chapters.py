@@ -252,8 +252,8 @@ class ChaptersService(BaseService):
             Individual Note objects.
 
         Example:
-            >>> for note in chapters.iter_all_notes("chapter_id"):
-            ...     print(note.title)
+            for note in chapters.iter_all_notes("chapter_id"):
+                print(note.title)
         """
         for item in self._iter_all_pages(
             self._format_endpoint(Endpoints.BOOK_CHAPTER_NOTES, chapter_id=chapter_id),
@@ -449,8 +449,8 @@ class ChaptersService(BaseService):
             Individual Asset objects.
 
         Example:
-            >>> for asset in chapters.iter_all_assets("chapter_id"):
-            ...     print(asset.original_filename)
+            for asset in chapters.iter_all_assets("chapter_id"):
+                print(asset.original_filename)
         """
         for item in self._iter_all_pages(
             self._format_endpoint(Endpoints.BOOK_CHAPTER_ASSETS, chapter_id=chapter_id),

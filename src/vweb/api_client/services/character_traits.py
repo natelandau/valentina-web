@@ -127,8 +127,8 @@ class CharacterTraitsService(BaseService):
             Individual CharacterTrait objects.
 
         Example:
-            >>> for trait in character_traits.iter_all():
-            ...     print(trait.name)
+            for trait in character_traits.iter_all():
+                print(trait.name)
         """
         params: dict[str, str | int] = {}
         if category_id is not None:

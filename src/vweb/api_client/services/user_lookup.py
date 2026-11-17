@@ -12,10 +12,10 @@ class UserLookupService(BaseService):
     via email, Discord ID, Google ID, GitHub ID, or Apple ID.
 
     Example:
-        >>> with VClient() as client:
-        ...     results = client.user_lookup.by_email("alice@example.com")
-        ...     for r in results:
-        ...         print(f"{r.company_name}: {r.role}")
+        with VClient() as client:
+            results = client.user_lookup.by_email("alice@example.com")
+            for r in results:
+                print(f"{r.company_name}: {r.role}")
     """
 
     def by_email(self, email: str) -> list[UserLookupResult]:

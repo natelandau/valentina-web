@@ -36,10 +36,10 @@ class CampaignsService(BaseService):
     UNAPPROVED or DEACTIVATED.
 
     Example:
-        >>> with VClient() as client:
-        ...     campaigns = client.campaigns("company_id")
-        ...     all_campaigns = campaigns.list_all()
-        ...     campaign = campaigns.get("campaign_id")
+        with VClient() as client:
+            campaigns = client.campaigns("company_id")
+            all_campaigns = campaigns.list_all()
+            campaign = campaigns.get("campaign_id")
     """
 
     def __init__(self, client: "VClient", company_id: str, on_behalf_of: str) -> None:
@@ -115,8 +115,8 @@ class CampaignsService(BaseService):
             Individual Campaign objects.
 
         Example:
-            >>> for campaign in campaigns.iter_all():
-            ...     print(campaign.name)
+            for campaign in campaigns.iter_all():
+                print(campaign.name)
         """
         for item in self._iter_all_pages(
             self._format_endpoint(Endpoints.CAMPAIGNS),
@@ -324,8 +324,8 @@ class CampaignsService(BaseService):
             Individual Asset objects.
 
         Example:
-            >>> for asset in campaigns.iter_all_assets("campaign_id"):
-            ...     print(asset.original_filename)
+            for asset in campaigns.iter_all_assets("campaign_id"):
+                print(asset.original_filename)
         """
         for item in self._iter_all_pages(
             self._format_endpoint(Endpoints.CAMPAIGN_ASSETS, campaign_id=campaign_id),
@@ -495,8 +495,8 @@ class CampaignsService(BaseService):
             Individual Note objects.
 
         Example:
-            >>> for note in campaigns.iter_all_notes("campaign_id"):
-            ...     print(note.title)
+            for note in campaigns.iter_all_notes("campaign_id"):
+                print(note.title)
         """
         for item in self._iter_all_pages(
             self._format_endpoint(Endpoints.CAMPAIGN_NOTES, campaign_id=campaign_id),

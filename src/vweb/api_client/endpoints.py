@@ -10,8 +10,8 @@ class Endpoints:
     Use these constants when making API requests to ensure consistency and enable easy refactoring.
 
     Example:
-        >>> response = self._get(Endpoints.COMPANIES)
-        >>> response = self._get(Endpoints.COMPANY.format(company_id=company_id))
+        response = self._get(Endpoints.COMPANIES)
+        response = self._get(Endpoints.COMPANY.format(company_id=company_id))
     """
 
     _BASE = "/api/v1"

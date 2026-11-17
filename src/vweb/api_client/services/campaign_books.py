@@ -37,10 +37,10 @@ class BooksService(BaseService):
     UNAPPROVED or DEACTIVATED.
 
     Example:
-        >>> with VClient() as client:
-        ...     books = client.books("company_id", "campaign_id")
-        ...     all_books = books.list_all()
-        ...     book = books.get("book_id")
+        with VClient() as client:
+            books = client.books("company_id", "campaign_id")
+            all_books = books.list_all()
+            book = books.get("book_id")
     """
 
     def __init__(
@@ -125,8 +125,8 @@ class BooksService(BaseService):
             Individual CampaignBook objects.
 
         Example:
-            >>> for book in books.iter_all():
-            ...     print(book.name)
+            for book in books.iter_all():
+                print(book.name)
         """
         for item in self._iter_all_pages(
             self._format_endpoint(Endpoints.CAMPAIGN_BOOKS),
@@ -335,8 +335,8 @@ class BooksService(BaseService):
             Individual Note objects.
 
         Example:
-            >>> for note in books.iter_all_notes("book_id"):
-            ...     print(note.title)
+            for note in books.iter_all_notes("book_id"):
+                print(note.title)
         """
         for item in self._iter_all_pages(
             self._format_endpoint(Endpoints.BOOK_NOTES, book_id=book_id),
@@ -524,8 +524,8 @@ class BooksService(BaseService):
             Individual Asset objects.
 
         Example:
-            >>> for asset in books.iter_all_assets("book_id"):
-            ...     print(asset.original_filename)
+            for asset in books.iter_all_assets("book_id"):
+                print(asset.original_filename)
         """
         for item in self._iter_all_pages(
             self._format_endpoint(Endpoints.BOOK_ASSETS, book_id=book_id),

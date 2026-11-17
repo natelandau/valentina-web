@@ -34,9 +34,9 @@ class CompaniesService(BaseService):
     as well as manage developer access permissions.
 
     Example:
-        >>> with VClient() as client:
-        ...     companies = client.companies.list()
-        ...     company = client.companies.get("company_id")
+        with VClient() as client:
+            companies = client.companies.list()
+            company = client.companies.get("company_id")
     """
 
     def get_page(
@@ -87,8 +87,8 @@ class CompaniesService(BaseService):
             Individual Company objects.
 
         Example:
-            >>> for company in client.companies.iter_all():
-            ...     print(company.name)
+            for company in client.companies.iter_all():
+                print(company.name)
         """
         for item in self._iter_all_pages(Endpoints.COMPANIES, limit=limit):
             yield Company.model_validate(item)

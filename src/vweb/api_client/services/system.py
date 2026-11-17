@@ -12,9 +12,9 @@ class SystemService(BaseService):
     designed to grow with additional system endpoints over time.
 
     Example:
-        >>> with VClient() as client:
-        ...     health = client.system.health()
-        ...     print(health.database_status)
+        with VClient() as client:
+            health = client.system.health()
+            print(health.database_status)
     """
 
     def health(self) -> SystemHealth:
@@ -28,9 +28,9 @@ class SystemService(BaseService):
             as well as the current API version.
 
         Example:
-            >>> health = client.system.health()
-            >>> if health.database_status == "online":
-            ...     print("Database is healthy")
+            health = client.system.health()
+            if health.database_status == "online":
+                print("Database is healthy")
         """
         response = self._get(Endpoints.HEALTH)
         return SystemHealth.model_validate(response.json())

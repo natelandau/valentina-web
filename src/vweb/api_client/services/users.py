@@ -42,10 +42,10 @@ class UsersService(BaseService):
     as well as access user statistics and assets.
 
     Example:
-        >>> with VClient() as client:
-        ...     users = client.users("company_id")
-        ...     all_users = users.list_all()
-        ...     user = users.get("user_id")
+        with VClient() as client:
+            users = client.users("company_id")
+            all_users = users.list_all()
+            user = users.get("user_id")
     """
 
     def __init__(self, client: "VClient", company_id: str, on_behalf_of: str) -> None:
@@ -351,8 +351,8 @@ class UsersService(BaseService):
             Individual User objects.
 
         Example:
-            >>> for user in users.iter_all():
-            ...     print(user.name)
+            for user in users.iter_all():
+                print(user.name)
         """
         for item in self._iter_all_pages(
             self._format_endpoint(Endpoints.USERS),
@@ -596,8 +596,8 @@ class UsersService(BaseService):
             Individual Asset objects.
 
         Example:
-            >>> for asset in users.iter_all_assets("user_id"):
-            ...     print(asset.original_filename)
+            for asset in users.iter_all_assets("user_id"):
+                print(asset.original_filename)
         """
         for item in self._iter_all_pages(
             self._format_endpoint(Endpoints.USER_ASSETS, user_id=user_id),
@@ -950,8 +950,8 @@ class UsersService(BaseService):
             Individual Note objects.
 
         Example:
-            >>> for note in users.iter_all_notes("user_id"):
-            ...     print(note.title)
+            for note in users.iter_all_notes("user_id"):
+                print(note.title)
         """
         for item in self._iter_all_pages(
             self._format_endpoint(Endpoints.USER_NOTES, user_id=user_id),
@@ -1140,8 +1140,8 @@ class UsersService(BaseService):
             Individual Quickroll objects.
 
         Example:
-            >>> for qr in users.iter_all_quickrolls("user_id"):
-            ...     print(qr.name)
+            for qr in users.iter_all_quickrolls("user_id"):
+                print(qr.name)
         """
         for item in self._iter_all_pages(
             self._format_endpoint(Endpoints.USER_QUICKROLLS, user_id=user_id),
