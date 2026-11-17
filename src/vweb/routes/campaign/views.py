@@ -323,9 +323,7 @@ class CampaignAddExperienceView(MethodView):
         if not can_grant_experience(user_id):
             abort(403)
         form_data = request.form.to_dict()
-        errors = validate_and_submit_experience(
-            form_data, user_id, campaign_id, on_behalf_of=user_id
-        )
+        errors = validate_and_submit_experience(form_data, user_id, campaign_id)
 
         if errors:
             return catalog.render(

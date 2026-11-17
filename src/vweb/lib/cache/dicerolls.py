@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 
 from flask import g, session
 
-from vweb.api_client import dicerolls_service
 from vweb.constants import CACHE_DICEROLLS_TTL
+from vweb.lib import api_services
 from vweb.lib.cache import base, blueprint
 
 if TYPE_CHECKING:
@@ -84,7 +84,7 @@ def recent(
         Display-ready rows in the API's newest-first order.
     """
     company_id = session["company_id"]
-    requesting_user_id = g.requesting_user.id
+    requesting_user_id = session["user_id"]
     key = _cache_key(
         company_id=company_id,
         requesting_user_id=requesting_user_id,
@@ -96,8 +96,6 @@ def recent(
     return base.cached_fetch(
         key,
         lambda: _fetch(
-            company_id=company_id,
-            requesting_user_id=requesting_user_id,
             campaign_id=campaign_id,
             character_id=character_id,
             user_id=user_id,
@@ -109,14 +107,12 @@ def recent(
 
 def _fetch(
     *,
-    company_id: str,
-    requesting_user_id: str,
     campaign_id: str,
     character_id: str,
     user_id: str,
     limit: int,
 ) -> list[DiceRollDisplay]:
-    service = dicerolls_service(on_behalf_of=requesting_user_id, company_id=company_id)
+    service = api_services.dicerolls()
     apply_player_filter = bool(campaign_id) and not (character_id or user_id)
     page = service.get_page(
         campaignid=campaign_id or None,

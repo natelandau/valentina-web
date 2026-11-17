@@ -20,7 +20,7 @@ from vweb.lib.cache.blueprint import (
 def mock_bp_svc(mocker):
     """Mock the character_blueprint_service factory."""
     svc = MagicMock()
-    mocker.patch("vweb.lib.cache.blueprint.character_blueprint_service", return_value=svc)
+    mocker.patch("vweb.lib.cache.blueprint.api_services.character_blueprint", return_value=svc)
     return svc
 
 
@@ -243,7 +243,7 @@ class TestSingleFlight:
 
         svc = MagicMock()
         svc.list_all_traits.side_effect = blocking_list_all_traits
-        mocker.patch("vweb.lib.cache.blueprint.character_blueprint_service", return_value=svc)
+        mocker.patch("vweb.lib.cache.blueprint.api_services.character_blueprint", return_value=svc)
 
         results: dict[str, dict] = {}
 

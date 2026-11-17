@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from flask import abort, g, session
 
 from vweb.api_client.exceptions import APIConnectionError, APIError, ServerError
-from vweb.lib import cache
+from vweb.lib import api_services, cache
 from vweb.lib.api_errors import api_error_message
 
 if TYPE_CHECKING:
@@ -353,7 +353,6 @@ def validate_and_submit_experience(
     form_data: dict,
     user_id: str,
     campaign_id: str,
-    on_behalf_of: str,
 ) -> list[str]:
     """Validate experience form data and submit to the API if valid.
 
@@ -363,13 +362,10 @@ def validate_and_submit_experience(
             or when XP was granted but the cool point grant failed.
         user_id: The user receiving the experience.
         campaign_id: The campaign to award experience in.
-        on_behalf_of: The user making the request (On-Behalf-Of header).
 
     Returns:
         A list of validation error strings (empty on success).
     """
-    from vweb.api_client import users_service
-
     errors: list[str] = []
 
     try:
@@ -395,7 +391,7 @@ def validate_and_submit_experience(
     if errors:
         return errors
 
-    svc = users_service(on_behalf_of=on_behalf_of, company_id=session["company_id"])
+    svc = api_services.users()
 
     grant_errors = _grant_experience(
         svc=svc,

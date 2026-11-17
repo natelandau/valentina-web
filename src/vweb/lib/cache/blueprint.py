@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING, Final
 
 from flask import session
 
-from vweb.api_client import character_blueprint_service
 from vweb.constants import CACHE_BLUEPRINT_TTL
+from vweb.lib import api_services
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
@@ -74,16 +74,8 @@ def clear() -> None:
 
 
 def _fetch_traits() -> dict[str, Trait]:
-    return {
-        t.id: t
-        for t in character_blueprint_service(company_id=session["company_id"]).list_all_traits()
-    }
+    return {t.id: t for t in api_services.character_blueprint().list_all_traits()}
 
 
 def _fetch_subcategories() -> dict[str, TraitSubcategory]:
-    return {
-        sc.id: sc
-        for sc in character_blueprint_service(
-            company_id=session["company_id"]
-        ).list_all_subcategories()
-    }
+    return {sc.id: sc for sc in api_services.character_blueprint().list_all_subcategories()}

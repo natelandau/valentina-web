@@ -65,7 +65,7 @@ class CharacterView(MethodView):
 
         match section:
             case "sheet":
-                full_sheet = cache.character_sheet.get(character.id, user.id)
+                full_sheet = cache.character_sheet.get(character.id)
                 data["full_sheet"] = full_sheet
                 data["dictionary_terms"] = cache.dictionary.terms()
             case "profile":

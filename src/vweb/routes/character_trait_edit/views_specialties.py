@@ -69,9 +69,7 @@ class _SpecialtyBaseView(MethodView):
             f"character_trait_edit.{self.spend_type}", character_id=character_id
         )
 
-        full_sheet = cache.character_sheet.get(
-            character.id, g.requesting_user.id, include_available_traits=True
-        )
+        full_sheet = cache.character_sheet.get(character.id, include_available_traits=True)
         character_trait = find_character_trait(full_sheet, character_trait_id)
         if character_trait is None:
             flash("Trait not found", "error")

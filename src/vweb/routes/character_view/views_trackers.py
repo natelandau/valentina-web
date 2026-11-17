@@ -155,7 +155,7 @@ class TraitTrackerView(MethodView):
         character = _authorized_character(character_id)
         tracker_request = _parse_or_abort(TRAIT_ACTIONS)
 
-        full_sheet = cache.character_sheet.get(character_id, g.requesting_user.id)
+        full_sheet = cache.character_sheet.get(character_id)
         character_trait = find_character_trait(full_sheet, character_trait_id)
         if character_trait is None:
             _refuse("That trait is no longer on the sheet. Reload the page.", 404)

@@ -64,7 +64,7 @@ class MultiAutogenView(MethodView):
             "character_create.partials.MultiAutogenCompare",
             campaign=campaign,
             session_id=session_response.id,
-            characters_data=build_characters_data(session_response, user),
+            characters_data=build_characters_data(session_response),
             expires_at=session_response.expires_at,
         )
 
@@ -162,7 +162,7 @@ class ResumeSessionView(MethodView):
             "character_create.partials.MultiAutogenCompare",
             campaign=campaign,
             session_id=session_response.id,
-            characters_data=build_characters_data(session_response, user),
+            characters_data=build_characters_data(session_response),
             expires_at=session_response.expires_at,
         )
 

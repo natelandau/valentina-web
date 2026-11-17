@@ -17,10 +17,10 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def mock_char_svc(mocker) -> MagicMock:
-    """Mock the characters_service factory."""
+    """Mock the request-scoped characters service."""
     svc = MagicMock()
     svc.get_full_sheet.return_value = CharacterFullSheetFactory.build()
-    mocker.patch("vweb.lib.cache.character_sheet.characters_service", return_value=svc)
+    mocker.patch("vweb.lib.cache.character_sheet.api_services.characters", return_value=svc)
     return svc
 
 
@@ -37,7 +37,7 @@ class TestGet:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            result = get("char-1", "user-1")
+            result = get("char-1")
 
         # Then a CharacterFullSheet is returned and the API is hit once with correct args
         assert isinstance(result, CharacterFullSheet)
@@ -55,8 +55,8 @@ class TestGet:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            first = get("char-1", "user-1")
-            second = get("char-1", "user-1")
+            first = get("char-1")
+            second = get("char-1")
 
         # Then both share the cached instance and the API was called only once
         assert first is second
@@ -77,8 +77,8 @@ class TestGet:
             session["company_id"] = "test-company-id"
 
             # When fetching with include_available_traits=False then True
-            result_false = get("char-1", "user-1", include_available_traits=False)
-            result_true = get("char-1", "user-1", include_available_traits=True)
+            result_false = get("char-1", include_available_traits=False)
+            result_true = get("char-1", include_available_traits=True)
 
         # Then both API calls were made because the keys differ
         assert mock_char_svc.get_full_sheet.call_count == 2
@@ -90,18 +90,20 @@ class TestGet:
         assert key_false in mock_cache_store
         assert key_true in mock_cache_store
 
-    def test_on_behalf_of_not_part_of_cache_key(
+    def test_requesting_user_not_part_of_cache_key(
         self, app: Flask, mock_cache_store: dict, mock_char_svc: MagicMock
     ) -> None:
-        """Verify different requesting_user_id values share the same cache entry."""
+        """Verify different requesting users share the same cache entry."""
         # Given a cached result for user-1
         with app.test_request_context("/"):
             from flask import session
 
             session["company_id"] = "test-company-id"
-            get("char-1", "user-1")
+            session["user_id"] = "user-1"
+            get("char-1")
             # When a different user requests the same character sheet
-            get("char-1", "user-2")
+            session["user_id"] = "user-2"
+            get("char-1")
 
         # Then the API was hit only once, proving user ID is not part of the key
         mock_char_svc.get_full_sheet.assert_called_once()
@@ -124,16 +126,16 @@ class TestClear:
             session["company_id"] = "test-company-id"
 
             # Prime both variants
-            get("char-1", "user-1", include_available_traits=False)
-            get("char-1", "user-1", include_available_traits=True)
+            get("char-1", include_available_traits=False)
+            get("char-1", include_available_traits=True)
             assert mock_char_svc.get_full_sheet.call_count == 2
 
             # When the cache is cleared
             clear("char-1")
 
             # Then both variants are re-fetched on the next access
-            get("char-1", "user-1", include_available_traits=False)
-            get("char-1", "user-1", include_available_traits=True)
+            get("char-1", include_available_traits=False)
+            get("char-1", include_available_traits=True)
 
         # Then the API was called four times total (2 cold, 2 after clear)
         assert mock_char_svc.get_full_sheet.call_count == 4
@@ -149,15 +151,15 @@ class TestClear:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            get("char-1", "user-1")
-            get("char-2", "user-1")
+            get("char-1")
+            get("char-2")
             assert mock_char_svc.get_full_sheet.call_count == 2
 
             # When only char-1 is cleared
             clear("char-1")
 
             # Then char-2 is still cached (no additional API call)
-            get("char-2", "user-1")
+            get("char-2")
 
         assert mock_char_svc.get_full_sheet.call_count == 2
 
@@ -176,9 +178,9 @@ class TestClear:
             session["company_id"] = "test-company-id"
 
             # When fetching, clearing, then fetching again
-            first = get("char-1", "user-1")
+            first = get("char-1")
             clear("char-1")
-            second = get("char-1", "user-1")
+            second = get("char-1")
 
         # Then different objects are returned after the clear
         assert first is not second
@@ -201,15 +203,15 @@ class TestUpdate:
             from flask import session
 
             session["company_id"] = "test-company-id"
-            get("char-1", "user-1", include_available_traits=False)
-            get("char-1", "user-1", include_available_traits=True)
+            get("char-1", include_available_traits=False)
+            get("char-1", include_available_traits=True)
 
             # When updating the character's name in place
             update("char-1", lambda sheet: setattr(sheet.character, "name_first", "Changed"))
 
             # Then both variants read back changed with no further fetch
-            without = get("char-1", "user-1", include_available_traits=False)
-            with_traits = get("char-1", "user-1", include_available_traits=True)
+            without = get("char-1", include_available_traits=False)
+            with_traits = get("char-1", include_available_traits=True)
 
         assert without.character.name_first == "Changed"
         assert with_traits.character.name_first == "Changed"

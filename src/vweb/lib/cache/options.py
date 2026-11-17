@@ -13,8 +13,8 @@ from typing import Final
 
 from flask import session
 
-from vweb.api_client import options_service
 from vweb.constants import CACHE_OPTIONS_TTL
+from vweb.lib import api_services
 from vweb.lib.cache import base
 
 _CACHE_OPTIONS_PREFIX: Final[str] = "api_options:"
@@ -106,7 +106,7 @@ def _parse_options(raw: dict) -> ApiOptions:
     Maps PascalCase keys from the API to snake_case dataclass fields.
 
     Args:
-        raw: The raw dictionary returned by ``options_service().get_options()``.
+        raw: The raw dictionary returned by ``api_services.options().get_options()``.
 
     Returns:
         A fully populated ApiOptions instance.
@@ -179,5 +179,5 @@ def clear() -> None:
 
 
 def _fetch() -> ApiOptions:
-    raw = options_service(company_id=session["company_id"]).get_options()
+    raw = api_services.options().get_options()
     return _parse_options(raw)

@@ -9,14 +9,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
-from flask import g, session
-
-from vweb.api_client import (
-    campaigns_service,
-    characters_service,
-    users_service,
-)
 from vweb.constants import CACHE_STATISTICS_TTL
+from vweb.lib import api_services
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
@@ -49,14 +43,11 @@ def get(scope_type: ScopeType, scope_id: str) -> RollStatistics:
 
 
 def _fetch(scope_type: ScopeType, scope_id: str) -> RollStatistics:
-    user_id = g.requesting_user.id
-    company_id = session["company_id"]
-
     if scope_type == "campaign":
-        svc = campaigns_service(on_behalf_of=user_id, company_id=company_id)
+        svc = api_services.campaigns()
     elif scope_type == "user":
-        svc = users_service(on_behalf_of=user_id, company_id=company_id)
+        svc = api_services.users()
     else:  # scope_type == "character"
-        svc = characters_service(on_behalf_of=user_id, company_id=company_id)
+        svc = api_services.characters()
 
     return svc.get_statistics(scope_id, num_top_traits=_NUM_TOP_TRAITS)

@@ -60,7 +60,7 @@ def tracker_rules(mocker) -> dict:
     rules = json.loads(json.dumps(TRACKER_RULES))
     service = build_mock_options_service()
     service.get_options.return_value["characters"]["TrackerRules"] = rules
-    mocker.patch("vweb.lib.cache.options.options_service", return_value=service)
+    mocker.patch("vweb.lib.cache.options.api_services.options", return_value=service)
     return rules
 
 

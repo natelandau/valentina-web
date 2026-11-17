@@ -19,8 +19,8 @@ from typing import TYPE_CHECKING
 
 from flask import g, session
 
-from vweb.api_client import books_service, chapters_service
 from vweb.constants import CACHE_CAMPAIGN_CONTENT_TTL
+from vweb.lib import api_services
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
@@ -47,9 +47,7 @@ def books(campaign_id: str) -> list[CampaignBook]:
     company_id = session["company_id"]
 
     def fetch() -> list[CampaignBook]:
-        result = books_service(
-            campaign_id=campaign_id, on_behalf_of=g.requesting_user.id, company_id=company_id
-        ).list_all()
+        result = api_services.books(campaign_id).list_all()
         return sorted(result, key=lambda book: book.number)
 
     return base.cached_fetch(_books_key(company_id, campaign_id), fetch, _STRATEGY)
@@ -65,12 +63,7 @@ def chapters(campaign_id: str, book_id: str) -> list[CampaignChapter]:
     company_id = session["company_id"]
 
     def fetch() -> list[CampaignChapter]:
-        result = chapters_service(
-            campaign_id=campaign_id,
-            book_id=book_id,
-            on_behalf_of=g.requesting_user.id,
-            company_id=company_id,
-        ).list_all()
+        result = api_services.chapters(campaign_id, book_id).list_all()
         return sorted(result, key=lambda chapter: chapter.number)
 
     return base.cached_fetch(_chapters_key(company_id, book_id), fetch, _STRATEGY)

@@ -284,9 +284,7 @@ class TestSpecialties(_Base):
         client.post(
             self._url(character, "XP"), data={"name": "Swords"}, headers=self._headers(client)
         )
-        self.sheet_get.assert_called_with(
-            character.id, "test-user-id", include_available_traits=True
-        )
+        self.sheet_get.assert_called_with(character.id, include_available_traits=True)
 
     def test_dialog_inputs_have_length_limits(self, client, mocker) -> None:
         """Verify the add and rename inputs carry the length bounds and disable on submit."""

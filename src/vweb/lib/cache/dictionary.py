@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING, Final
 
 from flask import session
 
-from vweb.api_client import dictionary_service
 from vweb.constants import CACHE_DICTIONARY_TTL
+from vweb.lib import api_services
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
@@ -70,6 +70,6 @@ def clear() -> None:
 
 
 def _fetch() -> _DictionaryCache:
-    result = dictionary_service(company_id=session["company_id"]).list_all()
+    result = api_services.dictionary().list_all()
     result.sort(key=lambda t: t.term.lower())
     return _DictionaryCache(ordered=result, by_id={t.id: t for t in result})
