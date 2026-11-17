@@ -16,6 +16,7 @@
   {%- set perm_grant_xp_val = field_val("permission_grant_xp", (s.permission_grant_xp if s and s.permission_grant_xp else "")) -%}
   {%- set perm_free_trait_val = field_val("permission_free_trait_changes", (s.permission_free_trait_changes if s and s.permission_free_trait_changes else "")) -%}
   {%- set perm_recoup_xp_val = field_val("permission_recoup_xp", (s.permission_recoup_xp if s and s.permission_recoup_xp else "")) -%}
+  {%- set flaw_cost_val = field_val("custom_flaw_xp_cost", (s.custom_flaw_xp_cost if s and s.custom_flaw_xp_cost is not none else "")) -%}
   {#- An unchecked box is absent from the submitted form, so presence decides on re-render. -#}
   {%- set specialty_cost_on = ("specialty_xp_cost_enabled" in form_values) if form_values is not none else (s.specialty_xp_cost_enabled if s else false) -%}
 
@@ -73,7 +74,7 @@
 
           <fieldset class="fieldset">
             <legend class="fieldset-legend">Description</legend>
-            <textarea name="description" class="textarea w-full" rows="3">{{ desc_val }}</textarea>
+            <textarea name="description" class="textarea w-full" rows="3" maxlength="{{ MAX_LONG_TEXT_LENGTH }}">{{ desc_val }}</textarea>
             <p class="label">Short summary shown on the company profile.</p>
             {% if errors.get("description") %}
               <p class="label text-error">{{ errors["description"] }}</p>
@@ -309,6 +310,24 @@
             <p class="label">
               When on, a specialty bought with XP or starting points costs 3. A free specialty follows the free trait changes permission. When off, specialties are always free.
             </p>
+          </fieldset>
+
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Custom Flaw XP Cost</legend>
+            <label class="input w-full">
+              <input type="number"
+                     name="custom_flaw_xp_cost"
+                     value="{{ flaw_cost_val }}"
+                     min="{{ MIN_CUSTOM_FLAW_XP_COST }}"
+                     max="{{ MAX_CUSTOM_FLAW_XP_COST }}"
+                     class="grow" />
+            </label>
+            <p class="label">
+              Initial and upgrade XP cost of the custom flaws that players create. Custom flaws always have a maximum of 5 dots. ({{ MIN_CUSTOM_FLAW_XP_COST }}-{{ MAX_CUSTOM_FLAW_XP_COST }})
+            </p>
+            {% if errors.get("custom_flaw_xp_cost") %}
+              <p class="label text-error">{{ errors["custom_flaw_xp_cost"] }}</p>
+            {% endif %}
           </fieldset>
         </div>
       </div>

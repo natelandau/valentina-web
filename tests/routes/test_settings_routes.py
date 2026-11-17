@@ -135,6 +135,7 @@ class TestSettingsGet:
                 permission_free_trait_changes="WITHIN_24_HOURS",
                 permission_recoup_xp="UNRESTRICTED",
                 specialty_xp_cost_enabled=True,
+                custom_flaw_xp_cost=7,
             ),
         )
         mocker.patch("vweb.lib.cache.global_context.load", return_value=admin_context)
@@ -167,6 +168,18 @@ class TestSettingsGet:
         # Then the starting-points input is pre-populated with the company value
         assert b'name="character_autogen_starting_points"' in response.data
         assert b'value="25"' in response.data
+
+    def test_get_renders_custom_flaw_xp_cost(self, client: FlaskClient, company: Company) -> None:
+        """Verify GET /settings pre-populates the custom flaw XP cost input."""
+        # When loading the settings page
+        response = client.get("/admin/settings")
+
+        # Then the custom flaw cost input holds the company value
+        tag = re.search(
+            r'<input[^>]*name="custom_flaw_xp_cost"[^>]*>', response.get_data(as_text=True)
+        )
+        assert tag is not None
+        assert 'value="7"' in tag.group(0)
 
     @pytest.mark.usefixtures("company")
     def test_get_calls_companies_get_with_company_id(
@@ -235,6 +248,7 @@ class TestSettingsPostSuccess:
                 "character_autogen_xp_cost": "20",
                 "character_autogen_num_choices": "4",
                 "character_autogen_starting_points": "30",
+                "custom_flaw_xp_cost": "4",
                 "permission_manage_campaign": "STORYTELLER",
                 "permission_manage_npc": "UNRESTRICTED",
                 "permission_grant_xp": "UNRESTRICTED",
@@ -261,6 +275,7 @@ class TestSettingsPostSuccess:
                     "permission_manage_npc": "UNRESTRICTED",
                     "permission_grant_xp": "UNRESTRICTED",
                     "specialty_xp_cost_enabled": False,
+                    "custom_flaw_xp_cost": 4,
                 },
             },
             times=1,
@@ -414,6 +429,7 @@ class TestSettingsPostValidation:
             "character_autogen_xp_cost",
             "character_autogen_num_choices",
             "character_autogen_starting_points",
+            "custom_flaw_xp_cost",
         ],
     )
     @pytest.mark.usefixtures("_company_api")
