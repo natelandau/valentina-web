@@ -44,6 +44,7 @@ _INLINE_ERROR_FIELDS: frozenset[str] = frozenset(
         "character_type",
         "vampire_clan_id",
         "werewolf_tribe_id",
+        "werewolf_auspice_id",
         "creed",
         "age",
         "date_of_birth",
@@ -174,14 +175,11 @@ def _build_update_payload(
         The CharacterUpdate payload for the characters service.
     """
     character_class = cast("CharacterClass", form_data["character_class"])
-    game_version = cast("GameVersion", form_data["game_version"])
     date_of_birth = parse_form_date(form_data.get("date_of_birth", ""))
     _create_attrs, update_attrs = build_class_attrs(character_class, form_data)
     vampire_u, werewolf_u, hunter_u, mage_attrs = update_attrs
 
     payload = CharacterUpdate(
-        character_class=character_class,
-        game_version=game_version,
         name_first=form_data["name_first"],
         name_last=form_data["name_last"],
         type=cast("CharacterType", form_data.get("character_type") or "PLAYER"),
@@ -266,6 +264,26 @@ def update_character_profile(
     return {}
 
 
+def _draft_needs_replacing(temp_char_id: str, form_data: dict[str, str]) -> bool:
+    """Report whether the form changes the draft's class or game version.
+
+    The API cannot change either on an existing character, so a draft that the user
+    switched to another class or version must be recreated rather than updated.
+
+    Args:
+        temp_char_id: The in-progress temporary character.
+        form_data: Stripped, validated profile form data.
+
+    Returns:
+        True when the draft must be deleted and created again.
+    """
+    draft = api_services.characters().get(temp_char_id)
+    return (
+        draft.character_class != form_data["character_class"]
+        or draft.game_version != form_data["game_version"]
+    )
+
+
 def save_temp_character(campaign_id: str, form_data: dict[str, str]) -> dict[str, str]:
     """Create or update the in-progress temporary character from validated form data.
 
@@ -283,9 +301,11 @@ def save_temp_character(campaign_id: str, form_data: dict[str, str]) -> dict[str
     temp_char_id = session.get("temp_character_id")
 
     try:
-        if temp_char_id:
+        if temp_char_id and not _draft_needs_replacing(temp_char_id, form_data):
             svc.update(temp_char_id, _build_update_payload(form_data))
         else:
+            if temp_char_id:
+                svc.delete(temp_char_id)
             new_char = svc.create(_build_create_payload(campaign_id, form_data))
             session["temp_character_id"] = new_char.id
             session["temp_character_created_at"] = time.time()

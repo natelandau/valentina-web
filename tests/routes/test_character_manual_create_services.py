@@ -137,6 +137,78 @@ class TestSaveLogging:
         assert len([r for r in caplog.records if r.levelno >= logging.ERROR]) == 1
 
 
+def _save_draft(app, form: dict[str, str]) -> tuple[dict[str, str], str | None]:
+    with app.test_request_context():
+        session["user_id"] = "u1"
+        session["company_id"] = "company-1"
+        session["temp_character_id"] = "draft-1"
+        errors = save_temp_character("camp-1", {**_FORM, **form})
+        return errors, session.get("temp_character_id")
+
+
+class TestSaveDraft:
+    """Saving a resumed draft keeps the class and game version the form shows."""
+
+    def test_unchanged_class_patches_draft(self, app, fake_vclient) -> None:
+        """Verify a draft with the same class and version is updated in place."""
+        # Given a mortal V5 draft
+        fake_vclient.set_response(
+            Routes.CHARACTERS_GET,
+            model=CharacterFactory.build(id="draft-1", character_class="MORTAL", game_version="V5"),
+        )
+
+        # When saving the same class and version
+        errors, draft_id = _save_draft(app, {})
+
+        # Then the draft is patched, not replaced
+        assert errors == {}
+        assert draft_id == "draft-1"
+        fake_vclient.assert_called(Routes.CHARACTERS_UPDATE, params={"character_id": "draft-1"})
+        fake_vclient.assert_not_called(Routes.CHARACTERS_CREATE)
+        fake_vclient.assert_not_called(Routes.CHARACTERS_DELETE)
+
+    def test_changed_class_replaces_draft(self, app, fake_vclient) -> None:
+        """Verify a new class replaces the draft, since the API cannot change a class."""
+        # Given a mortal V5 draft
+        fake_vclient.set_response(
+            Routes.CHARACTERS_GET,
+            model=CharacterFactory.build(id="draft-1", character_class="MORTAL", game_version="V5"),
+        )
+        fake_vclient.set_response(
+            Routes.CHARACTERS_CREATE, model=CharacterFactory.build(id="draft-2")
+        )
+
+        # When saving as a hunter
+        errors, draft_id = _save_draft(app, {"character_class": "HUNTER", "creed": "Faithful"})
+
+        # Then the old draft is deleted and a hunter draft takes its place
+        assert errors == {}
+        assert draft_id == "draft-2"
+        fake_vclient.assert_called(Routes.CHARACTERS_DELETE, params={"character_id": "draft-1"})
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_CREATE, json_subset={"character_class": "HUNTER"}
+        )
+        fake_vclient.assert_not_called(Routes.CHARACTERS_UPDATE)
+
+    def test_changed_game_version_replaces_draft(self, app, fake_vclient) -> None:
+        """Verify a new game version replaces the draft."""
+        # Given a mortal V5 draft
+        fake_vclient.set_response(
+            Routes.CHARACTERS_GET,
+            model=CharacterFactory.build(id="draft-1", character_class="MORTAL", game_version="V5"),
+        )
+        fake_vclient.set_response(
+            Routes.CHARACTERS_CREATE, model=CharacterFactory.build(id="draft-2")
+        )
+
+        # When saving as V4
+        _errors, draft_id = _save_draft(app, {"game_version": "V4"})
+
+        # Then the draft is replaced
+        assert draft_id == "draft-2"
+        fake_vclient.assert_called(Routes.CHARACTERS_DELETE, params={"character_id": "draft-1"})
+
+
 class TestBuildTraitItems:
     """Tests for build_trait_items."""
 

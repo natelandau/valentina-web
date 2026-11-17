@@ -144,6 +144,29 @@ class TestValidateProfile:
         # Then werewolf_tribe_id error is present
         assert "werewolf_tribe_id" in errors
 
+    def test_werewolf_requires_auspice(self, app) -> None:
+        """Verify WEREWOLF class without an auspice returns a werewolf_auspice_id error."""
+        # Given a werewolf form with a tribe but no auspice
+        form_data = {
+            "name_first": "Alice",
+            "name_last": "Smith",
+            "game_version": "V5",
+            "character_class": "WEREWOLF",
+            "werewolf_tribe_id": "tribe-silver-fangs",
+        }
+
+        # When validating
+        with app.test_request_context("/"):
+            from flask import session
+
+            session["company_id"] = "test-company-id"
+            from vweb.routes.character_create.profile_form import validate_profile
+
+            errors = validate_profile(form_data)
+
+        # Then the auspice is reported as required
+        assert errors["werewolf_auspice_id"] == "Werewolf auspice is required."
+
     def test_invalid_game_version(self, app) -> None:
         """Verify an unrecognized game version returns a game_version error."""
         # Given form data with an invalid game version

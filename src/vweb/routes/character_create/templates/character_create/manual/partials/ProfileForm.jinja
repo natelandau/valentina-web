@@ -167,15 +167,24 @@
         {# Character Class #}
         <fieldset class="fieldset">
           <legend class="fieldset-legend">Character Class *</legend>
-          <select name="character_class"
-                  class="validator select w-full {% if errors.get('character_class') %}select-error{% endif %}"
-                  required
-                  x-model="charClass">
-            <option value="">-- Select Class --</option>
-            {% for c in get_options().characters.character_class %}
-              <option value="{{ c }}">{{ c | title }}</option>
-            {% endfor %}
-          </select>
+          {% if mode == "edit" %}
+            <select class="select w-full" disabled>
+              <option selected>{{ form_data.get('character_class', '') | title }}</option>
+            </select>
+            <input type="hidden"
+                   name="character_class"
+                   value="{{ form_data.get('character_class', '') }}" />
+          {% else %}
+            <select name="character_class"
+                    class="validator select w-full {% if errors.get('character_class') %}select-error{% endif %}"
+                    required
+                    x-model="charClass">
+              <option value="">-- Select Class --</option>
+              {% for c in get_options().characters.character_class %}
+                <option value="{{ c }}">{{ c | title }}</option>
+              {% endfor %}
+            </select>
+          {% endif %}
           {% if errors.get('character_class') %}
             <p class="text-error text-sm mt-1">{{ errors['character_class'] }}</p>
           {% endif %}
@@ -336,9 +345,11 @@
             {% endif %}
           </fieldset>
           <fieldset class="fieldset">
-            <legend class="fieldset-legend">Werewolf Auspice</legend>
-            <select name="werewolf_auspice_id" class="select w-full">
-              <option value="">-- None --</option>
+            <legend class="fieldset-legend">Werewolf Auspice *</legend>
+            <select name="werewolf_auspice_id"
+                    class="validator select w-full {% if errors.get('werewolf_auspice_id') %}select-error{% endif %}"
+                    :required="charClass === 'WEREWOLF'">
+              <option value="">-- Select Auspice --</option>
               {% for auspice in form_options.get("werewolf_auspices", []) %}
                 {# Empty game_versions means "no version restriction" — always show. #}
                 {% set auspice_versions = auspice.game_versions | join(",") %}
@@ -352,6 +363,11 @@
                 </option>
               {% endfor %}
             </select>
+            {% if errors.get('werewolf_auspice_id') %}
+              <p class="text-error text-sm mt-1">
+                {{ errors['werewolf_auspice_id'] }}
+              </p>
+            {% endif %}
           </fieldset>
         </div>
       </div>
