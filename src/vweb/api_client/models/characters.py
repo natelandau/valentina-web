@@ -75,7 +75,7 @@ class WerewolfAttributesCreate(BaseModel):
     """Werewolf-specific character attributes create request."""
 
     tribe_id: str
-    auspice_id: str | None = None
+    auspice_id: str
     pack_name: str | None = None
 
 
@@ -201,10 +201,6 @@ class Character(BaseModel):
     campaign_id: str = Field(..., description="ID of the campaign.")
 
     # Assets and traits
-    asset_ids: list[str] = Field(default_factory=list, description="List of asset IDs.")
-    character_trait_ids: list[str] = Field(
-        default_factory=list, description="List of character trait IDs."
-    )
     chapter_ids: list[str] = Field(
         default_factory=list,
         description="Read-only IDs of non-archived chapters this character is associated with.",
@@ -321,9 +317,7 @@ class CharacterUpdate(BaseModel):
     Only include fields that need to be changed; omitted fields remain unchanged.
     """
 
-    character_class: CharacterClass | None = None
     type: CharacterType | None = None
-    game_version: GameVersion | None = None
     status: CharacterStatus | None = None
     is_temporary: bool | None = None
 
@@ -339,7 +333,6 @@ class CharacterUpdate(BaseModel):
     concept_id: str | None = Field(default=None, description="ID of the character concept.")
 
     user_player_id: str | None = None
-    date_killed: datetime | None = None
     vampire_attributes: VampireAttributesUpdate | None = None
     werewolf_attributes: WerewolfAttributesUpdate | None = None
     hunter_attributes: HunterAttributesUpdate | None = None

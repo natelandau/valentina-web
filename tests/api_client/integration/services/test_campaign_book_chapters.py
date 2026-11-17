@@ -396,6 +396,24 @@ class TestChaptersServiceUpdate:
         assert body["name"] == "Updated Name"
 
     @respx.mock
+    def test_update_chapter_clears_description(self, vclient, base_url, chapter_response_data):
+        """Verify description=None sends null so the API clears it."""
+        # Given: A mocked update endpoint
+        route = respx.patch(
+            f"{base_url}{Endpoints.BOOK_CHAPTER.format(company_id='company123', campaign_id='campaign123', book_id='book1', chapter_id='chap1')}"
+        ).respond(200, json={**chapter_response_data, "description": None})
+
+        # When: Clearing the description
+        vclient.chapters(
+            "campaign123", "book1", "on-behalf-of-user", company_id="company123"
+        ).update("chap1", description=None)
+
+        # Then: The description is sent as null
+        import json
+
+        assert json.loads(route.calls.last.request.content) == {"description": None}
+
+    @respx.mock
     def test_update_chapter_clears_character_ids(self, vclient, base_url, chapter_response_data):
         """Verify update sends an explicit empty list to clear associations."""
         # Given: a mocked update endpoint returning no characters

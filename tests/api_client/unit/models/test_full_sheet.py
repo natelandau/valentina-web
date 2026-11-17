@@ -42,6 +42,8 @@ class TestFullSheetTraitSubcategory:
             "id": "ct1",
             "character_id": "char1",
             "value": 3,
+            "date_created": "2024-01-01T00:00:00Z",
+            "date_modified": "2024-01-01T00:00:00Z",
             "trait": {
                 "id": "t1",
                 "name": "Celerity",
@@ -218,6 +220,8 @@ class TestFullSheetTraitCategory:
                     "id": "ct1",
                     "character_id": "char1",
                     "value": 3,
+                    "date_created": "2024-01-01T00:00:00Z",
+                    "date_modified": "2024-01-01T00:00:00Z",
                     "trait": {
                         "id": "t1",
                         "name": "Celerity",
@@ -310,6 +314,8 @@ class TestCharacterFullSheet:
                                     "id": "ct1",
                                     "character_id": "char1",
                                     "value": 3,
+                                    "date_created": "2024-01-01T00:00:00Z",
+                                    "date_modified": "2024-01-01T00:00:00Z",
                                     "trait": {
                                         "id": "t1",
                                         "name": "Strength",

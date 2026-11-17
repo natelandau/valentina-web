@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from vweb.api_client.constants import CharacterClass, GameVersion, WerewolfRenown
 
-from .shared import CharacterSpecialty, NameDescriptionSubDocument
+from .shared import ConceptSpecialty, NameDescriptionSubDocument
 
 
 class SheetSection(BaseModel):
@@ -61,8 +61,8 @@ class TraitSubcategory(BaseModel):
     system: str | None = None
     category_id: str
     category_name: str
-    sheet_section_id: str
-    sheet_section_name: str
+    sheet_section_id: str | None = None
+    sheet_section_name: str | None = None
     hunter_edge_type: str | None = None
 
 
@@ -125,5 +125,5 @@ class CharacterConcept(BaseModel):
     date_modified: datetime
     examples: list[str]
     max_specialties: int = Field(default=1)
-    specialties: list[CharacterSpecialty] = Field(default_factory=list)
+    specialties: list[ConceptSpecialty] = Field(default_factory=list)
     favored_ability_names: list[str] = Field(default_factory=list)

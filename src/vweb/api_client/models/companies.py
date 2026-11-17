@@ -26,6 +26,7 @@ class CompanySettings(BaseModel):
     CompanySettingsUpdate instead.
     """
 
+    id: str
     character_autogen_xp_cost: int
     character_autogen_num_choices: int
     character_autogen_starting_points: int

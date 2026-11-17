@@ -126,6 +126,7 @@ class TestSettingsGet:
             email="admin@acme.example",
             description="A test company",
             settings=CompanySettings(
+                id="settings-1",
                 character_autogen_xp_cost=15,
                 character_autogen_num_choices=3,
                 character_autogen_starting_points=25,
@@ -349,7 +350,7 @@ class TestSettingsPostSuccess:
     def test_post_blank_optional_fields_become_none(
         self, client: FlaskClient, fake_vclient
     ) -> None:
-        """Verify blank optional form fields are left out of the update request."""
+        """Verify blank optional fields are left out, except description, which is cleared."""
         from tests.conftest import get_csrf
 
         csrf = get_csrf(client)
@@ -370,7 +371,11 @@ class TestSettingsPostSuccess:
         )
         fake_vclient.assert_called(
             Routes.COMPANIES_UPDATE,
-            json={"name": "Required Name", "settings": {"specialty_xp_cost_enabled": False}},
+            json={
+                "name": "Required Name",
+                "description": None,
+                "settings": {"specialty_xp_cost_enabled": False},
+            },
             times=1,
         )
 

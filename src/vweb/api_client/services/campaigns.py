@@ -171,6 +171,7 @@ class CampaignsService(NotesMixin, AssetsMixin):
         """Modify a campaign's properties.
 
         Only include fields that need to be changed; omitted fields remain unchanged.
+        Set description or in_game_date to None to clear it.
 
         Args:
             campaign_id: The ID of the campaign to update.
@@ -190,7 +191,7 @@ class CampaignsService(NotesMixin, AssetsMixin):
             ValidationError: If the request data is invalid.
         """
         body = request if request is not None else self._validate_request(CampaignUpdate, **kwargs)
-        payload = self._update_payload(body, clearable={"in_game_date"})
+        payload = self._update_payload(body, clearable={"description", "in_game_date"})
         return self._call(Routes.CAMPAIGNS_UPDATE, json=payload, campaign_id=campaign_id)
 
     def delete(self, campaign_id: str) -> None:

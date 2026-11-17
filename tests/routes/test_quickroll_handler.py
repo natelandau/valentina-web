@@ -194,6 +194,25 @@ class TestCrudOperations:
                 times=1,
             )
 
+    def test_update_item_clears_empty_description(self, app, fake_vclient) -> None:
+        """Verify update_item sends an empty description, which the API stores as cleared."""
+        with app.test_request_context("/"):
+            seed_session()
+            handler = QuickrollHandler("user-1")
+
+            # When updating with a blank description
+            handler.update_item(
+                "qr-1", {"name": "Updated", "description": "   ", "trait_one_id": "t3"}
+            )
+
+            # Then the API receives an empty description
+            fake_vclient.assert_called(
+                Routes.USERS_QUICKROLLS_UPDATE,
+                params={"user_id": "user-1", "quickroll_id": "qr-1"},
+                json_subset={"description": ""},
+                times=1,
+            )
+
     def test_delete_item_delegates_to_service(self, app, fake_vclient) -> None:
         """Verify delete_item deletes the quickroll through the API."""
         with app.test_request_context("/"):

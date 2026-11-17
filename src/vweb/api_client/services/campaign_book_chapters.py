@@ -147,6 +147,8 @@ class ChaptersService(NotesMixin, AssetsMixin):
     ) -> CampaignChapter:
         """Update a campaign book chapter.
 
+        Set description to None to clear it.
+
         Args:
             chapter_id: The ID of the chapter to update.
             request: A ChapterUpdate model, OR pass fields as keyword arguments.
@@ -156,7 +158,7 @@ class ChaptersService(NotesMixin, AssetsMixin):
         body = request if request is not None else ChapterUpdate(**kwargs)
         return self._call(
             Routes.CHAPTERS_UPDATE,
-            json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            json=self._update_payload(body, clearable={"description"}),
             chapter_id=chapter_id,
         )
 

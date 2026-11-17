@@ -283,6 +283,7 @@ class CharactersService(NotesMixin, AssetsMixin):
         """Modify a character's properties.
 
         Only include fields that need to be changed; omitted fields remain unchanged.
+        Set a nullable field, including one inside the class attributes, to None to clear it.
         Use trait-specific endpoints to modify character traits.
 
         Note: Only the character's player or a storyteller can update the character.
@@ -318,6 +319,17 @@ class CharactersService(NotesMixin, AssetsMixin):
                 "demeanor",
                 "nature",
                 "concept_id",
+                "user_player_id",
+                "vampire_attributes.generation",
+                "vampire_attributes.sire",
+                "vampire_attributes.bane_name",
+                "vampire_attributes.bane_description",
+                "vampire_attributes.compulsion_name",
+                "vampire_attributes.compulsion_description",
+                "werewolf_attributes.pack_name",
+                "mage_attributes.sphere",
+                "mage_attributes.tradition",
+                "hunter_attributes.creed",
             },
         )
         return self._call(Routes.CHARACTERS_UPDATE, json=payload, character_id=character_id)
@@ -570,6 +582,7 @@ class CharactersService(NotesMixin, AssetsMixin):
         """Modify an inventory item's content.
 
         Only include fields that need to be changed; omitted fields remain unchanged.
+        Set description to None to clear it.
 
         Args:
             character_id: The ID of the character that owns the inventory item.
@@ -595,7 +608,7 @@ class CharactersService(NotesMixin, AssetsMixin):
         )
         return self._call(
             Routes.CHARACTERS_INVENTORY_UPDATE,
-            json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            json=self._update_payload(body, clearable={"description"}),
             character_id=character_id,
             item_id=item_id,
         )

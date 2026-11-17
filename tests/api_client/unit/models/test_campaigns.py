@@ -23,7 +23,6 @@ class TestCampaign:
             date_modified="2024-01-15T10:30:00Z",
             name="Test Campaign",
             description="A test campaign",
-            asset_ids=["asset1", "asset2"],
             desperation=2,
             danger=3,
             company_id="company123",
@@ -32,7 +31,6 @@ class TestCampaign:
         assert campaign.id == "campaign123"
         assert campaign.name == "Test Campaign"
         assert campaign.description == "A test campaign"
-        assert campaign.asset_ids == ["asset1", "asset2"]
         assert campaign.desperation == 2
         assert campaign.danger == 3
         assert campaign.company_id == "company123"
@@ -49,7 +47,6 @@ class TestCampaign:
 
         assert campaign.description is None
         assert campaign.in_game_date is None
-        assert campaign.asset_ids == []
         assert campaign.desperation == 0
         assert campaign.danger == 0
 

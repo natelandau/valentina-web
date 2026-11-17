@@ -21,7 +21,6 @@ def _chapter_payload() -> dict:
         "date_modified": datetime.now(UTC).isoformat(),
         "name": "Chapter 1",
         "description": None,
-        "asset_ids": [],
         "character_ids": [],
         "number": 1,
         "book_id": "book_1",
@@ -62,7 +61,6 @@ class TestCampaignChapter:
             date_modified="2024-01-15T10:30:00Z",
             name="Test Chapter",
             description="A test chapter",
-            asset_ids=["asset1", "asset2"],
             character_ids=["char1", "char2"],
             number=1,
             book_id="book123",
@@ -71,7 +69,6 @@ class TestCampaignChapter:
         assert chapter.id == "chapter123"
         assert chapter.name == "Test Chapter"
         assert chapter.description == "A test chapter"
-        assert chapter.asset_ids == ["asset1", "asset2"]
         assert chapter.character_ids == ["char1", "char2"]
         assert chapter.number == 1
         assert chapter.book_id == "book123"
@@ -88,7 +85,6 @@ class TestCampaignChapter:
         )
 
         assert chapter.description is None
-        assert chapter.asset_ids == []
         assert chapter.character_ids == []
 
     def test_required_fields(self):

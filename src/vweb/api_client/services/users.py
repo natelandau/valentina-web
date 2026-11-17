@@ -426,6 +426,7 @@ class UsersService(NotesMixin, AssetsMixin):
         """Modify a user's properties.
 
         Only include fields that need to be changed; omitted fields remain unchanged.
+        Set name_first or name_last to None to clear it.
 
         Setting ``role="DEACTIVATED"`` is the canonical way to deactivate a user:
         the account can no longer log in or act, but their characters, assets, XP,
@@ -462,7 +463,7 @@ class UsersService(NotesMixin, AssetsMixin):
         body = request if request is not None else self._validate_request(UserUpdate, **kwargs)
         return self._call(
             Routes.USERS_UPDATE,
-            json=body.model_dump(exclude_none=True, exclude_unset=True, mode="json"),
+            json=self._update_payload(body, clearable={"name_first", "name_last"}),
             user_id=user_id,
         )
 
@@ -814,6 +815,7 @@ class UsersService(NotesMixin, AssetsMixin):
         """Modify a quickroll's name or trait configuration.
 
         Only include fields that need to be changed; omitted fields remain unchanged.
+        Pass an empty description to clear it.
 
         Args:
             user_id: The ID of the user who owns the quickroll.

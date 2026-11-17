@@ -56,8 +56,6 @@ class TestCharacter:
         assert character.starting_points == 0
         assert character.is_temporary is False
         assert character.date_of_birth is None
-        assert character.asset_ids == []
-        assert character.character_trait_ids == []
         assert character.chapter_ids == []
         assert character.specialties == []
 
@@ -110,8 +108,6 @@ class TestCharacter:
             "user_player_id": "user789",
             "company_id": "company123",
             "campaign_id": "campaign123",
-            "asset_ids": ["asset1", "asset2"],
-            "character_trait_ids": ["trait1"],
             "specialties": [
                 {
                     "id": "spec1",
@@ -465,7 +461,6 @@ class TestCharacterUpdate:
         request = CharacterUpdate()
 
         # Then: All fields are None
-        assert request.character_class is None
         assert request.is_temporary is None
         assert request.name_first is None
         assert request.status is None
@@ -484,7 +479,6 @@ class TestCharacterUpdate:
         assert request.status == "DEAD"
         assert request.is_temporary is True
         assert request.name_last is None
-        assert request.character_class is None
 
     def test_update_request_model_dump_excludes_unset(self) -> None:
         """Verify model_dump with exclude_unset only includes set fields."""
@@ -730,6 +724,8 @@ class TestCharacterDetail:
                     "id": "ct1",
                     "character_id": "char123",
                     "value": 3,
+                    "date_created": "2024-01-15T10:30:00Z",
+                    "date_modified": "2024-01-15T10:30:00Z",
                     "trait": {
                         "id": "t1",
                         "name": "Strength",
@@ -763,6 +759,8 @@ class TestCharacterDetail:
                     "date_modified": "2024-01-15T10:30:00Z",
                     "title": "Session Log",
                     "content": "Met the prince.",
+                    "company_id": "company123",
+                    "character_id": "char123",
                 }
             ],
             assets=[

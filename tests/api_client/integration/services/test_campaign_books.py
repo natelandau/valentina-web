@@ -346,6 +346,24 @@ class TestBooksServiceUpdate:
         assert body == {"name": "Updated Name"}
 
     @respx.mock
+    def test_update_book_clears_description(self, vclient, base_url, book_response_data):
+        """Verify description=None sends null so the API clears it."""
+        # Given: A mocked update endpoint
+        route = respx.patch(
+            f"{base_url}{Endpoints.CAMPAIGN_BOOK.format(company_id='company123', campaign_id='campaign123', book_id='book1')}"
+        ).respond(200, json={**book_response_data, "description": None})
+
+        # When: Clearing the description
+        vclient.books("campaign123", "on-behalf-of-user", company_id="company123").update(
+            "book1", description=None
+        )
+
+        # Then: The description is sent as null
+        import json
+
+        assert json.loads(route.calls.last.request.content) == {"description": None}
+
+    @respx.mock
     def test_update_book_not_found(self, vclient, base_url):
         """Verify updating non-existent book raises NotFoundError."""
         # Given: A mocked endpoint returning 404

@@ -23,6 +23,8 @@ class ChargenSessionResponse(BaseModel):
     characters: list[Character]
     user_id: str
     campaign_id: str
+    date_created: datetime
+    date_modified: datetime
 
 
 class ChargenSessionFinalizeDTO(BaseModel):

@@ -109,7 +109,6 @@ def character_response_data() -> dict:
             name_last="Doe",
             character_class="VAMPIRE",
             game_version="V5",
-            character_trait_ids=["trait1", "trait2"],
             vampire_attributes=VampireAttributes(
                 clan_name="Ventrue", generation=10, sire="Ancient One"
             ),

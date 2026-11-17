@@ -20,7 +20,6 @@ class CampaignBook(BaseModel):
     date_modified: datetime = Field(..., description="Timestamp when the book was last modified.")
     name: str = Field(..., description="Book name (3-50 characters).")
     description: str | None = Field(default=None, description="Book description.")
-    asset_ids: list[str] = Field(default_factory=list, description="List of associated asset IDs.")
     character_ids: list[str] = Field(
         default_factory=list,
         description="Read-only union of character IDs across the book's chapters.",

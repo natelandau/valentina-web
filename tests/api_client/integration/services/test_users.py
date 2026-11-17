@@ -433,6 +433,28 @@ class TestUsersServiceUpdate:
         assert body == {"name_first": "Updated"}
 
     @respx.mock
+    def test_update_user_clears_names(self, vclient, base_url, user_response_data):
+        """Verify name_first=None and name_last=None send null so the API clears them."""
+        # Given: A mocked update endpoint
+        route = respx.patch(
+            f"{base_url}{Endpoints.USER.format(company_id='company123', user_id='user1')}"
+        ).respond(200, json={**user_response_data, "name_first": None, "name_last": None})
+
+        # When: Clearing both names while changing the username
+        vclient.users("on-behalf-of-user", company_id="company123").update(
+            "user1", username="renamed", name_first=None, name_last=None
+        )
+
+        # Then: The names are sent as null alongside the new username
+        import json
+
+        assert json.loads(route.calls.last.request.content) == {
+            "username": "renamed",
+            "name_first": None,
+            "name_last": None,
+        }
+
+    @respx.mock
     def test_update_user_not_found(self, vclient, base_url):
         """Verify updating non-existent user raises NotFoundError."""
         # Given: A mocked endpoint returning 404
