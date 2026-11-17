@@ -1,6 +1,5 @@
 """Tests for vweb.api_client.services.base."""
 
-import httpx
 import httpx2
 import pytest
 import respx
@@ -625,12 +624,12 @@ class TestBaseServiceRateLimitRetry:
         # Given: An endpoint that returns 429 once then succeeds
         route = respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(
+                respx.MockResponse(
                     429,
                     json={"detail": "Rate limited"},
                     headers={"RateLimit": '"default";r=0;t=0'},
                 ),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -700,12 +699,12 @@ class TestBaseServiceRateLimitRetry:
         # Given: An endpoint that returns 429 with t=1 then succeeds
         respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(
+                respx.MockResponse(
                     429,
                     json={"detail": "Rate limited"},
                     headers={"RateLimit": '"default";r=0;t=1'},
                 ),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -726,14 +725,14 @@ class TestBaseServiceRateLimitRetry:
     def test_auto_retry_does_not_double_retry_after(self, vclient, base_url, mocker):
         """Verify every retry waits the server's Retry-After plus jitter, without doubling."""
         # Given: An endpoint that returns 429 with Retry-After: 1 twice then succeeds
-        rate_limited = httpx.Response(
+        rate_limited = respx.MockResponse(
             429, json={"detail": "Rate limited"}, headers={"Retry-After": "1"}
         )
         respx.get(f"{base_url}/test").mock(
             side_effect=[
                 rate_limited,
                 rate_limited,
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
         mock_sleep = mocker.patch("vweb.api_client.services.base.time.sleep")
@@ -754,17 +753,17 @@ class TestBaseServiceRateLimitRetry:
         # Given: An endpoint that returns 429 twice then succeeds
         respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(
+                respx.MockResponse(
                     429,
                     json={"detail": "Rate limited"},
                     headers={"RateLimit": '"default";r=0;t=0'},
                 ),
-                httpx.Response(
+                respx.MockResponse(
                     429,
                     json={"detail": "Rate limited"},
                     headers={"RateLimit": '"default";r=0;t=0'},
                 ),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -796,8 +795,8 @@ class TestBaseServiceTransientRetry:
         # Given: An endpoint that returns 500 once then succeeds
         route = respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(500, json={"detail": "Server error"}),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(500, json={"detail": "Server error"}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -818,8 +817,8 @@ class TestBaseServiceTransientRetry:
         # Given: An endpoint that returns 502 once then succeeds
         route = respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(502, json={"detail": "Bad Gateway"}),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(502, json={"detail": "Bad Gateway"}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -840,8 +839,8 @@ class TestBaseServiceTransientRetry:
         # Given: An endpoint that returns 503 once then succeeds
         route = respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(503, json={"detail": "Service Unavailable"}),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(503, json={"detail": "Service Unavailable"}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -862,8 +861,8 @@ class TestBaseServiceTransientRetry:
         # Given: An endpoint that returns 504 once then succeeds
         route = respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(504, json={"detail": "Gateway Timeout"}),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(504, json={"detail": "Gateway Timeout"}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -937,8 +936,8 @@ class TestBaseServiceTransientRetry:
         # Given: An endpoint that returns 500 once then succeeds
         route = respx.post(f"{base_url}/items").mock(
             side_effect=[
-                httpx.Response(500, json={"detail": "Server error"}),
-                httpx.Response(201, json={"id": 1}),
+                respx.MockResponse(500, json={"detail": "Server error"}),
+                respx.MockResponse(201, json={"id": 1}),
             ]
         )
 
@@ -961,8 +960,8 @@ class TestBaseServiceTransientRetry:
         # Given: An endpoint that returns 500 once then succeeds
         route = respx.post(f"{base_url}/items").mock(
             side_effect=[
-                httpx.Response(500, json={"detail": "Server error"}),
-                httpx.Response(201, json={"id": 1}),
+                respx.MockResponse(500, json={"detail": "Server error"}),
+                respx.MockResponse(201, json={"id": 1}),
             ]
         )
 
@@ -983,8 +982,8 @@ class TestBaseServiceTransientRetry:
         # Given: An endpoint that returns 500 once then succeeds
         route = respx.put(f"{base_url}/items/1").mock(
             side_effect=[
-                httpx.Response(500, json={"detail": "Server error"}),
-                httpx.Response(200, json={"id": 1}),
+                respx.MockResponse(500, json={"detail": "Server error"}),
+                respx.MockResponse(200, json={"id": 1}),
             ]
         )
 
@@ -1005,8 +1004,8 @@ class TestBaseServiceTransientRetry:
         # Given: An endpoint that returns 500 once then succeeds
         route = respx.delete(f"{base_url}/items/1").mock(
             side_effect=[
-                httpx.Response(500, json={"detail": "Server error"}),
-                httpx.Response(204),
+                respx.MockResponse(500, json={"detail": "Server error"}),
+                respx.MockResponse(204),
             ]
         )
 
@@ -1064,9 +1063,9 @@ class TestBaseServiceTransientRetry:
         # Given: An endpoint that returns 500 twice then succeeds
         respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(500, json={"detail": "Server error"}),
-                httpx.Response(500, json={"detail": "Server error"}),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(500, json={"detail": "Server error"}),
+                respx.MockResponse(500, json={"detail": "Server error"}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -1103,12 +1102,12 @@ class TestBaseServiceIdempotencyInProgressRetry:
         # Given: An endpoint that reports in progress once, then succeeds
         route = respx.post(f"{base_url}/items").mock(
             side_effect=[
-                httpx.Response(
+                respx.MockResponse(
                     409,
                     json=IN_PROGRESS,
                     headers={"Retry-After": "1", "RateLimit": '"default";r=5;t=30'},
                 ),
-                httpx.Response(201, json={"id": 1}),
+                respx.MockResponse(201, json={"id": 1}),
             ]
         )
 
@@ -1137,8 +1136,10 @@ class TestBaseServiceIdempotencyInProgressRetry:
         # Given: An endpoint that reports in progress without Retry-After, then succeeds
         route = respx.post(f"{base_url}/items").mock(
             side_effect=[
-                httpx.Response(409, json=IN_PROGRESS, headers={"RateLimit": '"default";r=5;t=30'}),
-                httpx.Response(201, json={"id": 1}),
+                respx.MockResponse(
+                    409, json=IN_PROGRESS, headers={"RateLimit": '"default";r=5;t=30'}
+                ),
+                respx.MockResponse(201, json={"id": 1}),
             ]
         )
 
@@ -1162,12 +1163,12 @@ class TestBaseServiceIdempotencyInProgressRetry:
         # Given: An endpoint that reports in progress with a non-integer Retry-After
         route = respx.post(f"{base_url}/items").mock(
             side_effect=[
-                httpx.Response(
+                respx.MockResponse(
                     409,
                     json=IN_PROGRESS,
                     headers={"Retry-After": "soon", "RateLimit": '"default";r=5;t=30'},
                 ),
-                httpx.Response(201, json={"id": 1}),
+                respx.MockResponse(201, json={"id": 1}),
             ]
         )
 
@@ -1190,7 +1191,7 @@ class TestBaseServiceIdempotencyInProgressRetry:
 
         # Given: An endpoint that always reports in progress
         route = respx.post(f"{base_url}/items").mock(
-            return_value=httpx.Response(409, json=IN_PROGRESS, headers={"Retry-After": "1"})
+            return_value=respx.MockResponse(409, json=IN_PROGRESS, headers={"Retry-After": "1"})
         )
 
         # When: Making a POST request
@@ -1218,7 +1219,7 @@ class TestBaseServiceIdempotencyInProgressRetry:
 
         # Given: An endpoint that reports a reused idempotency key
         route = respx.post(f"{base_url}/items").mock(
-            return_value=httpx.Response(
+            return_value=respx.MockResponse(
                 409, json={"detail": "Idempotency key reused with a different request body"}
             )
         )
@@ -1242,7 +1243,7 @@ class TestBaseServiceIdempotencyInProgressRetry:
 
         # Given: An endpoint that reports in progress
         route = respx.post(f"{base_url}/items").mock(
-            return_value=httpx.Response(409, json=IN_PROGRESS, headers={"Retry-After": "1"})
+            return_value=respx.MockResponse(409, json=IN_PROGRESS, headers={"Retry-After": "1"})
         )
 
         # When: Making a POST request without an idempotency key
@@ -1262,8 +1263,8 @@ class TestBaseServiceIdempotencyInProgressRetry:
         # Given: An endpoint that reports in progress once, then succeeds
         route = respx.put(f"{base_url}/items/1").mock(
             side_effect=[
-                httpx.Response(409, json=IN_PROGRESS, headers={"Retry-After": "1"}),
-                httpx.Response(200, json={"id": 1}),
+                respx.MockResponse(409, json=IN_PROGRESS, headers={"Retry-After": "1"}),
+                respx.MockResponse(200, json={"id": 1}),
             ]
         )
 
@@ -1289,7 +1290,7 @@ class TestBaseServiceIdempotencyInProgressRetry:
 
         # Given: An endpoint that reports in progress
         route = respx.delete(f"{base_url}/items/1").mock(
-            return_value=httpx.Response(409, json=IN_PROGRESS, headers={"Retry-After": "1"})
+            return_value=respx.MockResponse(409, json=IN_PROGRESS, headers={"Retry-After": "1"})
         )
 
         # When/Then: The conflict surfaces after a single call
@@ -1306,7 +1307,7 @@ class TestBaseServiceIdempotencyInProgressRetry:
 
         # Given: An endpoint that reports in progress
         route = respx.post(f"{base_url}/items").mock(
-            return_value=httpx.Response(409, json=IN_PROGRESS, headers={"Retry-After": "1"})
+            return_value=respx.MockResponse(409, json=IN_PROGRESS, headers={"Retry-After": "1"})
         )
 
         # When: Making a POST request with retries disabled
@@ -1338,7 +1339,7 @@ class TestBaseServiceNetworkErrorRetry:
         route = respx.get(f"{base_url}/test").mock(
             side_effect=[
                 httpx2.ConnectError("Connection refused"),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -1360,7 +1361,7 @@ class TestBaseServiceNetworkErrorRetry:
         route = respx.get(f"{base_url}/test").mock(
             side_effect=[
                 httpx2.ReadTimeout("Read timed out"),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -1440,7 +1441,7 @@ class TestBaseServiceNetworkErrorRetry:
         route = respx.post(f"{base_url}/items").mock(
             side_effect=[
                 httpx2.ConnectError("Connection refused"),
-                httpx.Response(201, json={"id": 1}),
+                respx.MockResponse(201, json={"id": 1}),
             ]
         )
 
@@ -1481,7 +1482,7 @@ class TestBaseServiceNetworkErrorRetry:
             side_effect=[
                 httpx2.ConnectError("Connection refused"),
                 httpx2.ConnectError("Connection refused"),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 
@@ -1619,8 +1620,8 @@ class TestBaseServiceRetryLimits:
         # Given: An endpoint that returns 503 once then succeeds
         respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(503, json={"detail": "Unavailable"}),
-                httpx.Response(200, json={"success": True}),
+                respx.MockResponse(503, json={"detail": "Unavailable"}),
+                respx.MockResponse(200, json={"success": True}),
             ]
         )
 

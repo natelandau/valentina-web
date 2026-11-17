@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 import respx
-from httpx import Response
+from respx import MockResponse
 
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.exceptions import NotFoundError, RequestValidationError, ValidationError
@@ -275,7 +275,7 @@ class TestCharactersServiceGetPage:
         # Given: A mocked characters list endpoint
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(200, json=paginated_character_response))
+        ).mock(return_value=MockResponse(200, json=paginated_character_response))
 
         # When: Requesting a page of characters
         result = vclient.characters("on-behalf-of-user", company_id="company123").get_page()
@@ -300,7 +300,7 @@ class TestCharactersServiceGetPage:
                 "status": "ALIVE",
                 "is_temporary": "true",
             },
-        ).mock(return_value=Response(200, json=paginated_character_response))
+        ).mock(return_value=MockResponse(200, json=paginated_character_response))
 
         # When: Requesting with filters
         result = vclient.characters("on-behalf-of-user", company_id="company123").get_page(
@@ -321,7 +321,7 @@ class TestCharactersServiceGet:
         # Given: A mocked character endpoint
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=character_response_data))
+        ).mock(return_value=MockResponse(200, json=character_response_data))
 
         # When: Requesting a character
         result = vclient.characters("on-behalf-of-user", company_id="company123").get("char123")
@@ -343,7 +343,9 @@ class TestCharactersServiceGet:
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='nonexistent')}"
         ).mock(
-            return_value=Response(404, json={"detail": "Character not found", "status_code": 404})
+            return_value=MockResponse(
+                404, json={"detail": "Character not found", "status_code": 404}
+            )
         )
 
         # When/Then: Requesting raises NotFoundError
@@ -383,7 +385,7 @@ class TestCharactersServiceGetWithInclude:
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}",
             params=[("include", "traits"), ("include", "notes")],
-        ).mock(return_value=Response(200, json=character_detail_response_data))
+        ).mock(return_value=MockResponse(200, json=character_detail_response_data))
 
         # When: Requesting a character with include
         result = vclient.characters("on-behalf-of-user", company_id="company123").get(
@@ -408,7 +410,7 @@ class TestCharactersServiceGetWithInclude:
         # Given: A mocked character endpoint with no include params
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=character_response_data))
+        ).mock(return_value=MockResponse(200, json=character_response_data))
 
         # When: Requesting a character without include
         result = vclient.characters("on-behalf-of-user", company_id="company123").get("char123")
@@ -431,7 +433,7 @@ class TestCharactersServiceCreate:
         # Given: A mocked create endpoint
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(201, json=character_response_data))
+        ).mock(return_value=MockResponse(201, json=character_response_data))
 
         # When: Creating a character with required fields only
         result = vclient.characters("on-behalf-of-user", company_id="company123").create(
@@ -465,7 +467,7 @@ class TestCharactersServiceCreate:
         # Given: A mocked create endpoint
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(201, json=character_response_data))
+        ).mock(return_value=MockResponse(201, json=character_response_data))
 
         # When: Creating a character with all fields
         result = vclient.characters("on-behalf-of-user", company_id="company123").create(
@@ -507,7 +509,7 @@ class TestCharactersServiceCreate:
         # Given: A mocked create endpoint
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(201, json=character_response_data))
+        ).mock(return_value=MockResponse(201, json=character_response_data))
 
         # Given: Vampire attributes to create
         vampire_attrs = VampireAttributesCreate(
@@ -554,7 +556,7 @@ class TestCharactersServiceCreate:
         # Given: A mocked create endpoint
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(201, json=werewolf_character_response_data))
+        ).mock(return_value=MockResponse(201, json=werewolf_character_response_data))
 
         # Given: Werewolf attributes to create
         werewolf_attrs = WerewolfAttributesCreate(
@@ -597,7 +599,7 @@ class TestCharactersServiceCreate:
         # Given: A mocked create endpoint
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(201, json=hunter_character_response_data))
+        ).mock(return_value=MockResponse(201, json=hunter_character_response_data))
 
         # Given: Hunter attributes to create
         hunter_attrs = HunterAttributesCreate(
@@ -637,7 +639,7 @@ class TestCharactersServiceCreate:
         }
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(201, json=response_data))
+        ).mock(return_value=MockResponse(201, json=response_data))
 
         # Given: Traits to assign
         from vweb.api_client.models.character_trait import CharacterCreateTraitAssign
@@ -684,7 +686,7 @@ class TestCharactersServiceUpdate:
         updated_data = {**character_response_data, "name_first": "Jane"}
         route = respx.patch(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=updated_data))
+        ).mock(return_value=MockResponse(200, json=updated_data))
 
         # When: Updating the character's name
         result = vclient.characters("on-behalf-of-user", company_id="company123").update(
@@ -713,7 +715,7 @@ class TestCharactersServiceUpdate:
         }
         route = respx.patch(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=updated_data))
+        ).mock(return_value=MockResponse(200, json=updated_data))
 
         # When: Updating the character's status
         result = vclient.characters("on-behalf-of-user", company_id="company123").update(
@@ -732,7 +734,7 @@ class TestCharactersServiceUpdate:
         # Given: A mocked update endpoint
         route = respx.patch(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=character_response_data))
+        ).mock(return_value=MockResponse(200, json=character_response_data))
 
         # When: Updating the date_of_birth
         vclient.characters("on-behalf-of-user", company_id="company123").update(
@@ -754,7 +756,7 @@ class TestCharactersServiceUpdate:
         cleared_data = {**character_response_data, "date_of_birth": None}
         route = respx.patch(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=cleared_data))
+        ).mock(return_value=MockResponse(200, json=cleared_data))
 
         # When: Clearing the date_of_birth with an explicit None
         result = vclient.characters("on-behalf-of-user", company_id="company123").update(
@@ -775,7 +777,9 @@ class TestCharactersServiceUpdate:
         route = respx.patch(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='nonexistent')}"
         ).mock(
-            return_value=Response(404, json={"detail": "Character not found", "status_code": 404})
+            return_value=MockResponse(
+                404, json={"detail": "Character not found", "status_code": 404}
+            )
         )
 
         # When/Then: Updating raises NotFoundError
@@ -805,7 +809,7 @@ class TestCharactersServiceUpdate:
         }
         route = respx.patch(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=updated_data))
+        ).mock(return_value=MockResponse(200, json=updated_data))
 
         # Given: Vampire attributes to update
         vampire_attrs = VampireAttributesUpdate(
@@ -859,7 +863,7 @@ class TestCharactersServiceUpdate:
         }
         route = respx.patch(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char456')}"
-        ).mock(return_value=Response(200, json=updated_data))
+        ).mock(return_value=MockResponse(200, json=updated_data))
 
         # Given: Werewolf attributes to update
         werewolf_attrs = WerewolfAttributesUpdate(
@@ -904,7 +908,7 @@ class TestCharactersServiceUpdate:
         }
         route = respx.patch(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char789')}"
-        ).mock(return_value=Response(200, json=updated_data))
+        ).mock(return_value=MockResponse(200, json=updated_data))
 
         # Given: Hunter attributes to update
         hunter_attrs = HunterAttributesUpdate(
@@ -939,7 +943,7 @@ class TestCharactersServiceDelete:
         # Given: A mocked delete endpoint
         route = respx.delete(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(204))
+        ).mock(return_value=MockResponse(204))
 
         # When: Deleting the character
         result = vclient.characters("on-behalf-of-user", company_id="company123").delete("char123")
@@ -955,7 +959,9 @@ class TestCharactersServiceDelete:
         route = respx.delete(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='nonexistent')}"
         ).mock(
-            return_value=Response(404, json={"detail": "Character not found", "status_code": 404})
+            return_value=MockResponse(
+                404, json={"detail": "Character not found", "status_code": 404}
+            )
         )
 
         # When/Then: Deleting raises NotFoundError
@@ -980,7 +986,7 @@ class TestCharactersServiceListAll:
         }
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Requesting all characters
         result = vclient.characters("on-behalf-of-user", company_id="company123").list_all()
@@ -1007,7 +1013,7 @@ class TestCharactersServiceIterAll:
         }
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTERS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Iterating through all characters
         characters = list(
@@ -1031,7 +1037,7 @@ class TestCharactersServiceVampireAttributes:
         # Given: A mocked character endpoint
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=character_response_data))
+        ).mock(return_value=MockResponse(200, json=character_response_data))
 
         # When: Requesting the character
         result = vclient.characters("on-behalf-of-user", company_id="company123").get("char123")
@@ -1664,7 +1670,7 @@ class TestCharactersServiceHealth:
         """Verify get_health returns V5 health with no levels."""
         # Given: A mocked health endpoint
         respx.get(_health_url(base_url, Endpoints.CHARACTER_HEALTH)).mock(
-            return_value=Response(200, json=V5_HEALTH)
+            return_value=MockResponse(200, json=V5_HEALTH)
         )
 
         # When: Getting health
@@ -1680,7 +1686,7 @@ class TestCharactersServiceHealth:
         """Verify a character without health raises NotFoundError."""
         # Given: The endpoint returns 404
         respx.get(_health_url(base_url, Endpoints.CHARACTER_HEALTH)).mock(
-            return_value=Response(
+            return_value=MockResponse(
                 404,
                 json={"status": 404, "title": "Not Found", "detail": "Character health not found"},
             )
@@ -1695,7 +1701,7 @@ class TestCharactersServiceHealth:
         """Verify set_health sends every field so omitted ones reset to zero."""
         # Given: A mocked set health endpoint
         route = respx.put(_health_url(base_url, Endpoints.CHARACTER_HEALTH)).mock(
-            return_value=Response(200, json=V5_HEALTH)
+            return_value=MockResponse(200, json=V5_HEALTH)
         )
 
         # When: Setting only damage
@@ -1709,7 +1715,7 @@ class TestCharactersServiceHealth:
         """Verify set_health accepts a HealthStateSet and parses V4 levels."""
         # Given: A mocked set health endpoint returning V4 health
         route = respx.put(_health_url(base_url, Endpoints.CHARACTER_HEALTH)).mock(
-            return_value=Response(200, json=V4_HEALTH)
+            return_value=MockResponse(200, json=V4_HEALTH)
         )
 
         # When: Setting damage with a request model
@@ -1736,7 +1742,7 @@ class TestCharactersServiceHealth:
         """Verify a damage action sends only action and amount."""
         # Given: A mocked health action endpoint
         route = respx.post(_health_url(base_url, Endpoints.CHARACTER_HEALTH_ACTIONS)).mock(
-            return_value=Response(200, json=V5_HEALTH)
+            return_value=MockResponse(200, json=V5_HEALTH)
         )
 
         # When: Applying two damage
@@ -1757,7 +1763,7 @@ class TestCharactersServiceHealth:
         """Verify a 400 from the server raises ValidationError."""
         # Given: The endpoint rejects the action
         respx.post(_health_url(base_url, Endpoints.CHARACTER_HEALTH_ACTIONS)).mock(
-            return_value=Response(
+            return_value=MockResponse(
                 400, json={"status": 400, "title": "Bad Request", "detail": "Invalid action"}
             )
         )

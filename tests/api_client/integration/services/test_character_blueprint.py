@@ -2,7 +2,7 @@
 
 import pytest
 import respx
-from httpx import Response
+from respx import MockResponse
 
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.exceptions import NotFoundError
@@ -300,7 +300,7 @@ class TestCharacterBlueprintServiceSections:
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_SECTIONS.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0"},
-        ).mock(return_value=Response(200, json=paginated_section_response))
+        ).mock(return_value=MockResponse(200, json=paginated_section_response))
 
         # When: Requesting a page of sections
         result = vclient.character_blueprint(
@@ -325,7 +325,7 @@ class TestCharacterBlueprintServiceSections:
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_SECTIONS.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0", "game_version": "V5"},
-        ).mock(return_value=Response(200, json=paginated_section_response))
+        ).mock(return_value=MockResponse(200, json=paginated_section_response))
 
         # When: Requesting with game_version filter
         result = vclient.character_blueprint(
@@ -346,7 +346,7 @@ class TestCharacterBlueprintServiceSections:
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_SECTIONS.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0", "character_class": "VAMPIRE"},
-        ).mock(return_value=Response(200, json=paginated_section_response))
+        ).mock(return_value=MockResponse(200, json=paginated_section_response))
 
         # When: Requesting with character_class filter
         result = vclient.character_blueprint(
@@ -367,7 +367,7 @@ class TestCharacterBlueprintServiceSections:
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_SECTIONS.format(company_id=company_id)}",
             params={"limit": "1000", "offset": "0"},
-        ).mock(return_value=Response(200, json=paginated_section_response))
+        ).mock(return_value=MockResponse(200, json=paginated_section_response))
 
         # When: Requesting a page with limit=1000
         vclient.character_blueprint("on-behalf-of-user", company_id=company_id).get_sections_page(
@@ -393,7 +393,7 @@ class TestCharacterBlueprintServiceSections:
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_SECTIONS.format(company_id=company_id)}",
             params={"limit": "1000", "offset": "0"},
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Iterating through all sections
         sections = list(
@@ -419,7 +419,7 @@ class TestCharacterBlueprintServiceSections:
         }
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_SECTIONS.format(company_id=company_id)}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Requesting all sections
         result = vclient.character_blueprint(
@@ -445,7 +445,7 @@ class TestCharacterBlueprintServiceSections:
         }
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_SECTIONS.format(company_id=company_id)}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Iterating through all sections
         sections = list(
@@ -467,7 +467,7 @@ class TestCharacterBlueprintServiceSections:
         section_id = "section123"
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_SECTION_DETAIL.format(company_id=company_id, section_id=section_id)}"
-        ).mock(return_value=Response(200, json=section_response_data))
+        ).mock(return_value=MockResponse(200, json=section_response_data))
 
         # When: Requesting a section
         result = vclient.character_blueprint(
@@ -490,7 +490,9 @@ class TestCharacterBlueprintServiceSections:
         section_id = "nonexistent"
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_SECTION_DETAIL.format(company_id=company_id, section_id=section_id)}"
-        ).mock(return_value=Response(404, json={"detail": "Section not found", "status_code": 404}))
+        ).mock(
+            return_value=MockResponse(404, json={"detail": "Section not found", "status_code": 404})
+        )
 
         # When/Then: Requesting raises NotFoundError
         with pytest.raises(NotFoundError):
@@ -512,7 +514,7 @@ class TestCharacterBlueprintServiceCategories:
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_CATEGORIES.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0"},
-        ).mock(return_value=Response(200, json=paginated_category_response))
+        ).mock(return_value=MockResponse(200, json=paginated_category_response))
 
         # When: Requesting a page of categories
         result = vclient.character_blueprint(
@@ -537,7 +539,7 @@ class TestCharacterBlueprintServiceCategories:
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_CATEGORIES.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0", "section_id": "section123"},
-        ).mock(return_value=Response(200, json=paginated_category_response))
+        ).mock(return_value=MockResponse(200, json=paginated_category_response))
 
         # When: Requesting with section_id filter
         result = vclient.character_blueprint(
@@ -558,7 +560,7 @@ class TestCharacterBlueprintServiceCategories:
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_CATEGORIES.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0", "character_class": "VAMPIRE"},
-        ).mock(return_value=Response(200, json=paginated_category_response))
+        ).mock(return_value=MockResponse(200, json=paginated_category_response))
 
         # When: Requesting with character_class filter
         result = vclient.character_blueprint(
@@ -582,7 +584,7 @@ class TestCharacterBlueprintServiceCategories:
         }
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_CATEGORIES.format(company_id=company_id)}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Requesting all categories
         result = vclient.character_blueprint(
@@ -608,7 +610,7 @@ class TestCharacterBlueprintServiceCategories:
         }
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_CATEGORIES.format(company_id=company_id)}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Iterating through all categories
         categories = list(
@@ -630,7 +632,7 @@ class TestCharacterBlueprintServiceCategories:
         category_id = "category123"
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_CATEGORY_DETAIL.format(company_id=company_id, category_id=category_id)}"
-        ).mock(return_value=Response(200, json=category_response_data))
+        ).mock(return_value=MockResponse(200, json=category_response_data))
 
         # When: Requesting a category
         result = vclient.character_blueprint(
@@ -655,7 +657,9 @@ class TestCharacterBlueprintServiceCategories:
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_CATEGORY_DETAIL.format(company_id=company_id, category_id=category_id)}"
         ).mock(
-            return_value=Response(404, json={"detail": "Category not found", "status_code": 404})
+            return_value=MockResponse(
+                404, json={"detail": "Category not found", "status_code": 404}
+            )
         )
 
         # When/Then: Requesting raises NotFoundError
@@ -680,7 +684,7 @@ class TestCharacterBlueprintServiceSubcategories:
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_SUBCATEGORIES.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0"},
-        ).mock(return_value=Response(200, json=paginated_subcategory_response))
+        ).mock(return_value=MockResponse(200, json=paginated_subcategory_response))
 
         # When: Requesting a page of subcategories
         result = vclient.character_blueprint(
@@ -705,7 +709,7 @@ class TestCharacterBlueprintServiceSubcategories:
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_SUBCATEGORIES.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0", "category_id": "category123"},
-        ).mock(return_value=Response(200, json=paginated_subcategory_response))
+        ).mock(return_value=MockResponse(200, json=paginated_subcategory_response))
 
         # When: Requesting with category_id filter
         result = vclient.character_blueprint(
@@ -726,7 +730,7 @@ class TestCharacterBlueprintServiceSubcategories:
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_SUBCATEGORIES.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0", "character_class": "VAMPIRE"},
-        ).mock(return_value=Response(200, json=paginated_subcategory_response))
+        ).mock(return_value=MockResponse(200, json=paginated_subcategory_response))
 
         # When: Requesting with character_class filter
         result = vclient.character_blueprint(
@@ -752,7 +756,7 @@ class TestCharacterBlueprintServiceSubcategories:
         }
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_SUBCATEGORIES.format(company_id=company_id)}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Requesting all subcategories
         result = vclient.character_blueprint(
@@ -778,7 +782,7 @@ class TestCharacterBlueprintServiceSubcategories:
         }
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_SUBCATEGORIES.format(company_id=company_id)}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Iterating through all subcategories
         subcategories = list(
@@ -800,7 +804,7 @@ class TestCharacterBlueprintServiceSubcategories:
         subcategory_id = "subcat123"
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_SUBCATEGORY_DETAIL.format(company_id=company_id, subcategory_id=subcategory_id)}"
-        ).mock(return_value=Response(200, json=subcategory_response_data))
+        ).mock(return_value=MockResponse(200, json=subcategory_response_data))
 
         # When: Requesting a single subcategory
         result = vclient.character_blueprint(
@@ -827,7 +831,9 @@ class TestCharacterBlueprintServiceSubcategories:
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_SUBCATEGORY_DETAIL.format(company_id=company_id, subcategory_id=subcategory_id)}"
         ).mock(
-            return_value=Response(404, json={"detail": "Subcategory not found", "status_code": 404})
+            return_value=MockResponse(
+                404, json={"detail": "Subcategory not found", "status_code": 404}
+            )
         )
 
         # When/Then: Requesting raises NotFoundError
@@ -851,7 +857,7 @@ class TestCharacterBlueprintServiceTraits:
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_TRAITS.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0"},
-        ).mock(return_value=Response(200, json=paginated_trait_response))
+        ).mock(return_value=MockResponse(200, json=paginated_trait_response))
 
         # When: Requesting a page of traits
         result = vclient.character_blueprint(
@@ -881,7 +887,7 @@ class TestCharacterBlueprintServiceTraits:
                 "character_class": "VAMPIRE",
                 "category_id": "category123",
             },
-        ).mock(return_value=Response(200, json=paginated_trait_response))
+        ).mock(return_value=MockResponse(200, json=paginated_trait_response))
 
         # When: Requesting with filters
         result = vclient.character_blueprint(
@@ -906,7 +912,7 @@ class TestCharacterBlueprintServiceTraits:
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_TRAITS.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0", "is_rollable": "true"},
-        ).mock(return_value=Response(200, json=paginated_trait_response))
+        ).mock(return_value=MockResponse(200, json=paginated_trait_response))
 
         # When: Requesting with is_rollable filter
         result = vclient.character_blueprint(
@@ -929,7 +935,7 @@ class TestCharacterBlueprintServiceTraits:
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_TRAITS.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0", "subcategory_id": "subcat123"},
-        ).mock(return_value=Response(200, json=paginated_trait_response))
+        ).mock(return_value=MockResponse(200, json=paginated_trait_response))
 
         # When: Requesting with subcategory_id filter
         result = vclient.character_blueprint(
@@ -952,7 +958,7 @@ class TestCharacterBlueprintServiceTraits:
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_TRAITS.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0", "exclude_subcategory_traits": "true"},
-        ).mock(return_value=Response(200, json=paginated_trait_response))
+        ).mock(return_value=MockResponse(200, json=paginated_trait_response))
 
         # When: Requesting with exclude_subcategory_traits=True
         result = vclient.character_blueprint(
@@ -978,7 +984,7 @@ class TestCharacterBlueprintServiceTraits:
         }
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_TRAITS.format(company_id=company_id)}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Requesting all traits
         result = vclient.character_blueprint(
@@ -1005,7 +1011,7 @@ class TestCharacterBlueprintServiceTraits:
         }
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_TRAITS.format(company_id=company_id)}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Iterating through all traits
         traits = list(
@@ -1027,7 +1033,7 @@ class TestCharacterBlueprintServiceTraits:
         trait_id = "trait123"
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_TRAIT_DETAIL.format(company_id=company_id, trait_id=trait_id)}"
-        ).mock(return_value=Response(200, json=trait_response_data))
+        ).mock(return_value=MockResponse(200, json=trait_response_data))
 
         # When: Requesting a trait
         result = vclient.character_blueprint("on-behalf-of-user", company_id=company_id).get_trait(
@@ -1053,7 +1059,9 @@ class TestCharacterBlueprintServiceTraits:
         trait_id = "nonexistent"
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_TRAIT_DETAIL.format(company_id=company_id, trait_id=trait_id)}"
-        ).mock(return_value=Response(404, json={"detail": "Trait not found", "status_code": 404}))
+        ).mock(
+            return_value=MockResponse(404, json={"detail": "Trait not found", "status_code": 404})
+        )
 
         # When/Then: Requesting raises NotFoundError
         with pytest.raises(NotFoundError):
@@ -1078,7 +1086,7 @@ class TestCharacterBlueprintServicePagination:
             f"{base_url}{Endpoints.BLUEPRINT_SECTIONS.format(company_id=company_id)}",
             params={"limit": "50", "offset": "100"},
         ).mock(
-            return_value=Response(
+            return_value=MockResponse(
                 200,
                 json={
                     "items": [section_response_data],
@@ -1126,7 +1134,9 @@ class TestCharacterBlueprintServicePagination:
 
         route = respx.get(
             f"{base_url}{Endpoints.BLUEPRINT_SECTIONS.format(company_id=company_id)}"
-        ).mock(side_effect=[Response(200, json=first_page), Response(200, json=second_page)])
+        ).mock(
+            side_effect=[MockResponse(200, json=first_page), MockResponse(200, json=second_page)]
+        )
 
         # When: Iterating through all sections
         sections = list(
@@ -1155,7 +1165,7 @@ class TestCharacterBlueprintServiceConcepts:
         route = respx.get(
             f"{base_url}{Endpoints.CONCEPTS.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0"},
-        ).mock(return_value=Response(200, json=paginated_character_concept_response))
+        ).mock(return_value=MockResponse(200, json=paginated_character_concept_response))
 
         # When: Requesting a page of concepts
         result = vclient.character_blueprint(
@@ -1182,7 +1192,7 @@ class TestCharacterBlueprintServiceConcepts:
             "total": 1,
         }
         route = respx.get(f"{base_url}{Endpoints.CONCEPTS.format(company_id=company_id)}").mock(
-            return_value=Response(200, json=paginated_response)
+            return_value=MockResponse(200, json=paginated_response)
         )
 
         # When: Requesting all concepts
@@ -1208,7 +1218,7 @@ class TestCharacterBlueprintServiceConcepts:
             "total": 1,
         }
         route = respx.get(f"{base_url}{Endpoints.CONCEPTS.format(company_id=company_id)}").mock(
-            return_value=Response(200, json=paginated_response)
+            return_value=MockResponse(200, json=paginated_response)
         )
 
         # When: Iterating through all concepts
@@ -1232,7 +1242,7 @@ class TestCharacterBlueprintServiceConcepts:
         concept_id = "concept123"
         route = respx.get(
             f"{base_url}{Endpoints.CONCEPT_DETAIL.format(company_id=company_id, concept_id=concept_id)}"
-        ).mock(return_value=Response(200, json=character_concept_response_data))
+        ).mock(return_value=MockResponse(200, json=character_concept_response_data))
 
         # When: Requesting a concept
         result = vclient.character_blueprint(
@@ -1257,7 +1267,9 @@ class TestCharacterBlueprintServiceConcepts:
         concept_id = "nonexistent"
         route = respx.get(
             f"{base_url}{Endpoints.CONCEPT_DETAIL.format(company_id=company_id, concept_id=concept_id)}"
-        ).mock(return_value=Response(404, json={"detail": "Concept not found", "status_code": 404}))
+        ).mock(
+            return_value=MockResponse(404, json={"detail": "Concept not found", "status_code": 404})
+        )
 
         # When/Then: Requesting raises NotFoundError
         with pytest.raises(NotFoundError):
@@ -1281,7 +1293,7 @@ class TestCharacterBlueprintServiceVampireClans:
         route = respx.get(
             f"{base_url}{Endpoints.VAMPIRE_CLANS.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0"},
-        ).mock(return_value=Response(200, json=paginated_vampire_clan_response))
+        ).mock(return_value=MockResponse(200, json=paginated_vampire_clan_response))
 
         # When: Requesting a page of vampire clans
         result = vclient.character_blueprint(
@@ -1306,7 +1318,7 @@ class TestCharacterBlueprintServiceVampireClans:
         route = respx.get(
             f"{base_url}{Endpoints.VAMPIRE_CLANS.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0", "game_version": "V5"},
-        ).mock(return_value=Response(200, json=paginated_vampire_clan_response))
+        ).mock(return_value=MockResponse(200, json=paginated_vampire_clan_response))
 
         # When: Requesting with game_version filter
         result = vclient.character_blueprint(
@@ -1331,7 +1343,7 @@ class TestCharacterBlueprintServiceVampireClans:
 
         route = respx.get(
             f"{base_url}{Endpoints.VAMPIRE_CLANS.format(company_id=company_id)}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Requesting all vampire clans
         result = vclient.character_blueprint(
@@ -1361,7 +1373,7 @@ class TestCharacterBlueprintServiceVampireClans:
         route = respx.get(
             f"{base_url}{Endpoints.VAMPIRE_CLANS.format(company_id=company_id)}",
             params__contains={"game_version": "V5"},
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Requesting all vampire clans with game_version filter
         result = vclient.character_blueprint(
@@ -1387,7 +1399,7 @@ class TestCharacterBlueprintServiceVampireClans:
 
         route = respx.get(
             f"{base_url}{Endpoints.VAMPIRE_CLANS.format(company_id=company_id)}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Iterating through all vampire clans
         clans = list(
@@ -1418,7 +1430,7 @@ class TestCharacterBlueprintServiceVampireClans:
         route = respx.get(
             f"{base_url}{Endpoints.VAMPIRE_CLANS.format(company_id=company_id)}",
             params__contains={"game_version": "V5"},
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Iterating with game_version filter
         clans = list(
@@ -1440,7 +1452,7 @@ class TestCharacterBlueprintServiceVampireClans:
         vampire_clan_id = "clan123"
         route = respx.get(
             f"{base_url}{Endpoints.VAMPIRE_CLAN_DETAIL.format(company_id=company_id, vampire_clan_id=vampire_clan_id)}"
-        ).mock(return_value=Response(200, json=vampire_clan_response_data))
+        ).mock(return_value=MockResponse(200, json=vampire_clan_response_data))
 
         # When: Requesting a vampire clan
         result = vclient.character_blueprint(
@@ -1463,7 +1475,7 @@ class TestCharacterBlueprintServiceVampireClans:
         route = respx.get(
             f"{base_url}{Endpoints.VAMPIRE_CLAN_DETAIL.format(company_id=company_id, vampire_clan_id=vampire_clan_id)}"
         ).mock(
-            return_value=Response(
+            return_value=MockResponse(
                 404, json={"detail": "Vampire clan not found", "status_code": 404}
             )
         )
@@ -1490,7 +1502,7 @@ class TestCharacterBlueprintServiceWerewolfAuspices:
         route = respx.get(
             f"{base_url}{Endpoints.WEREWOLF_AUSPICES.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0"},
-        ).mock(return_value=Response(200, json=paginated_werewolf_auspice_response))
+        ).mock(return_value=MockResponse(200, json=paginated_werewolf_auspice_response))
 
         # When: Requesting a page of werewolf auspices
         result = vclient.character_blueprint(
@@ -1514,7 +1526,7 @@ class TestCharacterBlueprintServiceWerewolfAuspices:
         route = respx.get(
             f"{base_url}{Endpoints.WEREWOLF_AUSPICES.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0", "game_version": "V5"},
-        ).mock(return_value=Response(200, json=paginated_werewolf_auspice_response))
+        ).mock(return_value=MockResponse(200, json=paginated_werewolf_auspice_response))
 
         # When: Requesting with game_version filter
         result = vclient.character_blueprint(
@@ -1541,7 +1553,7 @@ class TestCharacterBlueprintServiceWerewolfAuspices:
 
         route = respx.get(
             f"{base_url}{Endpoints.WEREWOLF_AUSPICES.format(company_id=company_id)}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Requesting all werewolf auspices
         result = vclient.character_blueprint(
@@ -1568,7 +1580,7 @@ class TestCharacterBlueprintServiceWerewolfAuspices:
 
         route = respx.get(
             f"{base_url}{Endpoints.WEREWOLF_AUSPICES.format(company_id=company_id)}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Iterating through all werewolf auspices
         auspices = list(
@@ -1599,7 +1611,7 @@ class TestCharacterBlueprintServiceWerewolfAuspices:
         route = respx.get(
             f"{base_url}{Endpoints.WEREWOLF_AUSPICES.format(company_id=company_id)}",
             params__contains={"game_version": "V5"},
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Requesting all werewolf auspices with game_version filter
         result = vclient.character_blueprint(
@@ -1628,7 +1640,7 @@ class TestCharacterBlueprintServiceWerewolfAuspices:
         route = respx.get(
             f"{base_url}{Endpoints.WEREWOLF_AUSPICES.format(company_id=company_id)}",
             params__contains={"game_version": "V5"},
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Iterating with game_version filter
         auspices = list(
@@ -1650,7 +1662,7 @@ class TestCharacterBlueprintServiceWerewolfAuspices:
         werewolf_auspice_id = "auspice123"
         route = respx.get(
             f"{base_url}{Endpoints.WEREWOLF_AUSPICE_DETAIL.format(company_id=company_id, werewolf_auspice_id=werewolf_auspice_id)}"
-        ).mock(return_value=Response(200, json=werewolf_auspice_response_data))
+        ).mock(return_value=MockResponse(200, json=werewolf_auspice_response_data))
 
         # When: Requesting a werewolf auspice
         result = vclient.character_blueprint(
@@ -1670,7 +1682,7 @@ class TestCharacterBlueprintServiceWerewolfAuspices:
         route = respx.get(
             f"{base_url}{Endpoints.WEREWOLF_AUSPICE_DETAIL.format(company_id=company_id, werewolf_auspice_id=werewolf_auspice_id)}"
         ).mock(
-            return_value=Response(
+            return_value=MockResponse(
                 404, json={"detail": "Werewolf auspice not found", "status_code": 404}
             )
         )
@@ -1697,7 +1709,7 @@ class TestCharacterBlueprintServiceWerewolfTribes:
         route = respx.get(
             f"{base_url}{Endpoints.WEREWOLF_TRIBES.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0"},
-        ).mock(return_value=Response(200, json=paginated_werewolf_tribe_response))
+        ).mock(return_value=MockResponse(200, json=paginated_werewolf_tribe_response))
 
         # When: Requesting a page of werewolf tribes
         result = vclient.character_blueprint(
@@ -1720,7 +1732,7 @@ class TestCharacterBlueprintServiceWerewolfTribes:
         route = respx.get(
             f"{base_url}{Endpoints.WEREWOLF_TRIBES.format(company_id=company_id)}",
             params={"limit": "10", "offset": "0", "game_version": "V5"},
-        ).mock(return_value=Response(200, json=paginated_werewolf_tribe_response))
+        ).mock(return_value=MockResponse(200, json=paginated_werewolf_tribe_response))
 
         # When: Requesting with game_version filter
         result = vclient.character_blueprint(
@@ -1747,7 +1759,7 @@ class TestCharacterBlueprintServiceWerewolfTribes:
 
         route = respx.get(
             f"{base_url}{Endpoints.WEREWOLF_TRIBES.format(company_id=company_id)}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Requesting all werewolf tribes
         result = vclient.character_blueprint(
@@ -1777,7 +1789,7 @@ class TestCharacterBlueprintServiceWerewolfTribes:
         route = respx.get(
             f"{base_url}{Endpoints.WEREWOLF_TRIBES.format(company_id=company_id)}",
             params__contains={"game_version": "V5"},
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Requesting all werewolf tribes with game_version filter
         result = vclient.character_blueprint(
@@ -1805,7 +1817,7 @@ class TestCharacterBlueprintServiceWerewolfTribes:
 
         route = respx.get(
             f"{base_url}{Endpoints.WEREWOLF_TRIBES.format(company_id=company_id)}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Iterating through all werewolf tribes
         tribes = list(
@@ -1836,7 +1848,7 @@ class TestCharacterBlueprintServiceWerewolfTribes:
         route = respx.get(
             f"{base_url}{Endpoints.WEREWOLF_TRIBES.format(company_id=company_id)}",
             params__contains={"game_version": "V5"},
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Iterating with game_version filter
         tribes = list(
@@ -1858,7 +1870,7 @@ class TestCharacterBlueprintServiceWerewolfTribes:
         werewolf_tribe_id = "tribe123"
         route = respx.get(
             f"{base_url}{Endpoints.WEREWOLF_TRIBE_DETAIL.format(company_id=company_id, werewolf_tribe_id=werewolf_tribe_id)}"
-        ).mock(return_value=Response(200, json=werewolf_tribe_response_data))
+        ).mock(return_value=MockResponse(200, json=werewolf_tribe_response_data))
 
         # When: Requesting a werewolf tribe
         result = vclient.character_blueprint(
@@ -1881,7 +1893,7 @@ class TestCharacterBlueprintServiceWerewolfTribes:
         route = respx.get(
             f"{base_url}{Endpoints.WEREWOLF_TRIBE_DETAIL.format(company_id=company_id, werewolf_tribe_id=werewolf_tribe_id)}"
         ).mock(
-            return_value=Response(
+            return_value=MockResponse(
                 404, json={"detail": "Werewolf tribe not found", "status_code": 404}
             )
         )

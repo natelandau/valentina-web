@@ -2,7 +2,7 @@
 
 import pytest
 import respx
-from httpx import Response
+from respx import MockResponse
 
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.models import Character, ChargenSessionResponse
@@ -32,7 +32,7 @@ class TestCharacterAutogenService:
         # Given: A mocked endpoint returning ChargenSessionResponse
         route = respx.post(
             f"{base_url}{Endpoints.CHARGEN_START.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(200, json=character_autogen_response_data))
+        ).mock(return_value=MockResponse(200, json=character_autogen_response_data))
 
         # When: Starting a chargen session
         result = vclient.character_autogen(
@@ -56,7 +56,7 @@ class TestCharacterAutogenServiceFinalizeChargenSession:
         # Given: A mocked endpoint returning Character
         route = respx.post(
             f"{base_url}{Endpoints.CHARGEN_FINALIZE.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(200, json=character_response_data))
+        ).mock(return_value=MockResponse(200, json=character_response_data))
 
         # When: Finalizing a chargen session
         result = vclient.character_autogen(
@@ -82,7 +82,7 @@ class TestCharacterAutogenerateCharacter:
         # Given: A mocked endpoint returning Character
         route = respx.post(
             f"{base_url}{Endpoints.AUTOGENERATE.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(200, json=character_response_data))
+        ).mock(return_value=MockResponse(200, json=character_response_data))
 
         # When: Generating a character
         result = vclient.character_autogen(
@@ -106,7 +106,7 @@ class TestCharacterAutogenServiceListSessions:
         route = respx.get(
             f"{base_url}{Endpoints.CHARGEN_SESSIONS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
         ).mock(
-            return_value=Response(
+            return_value=MockResponse(
                 200, json=[character_autogen_response_data, character_autogen_response_data]
             )
         )
@@ -127,7 +127,7 @@ class TestCharacterAutogenServiceListSessions:
         # Given: A mocked endpoint returning an empty JSON array
         route = respx.get(
             f"{base_url}{Endpoints.CHARGEN_SESSIONS.format(company_id='company123', user_id='user123', campaign_id='campaign123')}"
-        ).mock(return_value=Response(200, json=[]))
+        ).mock(return_value=MockResponse(200, json=[]))
 
         # When: Listing all chargen sessions
         result = vclient.character_autogen("on-behalf-of-user", company_id="company123").list_all()
@@ -146,7 +146,7 @@ class TestCharacterAutogenServiceGetSession:
         # Given: A mocked endpoint returning a single session
         route = respx.get(
             f"{base_url}{Endpoints.CHARGEN_SESSION.format(company_id='company123', user_id='user123', campaign_id='campaign123', session_id='session123')}"
-        ).mock(return_value=Response(200, json=character_autogen_response_data))
+        ).mock(return_value=MockResponse(200, json=character_autogen_response_data))
 
         # When: Getting a specific chargen session
         result = vclient.character_autogen("on-behalf-of-user", company_id="company123").get(

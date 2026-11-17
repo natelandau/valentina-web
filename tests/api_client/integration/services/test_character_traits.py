@@ -4,7 +4,7 @@ import json
 
 import pytest
 import respx
-from httpx import Response
+from respx import MockResponse
 
 from vweb.api_client.endpoints import Endpoints
 from vweb.api_client.exceptions import (
@@ -91,7 +91,7 @@ class TestCharacterTraitsServiceGetPage:
         # Given: A mocked character traits list endpoint
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=paginated_character_trait_response))
+        ).mock(return_value=MockResponse(200, json=paginated_character_trait_response))
 
         # When: Requesting a page of character traits
         result = vclient.character_traits(
@@ -116,7 +116,7 @@ class TestCharacterTraitsServiceGetPage:
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}",
             params={"limit": "20", "offset": "10"},
-        ).mock(return_value=Response(200, json=paginated_character_trait_response))
+        ).mock(return_value=MockResponse(200, json=paginated_character_trait_response))
 
         # When: Requesting with pagination
         result = vclient.character_traits(
@@ -136,7 +136,7 @@ class TestCharacterTraitsServiceGetPage:
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}",
             params={"limit": "10", "offset": "0", "category_id": "cat123"},
-        ).mock(return_value=Response(200, json=paginated_character_trait_response))
+        ).mock(return_value=MockResponse(200, json=paginated_character_trait_response))
 
         # When: Requesting with filter
         result = vclient.character_traits(
@@ -156,7 +156,7 @@ class TestCharacterTraitsServiceGetPage:
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}",
             params={"limit": "10", "offset": "0", "is_rollable": "true"},
-        ).mock(return_value=Response(200, json=paginated_character_trait_response))
+        ).mock(return_value=MockResponse(200, json=paginated_character_trait_response))
 
         # When: Requesting with is_rollable filter
         result = vclient.character_traits(
@@ -176,7 +176,7 @@ class TestCharacterTraitsServiceGetPage:
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}",
             params={"limit": "10", "offset": "0", "is_rollable": "false"},
-        ).mock(return_value=Response(200, json=paginated_character_trait_response))
+        ).mock(return_value=MockResponse(200, json=paginated_character_trait_response))
 
         # When: Requesting with is_rollable=False filter
         result = vclient.character_traits(
@@ -197,7 +197,7 @@ class TestCharacterTraitsServiceGet:
         # Given: A mocked character trait endpoint
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAIT.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123', character_trait_id='ct123')}"
-        ).mock(return_value=Response(200, json=character_trait_response_data))
+        ).mock(return_value=MockResponse(200, json=character_trait_response_data))
 
         # When: Requesting a character trait
         result = vclient.character_traits(
@@ -219,7 +219,7 @@ class TestCharacterTraitsServiceGet:
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAIT.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123', character_trait_id='nonexistent')}"
         ).mock(
-            return_value=Response(
+            return_value=MockResponse(
                 404, json={"detail": "Character trait not found", "status_code": 404}
             )
         )
@@ -250,7 +250,7 @@ class TestCharacterTraitsServiceListAll:
         }
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Requesting all character traits
         result = vclient.character_traits(
@@ -278,7 +278,7 @@ class TestCharacterTraitsServiceListAll:
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}",
             params={"limit": "100", "offset": "0", "category_id": "cat123"},
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Requesting with filter
         result = vclient.character_traits(
@@ -304,7 +304,7 @@ class TestCharacterTraitsServiceListAll:
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}",
             params={"limit": "100", "offset": "0", "is_rollable": "true"},
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Requesting with is_rollable filter
         result = vclient.character_traits(
@@ -333,7 +333,7 @@ class TestCharacterTraitsServiceIterAll:
         }
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Iterating through all character traits
         traits = list(
@@ -360,7 +360,7 @@ class TestCharacterTraitsServiceIterAll:
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}",
             params={"limit": "100", "offset": "0", "category_id": "cat456"},
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Iterating with filter
         traits = list(
@@ -388,7 +388,7 @@ class TestCharacterTraitsServiceIterAll:
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}",
             params={"limit": "100", "offset": "0", "is_rollable": "false"},
-        ).mock(return_value=Response(200, json=paginated_response))
+        ).mock(return_value=MockResponse(200, json=paginated_response))
 
         # When: Iterating with is_rollable filter
         traits = list(
@@ -411,7 +411,7 @@ class TestCharacterTraitsServiceAssign:
         # Given: A mocked create endpoint
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_ASSIGN.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(201, json=character_trait_response_data))
+        ).mock(return_value=MockResponse(201, json=character_trait_response_data))
 
         # When: Assigning a trait
         result = vclient.character_traits(
@@ -438,7 +438,7 @@ class TestCharacterTraitsServiceAssign:
         response_data = {**character_trait_response_data, "value": 0}
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_ASSIGN.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(201, json=response_data))
+        ).mock(return_value=MockResponse(201, json=response_data))
 
         # When: Assigning a trait with value 0
         result = vclient.character_traits(
@@ -456,7 +456,9 @@ class TestCharacterTraitsServiceAssign:
         # Given: A mocked 404 response
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_ASSIGN.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(404, json={"detail": "Trait not found", "status_code": 404}))
+        ).mock(
+            return_value=MockResponse(404, json={"detail": "Trait not found", "status_code": 404})
+        )
 
         # When/Then: Assigning raises NotFoundError
         with pytest.raises(NotFoundError):
@@ -484,7 +486,7 @@ class TestCharacterTraitsServiceCreate:
         }
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_CREATE.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(201, json=response_data))
+        ).mock(return_value=MockResponse(201, json=response_data))
 
         # When: Creating a custom trait with required fields only
         result = vclient.character_traits(
@@ -534,7 +536,7 @@ class TestCharacterTraitsServiceCreate:
         }
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_CREATE.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(201, json=response_data))
+        ).mock(return_value=MockResponse(201, json=response_data))
 
         # When: Creating a custom trait with all fields
         result = vclient.character_traits(
@@ -584,7 +586,7 @@ class TestCharacterTraitsServiceCreate:
         response_data = {**character_trait_response_data, "value": 1}
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_CREATE.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(201, json=response_data))
+        ).mock(return_value=MockResponse(201, json=response_data))
 
         # When: Creating a custom trait paid for with NO_COST
         result = vclient.character_traits(
@@ -612,7 +614,7 @@ class TestCharacterTraitsServiceCreate:
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_CREATE.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
         ).mock(
-            return_value=Response(
+            return_value=MockResponse(
                 404, json={"detail": "Parent category not found", "status_code": 404}
             )
         )
@@ -639,7 +641,7 @@ class TestCharacterTraitsServiceDelete:
         # Given: A mocked delete endpoint
         route = respx.delete(
             f"{base_url}{Endpoints.CHARACTER_TRAIT.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123', character_trait_id='ct123')}"
-        ).mock(return_value=Response(204))
+        ).mock(return_value=MockResponse(204))
 
         # When: Deleting the trait
         result = vclient.character_traits(
@@ -657,7 +659,7 @@ class TestCharacterTraitsServiceDelete:
         route = respx.delete(
             f"{base_url}{Endpoints.CHARACTER_TRAIT.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123', character_trait_id='ct123')}",
             params={"currency": "XP"},
-        ).mock(return_value=Response(204))
+        ).mock(return_value=MockResponse(204))
 
         # When: Deleting the trait with currency
         result = vclient.character_traits(
@@ -674,7 +676,9 @@ class TestCharacterTraitsServiceDelete:
         # Given: A mocked 404 response
         route = respx.delete(
             f"{base_url}{Endpoints.CHARACTER_TRAIT.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123', character_trait_id='nonexistent')}"
-        ).mock(return_value=Response(404, json={"detail": "Trait not found", "status_code": 404}))
+        ).mock(
+            return_value=MockResponse(404, json={"detail": "Trait not found", "status_code": 404})
+        )
 
         # When/Then: Deleting raises NotFoundError
         with pytest.raises(NotFoundError):
@@ -721,12 +725,12 @@ class TestCharacterTraitsServiceMultiplePages:
         route1 = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}",
             params={"limit": "1", "offset": "0"},
-        ).mock(return_value=Response(200, json=page1_response))
+        ).mock(return_value=MockResponse(200, json=page1_response))
 
         route2 = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAITS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}",
             params={"limit": "1", "offset": "1"},
-        ).mock(return_value=Response(200, json=page2_response))
+        ).mock(return_value=MockResponse(200, json=page2_response))
 
         # When: Iterating through all character traits with limit=1
         traits = list(
@@ -754,7 +758,7 @@ class TestCharacterTraitsServiceGetValueOptions:
         # Given: A mocked get value options endpoint
         route = respx.get(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_VALUE_OPTIONS.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123', character_trait_id='ct123')}",
-        ).mock(return_value=Response(200, json=character_trait_value_options_response_data))
+        ).mock(return_value=MockResponse(200, json=character_trait_value_options_response_data))
 
         # When: Getting the value options for a character trait
         result = vclient.character_traits(
@@ -777,7 +781,7 @@ class TestCharacterTraitsServiceChangeValue:
         # Given: A mocked change value endpoint
         route = respx.put(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_VALUE.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123', character_trait_id='ct123')}",
-        ).mock(return_value=Response(200, json=character_trait_response_data))
+        ).mock(return_value=MockResponse(200, json=character_trait_response_data))
 
         # When: Changing the value of a character trait
         result = vclient.character_traits(
@@ -797,7 +801,7 @@ class TestCharacterTraitsServiceChangeValue:
         respx.put(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_VALUE.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123', character_trait_id='ct123')}",
         ).mock(
-            return_value=Response(
+            return_value=MockResponse(
                 409, json={"status": 409, "title": "Conflict", "detail": "Trait value changed"}
             )
         )
@@ -818,7 +822,7 @@ class TestCharacterTraitsServiceSpecialties:
         # Given: A mocked add specialty endpoint
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_SPECIALTIES.format(company_id='company123', character_id='char123', character_trait_id='ct123')}",
-        ).mock(return_value=Response(201, json=character_trait_response_data))
+        ).mock(return_value=MockResponse(201, json=character_trait_response_data))
 
         # When: Adding a specialty paid with XP
         result = vclient.character_traits(
@@ -839,7 +843,7 @@ class TestCharacterTraitsServiceSpecialties:
         # Given: A mocked add specialty endpoint
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_SPECIALTIES.format(company_id='company123', character_id='char123', character_trait_id='ct123')}",
-        ).mock(return_value=Response(201, json=character_trait_response_data))
+        ).mock(return_value=MockResponse(201, json=character_trait_response_data))
 
         # When: Adding a specialty without a currency
         vclient.character_traits(
@@ -867,7 +871,7 @@ class TestCharacterTraitsServiceSpecialties:
         respx.post(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_SPECIALTIES.format(company_id='company123', character_id='char123', character_trait_id='ct123')}",
         ).mock(
-            return_value=Response(
+            return_value=MockResponse(
                 400, json={"status": 400, "title": "Bad Request", "detail": "Not an ability"}
             )
         )
@@ -884,7 +888,7 @@ class TestCharacterTraitsServiceSpecialties:
         # Given: A mocked update specialty endpoint
         route = respx.patch(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_SPECIALTY.format(company_id='company123', character_id='char123', character_trait_id='ct123', specialty_id='spec123')}",
-        ).mock(return_value=Response(200, json=character_trait_response_data))
+        ).mock(return_value=MockResponse(200, json=character_trait_response_data))
 
         # When: Renaming the specialty
         result = vclient.character_traits(
@@ -902,7 +906,7 @@ class TestCharacterTraitsServiceSpecialties:
         # Given: A mocked delete specialty endpoint
         route = respx.delete(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_SPECIALTY.format(company_id='company123', character_id='char123', character_trait_id='ct123', specialty_id='spec123')}",
-        ).mock(return_value=Response(204))
+        ).mock(return_value=MockResponse(204))
 
         # When: Deleting the specialty
         result = vclient.character_traits(
@@ -920,7 +924,7 @@ class TestCharacterTraitsServiceSpecialties:
         respx.delete(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_SPECIALTY.format(company_id='company123', character_id='char123', character_trait_id='ct123', specialty_id='missing')}",
         ).mock(
-            return_value=Response(
+            return_value=MockResponse(
                 404, json={"status": 404, "title": "Not Found", "detail": "Specialty not found"}
             )
         )
@@ -971,7 +975,7 @@ class TestCharacterTraitsServiceBulkAssign:
         # Given: A mocked bulk-assign endpoint
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_BULK_ASSIGN.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=bulk_assign_all_success_response_data))
+        ).mock(return_value=MockResponse(200, json=bulk_assign_all_success_response_data))
 
         # When: Bulk assigning traits
         items = [
@@ -1004,7 +1008,7 @@ class TestCharacterTraitsServiceBulkAssign:
         # Given: A mocked endpoint returning mixed results
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_BULK_ASSIGN.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json=bulk_assign_response_data))
+        ).mock(return_value=MockResponse(200, json=bulk_assign_response_data))
 
         # When: Bulk assigning traits
         items = [
@@ -1028,7 +1032,7 @@ class TestCharacterTraitsServiceBulkAssign:
         # Given: A mocked endpoint returning empty results
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_BULK_ASSIGN.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
-        ).mock(return_value=Response(200, json={"succeeded": [], "failed": []}))
+        ).mock(return_value=MockResponse(200, json={"succeeded": [], "failed": []}))
 
         # When: Bulk assigning an empty list
         result = vclient.character_traits(
@@ -1047,7 +1051,7 @@ class TestCharacterTraitsServiceBulkAssign:
         route = respx.post(
             f"{base_url}{Endpoints.CHARACTER_TRAIT_BULK_ASSIGN.format(company_id='company123', user_id='user123', campaign_id='campaign123', character_id='char123')}"
         ).mock(
-            return_value=Response(
+            return_value=MockResponse(
                 400,
                 json={"detail": "Batch size must not exceed 200 items", "status_code": 400},
             )
@@ -1085,7 +1089,7 @@ class TestCharacterTraitsServiceTracker:
         """Verify get_tracker returns the typed tracker variant."""
         # Given: A mocked tracker endpoint returning a counter
         respx.get(_tracker_url(base_url, Endpoints.CHARACTER_TRAIT_TRACKER)).mock(
-            return_value=Response(200, json=COUNTER_TRACKER)
+            return_value=MockResponse(200, json=COUNTER_TRACKER)
         )
 
         # When: Getting the tracker
@@ -1100,7 +1104,7 @@ class TestCharacterTraitsServiceTracker:
         """Verify a trait without a tracker raises NotFoundError."""
         # Given: The endpoint returns 404
         respx.get(_tracker_url(base_url, Endpoints.CHARACTER_TRAIT_TRACKER)).mock(
-            return_value=Response(
+            return_value=MockResponse(
                 404, json={"status": 404, "title": "Not Found", "detail": "Trait has no tracker"}
             )
         )
@@ -1114,7 +1118,7 @@ class TestCharacterTraitsServiceTracker:
         """Verify set_tracker sends a zero value and nothing else."""
         # Given: A mocked set tracker endpoint
         route = respx.put(_tracker_url(base_url, Endpoints.CHARACTER_TRAIT_TRACKER)).mock(
-            return_value=Response(200, json=COUNTER_TRACKER)
+            return_value=MockResponse(200, json=COUNTER_TRACKER)
         )
 
         # When: Setting current to zero
@@ -1129,7 +1133,7 @@ class TestCharacterTraitsServiceTracker:
         """Verify set_tracker accepts a TrackerStateSet."""
         # Given: A mocked set tracker endpoint
         route = respx.put(_tracker_url(base_url, Endpoints.CHARACTER_TRAIT_TRACKER)).mock(
-            return_value=Response(200, json=STAINS_TRACKER)
+            return_value=MockResponse(200, json=STAINS_TRACKER)
         )
 
         # When: Setting stains with a request model
@@ -1156,7 +1160,7 @@ class TestCharacterTraitsServiceTracker:
         """Verify an action sends only action and amount."""
         # Given: A mocked action endpoint
         route = respx.post(_tracker_url(base_url, Endpoints.CHARACTER_TRAIT_TRACKER_ACTIONS)).mock(
-            return_value=Response(200, json=COUNTER_TRACKER)
+            return_value=MockResponse(200, json=COUNTER_TRACKER)
         )
 
         # When: Spending two points
@@ -1171,7 +1175,7 @@ class TestCharacterTraitsServiceTracker:
         """Verify a stain action returns a StainsTracker."""
         # Given: An action endpoint returning a stains tracker
         respx.post(_tracker_url(base_url, Endpoints.CHARACTER_TRAIT_TRACKER_ACTIONS)).mock(
-            return_value=Response(200, json=STAINS_TRACKER)
+            return_value=MockResponse(200, json=STAINS_TRACKER)
         )
 
         # When: Adding a stain
@@ -1192,7 +1196,7 @@ class TestCharacterTraitsServiceTracker:
         """Verify a 400 from the server raises ValidationError."""
         # Given: The endpoint rejects the action
         respx.post(_tracker_url(base_url, Endpoints.CHARACTER_TRAIT_TRACKER_ACTIONS)).mock(
-            return_value=Response(
+            return_value=MockResponse(
                 400, json={"status": 400, "title": "Bad Request", "detail": "Invalid action"}
             )
         )

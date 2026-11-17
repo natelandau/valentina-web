@@ -12,6 +12,8 @@ from loguru import logger
 # path, so its default mocker only intercepts upstream httpx. Point the default mocker
 # at pytest-httpx2's "httpcore2" targets so every respx fixture and decorator in the
 # suite intercepts httpx2 without per-callsite `using=` changes.
+# respx still checks mocked responses against upstream httpx.Response, so tests build
+# them with respx.MockResponse rather than httpx2.Response.
 _HTTPX2_MOCKER = "httpcore2"
 # Fail loudly at collection if the mocker is missing (e.g. a respx/pytest-httpx2 change):
 # a silent fallback to the default "httpcore" mocker would let httpx2 requests escape the

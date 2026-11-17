@@ -3,7 +3,6 @@
 import logging
 from typing import Any
 
-import httpx
 import httpx2
 import pytest
 import respx
@@ -215,12 +214,12 @@ class TestRequestLogging:
         # Given: An endpoint that returns 429 then succeeds
         respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(
+                respx.MockResponse(
                     429,
                     json={"detail": "Rate limited"},
                     headers={"RateLimit": '"default";r=0;t=1'},
                 ),
-                httpx.Response(200, json={"ok": True}),
+                respx.MockResponse(200, json={"ok": True}),
             ]
         )
 
@@ -254,8 +253,8 @@ class TestRequestLogging:
         # Given: An endpoint that returns 500 then succeeds
         respx.get(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(500, json={"detail": "Server error"}),
-                httpx.Response(200, json={"ok": True}),
+                respx.MockResponse(500, json={"detail": "Server error"}),
+                respx.MockResponse(200, json={"ok": True}),
             ]
         )
 
@@ -287,7 +286,7 @@ class TestRequestLogging:
         respx.get(f"{base_url}/test").mock(
             side_effect=[
                 httpx2.ConnectError("Connection refused"),
-                httpx.Response(200, json={"ok": True}),
+                respx.MockResponse(200, json={"ok": True}),
             ]
         )
 
@@ -318,12 +317,12 @@ class TestRequestLogging:
         # Given: An endpoint that reports the idempotent request in progress, then succeeds
         respx.post(f"{base_url}/test").mock(
             side_effect=[
-                httpx.Response(
+                respx.MockResponse(
                     409,
                     json={"detail": "In progress", "code": "IDEMPOTENCY_IN_PROGRESS"},
                     headers={"Retry-After": "1"},
                 ),
-                httpx.Response(201, json={"ok": True}),
+                respx.MockResponse(201, json={"ok": True}),
             ]
         )
 
