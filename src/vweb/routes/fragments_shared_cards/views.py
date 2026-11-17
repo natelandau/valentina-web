@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 from flask import Blueprint, abort, g, request, session, url_for
 from flask.views import MethodView
 
+from vweb.api_client.constants import MAX_PAGINATION_OFFSET
 from vweb.lib import cache
 from vweb.lib.api import (
     fetch_campaign_or_404,
@@ -138,7 +139,8 @@ class AuditLogCardView(MethodView):
                 abort(403)
             fetch_campaign_or_404(filters["campaign_id"])
         page_size = request.args.get("page_size", 10, type=int)
-        offset = request.args.get("offset", 0, type=int)
+        # The API rejects offsets past its cap, and no real page lies beyond it.
+        offset = min(max(request.args.get("offset", 0, type=int), 0), MAX_PAGINATION_OFFSET)
         # card_id is interpolated into JS getElementById calls and DOM id attributes in the
         # template, so restrict it to a DOM-id-safe charset to prevent injection.
         raw_card_id = request.args.get("card_id", "auditlog")
