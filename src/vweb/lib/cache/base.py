@@ -185,13 +185,13 @@ def cached_fetch[T](key: str, fetch: Callable[[], T], strategy: Strategy) -> T:
     # Callers must not cache a None value: cache.get returns None for both a miss and a stored None, so a cached None is re-fetched every call.
     cached = cache.get(key)
     if cached is not None and strategy.is_fresh(cached):
-        return strategy.unwrap(cached)  # ty:ignore[invalid-return-type]
+        return strategy.unwrap(cached)  # ty:ignore[invalid-explicit-return]
 
     def rebuild() -> T:
         # Double-check inside the lock: another caller may have just built it.
         again = cache.get(key)
         if again is not None and strategy.is_fresh(again):
-            return strategy.unwrap(again)  # ty:ignore[invalid-return-type]
+            return strategy.unwrap(again)  # ty:ignore[invalid-explicit-return]
         value = fetch()
         cache.set(key, strategy.wrap(value), timeout=strategy.ttl)
         return value

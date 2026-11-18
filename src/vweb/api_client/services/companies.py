@@ -23,7 +23,7 @@ from vweb.api_client.models import (
     RollStatistics,
     _GrantAccess,
 )
-from vweb.api_client.routes import Routes, RouteSpec
+from vweb.api_client.routes import Routes
 from vweb.api_client.services.base import BaseService
 
 
@@ -300,9 +300,17 @@ class CompaniesService(BaseService):
             NotFoundError: If the company does not exist.
             AuthorizationError: If you don't have access to the company.
         """
-        route, params = self._audit_log_query(filters)
+        detail, params = self._audit_log_query(filters)
+        if detail:
+            return self._page(
+                Routes.COMPANIES_AUDIT_LOGS_LIST_DETAIL,
+                limit=limit,
+                offset=offset,
+                params=params,
+                company_id=company_id,
+            )
         return self._page(
-            route,
+            Routes.COMPANIES_AUDIT_LOGS_LIST,
             limit=limit,
             offset=offset,
             params=params,
@@ -327,8 +335,14 @@ class CompaniesService(BaseService):
             NotFoundError: If the company does not exist.
             AuthorizationError: If you don't have access to the company.
         """
-        route, params = self._audit_log_query(filters)
-        return self._list_all(route, params=params, company_id=company_id)
+        detail, params = self._audit_log_query(filters)
+        if detail:
+            return self._list_all(
+                Routes.COMPANIES_AUDIT_LOGS_LIST_DETAIL, params=params, company_id=company_id
+            )
+        return self._list_all(
+            Routes.COMPANIES_AUDIT_LOGS_LIST, params=params, company_id=company_id
+        )
 
     def iter_all_audit_logs(
         self,
@@ -351,13 +365,20 @@ class CompaniesService(BaseService):
             NotFoundError: If the company does not exist.
             AuthorizationError: If you don't have access to the company.
         """
-        route, params = self._audit_log_query(filters)
-        return self._iter(route, limit=limit, params=params, company_id=company_id)
+        detail, params = self._audit_log_query(filters)
+        if detail:
+            return self._iter(
+                Routes.COMPANIES_AUDIT_LOGS_LIST_DETAIL,
+                limit=limit,
+                params=params,
+                company_id=company_id,
+            )
+        return self._iter(
+            Routes.COMPANIES_AUDIT_LOGS_LIST, limit=limit, params=params, company_id=company_id
+        )
 
-    def _audit_log_query(
-        self, filters: AuditLogFilters
-    ) -> tuple[RouteSpec[AuditLog] | RouteSpec[AuditLogDetail], dict[str, Any] | None]:
-        """Pick the route variant and build query params for an audit log request.
+    def _audit_log_query(self, filters: AuditLogFilters) -> tuple[bool, dict[str, Any] | None]:
+        """Decide whether entries carry request details and build the audit log query params.
 
         The API takes ``include`` as one comma-joined value and datetimes as ISO 8601.
 
@@ -365,7 +386,8 @@ class CompaniesService(BaseService):
             filters: The caller's audit log filters.
 
         Returns:
-            The route to call, which sets the model entries parse into, and the query params.
+            Whether to call the detail route (entries parse as AuditLogDetail), and the
+            query params.
 
         Raises:
             TypeError: If ``filters`` holds a key that is not an audit log filter.
@@ -377,11 +399,7 @@ class CompaniesService(BaseService):
         include = filters.get("include")
         date_from = filters.get("date_from")
         date_to = filters.get("date_to")
-        route = (
-            Routes.COMPANIES_AUDIT_LOGS_LIST_DETAIL
-            if include and "request_details" in include
-            else Routes.COMPANIES_AUDIT_LOGS_LIST
-        )
+        detail = bool(include and "request_details" in include)
         params = self._build_params(
             acting_user_id=filters.get("acting_user_id"),
             user_id=filters.get("user_id"),
@@ -395,4 +413,4 @@ class CompaniesService(BaseService):
             date_to=date_to.isoformat() if date_to is not None else None,
             include=",".join(include) if include is not None else None,
         )
-        return route, params
+        return detail, params

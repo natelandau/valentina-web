@@ -320,7 +320,7 @@ def get_audit_log_page(  # noqa: PLR0913
     cache_key = f"auditlog:{company_id}:{filters_digest}"
 
     def fetch() -> PaginatedResponse[AuditLog]:
-        return companies_service().get_audit_log_page(  # ty:ignore[invalid-return-type]
+        return companies_service().get_audit_log_page(  # ty:ignore[invalid-explicit-return]
             company_id,
             limit=limit,
             offset=offset,

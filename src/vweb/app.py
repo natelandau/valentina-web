@@ -141,9 +141,7 @@ def create_app(settings_override: Settings | None = None) -> Flask:
 
     # Resolve the real client IP from reverse-proxy headers so that
     # request.remote_addr and gunicorn's %(h)s access log show the true address.
-    app.wsgi_app = _RealIPMiddleware(  # ty:ignore[invalid-assignment]
-        app.wsgi_app, trusted_proxy_depth=settings.trusted_proxy_depth
-    )
+    app.wsgi_app = _RealIPMiddleware(app.wsgi_app, trusted_proxy_depth=settings.trusted_proxy_depth)
 
     app.secret_key = settings.secret_key
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)

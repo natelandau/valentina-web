@@ -59,7 +59,7 @@ repos:
         entry: yamllint --strict --config-file .yamllint.yml
 
   - repo: "https://github.com/adhtruong/mirrors-typos"
-    rev: v1.51.1
+    rev: v1.52.2
     hooks:
       # Commit messages only; the local `duty typos` hook checks the files
       - id: typos
@@ -67,7 +67,7 @@ repos:
         stages: [commit-msg]
 
   - repo: "https://github.com/djlint/djLint"
-    rev: v1.47.1
+    rev: v1.54.0
     hooks:
       - id: djlint
         args: ["--configuration", "pyproject.toml"]
@@ -85,7 +85,7 @@ repos:
         args: ["--config", "gitleaks.toml"]
 
   - repo: "https://github.com/crate-ci/committed"
-    rev: v1.1.11
+    rev: v1.1.12
     hooks:
       - id: committed
         stages: [commit-msg]
