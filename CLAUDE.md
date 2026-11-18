@@ -58,7 +58,7 @@ Character routes split into `character_view`, `character_trait_edit` (spend type
 
 ### Caching
 
-`RedisCache` in prod, `SimpleCache` in dev — all cached values must be picklable. All API-response caches live in the `lib/cache/` package. Import the package and call `cache.<domain>.<verb>()`:
+`TolerantRedisCache` (`lib/cache/backend.py`) in prod, `SimpleCache` in dev — all cached values must be picklable. Prod keys carry the app version (`vweb:<version>:`), and an entry that fails to unpickle reads as a miss. All API-response caches live in the `lib/cache/` package. Import the package and call `cache.<domain>.<verb>()`:
 
 - `cache.options.get()` — API enumerations (1-hour TTL); returns `ApiOptions` with fields like `.characters.character_class`
 - `cache.blueprint.traits()` / `cache.blueprint.trait(trait_id)` — blueprint traits (1-hour TTL)
