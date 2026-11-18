@@ -1,3 +1,30 @@
+## v0.16.0 (2026-11-18)
+
+### Feat
+
+- **characters**: measure age on the campaign's in-game date
+- **traits**: add a company setting for specialty rules
+- **settings**: add a custom flaw XP cost setting
+
+### Fix
+
+- **api-client**: align models and updates with the API
+- **characters**: keep class changes and require an auspice on create
+- **audit_log**: keep the page offset within the API's range
+- **character_create**: explain an archived character on finalize
+- **dictionary**: clear blanked fields and require a definition or link
+- **forms**: cap form fields at the API's limits
+- **api_client**: match request and response models to the API
+- **forms**: show form errors when book or campaign saves fail (#79)
+- **character_create**: explain that a roll keeps one character (#73)
+- **characters**: add known traits by name and finish NPC drafts (#72)
+
+### Refactor
+
+- **images**: list assets after an upload instead of before (#81)
+- **api_client**: deduplicate the client and bound its retries (#77)
+- **web**: bring the API client into the app (#76)
+
 ## v0.15.0 (2026-11-08)
 
 ### Feat
