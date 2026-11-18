@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from flask import Flask
 
+import vweb
 from vweb.api_client import VClient
 
 if TYPE_CHECKING:
@@ -91,10 +92,12 @@ def _configure_cache_and_session(app: Flask, settings: Settings) -> None:
         settings: The application settings.
     """
     if settings.redis.url:
-        app.config["CACHE_TYPE"] = "RedisCache"
+        app.config["CACHE_TYPE"] = "vweb.lib.cache.backend.TolerantRedisCache"
         app.config["CACHE_REDIS_URL"] = settings.redis.url
         app.config["CACHE_DEFAULT_TIMEOUT"] = settings.redis.default_timeout
-        app.config["CACHE_KEY_PREFIX"] = settings.redis.key_prefix
+        # Pickled models may change shape between releases, and replicas of two releases
+        # share Redis during a deploy, so each release reads only the entries it wrote.
+        app.config["CACHE_KEY_PREFIX"] = f"{settings.redis.key_prefix}{vweb.__version__}:"
 
     else:
         app.config["CACHE_TYPE"] = "SimpleCache"
