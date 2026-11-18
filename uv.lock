@@ -1371,7 +1371,7 @@ wheels = [
 
 [[package]]
 name = "vweb"
-version = "0.16.0"
+version = "0.16.1"
 source = { editable = "." }
 dependencies = [
     { name = "authlib" },

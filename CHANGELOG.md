@@ -1,3 +1,9 @@
+## v0.16.1 (2026-11-18)
+
+### Fix
+
+- **cache**: drop cache entries written by an earlier release
+
 ## v0.16.0 (2026-11-18)
 
 ### Feat
