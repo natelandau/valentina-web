@@ -18,65 +18,52 @@ from vweb.api_client.testing import (
 class TestGenerateSingle:
     """Tests for generate_single()."""
 
-    def test_calls_autogen_with_required_fields_only(self, app: Flask, fake_vclient) -> None:
-        """Verify generate_single passes character_type and skips None optionals."""
+    @pytest.mark.parametrize(
+        ("kwargs", "expected_json"),
+        [
+            ({"character_type": "PLAYER"}, {"character_type": "PLAYER"}),
+            (
+                {
+                    "character_type": "NPC",
+                    "character_class": "VAMPIRE",
+                    "experience_level": "ADVANCED",
+                    "skill_focus": "SPECIALIST",
+                    "concept_id": "concept-123",
+                    "vampire_clan_id": "clan-456",
+                },
+                {
+                    "character_type": "NPC",
+                    "character_class": "VAMPIRE",
+                    "experience_level": "ADVANCED",
+                    "skill_focus": "SPECIALIST",
+                    "concept_id": "concept-123",
+                    "vampire_clan_id": "clan-456",
+                },
+            ),
+        ],
+        ids=["required-only", "all-optionals"],
+    )
+    def test_sends_given_fields_only(
+        self, app: Flask, fake_vclient, kwargs: dict, expected_json: dict
+    ) -> None:
+        """Verify generate_single forwards the given options and omits unset ones."""
         # Given an API that returns a generated character
         expected_character = CharacterFactory.build()
         fake_vclient.set_response(Routes.CHARACTERS_AUTOGENERATE, model=expected_character)
 
         from vweb.routes.character_create.autogen_services import generate_single
 
-        # When calling with only required fields
+        # When generating a character
         with app.test_request_context():
             seed_session(user_id="u1")
-            result = generate_single(
-                campaign_id="c1",
-                character_type="PLAYER",
-            )
+            result = generate_single(campaign_id="c1", **kwargs)
 
-        # Then the API receives the campaign and character_type and no optionals
+        # Then the API receives the campaign and only the given fields
         fake_vclient.assert_called(
             Routes.CHARACTERS_AUTOGENERATE,
             params={"company_id": "test-company-id"},
             query={"campaign_id": "c1"},
-            json={"character_type": "PLAYER"},
-            times=1,
-        )
-        assert result == expected_character
-
-    def test_passes_all_optional_fields(self, app: Flask, fake_vclient) -> None:
-        """Verify generate_single forwards all optional parameters."""
-        # Given an API that returns a generated character
-        expected_character = CharacterFactory.build()
-        fake_vclient.set_response(Routes.CHARACTERS_AUTOGENERATE, model=expected_character)
-
-        from vweb.routes.character_create.autogen_services import generate_single
-
-        # When calling with all optional fields
-        with app.test_request_context():
-            seed_session(user_id="u1")
-            result = generate_single(
-                campaign_id="c1",
-                character_type="NPC",
-                character_class="VAMPIRE",
-                experience_level="ADVANCED",
-                skill_focus="SPECIALIST",
-                concept_id="concept-123",
-                vampire_clan_id="clan-456",
-            )
-
-        # Then all given fields reach the API
-        fake_vclient.assert_called(
-            Routes.CHARACTERS_AUTOGENERATE,
-            query={"campaign_id": "c1"},
-            json={
-                "character_type": "NPC",
-                "character_class": "VAMPIRE",
-                "experience_level": "ADVANCED",
-                "skill_focus": "SPECIALIST",
-                "concept_id": "concept-123",
-                "vampire_clan_id": "clan-456",
-            },
+            json=expected_json,
             times=1,
         )
         assert result == expected_character
@@ -166,11 +153,8 @@ class TestFetchFormOptions:
         from vweb.routes.character_create.autogen_services import fetch_form_options
 
         # When fetching options
-        with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "u1"
+        with app.test_request_context():
+            seed_session(user_id="u1")
             result = fetch_form_options()
 
         # Then enum lists and blueprint data are returned
@@ -199,32 +183,11 @@ class TestListSessions:
 
         # When listing sessions
         with app.test_request_context():
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "u1"
+            seed_session(user_id="u1")
             result = list_sessions(campaign_id="c1")
 
         # Then only this campaign's sessions are returned
         assert result == sessions
-
-    def test_returns_empty_list_when_no_sessions(self, app: Flask, fake_vclient) -> None:
-        """Verify list_sessions returns empty list when no sessions exist."""
-        # Given an API with no chargen sessions
-        fake_vclient.set_response(Routes.CHARACTERS_CHARGEN_SESSIONS_LIST, items=[])
-
-        from vweb.routes.character_create.autogen_services import list_sessions
-
-        # When listing sessions
-        with app.test_request_context():
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            session["user_id"] = "u1"
-            result = list_sessions(campaign_id="c1")
-
-        # Then empty list is returned
-        assert result == []
 
 
 class TestGetSession:

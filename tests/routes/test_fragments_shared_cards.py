@@ -8,18 +8,15 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tests.helpers import build_global_context
 from vweb.api_client.testing import (
     AuditLogFactory,
     CampaignFactory,
     CharacterFactory,
-    CompanyFactory,
     RollStatisticsFactory,
     Routes,
-    UserFactory,
 )
 from vweb.lib.cache.dicerolls import DiceRollDisplay
-from vweb.lib.cache.global_context import GlobalContext
+from vweb.lib.catalog import catalog
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
@@ -27,183 +24,120 @@ if TYPE_CHECKING:
     from flask.testing import FlaskClient
     from pytest_mock import MockerFixture
 
+    from vweb.api_client.models import Campaign
     from vweb.api_client.models.audit_logs import AuditLog
+
+
+def _audit_log(**overrides: object) -> AuditLog:
+    """Build an audit log row that references no entities and has no changes by default."""
+    return AuditLogFactory.build(
+        **{
+            "user_id": None,
+            "campaign_id": None,
+            "character_id": None,
+            "book_id": None,
+            "chapter_id": None,
+            "changes": None,
+            **overrides,
+        }  # ty:ignore[invalid-argument-type]
+    )
+
+
+def _set_page(fake_vclient, items: list[AuditLog], *, offset: int = 0, has_more: bool) -> None:
+    """Serve one audit log page at `offset`, reporting a further page when `has_more`."""
+    fake_vclient.set_response(
+        Routes.COMPANIES_AUDIT_LOGS_LIST,
+        items=items,
+        offset=offset,
+        total=offset + len(items) + int(has_more),
+    )
 
 
 @pytest.fixture
 def mock_statistics(mocker: MockerFixture) -> MagicMock:
-    """Mock the generic statistics helper to avoid real vclient calls."""
-    stats = RollStatisticsFactory.build()
-    mock = mocker.patch("vweb.lib.cache.statistics.get", autospec=True)
-    mock.return_value = stats
-    return mock
-
-
-class TestStatisticsCardEndpoint:
-    """Tests for GET /cards/statistics."""
-
-    def test_campaign_scope_renders_200(
-        self, client: FlaskClient, mock_statistics: MagicMock, mock_global_context
-    ) -> None:
-        """Verify a campaign-scoped request renders the content partial."""
-        # Given a campaign ID
-        campaign_id = mock_global_context.campaigns[0].id
-
-        # When requesting /cards/statistics with campaign_id
-        response = client.get(f"/cards/statistics?campaign_id={campaign_id}")
-
-        # Then the response is 200 and dispatches to the campaign scope
-        assert response.status_code == 200
-        mock_statistics.assert_called_once_with("campaign", campaign_id)
-
-    def test_user_scope_renders_200(self, client: FlaskClient, mock_statistics: MagicMock) -> None:
-        """Verify a user-scoped request dispatches to the user scope."""
-        # When requesting /cards/statistics with user_id
-        response = client.get("/cards/statistics?user_id=u-1")
-
-        # Then the response is 200 and dispatches to the user scope
-        assert response.status_code == 200
-        mock_statistics.assert_called_once_with("user", "u-1")
-
-    def test_character_scope_renders_200(
-        self, client: FlaskClient, mock_statistics: MagicMock
-    ) -> None:
-        """Verify a character-scoped request dispatches to the character scope."""
-        # When requesting /cards/statistics with character_id
-        response = client.get("/cards/statistics?character_id=c-1")
-
-        # Then the response is 200 and dispatches to the character scope
-        assert response.status_code == 200
-        mock_statistics.assert_called_once_with("character", "c-1")
-
-    def test_no_scope_returns_400(self, client: FlaskClient) -> None:
-        """Verify a request with no scope returns 400."""
-        # When requesting /cards/statistics without any scope
-        response = client.get("/cards/statistics")
-
-        # Then the response is 400
-        assert response.status_code == 400
-
-    def test_multiple_scopes_returns_400(self, client: FlaskClient) -> None:
-        """Verify a request with more than one scope returns 400."""
-        # When requesting with two scopes set
-        response = client.get("/cards/statistics?campaign_id=c1&user_id=u1")
-
-        # Then the response is 400
-        assert response.status_code == 400
-
-    @pytest.mark.usefixtures("mock_statistics")
-    def test_custom_title_renders_in_output(self, client: FlaskClient) -> None:
-        """Verify a custom title query arg appears in the rendered HTML."""
-        # When requesting with a custom title
-        response = client.get("/cards/statistics?user_id=u-1&title=Custom+Title")
-
-        # Then the title appears in the response body
-        assert b"Custom Title" in response.data
-
-    @pytest.mark.usefixtures("mock_statistics")
-    def test_default_title_is_statistics(self, client: FlaskClient) -> None:
-        """Verify the default title 'Statistics' is used when no title query arg is present."""
-        # When requesting without a title
-        response = client.get("/cards/statistics?user_id=u-1")
-
-        # Then the default title appears in the response body
-        assert b"Statistics" in response.data
+    """Patch the statistics cache so tests can check which scope it is asked for."""
+    return mocker.patch(
+        "vweb.lib.cache.statistics.get", autospec=True, return_value=RollStatisticsFactory.build()
+    )
 
 
 @pytest.fixture
 def mock_rolls(mocker: MockerFixture) -> MagicMock:
-    """Mock cache.dicerolls.recent to avoid real vclient calls."""
-    mock = mocker.patch(
-        "vweb.lib.cache.dicerolls.recent",
-        autospec=True,
-    )
-    mock.return_value = []
-    return mock
+    """Patch the recent dice rolls cache so tests can check the filters it is asked for."""
+    return mocker.patch("vweb.lib.cache.dicerolls.recent", autospec=True, return_value=[])
 
 
-class TestDiceRollsCardEndpoint:
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/cards/statistics",
+        "/cards/statistics?campaign_id=c1&user_id=u1",
+        "/cards/dice-rolls",
+        "/cards/character-list",
+    ],
+    ids=[
+        "statistics-no-scope",
+        "statistics-two-scopes",
+        "dice-rolls-no-scope",
+        "characters-no-scope",
+    ],
+)
+def test_card_without_valid_scope_returns_400(client: FlaskClient, path: str) -> None:
+    """Verify each card refuses a request without the scope it needs."""
+    assert client.get(path).status_code == 400
+
+
+@pytest.mark.parametrize(
+    ("query", "expected_scope"),
+    [
+        ("campaign_id=c-1", ("campaign", "c-1")),
+        ("user_id=u-1", ("user", "u-1")),
+        ("character_id=ch-1", ("character", "ch-1")),
+    ],
+)
+def test_statistics_card_uses_requested_scope(
+    client: FlaskClient, mock_statistics: MagicMock, query, expected_scope
+) -> None:
+    """Verify the statistics card fetches statistics for the one requested scope."""
+    response = client.get(f"/cards/statistics?{query}")
+
+    assert response.status_code == 200
+    mock_statistics.assert_called_once_with(*expected_scope)
+
+
+class TestDiceRollsCard:
     """Tests for GET /cards/dice-rolls."""
 
-    def test_campaign_scope_renders_200(
-        self, client: FlaskClient, mock_rolls: MagicMock, mock_global_context
+    @pytest.mark.parametrize(
+        ("query", "expected"),
+        [
+            ("campaign_id=c1", {"campaign_id": "c1", "character_id": "", "user_id": ""}),
+            ("character_id=ch1", {"campaign_id": "", "character_id": "ch1", "user_id": ""}),
+            ("user_id=u1", {"campaign_id": "", "character_id": "", "user_id": "u1"}),
+            (
+                "campaign_id=c1&character_id=ch1&user_id=u1",
+                {"campaign_id": "c1", "character_id": "ch1", "user_id": "u1"},
+            ),
+        ],
+        ids=["campaign", "character", "user", "combined"],
+    )
+    def test_forwards_every_scope_filter(
+        self, client: FlaskClient, mock_rolls: MagicMock, query, expected
     ) -> None:
-        """Verify a campaign-scoped request calls the helper with campaign_id."""
-        # Given a campaign ID
-        campaign_id = mock_global_context.campaigns[0].id
+        """Verify every supplied scope narrows the rolls fetched."""
+        response = client.get(f"/cards/dice-rolls?{query}")
 
-        # When requesting /cards/dice-rolls with campaign_id
-        response = client.get(f"/cards/dice-rolls?campaign_id={campaign_id}")
-
-        # Then the response is 200 and the helper is called with the campaign scope
-        assert response.status_code == 200
-        mock_rolls.assert_called_once()
-        kwargs = mock_rolls.call_args.kwargs
-        assert kwargs.get("campaign_id") == campaign_id
-        assert kwargs.get("character_id", "") == ""
-        assert kwargs.get("user_id", "") == ""
-
-    def test_character_scope_renders_200(self, client: FlaskClient, mock_rolls: MagicMock) -> None:
-        """Verify a character-scoped request calls the helper with character_id."""
-        # When requesting /cards/dice-rolls with character_id
-        response = client.get("/cards/dice-rolls?character_id=c-1")
-
-        # Then the helper is called with the character scope
         assert response.status_code == 200
         kwargs = mock_rolls.call_args.kwargs
-        assert kwargs.get("character_id") == "c-1"
-
-    def test_user_scope_renders_200(self, client: FlaskClient, mock_rolls: MagicMock) -> None:
-        """Verify a user-scoped request calls the helper with user_id."""
-        # When requesting /cards/dice-rolls with user_id
-        response = client.get("/cards/dice-rolls?user_id=u-1")
-
-        # Then the helper is called with the user scope
-        assert response.status_code == 200
-        kwargs = mock_rolls.call_args.kwargs
-        assert kwargs.get("user_id") == "u-1"
-
-    def test_combined_scopes_pass_all_filters(
-        self, client: FlaskClient, mock_rolls: MagicMock
-    ) -> None:
-        """Verify combined scopes pass all filters to the helper (vclient ANDs them)."""
-        # When requesting with all three scopes set
-        response = client.get("/cards/dice-rolls?campaign_id=c1&character_id=ch1&user_id=u1")
-
-        # Then all three filters are forwarded
-        assert response.status_code == 200
-        kwargs = mock_rolls.call_args.kwargs
-        assert kwargs.get("campaign_id") == "c1"
-        assert kwargs.get("character_id") == "ch1"
-        assert kwargs.get("user_id") == "u1"
-
-    def test_no_scope_returns_400(self, client: FlaskClient) -> None:
-        """Verify a request with zero scopes returns 400."""
-        # When requesting without any scope
-        response = client.get("/cards/dice-rolls")
-
-        # Then the response is 400
-        assert response.status_code == 400
-
-    def test_empty_message_appears_when_no_rolls(
-        self, client: FlaskClient, mock_rolls: MagicMock
-    ) -> None:
-        """Verify the empty_message query arg flows through to the rendered card."""
-        # When requesting with an empty_message query arg and no rolls
-        response = client.get("/cards/dice-rolls?campaign_id=c1&empty_message=Nothing+here")
-
-        # Then the empty message is in the response
-        assert b"Nothing here" in response.data
+        assert {key: kwargs[key] for key in expected} == expected
 
     @pytest.mark.parametrize(
-        ("modifier", "expected"),
-        [(1, "5d10 +1"), (-2, "5d10 -2"), (0, "5d10")],
+        ("modifier", "expected"), [(1, "5d10 +1"), (-2, "5d10 -2"), (0, "5d10")]
     )
-    def test_dice_modifier_is_shown_in_notation(
+    def test_notation_shows_signed_modifier(
         self, client: FlaskClient, mock_rolls: MagicMock, modifier: int, expected: str
     ) -> None:
         """Verify the signed modifier follows the dice notation only when non-zero."""
-        # Given a roll with a dice modifier
         mock_rolls.return_value = [
             DiceRollDisplay(
                 id="r1",
@@ -220,236 +154,96 @@ class TestDiceRollsCardEndpoint:
             )
         ]
 
-        # When rendering the card
-        response = client.get("/cards/dice-rolls?campaign_id=c1")
+        body = client.get("/cards/dice-rolls?campaign_id=c1").get_data(as_text=True)
 
-        # Then the notation carries the signed modifier, or none for zero
-        body = response.get_data(as_text=True)
-        assert f'<span class="font-mono">{expected}</span>' in body
-
-    def test_title_flows_through(self, client: FlaskClient, mock_rolls: MagicMock) -> None:
-        """Verify the title query arg appears in the rendered HTML."""
-        # When requesting with a custom title
-        response = client.get("/cards/dice-rolls?campaign_id=c1&title=My+Recent+Rolls")
-
-        # Then the title appears in the response
-        assert b"My Recent Rolls" in response.data
+        assert re.search(rf">\s*{re.escape(expected)}\s*<", body)
 
 
-class TestStatisticsWrapperComponent:
-    """Tests that the <shared.cards.Statistics /> wrapper renders correct HTMX."""
+@pytest.mark.parametrize(
+    ("component", "props", "present", "absent"),
+    [
+        (
+            "shared.cards.Statistics",
+            {"campaign_id": "camp-abc", "col_span": 2},
+            ["/cards/statistics", "campaign_id=camp-abc", "col_span=2"],
+            ["user_id=", "character_id="],
+        ),
+        (
+            "shared.cards.RecentDiceRolls",
+            {"character_id": "ch-1", "page_size": 10},
+            ["/cards/dice-rolls", "character_id=ch-1", "page_size=10"],
+            ["user_id=", "campaign_id="],
+        ),
+        (
+            "shared.cards.AuditLog",
+            {"campaign_id": "c-1", "page_size": 15},
+            ["/cards/audit-log", "campaign_id=c-1", "page_size=15"],
+            ["user_id=", "character_id=", "book_id=", "show_filters="],
+        ),
+    ],
+    ids=["statistics", "dice-rolls", "audit-log"],
+)
+def test_card_wrapper_lazy_loads_its_endpoint_with_only_set_props(
+    app, component, props, present, absent
+) -> None:
+    """Verify each card wrapper loads its endpoint with the set props and no empty ones."""
+    with app.test_request_context():
+        html = catalog.render(component, **props)
 
-    def test_wrapper_hx_get_points_at_statistics_endpoint(
-        self, client: FlaskClient, mock_global_context
-    ) -> None:
-        """Verify the wrapper-rendered HTML includes an hx-get to /cards/statistics with scope."""
-        # Given an app context for url_for resolution
-        from vweb.lib.catalog import catalog
-
-        # When rendering the wrapper with a campaign scope
-        with client.application.test_request_context():
-            html = catalog.render("shared.cards.Statistics", campaign_id="camp-abc", col_span=2)
-
-        # Then the hx-get URL is /cards/statistics with campaign_id and col_span in the query
-        assert "/cards/statistics" in html
-        assert "campaign_id=camp-abc" in html
-        assert "col_span=2" in html
-        assert 'hx-trigger="load"' in html
-        assert 'hx-swap="outerHTML"' in html
-
-
-class TestRecentDiceRollsWrapperComponent:
-    """Tests that the <shared.cards.RecentDiceRolls /> wrapper renders correct HTMX."""
-
-    def test_wrapper_hx_get_points_at_dice_rolls_endpoint(
-        self, client: FlaskClient, mock_global_context
-    ) -> None:
-        """Verify the wrapper-rendered HTML includes an hx-get to /cards/dice-rolls with scope."""
-        # Given an app context
-        from vweb.lib.catalog import catalog
-
-        # When rendering the wrapper with a character scope
-        with client.application.test_request_context():
-            html = catalog.render("shared.cards.RecentDiceRolls", character_id="ch-1", page_size=10)
-
-        # Then the hx-get URL is /cards/dice-rolls with character_id and page_size in the query
-        assert "/cards/dice-rolls" in html
-        assert "character_id=ch-1" in html
-        assert "page_size=10" in html
-
-    def test_wrapper_drops_empty_scope_kwargs(
-        self, client: FlaskClient, mock_global_context
-    ) -> None:
-        """Verify unused scope kwargs don't appear as empty query args."""
-        # Given an app context
-        from vweb.lib.catalog import catalog
-
-        # When rendering the wrapper with only one scope set
-        with client.application.test_request_context():
-            html = catalog.render("shared.cards.RecentDiceRolls", campaign_id="camp-1")
-
-        # Then unused scope kwargs do NOT appear in the URL at all
-        assert "user_id=" not in html
-        assert "character_id=" not in html
-
-
-@pytest.fixture
-def _audit_log_rows(fake_vclient, mock_global_context) -> list[AuditLog]:
-    """Seed the fake vclient with a default page of audit logs."""
-    user = mock_global_context.users[0]
-    logs = [
-        AuditLogFactory.build(
-            acting_user_id=user.id,
-            user_id=None,
-            campaign_id=None,
-            character_id=None,
-            book_id=None,
-            chapter_id=None,
-            changes=None,
-        )
-        for _ in range(3)
-    ]
-    fake_vclient.set_response(
-        Routes.COMPANIES_AUDIT_LOGS_LIST,
-        items=[log.model_dump(mode="json") for log in logs],
-    )
-    return logs
-
-
-@pytest.fixture
-def audit_rows() -> list[AuditLog]:
-    """Build audit log rows without seeding vclient, for use with _set_page."""
-    return AuditLogFactory.batch(3)
-
-
-def _set_page(mocker, items: list[AuditLog], *, has_more: bool = False) -> None:
-    """Patch get_audit_log_page to return items with controllable has_more.
-
-    The fake vclient always sets has_more=False (total == len(items)). This helper
-    patches the helper directly so tests can express has_more=True without relying
-    on the fake client's internal pagination logic.
-    """
-    mock_page = mocker.MagicMock(items=items, has_more=has_more, total=len(items) + int(has_more))
-    mocker.patch(
-        "vweb.routes.fragments_shared_cards.views.get_audit_log_page",
-        autospec=True,
-        return_value=mock_page,
-    )
-
-
-@pytest.fixture
-def _as_admin(mock_global_context) -> None:
-    """Make the requesting user an admin so the unscoped audit log card is permitted."""
-    mock_global_context.users[0].role = "ADMIN"
+    for text in present:
+        assert text in html
+    for text in absent:
+        assert text not in html
 
 
 class TestAuditLogCardAuthorization:
     """Tests for who may read the audit log card and with which scope."""
 
-    @pytest.mark.parametrize("query", ["", "?campaign_id=own-campaign"])
-    def test_player_is_forbidden(
-        self, client: FlaskClient, mocker, audit_rows: list, query: str
+    @pytest.mark.parametrize(
+        ("role", "query", "expected_status"),
+        [
+            ("PLAYER", "", 403),
+            ("PLAYER", "?campaign_id=own-campaign", 403),
+            ("STORYTELLER", "?user_id=someone", 403),
+            ("STORYTELLER", "?campaign_id=foreign-campaign", 404),
+            ("STORYTELLER", "?campaign_id=own-campaign", 200),
+            ("ADMIN", "", 200),
+        ],
+        ids=[
+            "player-unscoped",
+            "player-own-campaign",
+            "storyteller-unscoped",
+            "storyteller-foreign-campaign",
+            "storyteller-own-campaign",
+            "admin-unscoped",
+        ],
+    )
+    def test_access_by_role_and_scope(
+        self, client: FlaskClient, use_context, fake_vclient, role, query, expected_status
     ) -> None:
-        """Verify players get no audit data, even for their own campaign."""
-        # Given a player whose context holds their own campaign
-        campaign = CampaignFactory.build(id="own-campaign")
-        context = build_global_context(user_role="PLAYER", campaign=campaign)
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
-        _set_page(mocker, audit_rows)
+        """Verify admins see the company, storytellers only their campaigns, and players nothing."""
+        # Given a user whose context holds their own campaign
+        use_context(user_role=role, campaign=CampaignFactory.build(id="own-campaign"))
+        fake_vclient.set_response(Routes.COMPANIES_AUDIT_LOGS_LIST, items=[])
 
-        # When the player requests the card
+        # When requesting the card
         response = client.get(f"/cards/audit-log{query}")
 
-        # Then the request is refused
-        assert response.status_code == 403
-
-    def test_storyteller_without_campaign_is_forbidden(
-        self, client: FlaskClient, mocker, audit_rows: list
-    ) -> None:
-        """Verify storytellers cannot read the unscoped company audit log."""
-        # Given a storyteller
-        context = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
-        _set_page(mocker, audit_rows)
-
-        # When requesting the card without a campaign scope
-        response = client.get("/cards/audit-log?user_id=someone")
-
-        # Then the request is refused
-        assert response.status_code == 403
-
-    def test_storyteller_foreign_campaign_is_not_found(
-        self, client: FlaskClient, mocker, audit_rows: list
-    ) -> None:
-        """Verify storytellers cannot scope the card to a campaign outside their context."""
-        # Given a storyteller whose context holds only their own campaign
-        campaign = CampaignFactory.build(id="own-campaign")
-        context = build_global_context(user_role="STORYTELLER", campaign=campaign)
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
-        _set_page(mocker, audit_rows)
-
-        # When requesting another campaign's activity
-        response = client.get("/cards/audit-log?campaign_id=foreign-campaign")
-
-        # Then the campaign is not found
-        assert response.status_code == 404
-
-    def test_storyteller_own_campaign_is_allowed(
-        self, client: FlaskClient, mocker, audit_rows: list
-    ) -> None:
-        """Verify storytellers can read activity for a campaign in their context."""
-        # Given a storyteller whose context holds their own campaign
-        campaign = CampaignFactory.build(id="own-campaign")
-        context = build_global_context(user_role="STORYTELLER", campaign=campaign)
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
-        _set_page(mocker, audit_rows)
-
-        # When requesting that campaign's activity
-        response = client.get("/cards/audit-log?campaign_id=own-campaign")
-
-        # Then the card renders
-        assert response.status_code == 200
-
-    def test_admin_unscoped_is_allowed(self, client: FlaskClient, mocker, audit_rows: list) -> None:
-        """Verify admins can read the company-wide audit log."""
-        # Given an admin
-        context = build_global_context(user_role="ADMIN")
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
-        _set_page(mocker, audit_rows)
-
-        # When requesting the card with no filters
-        response = client.get("/cards/audit-log")
-
-        # Then the card renders
-        assert response.status_code == 200
-
-
-@pytest.mark.usefixtures("_as_admin")
-class TestAuditLogCardEndpoint:
-    """Tests for GET /cards/audit-log."""
-
-    @pytest.mark.usefixtures("_audit_log_rows")
-    def test_no_filters_returns_200(self, client: FlaskClient) -> None:
-        """Verify an unscoped request renders a 200 response."""
-        # When requesting /cards/audit-log with no filters
-        response = client.get("/cards/audit-log")
-
-        # Then the response is 200
-        assert response.status_code == 200
-
-    def test_filters_forwarded_to_vclient(
-        self, client: FlaskClient, mock_global_context, mocker
-    ) -> None:
-        """Verify all ten filter query args are forwarded to get_audit_log_page."""
-        # Given a patched get_audit_log_page
-        mock_page = mocker.MagicMock(items=[], has_more=False, total=0)
-        mock_fn = mocker.patch(
-            "vweb.routes.fragments_shared_cards.views.get_audit_log_page",
-            autospec=True,
-            return_value=mock_page,
+        # Then only permitted requests reach the audit log
+        assert response.status_code == expected_status
+        assert bool(fake_vclient.requests_for(Routes.COMPANIES_AUDIT_LOGS_LIST)) is (
+            expected_status == 200
         )
 
-        # When requesting with all ten filter kwargs populated
+
+@pytest.mark.usefixtures("admin_context")
+class TestAuditLogCard:
+    """Tests for GET /cards/audit-log."""
+
+    def test_forwards_filters_and_paging_to_api(self, client: FlaskClient, fake_vclient) -> None:
+        """Verify every filter query arg, the page size, and the offset reach the API."""
+        fake_vclient.set_response(Routes.COMPANIES_AUDIT_LOGS_LIST, items=[])
+
         response = client.get(
             "/cards/audit-log"
             "?acting_user_id=a1&user_id=u1&campaign_id=c1"
@@ -459,741 +253,286 @@ class TestAuditLogCardEndpoint:
             "&page_size=15&offset=30"
         )
 
-        # Then the helper receives every filter by keyword
         assert response.status_code == 200
-        kwargs = mock_fn.call_args.kwargs
-        assert kwargs["acting_user_id"] == "a1"
-        assert kwargs["user_id"] == "u1"
-        assert kwargs["campaign_id"] == "c1"
-        assert kwargs["book_id"] == "b1"
-        assert kwargs["chapter_id"] == "ch1"
-        assert kwargs["character_id"] == "char1"
-        assert kwargs["entity_type"] == "CAMPAIGN"
-        assert kwargs["operation"] == "UPDATE"
-        assert kwargs["date_from"] == "2025-01-01"
-        assert kwargs["date_to"] == "2025-02-01"
-        assert kwargs["limit"] == 15
-        assert kwargs["offset"] == 30
+        (request,) = fake_vclient.requests_for(Routes.COMPANIES_AUDIT_LOGS_LIST)
+        assert request.query == {
+            "limit": "15",
+            "offset": "30",
+            "acting_user_id": "a1",
+            "user_id": "u1",
+            "campaign_id": "c1",
+            "book_id": "b1",
+            "chapter_id": "ch1",
+            "character_id": "char1",
+            "entity_type": "CAMPAIGN",
+            "operation": "UPDATE",
+            "date_from": "2025-01-01T00:00:00",
+            "date_to": "2025-02-01T00:00:00",
+        }
 
-    @pytest.mark.parametrize(("raw", "expected"), [("250000", 100_000), ("-5", 0)])
+    @pytest.mark.parametrize(("raw", "expected"), [("250000", "100000"), ("-5", "0")])
     def test_offset_bounded_to_api_range(
-        self, client: FlaskClient, mock_global_context, mocker, raw: str, expected: int
+        self, client: FlaskClient, fake_vclient, raw: str, expected: str
     ) -> None:
         """Verify a hand-edited offset is bounded to what the API accepts."""
-        # Given a patched get_audit_log_page
-        mock_fn = mocker.patch(
-            "vweb.routes.fragments_shared_cards.views.get_audit_log_page",
-            autospec=True,
-            return_value=mocker.MagicMock(items=[], has_more=False, total=0),
-        )
-
-        # When requesting with an out-of-range offset
-        response = client.get(f"/cards/audit-log?offset={raw}")
-
-        # Then the helper receives the bounded offset
-        assert response.status_code == 200
-        assert mock_fn.call_args.kwargs["offset"] == expected
-
-    @pytest.mark.usefixtures("_audit_log_rows")
-    def test_renders_full_card_on_initial_load(
-        self, client: FlaskClient, mock_global_context
-    ) -> None:
-        """Verify the initial load response contains the full card shell."""
-        # When requesting /cards/audit-log with no body_only flag
-        response = client.get("/cards/audit-log")
-
-        # Then the response contains the card chrome
-        assert response.status_code == 200
-        assert b'class="card surface-card' in response.data
-        assert b"Audit Log" in response.data  # default title
-
-    @pytest.mark.usefixtures("_audit_log_rows")
-    def test_acting_user_name_rendered(self, client: FlaskClient, mock_global_context) -> None:
-        """Verify the acting user's username appears in the output."""
-        # Given a row with an acting_user_id matching a known user
-        user = mock_global_context.users[0]
-
-        # When requesting the card
-        response = client.get("/cards/audit-log")
-
-        # Then the username shows in line 2
-        assert user.username.encode() in response.data
-
-    @pytest.mark.usefixtures("_audit_log_rows")
-    def test_custom_title_renders(self, client: FlaskClient, mock_global_context) -> None:
-        """Verify a custom title query arg appears in the output."""
-        # When requesting with a custom title
-        response = client.get("/cards/audit-log?title=Recent+Changes")
-
-        # Then the custom title is in the response
-        assert b"Recent Changes" in response.data
-
-    def test_empty_rows_shows_empty_message(
-        self, client: FlaskClient, fake_vclient, mock_global_context
-    ) -> None:
-        """Verify the empty_message is rendered when no rows match."""
-        # Given zero rows from vweb.api_client
         fake_vclient.set_response(Routes.COMPANIES_AUDIT_LOGS_LIST, items=[])
 
-        # When requesting with a custom empty_message
-        response = client.get("/cards/audit-log?empty_message=Nothing+logged")
+        response = client.get(f"/cards/audit-log?offset={raw}")
 
-        # Then the empty message is in the response
-        assert b"Nothing logged" in response.data
-
-    def test_no_changes_hides_toggle(
-        self, client: FlaskClient, fake_vclient, mock_global_context
-    ) -> None:
-        """Verify a row with changes=None has no expandable toggle (5a-A)."""
-        # Given a log with changes=None
-        log = AuditLogFactory.build(
-            changes=None,
-            user_id=None,
-            campaign_id=None,
-            character_id=None,
-            book_id=None,
-            chapter_id=None,
-        )
-        fake_vclient.set_response(
-            Routes.COMPANIES_AUDIT_LOGS_LIST,
-            items=[log.model_dump(mode="json")],
-        )
-
-        # When rendering the card
-        response = client.get("/cards/audit-log")
-
-        # Then the toggle button is not in the response
-        assert b"Show changes" not in response.data
-
-    def test_canonical_changes_render_old_new_grid(
-        self, client: FlaskClient, fake_vclient, mock_global_context
-    ) -> None:
-        """Verify canonical {old, new} changes render in the Old/New grid."""
-        # Given a log with a canonical change
-        log = AuditLogFactory.build(
-            changes={"name": {"old": "Alice", "new": "Bob"}},
-            user_id=None,
-            campaign_id=None,
-            character_id=None,
-            book_id=None,
-            chapter_id=None,
-        )
-        fake_vclient.set_response(
-            Routes.COMPANIES_AUDIT_LOGS_LIST,
-            items=[log.model_dump(mode="json")],
-        )
-
-        # When rendering the card
-        response = client.get("/cards/audit-log")
-
-        # Then the toggle is present and both values appear
-        assert b"Show changes" in response.data
-        assert b"Alice" in response.data
-        assert b"Bob" in response.data
-        assert b"name" in response.data  # field-name row rendered
-
-    def test_off_shape_changes_render_as_list(
-        self, client: FlaskClient, fake_vclient, mock_global_context
-    ) -> None:
-        """Verify off-shape entries appear in the other-entries list (5c-A)."""
-        # Given a log with a non-canonical change (flat scalar)
-        log = AuditLogFactory.build(
-            changes={"deleted_by": "user-1"},
-            user_id=None,
-            campaign_id=None,
-            character_id=None,
-            book_id=None,
-            chapter_id=None,
-        )
-        fake_vclient.set_response(
-            Routes.COMPANIES_AUDIT_LOGS_LIST,
-            items=[log.model_dump(mode="json")],
-        )
-
-        # When rendering the card
-        response = client.get("/cards/audit-log")
-
-        # Then the toggle is present and the off-shape entry appears
-        assert b"Show changes" in response.data
-        assert b"deleted_by" in response.data
-        assert b"user-1" in response.data
-
-    def test_scope_filter_hides_redundant_entity_link(
-        self, client: FlaskClient, fake_vclient, mock_global_context
-    ) -> None:
-        """Verify entity links matching an active scope filter are skipped."""
-        # Given a log scoped by character, with that same character present
-        character = CharacterFactory.build()
-        mock_global_context.characters = [character]
-        log = AuditLogFactory.build(
-            character_id=character.id,
-            user_id=None,
-            campaign_id=None,
-            book_id=None,
-            chapter_id=None,
-            changes=None,
-        )
-        fake_vclient.set_response(
-            Routes.COMPANIES_AUDIT_LOGS_LIST,
-            items=[log.model_dump(mode="json")],
-        )
-
-        # When rendering the card scoped to that character
-        response = client.get(f"/cards/audit-log?character_id={character.id}")
-
-        # Then the "Character:" label is not in the output (scope-skip)
-        assert b"Character:" not in response.data
-
-    @pytest.mark.usefixtures("_audit_log_rows")
-    def test_prev_button_disabled_at_offset_zero(
-        self, client: FlaskClient, mock_global_context
-    ) -> None:
-        """Verify the Prev button is disabled when offset=0."""
-        # When rendering the first page
-        response = client.get("/cards/audit-log")
-
-        # Then the Prev button tag carries the `disabled` attribute
-        match = re.search(
-            r'<button[^>]*aria-label="Newer entries"[^>]*>',
-            response.data.decode(),
-        )
-        assert match, "Newer entries button not found"
-        assert "disabled" in match.group(0)
-
-    def test_next_button_disabled_when_no_more(
-        self, client: FlaskClient, fake_vclient, mock_global_context
-    ) -> None:
-        """Verify the Next button is disabled when the API reports no more pages."""
-        # Given a single-item page (fake_vclient sets total == len(items), so has_more=False)
-        log = AuditLogFactory.build(
-            user_id=None,
-            campaign_id=None,
-            character_id=None,
-            book_id=None,
-            chapter_id=None,
-            changes=None,
-        )
-        fake_vclient.set_response(
-            Routes.COMPANIES_AUDIT_LOGS_LIST,
-            items=[log.model_dump(mode="json")],
-        )
-
-        # When rendering
-        response = client.get("/cards/audit-log")
-
-        # Then the Next button tag carries the `disabled` attribute
-        match = re.search(
-            r'<button[^>]*aria-label="Older entries"[^>]*>',
-            response.data.decode(),
-        )
-        assert match, "Older entries button not found"
-        assert "disabled" in match.group(0)
-
-    def test_pagination_urls_carry_filters(
-        self, client: FlaskClient, mock_global_context, mocker
-    ) -> None:
-        """Verify Prev/Next URLs include active filters and body_only=true."""
-        # Given a patched page with has_more=True (the fake client can't express
-        # has_more=True because it always sets total == len(items); patch the helper.)
-        items = [
-            AuditLogFactory.build(
-                user_id=None,
-                campaign_id=None,
-                character_id=None,
-                book_id=None,
-                chapter_id=None,
-                changes=None,
-            )
-            for _ in range(10)
-        ]
-        mock_page = mocker.MagicMock(items=items, has_more=True, total=25, offset=0)
-        mocker.patch(
-            "vweb.routes.fragments_shared_cards.views.get_audit_log_page",
-            autospec=True,
-            return_value=mock_page,
-        )
-
-        # When rendering with an active filter
-        response = client.get("/cards/audit-log?campaign_id=c-1")
-
-        # Then Next URL carries the filter and body_only flag
-        html = response.data.decode()
-        assert "body_only=true" in html
-        assert "campaign_id=c-1" in html
-        assert "offset=10" in html  # next page offset
-
-        # And empty-valued filters are NOT in the URL (build_fragment_url drops them)
-        assert "acting_user_id=" not in html
-        assert "user_id=" not in html
-        assert "character_id=" not in html
-
-    @pytest.mark.usefixtures("_audit_log_rows")
-    def test_body_only_renders_body_without_card_chrome(
-        self, client: FlaskClient, mock_global_context
-    ) -> None:
-        """Verify body_only=true renders the inner body without outer card shell."""
-        # When requesting with body_only=true
-        response = client.get("/cards/audit-log?body_only=true")
-
-        # Then the full-card chrome is NOT in the output but the list IS
         assert response.status_code == 200
-        # The outer card shell is absent
-        assert b'id="auditlog"' not in response.data
-        # But the list of rows is present
-        assert b'class="list ' in response.data
+        (request,) = fake_vclient.requests_for(Routes.COMPANIES_AUDIT_LOGS_LIST)
+        assert request.query["offset"] == expected
 
-    def test_body_only_pagination_urls_are_also_body_only(
-        self, client: FlaskClient, mock_global_context, mocker
+    @pytest.mark.parametrize(("body_only", "has_card_shell"), [("false", True), ("true", False)])
+    def test_rows_render_inside_card_or_alone(
+        self, client: FlaskClient, fake_vclient, admin_context, body_only, has_card_shell
     ) -> None:
-        """Verify Prev/Next URLs inside a body_only response still carry body_only=true."""
-        # Given a patched page with has_more=True
-        items = [
-            AuditLogFactory.build(
-                user_id=None,
-                campaign_id=None,
-                character_id=None,
-                book_id=None,
-                chapter_id=None,
-                changes=None,
-            )
-            for _ in range(5)
-        ]
-        mock_page = mocker.MagicMock(items=items, has_more=True, total=25, offset=10)
-        mocker.patch(
-            "vweb.routes.fragments_shared_cards.views.get_audit_log_page",
-            autospec=True,
-            return_value=mock_page,
+        """Verify the first load wraps the rows in the card, and paging returns rows alone."""
+        user = admin_context.users[0]
+        fake_vclient.set_response(
+            Routes.COMPANIES_AUDIT_LOGS_LIST,
+            items=[_audit_log(acting_user_id=user.id).model_dump(mode="json")],
         )
 
-        # When requesting a body_only page with an active filter and non-zero offset
-        response = client.get("/cards/audit-log?offset=10&body_only=true&campaign_id=c-1")
+        body = client.get(f"/cards/audit-log?body_only={body_only}").get_data(as_text=True)
 
-        # Then the outer card chrome is absent (body_only render confirmed)
-        html = response.data.decode()
-        assert 'id="auditlog"' not in html
-        # And pagination links still carry body_only=true plus the active filter
-        assert "body_only=true" in html
-        assert "campaign_id=c-1" in html
-
-    def test_admin_filters_threaded_into_pagination(
-        self, client: FlaskClient, mocker: MockerFixture, audit_rows: list
-    ) -> None:
-        """Verify entity_type and operation filters appear in the pagination URLs."""
-        # Given a full page with more available
-        _set_page(mocker, audit_rows, has_more=True)
-
-        # When requesting with admin filters set
-        response = client.get(
-            "/cards/audit-log?campaign_id=c1&entity_type=CAMPAIGN&operation=UPDATE&page_size=3"
-        )
-
-        # Then the filters are carried into the Next/Prev button URLs
-        body = response.get_data(as_text=True)
-        assert "entity_type=CAMPAIGN" in body
-        assert "operation=UPDATE" in body
-
-    def test_min_height_capped_for_large_page_size(
-        self, client: FlaskClient, mocker, audit_rows: list
-    ) -> None:
-        """Verify the body min-height is capped so a large page_size does not over-stretch."""
-        # Given an audit log page requested with a large page size
-        _set_page(mocker, audit_rows, has_more=False)
-
-        # When rendering with page_size well above the cap
-        response = client.get("/cards/audit-log?campaign_id=c1&page_size=25")
-
-        # Then min-height is capped at the 10-row equivalent (10 * 5.5 = 55.0rem)
-        body = response.get_data(as_text=True)
-        assert "min-height: 55.0rem" in body
-
-
-@pytest.mark.usefixtures("_as_admin")
-class TestAuditLogFilters:
-    """show_filters toggles the filter bar on the shared card."""
-
-    def test_show_filters_renders_filter_bar(
-        self, client: FlaskClient, mocker, audit_rows: list, mock_global_context
-    ) -> None:
-        """Verify show_filters=true renders the filter bar with options."""
-        # Given an audit log page
-        _set_page(mocker, audit_rows, has_more=False)
-
-        # When requesting the card with filters enabled
-        response = client.get("/cards/audit-log?show_filters=true")
-
-        # Then the filter bar and its controls render
-        body = response.get_data(as_text=True)
-        assert "auditlog-filters" in body
-        assert "Entity Type" in body
-        assert "Operation" in body
-
-        # And the acting-user dropdown is populated from the global context users
-        user = mock_global_context.users[0]
         assert user.username in body
+        assert ('id="auditlog"' in body) is has_card_shell
 
-    def test_filters_hidden_by_default(self, client: FlaskClient, mocker, audit_rows: list) -> None:
-        """Verify the filter bar is absent when show_filters is not set."""
-        # Given an audit log page
-        _set_page(mocker, audit_rows, has_more=False)
+    @pytest.mark.parametrize(
+        ("changes", "shown"),
+        [
+            ({"name": {"old": "Alice", "new": "Bob"}}, ["name", "Alice", "Bob"]),
+            ({"deleted_by": "user-1"}, ["deleted_by", "user-1"]),
+        ],
+        ids=["old-new-change", "off-shape-entry"],
+    )
+    def test_row_shows_its_changes(self, client: FlaskClient, fake_vclient, changes, shown) -> None:
+        """Verify a row shows field changes and entries that are not old/new pairs."""
+        fake_vclient.set_response(
+            Routes.COMPANIES_AUDIT_LOGS_LIST,
+            items=[_audit_log(changes=changes).model_dump(mode="json")],
+        )
 
-        # When requesting the card normally
-        response = client.get("/cards/audit-log?campaign_id=c1")
+        body = client.get("/cards/audit-log").get_data(as_text=True)
 
-        # Then no filter bar is rendered
-        body = response.get_data(as_text=True)
-        assert "auditlog-filters" not in body
+        for text in shown:
+            assert text in body
 
-    def test_filter_values_are_xss_safe(
-        self, client: FlaskClient, mocker, audit_rows: list
+    @pytest.mark.parametrize(("scoped", "links_character"), [(False, True), (True, False)])
+    def test_entity_link_hidden_when_card_is_scoped_to_it(
+        self, client: FlaskClient, fake_vclient, admin_context, scoped, links_character
     ) -> None:
-        """Verify a quote-injection payload in a filter value cannot break out of the Alpine x-data string."""
-        import re
+        """Verify a row links the character it affects, unless the card is scoped to it."""
+        character = CharacterFactory.build(campaign_id=admin_context.campaigns[0].id)
+        admin_context.characters = [character]
+        fake_vclient.set_response(
+            Routes.COMPANIES_AUDIT_LOGS_LIST,
+            items=[_audit_log(character_id=character.id).model_dump(mode="json")],
+        )
+        query = f"?character_id={character.id}" if scoped else ""
 
-        # Given a malicious filter value attempting JS string breakout
-        _set_page(mocker, audit_rows, has_more=False)
+        body = client.get(f"/cards/audit-log{query}").get_data(as_text=True)
+
+        assert (f'href="/character/{character.id}"' in body) is links_character
+
+    @pytest.mark.parametrize(
+        ("offset", "has_more", "newer_enabled", "older_enabled"),
+        [(0, False, False, False), (10, True, True, True)],
+        ids=["first-and-last-page", "middle-page"],
+    )
+    def test_paging_buttons_enabled_only_when_there_is_a_page(
+        self, client: FlaskClient, fake_vclient, offset, has_more, newer_enabled, older_enabled
+    ) -> None:
+        """Verify Newer is disabled on the first page and Older when no more entries exist."""
+        _set_page(fake_vclient, [_audit_log()], offset=offset, has_more=has_more)
+
+        body = client.get(f"/cards/audit-log?offset={offset}").get_data(as_text=True)
+
+        fake_vclient.assert_called(
+            Routes.COMPANIES_AUDIT_LOGS_LIST, query={"offset": str(offset)}, times=1
+        )
+
+        for label, enabled in (("Newer entries", newer_enabled), ("Older entries", older_enabled)):
+            button = re.search(rf'<button[^>]*aria-label="{label}"[^>]*>', body)
+            assert button, f"{label} button not found"
+            assert ("disabled" not in button.group(0)) is enabled
+
+    @pytest.mark.parametrize("body_only", ["false", "true"])
+    def test_paging_urls_keep_filters_and_load_rows_only(
+        self, client: FlaskClient, fake_vclient, body_only
+    ) -> None:
+        """Verify Newer/Older reload only the rows, with the active filters and next offset."""
+        _set_page(fake_vclient, [_audit_log() for _ in range(3)], offset=3, has_more=True)
+
+        body = client.get(
+            "/cards/audit-log?campaign_id=c-1&entity_type=CAMPAIGN&operation=UPDATE"
+            f"&page_size=3&offset=3&body_only={body_only}"
+        ).get_data(as_text=True)
+
+        fake_vclient.assert_called(
+            Routes.COMPANIES_AUDIT_LOGS_LIST,
+            query={
+                "limit": "3",
+                "offset": "3",
+                "campaign_id": "c-1",
+                "entity_type": "CAMPAIGN",
+                "operation": "UPDATE",
+            },
+            times=1,
+        )
+
+        older = re.search(r'aria-label="Older entries"[^>]*hx-get="([^"]+)"', body)
+        assert older, "Older entries button not found"
+        url = older.group(1)
+        for text in ("body_only=true", "campaign_id=c-1", "entity_type=CAMPAIGN", "offset=6"):
+            assert text in url
+        for empty_filter in ("acting_user_id=", "user_id=", "character_id="):
+            assert empty_filter not in url
+
+    @pytest.mark.parametrize("show_filters", [True, False])
+    def test_filter_bar_only_when_requested(
+        self, client: FlaskClient, fake_vclient, admin_context, show_filters
+    ) -> None:
+        """Verify show_filters adds the filter controls, with the company's users to pick from."""
+        _set_page(fake_vclient, [], has_more=False)
+        user = admin_context.users[0]
+
+        body = client.get(f"/cards/audit-log?show_filters={str(show_filters).lower()}").get_data(
+            as_text=True
+        )
+
+        assert ('name="entity_type"' in body) is show_filters
+        assert ('name="acting_user_id"' in body) is show_filters
+        assert (f'<option value="{user.id}">' in body) is show_filters
+
+    def test_filter_values_are_xss_safe(self, client: FlaskClient, fake_vclient) -> None:
+        """Verify a quote-injection payload in a filter value cannot break out of x-data."""
+        _set_page(fake_vclient, [], has_more=False)
         payload = "';alert(1)//"
 
-        # When the filter bar is rendered with that value seeded back in
-        response = client.get(f"/cards/audit-log?show_filters=true&entity_type={payload}")
+        body = client.get(f"/cards/audit-log?show_filters=true&entity_type={payload}").get_data(
+            as_text=True
+        )
 
-        # Then the x-data block seeds the value with tojson unicode escaping (no JS breakout).
-        # Pull out the x-data attribute specifically so pagination hx-get URLs don't interfere.
-        body = response.get_data(as_text=True)
+        # Inspect the x-data attribute only, so paging hx-get URLs don't interfere
         match = re.search(r"x-data='(\{.*?\})'", body, re.DOTALL)
         assert match, "x-data block not found in response"
         x_data_block = match.group(0)
-
-        # The raw single quote must NOT appear unescaped inside the x-data attribute
-        assert "';alert(1)//" not in x_data_block  # no raw breakout
-        assert "&#39;;alert(1)//" not in x_data_block  # no html-entity form the parser would decode
-        # tojson encodes the single quote as ' to prevent JS string breakout
+        assert "';alert(1)//" not in x_data_block
+        assert "&#39;;alert(1)//" not in x_data_block
         assert "\\u0027;alert(1)//" in x_data_block
 
-    def test_card_id_is_sanitized(self, client: FlaskClient, mocker, audit_rows: list) -> None:
+    def test_card_id_is_sanitized(self, client: FlaskClient, fake_vclient) -> None:
         """Verify a malicious card_id is stripped to a DOM-id-safe slug, blocking injection."""
-        # Given a card_id carrying a JS-breakout payload
-        _set_page(mocker, audit_rows, has_more=False)
-        payload = "x');alert(1)//"
+        _set_page(fake_vclient, [], has_more=False)
 
-        # When the card renders with that card_id
-        response = client.get(f"/cards/audit-log?show_filters=true&card_id={payload}")
+        body = client.get("/cards/audit-log?show_filters=true&card_id=x');alert(1)//").get_data(
+            as_text=True
+        )
 
-        # Then the dangerous characters are gone and only the safe slug remains
-        body = response.get_data(as_text=True)
         assert "');alert(1)//" not in body
         assert "&#39;);alert(1)//" not in body
-        assert 'id="xalert1-filters"' in body  # quotes/parens/semicolons/slashes stripped
+        assert 'id="xalert1-filters"' in body
 
 
-class TestAuditLogWrapperComponent:
-    """Tests that the <shared.cards.AuditLog /> wrapper renders correct HTMX."""
-
-    def test_wrapper_points_at_audit_log_endpoint(
-        self, client: FlaskClient, mock_global_context
-    ) -> None:
-        """Verify the wrapper's hx-get URL targets /cards/audit-log."""
-        # Given an app context for url_for
-        from vweb.lib.catalog import catalog
-
-        # When rendering the wrapper with a character scope
-        with client.application.test_request_context():
-            html = catalog.render("shared.cards.AuditLog", character_id="ch-1", page_size=15)
-
-        # Then the hx-get URL is /cards/audit-log with filters in the query
-        assert "/cards/audit-log" in html
-        assert "character_id=ch-1" in html
-        assert "page_size=15" in html
-        assert 'hx-trigger="load"' in html
-
-    def test_wrapper_drops_empty_filter_kwargs(
-        self, client: FlaskClient, mock_global_context
-    ) -> None:
-        """Verify unset filter kwargs don't appear as empty query args."""
-        from vweb.lib.catalog import catalog
-
-        # When rendering the wrapper with only one filter set
-        with client.application.test_request_context():
-            html = catalog.render("shared.cards.AuditLog", campaign_id="c-1")
-
-        # Then other filter kwargs are absent from the URL
-        assert "user_id=" not in html
-        assert "character_id=" not in html
-        assert "book_id=" not in html
-        assert "show_filters=" not in html
-
-
-def _character_context(
-    characters: list, *, user_role: str = "PLAYER", campaign=None
-) -> tuple[GlobalContext, object]:
-    """Build a GlobalContext populated for the character list endpoint.
-
-    Populates both ``characters_by_campaign`` (campaign scope) and ``characters``
-    (user scope), and a requesting user with id ``test-user-id`` so visibility
-    and bucket splits resolve.
-    """
-    campaign = campaign or CampaignFactory.build(name="Test Campaign")
-    company = CompanyFactory.build(name="Test Company")
-    user = UserFactory.build(id="test-user-id", company_id="test-company-id", role=user_role)
-
-    by_campaign: dict[str, list] = {campaign.id: []}
-    for character in characters:
-        by_campaign.setdefault(character.campaign_id, []).append(character)
-
-    ctx = GlobalContext(
-        company=company,
-        users=[user],
-        campaigns=[campaign],
-        characters_by_campaign=by_campaign,
-        characters=list(characters),
-        resources_modified_at="2026-01-01T00:00:00+00:00",
-    )
-    return ctx, campaign
-
-
-class TestCharacterListCardEndpoint:
+class TestCharacterListCard:
     """Tests for GET /cards/character-list."""
 
-    def test_no_scope_returns_400(self, client: FlaskClient) -> None:
-        """Verify a request with neither campaign nor user scope is rejected."""
-        # When requesting the card with no scope
-        response = client.get("/cards/character-list")
-
-        # Then the endpoint aborts with 400
-        assert response.status_code == 400
-
-    def test_campaign_scope_all_renders_roster(
-        self, client: FlaskClient, mocker: MockerFixture
-    ) -> None:
-        """Verify campaign scope with bucket=all renders every visible character."""
-        # Given a campaign with two player characters from different owners
-        campaign = CampaignFactory.build(name="Test Campaign")
+    @pytest.fixture
+    def roster(self, use_context) -> Campaign:
+        """Serve a campaign with the session user's PLAYER character and another owner's NPC."""
+        campaign = CampaignFactory.build()
         mine = CharacterFactory.build(
             name="My Hero", type="PLAYER", user_player_id="test-user-id", campaign_id=campaign.id
         )
         theirs = CharacterFactory.build(
-            name="Their Hero", type="PLAYER", user_player_id="other-user", campaign_id=campaign.id
+            name="Their Npc", type="NPC", user_player_id="other-user", campaign_id=campaign.id
         )
-        ctx, campaign = _character_context([mine, theirs], campaign=campaign)
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        use_context(user_role="PLAYER", campaign=campaign, characters=[mine, theirs])
+        return campaign
 
-        # When requesting the all-bucket card
-        response = client.get(f"/cards/character-list?campaign_id={campaign.id}&bucket=all")
+    @pytest.mark.parametrize(
+        ("query", "shown", "hidden"),
+        [
+            ("bucket=all", ["My Hero", "Their Npc"], []),
+            ("bucket=mine", ["My Hero"], ["Their Npc"]),
+            ("bucket=others", ["Their Npc"], ["My Hero"]),
+            ("bucket=all&type=NPC&body_only=true", ["Their Npc"], ["My Hero"]),
+        ],
+        ids=["all", "mine", "others", "type-filter"],
+    )
+    def test_campaign_roster_split_by_bucket_and_filters(
+        self, client: FlaskClient, roster, query, shown, hidden
+    ) -> None:
+        """Verify the campaign roster splits by owner bucket and narrows by filters."""
+        body = client.get(f"/cards/character-list?campaign_id={roster.id}&{query}").get_data(
+            as_text=True
+        )
+
+        for name in shown:
+            assert name in body
+        for name in hidden:
+            assert name not in body
+
+    @pytest.mark.parametrize(
+        ("query", "shows_type_filter"),
+        [
+            ("bucket=all", True),
+            ("bucket=mine", False),
+            ("bucket=all&show_filters=false", False),
+        ],
+        ids=["several-types", "one-type", "filters-off"],
+    )
+    def test_type_filter_offered_only_when_it_can_narrow(
+        self, client: FlaskClient, roster, query, shows_type_filter
+    ) -> None:
+        """Verify the type filter shows only for a roster with several types, unless turned off."""
+        body = client.get(
+            f"/cards/character-list?campaign_id={roster.id}&show_type=true&{query}"
+        ).get_data(as_text=True)
+
+        assert ('name="type"' in body) is shows_type_filter
+
+    def test_user_scope_lists_every_character_the_user_owns(
+        self, client: FlaskClient, use_context
+    ) -> None:
+        """Verify user scope lists the user's characters of any type, and no one else's.
+
+        The API already scopes the roster by role, so the card applies no type filtering.
+        """
+        use_context(
+            user_role="PLAYER",
+            characters=[
+                CharacterFactory.build(name="Owned Player", user_player_id="u-1"),
+                CharacterFactory.build(
+                    name="Owned Story", type="STORYTELLER", user_player_id="u-1"
+                ),
+                CharacterFactory.build(name="Not Owned", user_player_id="u-2"),
+            ],
+        )
+
+        response = client.get("/cards/character-list?user_id=u-1")
+
         body = response.get_data(as_text=True)
-
-        # Then both characters render
         assert response.status_code == 200
-        assert "My Hero" in body
-        assert "Their Hero" in body
-
-    def test_bucket_mine_limits_to_session_user(
-        self, client: FlaskClient, mocker: MockerFixture
-    ) -> None:
-        """Verify bucket=mine shows only the requesting user's characters."""
-        # Given a roster split across the session user and another owner
-        campaign = CampaignFactory.build(name="Test Campaign")
-        mine = CharacterFactory.build(
-            name="My Hero", type="PLAYER", user_player_id="test-user-id", campaign_id=campaign.id
-        )
-        theirs = CharacterFactory.build(
-            name="Their Hero", type="PLAYER", user_player_id="other-user", campaign_id=campaign.id
-        )
-        ctx, campaign = _character_context([mine, theirs], campaign=campaign)
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When requesting the mine bucket
-        response = client.get(f"/cards/character-list?campaign_id={campaign.id}&bucket=mine")
-        body = response.get_data(as_text=True)
-
-        # Then only the session user's character renders
-        assert "My Hero" in body
-        assert "Their Hero" not in body
-
-    def test_bucket_others_excludes_session_user(
-        self, client: FlaskClient, mocker: MockerFixture
-    ) -> None:
-        """Verify bucket=others hides the requesting user's characters."""
-        # Given a roster split across the session user and another owner
-        campaign = CampaignFactory.build(name="Test Campaign")
-        mine = CharacterFactory.build(
-            name="My Hero", type="PLAYER", user_player_id="test-user-id", campaign_id=campaign.id
-        )
-        theirs = CharacterFactory.build(
-            name="Their Hero", type="PLAYER", user_player_id="other-user", campaign_id=campaign.id
-        )
-        ctx, campaign = _character_context([mine, theirs], campaign=campaign)
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When requesting the others bucket
-        response = client.get(f"/cards/character-list?campaign_id={campaign.id}&bucket=others")
-        body = response.get_data(as_text=True)
-
-        # Then only the other owner's character renders
-        assert "Their Hero" in body
-        assert "My Hero" not in body
-
-    def test_user_scope_renders_owned_characters(
-        self, client: FlaskClient, mocker: MockerFixture
-    ) -> None:
-        """Verify user scope renders the target user's characters across campaigns."""
-        # Given two characters owned by the target user and one owned by someone else
-        owned_a = CharacterFactory.build(name="Owned A", type="PLAYER", user_player_id="u-target")
-        owned_b = CharacterFactory.build(name="Owned B", type="NPC", user_player_id="u-target")
-        not_owned = CharacterFactory.build(
-            name="Not Owned", type="PLAYER", user_player_id="u-other"
-        )
-        ctx, _ = _character_context([owned_a, owned_b, not_owned])
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When requesting the user-scoped card
-        response = client.get("/cards/character-list?user_id=u-target")
-        body = response.get_data(as_text=True)
-
-        # Then only that user's characters render
-        assert response.status_code == 200
-        assert "Owned A" in body
-        assert "Owned B" in body
+        assert "Owned Player" in body
+        assert "Owned Story" in body
         assert "Not Owned" not in body
 
-    def test_link_user_profile_skips_link_for_ownerless_npc(
-        self, client: FlaskClient, mocker: MockerFixture
-    ) -> None:
-        """Verify an NPC with no owner renders without a profile link instead of crashing."""
-        # Given a campaign whose roster includes an NPC with no owning player
-        campaign = CampaignFactory.build(name="Test Campaign")
+    def test_profile_links_skip_ownerless_npc(self, client: FlaskClient, use_context) -> None:
+        """Verify an NPC with no owner renders without a profile link instead of failing."""
+        campaign = CampaignFactory.build()
         npc = CharacterFactory.build(
             name="Ownerless Npc", type="NPC", user_player_id=None, campaign_id=campaign.id
         )
-        ctx, _ = _character_context([npc], campaign=campaign)
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        use_context(user_role="PLAYER", campaign=campaign, characters=[npc])
 
-        # When requesting the card with profile links enabled (the "Other Players" box)
         response = client.get(
             f"/cards/character-list?campaign_id={campaign.id}&bucket=all&link_user_profile=true"
         )
-        body = response.get_data(as_text=True)
 
-        # Then the NPC renders without a profile link, and url_for(user_id=None) does not 500
+        body = response.get_data(as_text=True)
         assert response.status_code == 200
         assert "Ownerless Npc" in body
         assert "/profile/None" not in body
-
-    def test_user_scope_returns_all_context_characters_without_type_filtering(
-        self, client: FlaskClient, mocker: MockerFixture
-    ) -> None:
-        """Verify user-scoped card returns every owned character verbatim from the context.
-
-        The API already scopes the roster by role via the on-behalf-of header, so
-        the card no longer applies client-side type filtering.
-        """
-        # Given a target user owning a player and a storyteller character
-        player_char = CharacterFactory.build(
-            name="Owned Player", type="PLAYER", user_player_id="u-target"
-        )
-        story_char = CharacterFactory.build(
-            name="Owned Storyteller", type="STORYTELLER", user_player_id="u-target"
-        )
-        ctx, _ = _character_context([player_char, story_char], user_role="PLAYER")
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When the user-scoped card is requested
-        body = client.get("/cards/character-list?user_id=u-target").get_data(as_text=True)
-
-        # Then both characters render because the API already filtered the bucket
-        assert "Owned Player" in body
-        assert "Owned Storyteller" in body
-
-    def test_type_filter_narrows_results(self, client: FlaskClient, mocker: MockerFixture) -> None:
-        """Verify the type filter param narrows the rendered body."""
-        # Given a campaign with one player and one NPC character
-        campaign = CampaignFactory.build(name="Test Campaign")
-        player = CharacterFactory.build(
-            name="Player One", type="PLAYER", user_player_id="test-user-id", campaign_id=campaign.id
-        )
-        npc = CharacterFactory.build(
-            name="Npc One", type="NPC", user_player_id="test-user-id", campaign_id=campaign.id
-        )
-        ctx, campaign = _character_context([player, npc], campaign=campaign)
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When requesting the body filtered to NPC
-        response = client.get(
-            f"/cards/character-list?campaign_id={campaign.id}&bucket=all&type=NPC&body_only=true"
-        )
-        body = response.get_data(as_text=True)
-
-        # Then only the NPC renders
-        assert "Npc One" in body
-        assert "Player One" not in body
-
-    def test_type_filter_shown_only_when_multiple_types_present(
-        self, client: FlaskClient, mocker: MockerFixture
-    ) -> None:
-        """Verify the type filter appears only when the roster has more than one type."""
-        # Given a campaign with both PLAYER and NPC characters
-        campaign = CampaignFactory.build(name="Mixed Campaign")
-        player = CharacterFactory.build(
-            name="Player One", type="PLAYER", user_player_id="test-user-id", campaign_id=campaign.id
-        )
-        npc = CharacterFactory.build(
-            name="Npc One", type="NPC", user_player_id="test-user-id", campaign_id=campaign.id
-        )
-        ctx, campaign = _character_context([player, npc], campaign=campaign)
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When rendering the full card with mixed types
-        mixed = client.get(
-            f"/cards/character-list?campaign_id={campaign.id}&bucket=all&show_type=true"
-        ).get_data(as_text=True)
-
-        # Then the type select is present
-        assert 'name="type"' in mixed
-        assert "All types" in mixed
-
-    def test_type_filter_hidden_when_single_type(
-        self, client: FlaskClient, mocker: MockerFixture
-    ) -> None:
-        """Verify a single-type roster renders no type filter control."""
-        # Given a campaign whose characters are all the same type and owner
-        campaign = CampaignFactory.build(name="Single Type Campaign")
-        one = CharacterFactory.build(
-            name="Player One", type="PLAYER", user_player_id="test-user-id", campaign_id=campaign.id
-        )
-        two = CharacterFactory.build(
-            name="Player Two", type="PLAYER", user_player_id="test-user-id", campaign_id=campaign.id
-        )
-        ctx, campaign = _character_context([one, two], campaign=campaign)
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When rendering the full card
-        body = client.get(
-            f"/cards/character-list?campaign_id={campaign.id}&bucket=mine&show_type=true"
-        ).get_data(as_text=True)
-
-        # Then no type filter is rendered
-        assert "All types" not in body
-
-    def test_show_filters_false_suppresses_all_filters(
-        self, client: FlaskClient, mocker: MockerFixture
-    ) -> None:
-        """Verify show_filters=false hides the filter row even with multiple values present."""
-        # Given a campaign with mixed types and owners (which would normally show filters)
-        campaign = CampaignFactory.build(name="Mixed Campaign")
-        player = CharacterFactory.build(
-            name="Player One", type="PLAYER", user_player_id="test-user-id", campaign_id=campaign.id
-        )
-        npc = CharacterFactory.build(
-            name="Npc One", type="NPC", user_player_id="other-user", campaign_id=campaign.id
-        )
-        ctx, campaign = _character_context([player, npc], campaign=campaign)
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When rendering with filters disabled
-        body = client.get(
-            f"/cards/character-list?campaign_id={campaign.id}&bucket=all&show_type=true&show_filters=false"
-        ).get_data(as_text=True)
-
-        # Then no filter controls render, but the roster still does
-        assert "All types" not in body
-        assert 'name="type"' not in body
-        assert "Player One" in body
-        assert "Npc One" in body

@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import logging
 
+import pytest
 from flask import session
 
+from tests.helpers import seed_session
 from vweb.api_client.testing import CharacterFactory, Routes
 from vweb.routes.character_create.manual_services import (
     build_trait_items,
+    bulk_assign_traits,
     save_temp_character,
     update_character_profile,
 )
@@ -131,9 +134,11 @@ class TestSaveLogging:
         with caplog.at_level(logging.WARNING):
             errors = _save(app)
 
-        # Then the request was sent once, the fallback is shown, and one error is logged
+        # Then the request was sent once, only a general error without the detail is returned,
+        # and one error is logged
         fake_vclient.assert_called(Routes.CHARACTERS_CREATE, times=1)
-        assert errors == {"_general": "Failed to save profile"}
+        assert set(errors) == {"_general"}
+        assert "db exploded" not in errors["_general"]
         assert len([r for r in caplog.records if r.levelno >= logging.ERROR]) == 1
 
 
@@ -167,8 +172,13 @@ class TestSaveDraft:
         fake_vclient.assert_not_called(Routes.CHARACTERS_CREATE)
         fake_vclient.assert_not_called(Routes.CHARACTERS_DELETE)
 
-    def test_changed_class_replaces_draft(self, app, fake_vclient) -> None:
-        """Verify a new class replaces the draft, since the API cannot change a class."""
+    @pytest.mark.parametrize(
+        "form",
+        [{"character_class": "HUNTER", "creed": "Faithful"}, {"game_version": "V4"}],
+        ids=["class-changed", "game-version-changed"],
+    )
+    def test_changed_class_or_version_replaces_draft(self, app, fake_vclient, form) -> None:
+        """Verify a new class or game version replaces the draft, since the API cannot change them."""
         # Given a mortal V5 draft
         fake_vclient.set_response(
             Routes.CHARACTERS_GET,
@@ -178,35 +188,18 @@ class TestSaveDraft:
             Routes.CHARACTERS_CREATE, model=CharacterFactory.build(id="draft-2")
         )
 
-        # When saving as a hunter
-        errors, draft_id = _save_draft(app, {"character_class": "HUNTER", "creed": "Faithful"})
+        # When saving with a different class or version
+        errors, draft_id = _save_draft(app, form)
 
-        # Then the old draft is deleted and a hunter draft takes its place
+        # Then the old draft is deleted and a new draft with the new values takes its place
         assert errors == {}
         assert draft_id == "draft-2"
         fake_vclient.assert_called(Routes.CHARACTERS_DELETE, params={"character_id": "draft-1"})
         fake_vclient.assert_called(
-            Routes.CHARACTERS_CREATE, json_subset={"character_class": "HUNTER"}
+            Routes.CHARACTERS_CREATE,
+            json_subset={k: v for k, v in form.items() if k in {"character_class", "game_version"}},
         )
         fake_vclient.assert_not_called(Routes.CHARACTERS_UPDATE)
-
-    def test_changed_game_version_replaces_draft(self, app, fake_vclient) -> None:
-        """Verify a new game version replaces the draft."""
-        # Given a mortal V5 draft
-        fake_vclient.set_response(
-            Routes.CHARACTERS_GET,
-            model=CharacterFactory.build(id="draft-1", character_class="MORTAL", game_version="V5"),
-        )
-        fake_vclient.set_response(
-            Routes.CHARACTERS_CREATE, model=CharacterFactory.build(id="draft-2")
-        )
-
-        # When saving as V4
-        _errors, draft_id = _save_draft(app, {"game_version": "V4"})
-
-        # Then the draft is replaced
-        assert draft_id == "draft-2"
-        fake_vclient.assert_called(Routes.CHARACTERS_DELETE, params={"character_id": "draft-1"})
 
 
 class TestBuildTraitItems:
@@ -231,45 +224,59 @@ class TestBuildTraitItems:
         assert [(item.trait_id, item.value) for item in items] == [("t1", 3), ("t5", 100)]
 
 
+def test_bulk_assign_skips_api_when_no_traits(app, fake_vclient) -> None:
+    """Verify finalizing with no traits chosen sends no bulk assign."""
+    # When assigning an empty trait list
+    with app.test_request_context():
+        seed_session()
+        failed = bulk_assign_traits("char-1", [])
+
+    # Then nothing is sent and nothing failed
+    assert failed == []
+    fake_vclient.assert_not_called(Routes.CHARACTER_TRAITS_BULK_ASSIGN)
+
+
 class TestAgePayload:
     """The profile form sends an age or a date of birth, and clears the other."""
 
     def test_create_sends_date_of_birth(self, app, fake_vclient) -> None:
         """Verify creating a character sends the date of birth and no age."""
+        # When creating a character with a date of birth
         fake_vclient.set_response(Routes.CHARACTERS_CREATE, model=CharacterFactory.build())
         _save(app, {"date_of_birth": "1960-03-15"})
 
+        # Then only the date of birth is sent
         body = fake_vclient.requests_for(Routes.CHARACTERS_CREATE)[0].json
         assert body["date_of_birth"] == "1960-03-15"
         assert "age" not in body
 
-    def test_update_with_date_of_birth_clears_age(self, app, fake_vclient) -> None:
-        """Verify choosing a date of birth clears the stored age."""
+    @pytest.mark.parametrize(
+        ("form", "keep_stored_age", "expected", "absent"),
+        [
+            (
+                {"date_of_birth": "1960-03-15"},
+                False,
+                {"date_of_birth": "1960-03-15", "age": None},
+                None,
+            ),
+            ({"age": "3236"}, False, {"age": 3236, "date_of_birth": None}, None),
+            ({"date_of_birth": "1960-03-15"}, True, {"date_of_birth": "1960-03-15"}, "age"),
+        ],
+        ids=["date-of-birth-clears-age", "age-clears-date-of-birth", "dead-keeps-age-at-death"],
+    )
+    def test_update_sends_one_and_clears_the_other(
+        self, app, fake_vclient, form, keep_stored_age, expected, absent
+    ) -> None:
+        """Verify an update clears whichever of age and date of birth was not given."""
+        # When updating the profile
         fake_vclient.set_response(Routes.CHARACTERS_UPDATE, model=CharacterFactory.build())
-        _update(app, {"date_of_birth": "1960-03-15"})
-        fake_vclient.assert_called(
-            Routes.CHARACTERS_UPDATE,
-            json_subset={"date_of_birth": "1960-03-15", "age": None},
-            times=1,
-        )
+        _update(app, form, keep_stored_age=keep_stored_age)
 
-    def test_update_with_age_clears_date_of_birth(self, app, fake_vclient) -> None:
-        """Verify choosing an age clears the date of birth."""
-        fake_vclient.set_response(Routes.CHARACTERS_UPDATE, model=CharacterFactory.build())
-        _update(app, {"age": "3236"})
-        fake_vclient.assert_called(
-            Routes.CHARACTERS_UPDATE,
-            json_subset={"age": 3236, "date_of_birth": None},
-            times=1,
-        )
-
-    def test_dead_character_keeps_age_at_death(self, app, fake_vclient) -> None:
-        """Verify a dead character's stored age survives saving a date of birth."""
-        fake_vclient.set_response(Routes.CHARACTERS_UPDATE, model=CharacterFactory.build())
-        _update(app, {"date_of_birth": "1960-03-15"}, keep_stored_age=True)
-        body = fake_vclient.requests_for(Routes.CHARACTERS_UPDATE)[0].json
-        assert body["date_of_birth"] == "1960-03-15"
-        assert "age" not in body
+        # Then the given value is sent and the other is cleared, unless a dead character's age
+        [request] = fake_vclient.requests_for(Routes.CHARACTERS_UPDATE)
+        assert request.json | expected == request.json
+        if absent:
+            assert absent not in request.json
 
 
 def test_update_clears_blanked_profile_fields(app, fake_vclient) -> None:

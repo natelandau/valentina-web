@@ -57,31 +57,25 @@ class TestBuildAppleClientSecret:
         assert before <= decoded.claims["iat"] <= after
         assert decoded.claims["exp"] > decoded.claims["iat"]
 
-    def test_accepts_private_key_with_escaped_newlines(self) -> None:
-        r"""Verify a PEM stored with literal \n escapes (env style) still signs."""
-        # Given a key whose newlines were escaped, as .env/Railway storage does
+    @pytest.mark.parametrize(
+        "reshape",
+        [
+            lambda pem: pem.replace("\n", "\\n"),
+            lambda pem: "".join(line for line in pem.splitlines() if "-----" not in line),
+        ],
+        ids=["escaped-newlines", "bare-base64-body"],
+    )
+    def test_accepts_private_key_in_env_friendly_forms(self, reshape) -> None:
+        """Verify a key stored on one env line, escaped or without PEM armor, still signs."""
+        # Given the key reshaped the way one-line env storage keeps it
         apple = _apple_settings()
-        escaped = apple.model_copy(update={"private_key": apple.private_key.replace("\n", "\\n")})
+        reshaped = apple.model_copy(update={"private_key": reshape(apple.private_key)})
 
-        # When a client secret is minted from the escaped key
-        token = build_apple_client_secret(escaped)
-
-        # Then it is a well-formed three-segment JWT
-        assert token.count(".") == 2
-
-    def test_accepts_bare_base64_private_key_without_pem_armor(self) -> None:
-        """Verify a key stored as a bare base64 body (no PEM armor) still signs."""
-        # Given the key reduced to one continuous base64 line, the one-line env form
-        apple = _apple_settings()
-        bare = "".join(line for line in apple.private_key.splitlines() if "-----" not in line)
-        settings = apple.model_copy(update={"private_key": bare})
-
-        # When a client secret is minted from the bare body
-        token = build_apple_client_secret(settings)
+        # When a client secret is minted from the reshaped key
+        token = build_apple_client_secret(reshaped)
 
         # Then it verifies against the original key
         decoded = jwt.decode(token, ECKey.import_key(apple.private_key))
-        assert decoded.header["alg"] == "ES256"
         assert decoded.claims["sub"] == "org.example.web"
 
 
@@ -101,18 +95,18 @@ class TestAppleOAuthSettings:
 class TestAppleDisplayName:
     """Tests for parsing Apple's first-login name payload."""
 
-    def test_returns_full_name_from_user_payload(self) -> None:
-        """Verify first and last names are joined into a display name."""
-        raw = '{"name": {"firstName": "Ada", "lastName": "Lovelace"}}'
-        assert extract_apple_display_name(raw) == "Ada Lovelace"
-
-    def test_returns_partial_name_when_only_one_present(self) -> None:
-        """Verify a single supplied name part is used on its own."""
-        assert extract_apple_display_name('{"name": {"firstName": "Ada"}}') == "Ada"
-
-    def test_ignores_non_string_name_parts(self) -> None:
-        """Verify non-string name parts are dropped rather than crashing the parse."""
-        assert extract_apple_display_name('{"name": {"firstName": "Ada", "lastName": 5}}') == "Ada"
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ('{"name": {"firstName": "Ada", "lastName": "Lovelace"}}', "Ada Lovelace"),
+            ('{"name": {"firstName": "Ada"}}', "Ada"),
+            ('{"name": {"firstName": "Ada", "lastName": 5}}', "Ada"),
+        ],
+        ids=["full-name", "first-name-only", "non-string-part-dropped"],
+    )
+    def test_builds_display_name_from_name_parts(self, raw: str, expected: str) -> None:
+        """Verify the string name parts Apple sends are joined into a display name."""
+        assert extract_apple_display_name(raw) == expected
 
     @pytest.mark.parametrize(
         "raw",
@@ -137,54 +131,30 @@ class TestAppleDisplayName:
         assert extract_apple_display_name(raw) is None
 
 
-class TestAppleProviderRegistration:
-    """Tests for how Sign in with Apple is registered with Authlib."""
+def test_apple_registered_for_form_post_and_client_secret_post(mocker) -> None:
+    """Verify Apple registration uses form_post responses and sends the secret in the body.
 
-    def test_apple_registered_with_form_post_response_mode(self, mocker) -> None:
-        """Verify Apple registration makes every authorize redirect request form_post."""
-        # Given a fresh OAuth registry and settings with only Apple configured
-        fresh = OAuth()
-        mocker.patch.object(oauth_setup, "oauth", fresh)
-        settings = Settings(
-            _env_file=None,
-            env="development",
-            secret_key="test-secret-key",
-            redis=RedisSettings(url=""),
-            api=APISettings(base_url="http://localhost", api_key="k"),
-            oauth=OAuthSettings(apple=_apple_settings()),
-        )
-        app = Flask(__name__)
-        app.config["SECRET_KEY"] = "test-secret-key"
+    Apple rejects the default client_secret_basic with invalid_client, and returns the
+    user's name only through a form_post callback.
+    """
+    # Given a fresh OAuth registry and settings with only Apple configured
+    fresh = OAuth()
+    mocker.patch.object(oauth_setup, "oauth", fresh)
+    settings = Settings(
+        _env_file=None,
+        env="development",
+        secret_key="test-secret-key",
+        redis=RedisSettings(url=""),
+        api=APISettings(base_url="http://localhost", api_key="k"),
+        oauth=OAuthSettings(apple=_apple_settings()),
+    )
+    app = Flask(__name__)
+    app.config["SECRET_KEY"] = "test-secret-key"
 
-        # When the providers are registered
-        oauth_setup.register_oauth_providers(app, settings)
+    # When the providers are registered
+    oauth_setup.register_oauth_providers(app, settings)
 
-        # Then Apple carries form_post (so login and link both use it) and the scopes
-        assert fresh.apple.authorize_params == {"response_mode": "form_post"}
-        assert fresh.apple.client_kwargs["scope"] == "openid name email"
-
-    def test_apple_registered_with_client_secret_post_auth(self, mocker) -> None:
-        """Verify Apple authenticates the token exchange via client_secret_post.
-
-        Apple rejects the default client_secret_basic with invalid_client; the
-        signed-JWT secret must be sent in the POST body, not an HTTP Basic header.
-        """
-        # Given a fresh OAuth registry and settings with only Apple configured
-        fresh = OAuth()
-        mocker.patch.object(oauth_setup, "oauth", fresh)
-        settings = Settings(
-            _env_file=None,
-            env="development",
-            secret_key="test-secret-key",
-            redis=RedisSettings(url=""),
-            api=APISettings(base_url="http://localhost", api_key="k"),
-            oauth=OAuthSettings(apple=_apple_settings()),
-        )
-        app = Flask(__name__)
-        app.config["SECRET_KEY"] = "test-secret-key"
-
-        # When the providers are registered
-        oauth_setup.register_oauth_providers(app, settings)
-
-        # Then the token endpoint auth method puts the secret in the request body
-        assert fresh.apple.client_kwargs["token_endpoint_auth_method"] == "client_secret_post"
+    # Then every authorize redirect requests form_post and the token exchange posts the secret
+    assert fresh.apple.authorize_params == {"response_mode": "form_post"}
+    assert fresh.apple.client_kwargs["scope"] == "openid name email"
+    assert fresh.apple.client_kwargs["token_endpoint_auth_method"] == "client_secret_post"

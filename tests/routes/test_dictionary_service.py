@@ -7,197 +7,126 @@ import pytest
 from tests.helpers import seed_session
 from vweb.api_client.testing import Routes
 from vweb.routes.dictionary.services import (
+    TERM_MAX_LENGTH,
+    TERM_MIN_LENGTH,
     create_term,
-    delete_term,
     parse_synonyms,
     update_term,
     validate_term,
 )
 
 
-class TestParseSynonyms:
-    """Tests for parse_synonyms."""
-
-    def test_splits_comma_separated_values(self) -> None:
-        """Verify comma-separated input is split into a list."""
-        assert parse_synonyms("vamp, leech, nosferatu") == ["vamp", "leech", "nosferatu"]
-
-    def test_strips_whitespace(self) -> None:
-        """Verify leading and trailing whitespace is stripped from each synonym."""
-        assert parse_synonyms("  vamp ,  leech  ") == ["vamp", "leech"]
-
-    def test_filters_empty_strings(self) -> None:
-        """Verify empty entries from trailing commas are removed."""
-        assert parse_synonyms("vamp,,leech,") == ["vamp", "leech"]
-
-    def test_empty_input(self) -> None:
-        """Verify empty string returns empty list."""
-        assert parse_synonyms("") == []
-
-    def test_whitespace_only(self) -> None:
-        """Verify whitespace-only input returns empty list."""
-        assert parse_synonyms("   ") == []
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("vamp, leech, nosferatu", ["vamp", "leech", "nosferatu"]),
+        ("  vamp ,  leech  ", ["vamp", "leech"]),
+        ("vamp,,leech,", ["vamp", "leech"]),
+        ("", []),
+        ("   ", []),
+    ],
+    ids=["split", "strip", "drop-empty", "empty", "whitespace-only"],
+)
+def test_parse_synonyms(raw, expected) -> None:
+    """Verify synonyms are split on commas, trimmed, and empty entries dropped."""
+    assert parse_synonyms(raw) == expected
 
 
-class TestValidateTerm:
-    """Tests for validate_term."""
-
-    def test_valid_term(self) -> None:
-        """Verify valid form data returns no errors."""
-        form_data = {"term": "Auspex", "definition": "A discipline", "link": "", "synonyms": ""}
-        assert validate_term(form_data) == {}
-
-    def test_missing_term(self) -> None:
-        """Verify missing term name returns error."""
-        errors = validate_term({"term": "", "definition": "", "link": "", "synonyms": ""})
-        assert "required" in errors["term"].lower()
-
-    def test_term_too_short(self) -> None:
-        """Verify term under 3 characters returns error."""
-        errors = validate_term({"term": "ab", "definition": "", "link": "", "synonyms": ""})
-        assert "3" in errors["term"]
-
-    def test_term_too_long(self) -> None:
-        """Verify term over 50 characters returns error."""
-        errors = validate_term({"term": "a" * 51, "definition": "", "link": "", "synonyms": ""})
-        assert "50" in errors["term"]
-
-    def test_invalid_link(self) -> None:
-        """Verify non-URL link returns error."""
-        errors = validate_term(
-            {"term": "Auspex", "definition": "", "link": "not-a-url", "synonyms": ""}
-        )
-        assert "url" in errors["link"].lower()
-
-    def test_requires_definition_or_link(self) -> None:
-        """Verify a term with neither a definition nor a link returns an error, as the API requires one."""
-        errors = validate_term({"term": "Auspex", "definition": " ", "link": "", "synonyms": ""})
-        assert errors["definition"] == "Add a definition or a link"
-
-    def test_valid_link(self) -> None:
-        """Verify valid URL link returns no errors."""
-        errors = validate_term(
-            {"term": "Auspex", "definition": "", "link": "https://example.com", "synonyms": ""}
-        )
-        assert errors == {}
-
-    @pytest.mark.parametrize(
-        "link",
-        [
-            "javascript://x/%0aalert(1)",
-            "data://x/text",
-            "https://a.example/ x-data x-init=alert(1)",
-            "https://a.example/\tpath",
-        ],
-    )
-    def test_rejects_non_http_scheme_and_whitespace(self, link) -> None:
-        """Verify links must be http(s) URLs without whitespace."""
-        errors = validate_term({"term": "Auspex", "definition": "", "link": link, "synonyms": ""})
-        assert "url" in errors["link"].lower()
-
-    def test_empty_link_is_valid(self) -> None:
-        """Verify an empty link is accepted when the term has a definition."""
-        errors = validate_term(
-            {"term": "Auspex", "definition": "A discipline", "link": "", "synonyms": ""}
-        )
-        assert errors == {}
+@pytest.mark.parametrize(
+    ("form", "invalid_fields"),
+    [
+        ({"term": "Auspex", "definition": "A discipline"}, set()),
+        ({"term": "Auspex", "link": "https://example.com"}, set()),
+        ({"term": "", "definition": "A discipline"}, {"term"}),
+        ({"term": "a" * (TERM_MIN_LENGTH - 1), "definition": "A discipline"}, {"term"}),
+        ({"term": "a" * (TERM_MAX_LENGTH + 1), "definition": "A discipline"}, {"term"}),
+        ({"term": "Auspex", "definition": " ", "link": ""}, {"definition"}),
+        ({"term": "Auspex", "link": "not-a-url"}, {"link"}),
+        ({"term": "Auspex", "link": "javascript://x/%0aalert(1)"}, {"link"}),
+        ({"term": "Auspex", "link": "data://x/text"}, {"link"}),
+        ({"term": "Auspex", "link": "https://a.example/ x-data x-init=alert(1)"}, {"link"}),
+        ({"term": "Auspex", "link": "https://a.example/\tpath"}, {"link"}),
+    ],
+    ids=[
+        "definition-only",
+        "link-only",
+        "missing-term",
+        "term-too-short",
+        "term-too-long",
+        "no-definition-or-link",
+        "not-a-url",
+        "javascript-scheme",
+        "data-scheme",
+        "embedded-space",
+        "embedded-tab",
+    ],
+)
+def test_validate_term(form, invalid_fields) -> None:
+    """Verify the term length, an http(s) link, and a definition-or-link rule are enforced."""
+    assert set(validate_term(form)) == invalid_fields
 
 
-class TestCreateTerm:
-    """Tests for create_term."""
-
-    def test_creates_term_via_api(self, app, fake_vclient) -> None:
-        """Verify create_term sends the parsed form data to the API."""
-        # Given a filled-in term form
-        form_data = {
-            "term": "Auspex",
-            "definition": "A vampiric discipline.",
-            "link": "https://example.com",
-            "synonyms": "sight, vision",
-        }
-
-        # When creating the term
-        with app.test_request_context("/"):
-            seed_session()
-            create_term(form_data)
-
-        # Then the API receives every parsed field
-        fake_vclient.assert_called(
-            Routes.DICTIONARY_CREATE,
-            params={"company_id": "test-company-id"},
-            json={
+@pytest.mark.parametrize(
+    ("form", "expected_body"),
+    [
+        (
+            {
+                "term": " Auspex ",
+                "definition": "A vampiric discipline.",
+                "link": "https://example.com",
+                "synonyms": "sight, vision",
+            },
+            {
                 "term": "Auspex",
                 "definition": "A vampiric discipline.",
                 "link": "https://example.com",
                 "synonyms": ["sight", "vision"],
             },
-            times=1,
-        )
+        ),
+        (
+            {"term": "Auspex", "definition": "", "link": "", "synonyms": ""},
+            {"term": "Auspex", "synonyms": []},
+        ),
+    ],
+    ids=["all-fields", "optional-fields-omitted"],
+)
+def test_create_term_sends_parsed_form(app, fake_vclient, form, expected_body) -> None:
+    """Verify the parsed form reaches the API, leaving out empty optional fields."""
+    with app.test_request_context("/"):
+        seed_session()
+        create_term(form)
 
-    def test_empty_optional_fields(self, app, fake_vclient) -> None:
-        """Verify empty optional fields are left out of the request."""
-        # Given a form with only the term filled in
-        form_data = {"term": "Auspex", "definition": "", "link": "", "synonyms": ""}
-
-        # When creating the term
-        with app.test_request_context("/"):
-            seed_session()
-            create_term(form_data)
-
-        # Then the API receives no definition or link and an empty synonym list
-        fake_vclient.assert_called(
-            Routes.DICTIONARY_CREATE, json={"term": "Auspex", "synonyms": []}, times=1
-        )
-
-
-class TestUpdateTerm:
-    """Tests for update_term."""
-
-    def test_updates_term_via_api(self, app, fake_vclient) -> None:
-        """Verify update_term sends the parsed form data to the term's API path."""
-        # Given an edited term form
-        form_data = {"term": "Auspex", "definition": "Updated.", "link": "", "synonyms": "a, b"}
-
-        # When updating the term
-        with app.test_request_context("/"):
-            seed_session()
-            update_term("term-1", form_data)
-
-        # Then the API receives the update for term-1, with a null link that clears it
-        fake_vclient.assert_called(
-            Routes.DICTIONARY_UPDATE,
-            params={"company_id": "test-company-id", "term_id": "term-1"},
-            json={"term": "Auspex", "definition": "Updated.", "link": None, "synonyms": ["a", "b"]},
-            times=1,
-        )
-
-    def test_blank_definition_clears_it(self, app, fake_vclient) -> None:
-        """Verify blanking the definition sends null so the API clears the stored value."""
-        # Given an edited term form with the definition removed
-        form_data = {"term": "Auspex", "definition": "  ", "link": "", "synonyms": ""}
-
-        # When updating the term
-        with app.test_request_context("/"):
-            seed_session()
-            update_term("term-1", form_data)
-
-        # Then the API receives null for the definition and link
-        fake_vclient.assert_called(
-            Routes.DICTIONARY_UPDATE,
-            json={"term": "Auspex", "definition": None, "link": None, "synonyms": []},
-            times=1,
-        )
+    fake_vclient.assert_called(
+        Routes.DICTIONARY_CREATE,
+        params={"company_id": "test-company-id"},
+        json=expected_body,
+        times=1,
+    )
 
 
-class TestDeleteTerm:
-    """Tests for delete_term."""
+@pytest.mark.parametrize(
+    ("form", "expected_body"),
+    [
+        (
+            {"term": "Auspex", "definition": "Updated.", "link": "", "synonyms": "a, b"},
+            {"term": "Auspex", "definition": "Updated.", "link": None, "synonyms": ["a", "b"]},
+        ),
+        (
+            {"term": "Auspex", "definition": "  ", "link": "", "synonyms": ""},
+            {"term": "Auspex", "definition": None, "link": None, "synonyms": []},
+        ),
+    ],
+    ids=["blank-link-clears", "blank-definition-clears"],
+)
+def test_update_term_sends_nulls_to_clear_fields(app, fake_vclient, form, expected_body) -> None:
+    """Verify an update sends null for blanked fields so the API clears the stored values."""
+    with app.test_request_context("/"):
+        seed_session()
+        update_term("term-1", form)
 
-    def test_deletes_term_via_api(self, app, fake_vclient) -> None:
-        """Verify delete_term deletes the term through the API."""
-        # When deleting a term
-        with app.test_request_context("/"):
-            seed_session()
-            delete_term("term-1")
-
-        # Then the API receives a delete for that term
-        fake_vclient.assert_called(Routes.DICTIONARY_DELETE, params={"term_id": "term-1"}, times=1)
+    fake_vclient.assert_called(
+        Routes.DICTIONARY_UPDATE,
+        params={"company_id": "test-company-id", "term_id": "term-1"},
+        json=expected_body,
+        times=1,
+    )

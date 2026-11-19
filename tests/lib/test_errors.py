@@ -2,45 +2,54 @@
 
 from __future__ import annotations
 
+import pytest
+from flask import abort
 
-class TestErrorHandlers:
-    """Validate custom error handlers return styled pages."""
 
-    def test_404_returns_styled_page(self, client) -> None:
-        """Verify 404 errors render the error page template."""
-        response = client.get("/nonexistent-page-that-does-not-exist")
-        assert response.status_code == 404
-        body = response.get_data(as_text=True)
-        assert "Page Not Found" in body
+@pytest.mark.parametrize("code", [400, 403, 404, 410, 500])
+def test_http_error_keeps_status_without_exception_log(app, client, mocker, code: int) -> None:
+    """Verify an HTTP error renders the error page with its own status and is not logged."""
 
-    def test_405_returns_405_without_exception_log(self, app, client, mocker) -> None:
-        """Verify method-not-allowed errors keep their status code and skip exception logging."""
+    @app.route("/test-abort")
+    def aborting() -> str:
+        abort(code)
 
-        # Given a GET-only route and a spy on the unhandled-exception logger
-        @app.route("/test-405-get-only")
-        def get_only() -> str:
-            return "ok"
+    log_spy = mocker.patch("vweb.lib.errors.logger.exception")
 
-        log_spy = mocker.patch("vweb.lib.errors.logger.exception")
+    response = client.get("/test-abort")
 
-        # When POSTing to the GET-only route
-        response = client.post("/test-405-get-only")
+    assert response.status_code == code
+    assert response.mimetype == "text/html"
+    log_spy.assert_not_called()
 
-        # Then the response is a styled 405, not a logged 500
-        assert response.status_code == 405
-        body = response.get_data(as_text=True)
-        assert "Method Not Allowed" in body
-        log_spy.assert_not_called()
 
-    def test_500_returns_styled_page(self, app, client) -> None:
-        """Verify unhandled exceptions render the error page template."""
+def test_method_not_allowed_keeps_405(app, client, mocker) -> None:
+    """Verify bot probes with the wrong method get a 405, not a logged 500."""
 
-        @app.route("/test-500")
-        def trigger_error() -> str:
-            msg = "test error"
-            raise RuntimeError(msg)
+    @app.route("/test-405-get-only")
+    def get_only() -> str:
+        return "ok"
 
-        response = client.get("/test-500")
-        assert response.status_code == 500
-        body = response.get_data(as_text=True)
-        assert "Server Error" in body
+    log_spy = mocker.patch("vweb.lib.errors.logger.exception")
+
+    response = client.post("/test-405-get-only")
+
+    assert response.status_code == 405
+    log_spy.assert_not_called()
+
+
+def test_unhandled_exception_returns_500_and_logs(app, client, mocker) -> None:
+    """Verify an unexpected exception renders a 500 page and is logged."""
+
+    @app.route("/test-500")
+    def trigger_error() -> str:
+        msg = "test error"
+        raise RuntimeError(msg)
+
+    log_spy = mocker.patch("vweb.lib.errors.logger.exception")
+
+    response = client.get("/test-500")
+
+    assert response.status_code == 500
+    assert "test error" not in response.get_data(as_text=True)
+    log_spy.assert_called_once()

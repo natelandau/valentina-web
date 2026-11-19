@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from vweb.api_client.testing import (
     CharacterFullSheetFactory,
     CharacterTraitFactory,
@@ -11,38 +13,28 @@ from vweb.api_client.testing import (
 )
 from vweb.lib.character_profile import find_character_trait, iter_character_traits
 
+_TOP = CharacterTraitFactory.build(id="ct-top")
+_NESTED = CharacterTraitFactory.build(id="ct-nested")
 
-def test_iter_character_traits_includes_subcategories() -> None:
+
+@pytest.fixture
+def sheet():
+    """Build a sheet with one category trait and one subcategory trait."""
+    sub = FullSheetTraitSubcategoryFactory.build(character_traits=[_NESTED])
+    category = FullSheetTraitCategoryFactory.build(character_traits=[_TOP], subcategories=[sub])
+    section = FullSheetTraitSectionFactory.build(categories=[category])
+    return CharacterFullSheetFactory.build(sections=[section])
+
+
+def test_iter_character_traits_includes_subcategories(sheet) -> None:
     """Verify iteration yields category traits first, then subcategory traits."""
-    top = CharacterTraitFactory.build(id="ct-top")
-    nested = CharacterTraitFactory.build(id="ct-nested")
-    sub = FullSheetTraitSubcategoryFactory.build(character_traits=[nested])
-    category = FullSheetTraitCategoryFactory.build(character_traits=[top], subcategories=[sub])
-    section = FullSheetTraitSectionFactory.build(categories=[category])
-    sheet = CharacterFullSheetFactory.build(sections=[section])
-
-    assert list(iter_character_traits(sheet)) == [top, nested]
+    assert list(iter_character_traits(sheet)) == [_TOP, _NESTED]
 
 
-def test_find_character_trait_returns_none_when_missing() -> None:
-    """Verify lookup returns None for an id that is not on the sheet."""
-    top = CharacterTraitFactory.build(id="ct-top")
-    category = FullSheetTraitCategoryFactory.build(character_traits=[top], subcategories=[])
-    section = FullSheetTraitSectionFactory.build(categories=[category])
-    sheet = CharacterFullSheetFactory.build(sections=[section])
-
-    assert find_character_trait(sheet, "nope") is None
-    assert find_character_trait(sheet, "ct-top") is top
-
-
-def test_find_character_trait_reaches_subcategory_traits() -> None:
-    """Verify lookup finds a trait nested in a subcategory as well as a category trait."""
-    top = CharacterTraitFactory.build(id="ct-top")
-    nested = CharacterTraitFactory.build(id="ct-nested")
-    sub = FullSheetTraitSubcategoryFactory.build(character_traits=[nested])
-    category = FullSheetTraitCategoryFactory.build(character_traits=[top], subcategories=[sub])
-    section = FullSheetTraitSectionFactory.build(categories=[category])
-    sheet = CharacterFullSheetFactory.build(sections=[section])
-
-    assert find_character_trait(sheet, "ct-nested") is nested
-    assert find_character_trait(sheet, "ct-top") is top
+@pytest.mark.parametrize(
+    ("trait_id", "expected"),
+    [("ct-top", _TOP), ("ct-nested", _NESTED), ("nope", None)],
+)
+def test_find_character_trait(sheet, trait_id, expected) -> None:
+    """Verify lookup reaches category and subcategory traits and returns None when missing."""
+    assert find_character_trait(sheet, trait_id) is expected

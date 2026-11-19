@@ -244,6 +244,9 @@ TEST_SCOPES: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
 }
 
 
+COVERAGE_FLOOR = 99
+
+
 @duty()
 def test(ctx: Context, *cli_args: str, scope: str = "all") -> None:  # noqa: PT028 (a duty, not a pytest test)
     """Run the tests for web code, API client code, or both, and report coverage.
@@ -271,10 +274,13 @@ def test(ctx: Context, *cli_args: str, scope: str = "all") -> None:  # noqa: PT0
         "-c",
         "pyproject.toml",
         "--color=yes",
+        "--numprocesses=auto",
         "--cov",
         "--cov-config=pyproject.toml",
         "--cov-report=xml",
         "--cov-report=term",
+        # Filtered runs and single scopes cover only part of src/, so only a full run is held to the floor
+        *([f"--cov-fail-under={COVERAGE_FLOOR}"] if scope == "all" and not cli_args else []),
         *cli_args,
     ]
     # A marker covers the name, not the arguments, so a filtered pass must not skip the full suite

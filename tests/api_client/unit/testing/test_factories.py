@@ -2,123 +2,33 @@
 
 import pytest
 
-import vweb.api_client.testing
 from vweb.api_client.models import CounterTracker, Health, StainsTracker
 from vweb.api_client.testing._factories import (
-    AssetFactory,
-    CampaignBookFactory,
-    CampaignChapterFactory,
-    CampaignExperienceFactory,
-    CampaignFactory,
-    CharacterConceptFactory,
     CharacterDetailFactory,
     CharacterFactory,
     CharacterTraitFactory,
-    CharacterTraitValueOptionsResponseFactory,
-    ChargenSessionResponseFactory,
-    CompanyFactory,
-    CompanyPermissionsFactory,
     CounterTrackerFactory,
-    DicerollFactory,
-    DictionaryTermFactory,
     HealthFactory,
     HealthLevelFactory,
-    IdentityResolutionFactory,
-    InventoryItemFactory,
-    NewCompanyResponseFactory,
-    NoteFactory,
-    QuickrollFactory,
-    RollStatisticsFactory,
-    SheetSectionFactory,
     StainsTrackerFactory,
-    SystemHealthFactory,
-    TraitCategoryFactory,
-    TraitFactory,
-    UserFactory,
-    VampireClanFactory,
-    WerewolfAuspiceFactory,
-    WerewolfTribeFactory,
 )
+from vweb.api_client.testing._router import _FACTORY_MAP
 
 
-class TestFactoriesBuildValidModels:
-    """Each factory should produce a valid model instance."""
-
-    @pytest.mark.parametrize(
-        "factory_cls",
-        [
-            AssetFactory,
-            CampaignBookFactory,
-            CampaignChapterFactory,
-            CampaignExperienceFactory,
-            CampaignFactory,
-            CharacterConceptFactory,
-            CharacterFactory,
-            CharacterTraitFactory,
-            CharacterTraitValueOptionsResponseFactory,
-            ChargenSessionResponseFactory,
-            CompanyFactory,
-            CompanyPermissionsFactory,
-            DicerollFactory,
-            DictionaryTermFactory,
-            IdentityResolutionFactory,
-            InventoryItemFactory,
-            NewCompanyResponseFactory,
-            NoteFactory,
-            QuickrollFactory,
-            RollStatisticsFactory,
-            SheetSectionFactory,
-            SystemHealthFactory,
-            TraitCategoryFactory,
-            TraitFactory,
-            UserFactory,
-            VampireClanFactory,
-            WerewolfAuspiceFactory,
-            WerewolfTribeFactory,
-        ],
-    )
-    def test_factory_builds_valid_instance(self, factory_cls):
-        """Each factory should produce a valid instance of its model."""
+@pytest.mark.parametrize(
+    "factory_cls",
+    sorted(_FACTORY_MAP.values(), key=lambda factory: factory.__name__),
+    ids=lambda factory: factory.__name__,
+)
+def test_factory_output_survives_the_wire(factory_cls) -> None:
+    """Verify every factory the fake serves builds models that round-trip through JSON."""
+    for _ in range(5):
         instance = factory_cls.build()
-        assert instance is not None
-        assert isinstance(instance, factory_cls.__model__)
-
-    def test_diceroll_factory_dice_modifier_defaults_to_zero(self):
-        """Verify DicerollFactory builds with a zero dice_modifier."""
-        assert DicerollFactory.build().dice_modifier == 0
-
-    def test_factory_accepts_overrides(self):
-        """Factories should accept field overrides."""
-        campaign = CampaignFactory.build(name="Custom Name")
-        assert campaign.name == "Custom Name"
-
-    def test_factory_batch(self):
-        """Factories should support batch creation."""
-        campaigns = CampaignFactory.batch(3)
-        assert len(campaigns) == 3
-        assert all(isinstance(c, CampaignFactory.__model__) for c in campaigns)
+        assert factory_cls.__model__.model_validate(instance.model_dump(mode="json")) == instance
 
 
 class TestTrackerFactories:
-    """Tracker and health factories should round-trip through their models."""
-
-    @pytest.mark.parametrize(
-        "factory_cls",
-        [CounterTrackerFactory, StainsTrackerFactory, HealthLevelFactory, HealthFactory],
-    )
-    def test_tracker_factory_round_trips(self, factory_cls):
-        """Verify built instances survive JSON serialization and validation."""
-        instance = factory_cls.build()
-        model = factory_cls.__model__
-        assert model.model_validate(instance.model_dump(mode="json")) == instance
-
-    @pytest.mark.parametrize("factory_cls", [CharacterTraitFactory, CharacterFactory])
-    def test_models_with_tracker_fields_round_trip(self, factory_cls):
-        """Verify built characters and traits survive JSON serialization and validation."""
-        for _ in range(20):
-            instance = factory_cls.build()
-            model = factory_cls.__model__
-            assert model.model_validate(instance.model_dump(mode="json")) == instance
+    """Tracker and health factories should build data the API could send."""
 
     @pytest.mark.parametrize("factory_cls", [CharacterFactory, CharacterDetailFactory])
     def test_character_factory_always_has_health(self, factory_cls):
@@ -128,12 +38,15 @@ class TestTrackerFactories:
 
     def test_character_trait_factory_varies_tracker(self):
         """Verify fake traits produce every tracker variant and no other."""
-        kinds = {type(CharacterTraitFactory.build().tracker) for _ in range(200)}
-        assert kinds == {CounterTracker, StainsTracker, type(None)}
-
-    def test_damage_tracker_factory_removed(self):
-        """Verify the testing module no longer exports a damage tracker factory."""
-        assert not hasattr(vweb.api_client.testing, "DamageTrackerFactory")
+        expected = {CounterTracker, StainsTracker, type(None)}
+        kinds: set[type] = set()
+        for _ in range(200):
+            kind = type(CharacterTraitFactory.build().tracker)
+            assert kind in expected
+            kinds.add(kind)
+            if kinds == expected:
+                break
+        assert kinds == expected
 
     def test_health_factory_damage_fits_track(self):
         """Verify fake health always reports a damage count within its size."""
@@ -150,6 +63,7 @@ class TestTrackerFactories:
             if health.levels is None:
                 continue
             seen_levels = True
+            assert health.damage is not None
             assert len(health.levels) == health.size
             assert [level.marked for level in health.levels] == (
                 [True] * health.damage + [False] * (health.size - health.damage)

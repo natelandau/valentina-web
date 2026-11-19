@@ -33,10 +33,25 @@ class FakeResponse:
     Attributes:
         items: Items for a paginated or list route.
         model: The object for a single-object route.
+        total: The paginated total. Defaults to the number of items, so the page is the last;
+            set it higher to report more pages. Every request gets this same page whatever
+            offset it asks for, so a caller that walks every page needs a ``query``-matched
+            response per offset.
+        offset: The paginated offset the page reports.
     """
 
     items: Sequence[BaseModel | dict[str, Any]] | None = None
     model: BaseModel | dict[str, Any] | None = None
+    total: int | None = None
+    offset: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class FakeConnectionError:
+    """A step for ``FakeVClient.set_responses()`` where the API never answers.
+
+    The client raises ``APIConnectionError``, as it does when the API is unreachable.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,12 +266,14 @@ class FakeVClient(VClient):
         """
         self._router.add_route(method, pattern, json=json, status_code=status_code, headers=headers)
 
-    def set_response(
+    def set_response(  # noqa: PLR0913
         self,
         route: RouteSpec,
         *,
         items: Sequence[BaseModel | dict[str, Any]] | None = None,
         model: BaseModel | dict[str, Any] | None = None,
+        total: int | None = None,
+        offset: int = 0,
         params: Mapping[str, str] | None = None,
         query: Mapping[str, Any] | None = None,
     ) -> None:
@@ -272,15 +289,17 @@ class FakeVClient(VClient):
             items: List of items for paginated or list routes. Mutually exclusive with ``model``.
             model: A single model instance or dict for single-object routes.
                 Mutually exclusive with ``items``.
+            total: For paginated routes, the total to report. Defaults to ``len(items)``;
+                set it higher so ``has_more`` is True.
+            offset: For paginated routes, the offset the page reports.
             params: Optional path parameter values to match against. For example,
                 ``params={"campaign_id": "abc"}`` only matches requests where
                 ``{campaign_id}`` is ``"abc"``.
             query: Optional query parameter values to match against. For example,
                 ``query={"email": "a@b.c"}`` only matches requests with that query value.
         """
-        self.set_responses(
-            route, [FakeResponse(items=items, model=model)], params=params, query=query
-        )
+        step = FakeResponse(items=items, model=model, total=total, offset=offset)
+        self.set_responses(route, [step], params=params, query=query)
 
     def set_error(  # noqa: PLR0913
         self,
@@ -321,10 +340,26 @@ class FakeVClient(VClient):
         )
         self.set_responses(route, [error], params=params, query=query)
 
+    def set_connection_error(
+        self,
+        route: RouteSpec,
+        *,
+        params: Mapping[str, str] | None = None,
+        query: Mapping[str, Any] | None = None,
+    ) -> None:
+        """Override a route so the API never answers and the client raises ``APIConnectionError``.
+
+        Args:
+            route: A ``RouteSpec`` from the ``Routes`` class identifying the endpoint.
+            params: Optional path parameter values to match against.
+            query: Optional query parameter values to match against.
+        """
+        self.set_responses(route, [FakeConnectionError()], params=params, query=query)
+
     def set_responses(
         self,
         route: RouteSpec,
-        responses: Sequence[FakeResponse | FakeError],
+        responses: Sequence[FakeResponse | FakeError | FakeConnectionError],
         *,
         params: Mapping[str, str] | None = None,
         query: Mapping[str, Any] | None = None,
@@ -336,26 +371,37 @@ class FakeVClient(VClient):
 
         Args:
             route: A ``RouteSpec`` from the ``Routes`` class identifying the endpoint.
-            responses: ``FakeResponse`` and ``FakeError`` steps, in call order.
+            responses: ``FakeResponse``, ``FakeError`` and ``FakeConnectionError`` steps, in
+                call order.
             params: Optional path parameter values to match against.
             query: Optional query parameter values to match against.
         """
-        replies = [
-            self._error_reply(step)
-            if isinstance(step, FakeError)
-            else self._success_reply(route, step)
-            for step in responses
-        ]
+        replies = [self._reply(route, step) for step in responses]
         self._router.add_replies(route.method, route.pattern, replies, params=params, query=query)
+
+    def _reply(
+        self, route: RouteSpec, step: FakeResponse | FakeError | FakeConnectionError
+    ) -> _Reply:
+        """Build the canned reply for one response step."""
+        if isinstance(step, FakeConnectionError):
+            return _Reply(status_code=0, json=None, connection_error=True)
+        if isinstance(step, FakeError):
+            return self._error_reply(step)
+        return self._success_reply(route, step)
 
     def _success_reply(self, route: RouteSpec, step: FakeResponse) -> _Reply:
         """Wrap response data in the envelope the route's style calls for.
 
         Raises:
-            TypeError: If ``model`` is passed to a paginated/list route or ``items`` is
-                passed to a single-object route.
+            TypeError: If ``model`` is passed to a paginated/list route, ``items`` is
+                passed to a single-object route, or ``total`` or ``offset`` is passed to a
+                route that is not paginated.
         """
         pattern, style = route.pattern, route.style
+
+        if style != PAGINATED and (step.total is not None or step.offset):
+            msg = f"Route {pattern!r} returns {style} data; 'total' and 'offset' need a paginated route"
+            raise TypeError(msg)
 
         if style in {PAGINATED, LIST}:
             if step.model is not None:
@@ -364,7 +410,8 @@ class FakeVClient(VClient):
             serialized = [self._serialize(item) for item in (step.items or [])]
             if style == LIST:
                 return _Reply(status_code=200, json=serialized)
-            body = {"items": serialized, "total": len(serialized), "limit": 100, "offset": 0}
+            total = len(serialized) if step.total is None else step.total
+            body = {"items": serialized, "total": total, "limit": 100, "offset": step.offset}
             return _Reply(status_code=200, json=body)
 
         if style == NO_CONTENT:

@@ -1,316 +1,178 @@
-"""Tests for auth route blueprint."""
+"""Tests for the OAuth login routes: provider redirects, callbacks, and logout.
 
+How a callback routes each set of verified memberships (single, multiple, unapproved,
+deactivated) is covered in test_auth_routes_multi_company.py.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
+from authlib.integrations.base_client.errors import OAuthError
 
-from tests.helpers import identify_resolving
-from vweb.api_client.models import IdentityResolution, UserLookupResult
-from vweb.api_client.testing import Routes, UserFactory
+from tests.conftest import get_csrf
+from tests.helpers import (
+    assert_redirects_to,
+    identify_resolving,
+    mock_oauth_provider,
+    session_flashes,
+)
+from vweb.api_client.exceptions import (
+    ServerError,
+    UnprocessableEntityError,
+)
+from vweb.api_client.models import IdentityResolution
+from vweb.api_client.testing import Routes, UserFactory, UserLookupResultFactory
+
+if TYPE_CHECKING:
+    from flask.testing import FlaskClient
+    from werkzeug.test import TestResponse
+
+PROVIDERS = ["discord", "github", "google", "apple"]
 
 
-def _make_lookup_result(**kwargs) -> UserLookupResult:
-    """Build a UserLookupResult with sensible defaults."""
-    defaults = {
-        "company_id": "comp-1",
-        "company_name": "Test Company",
-        "user_id": "resolved-user-id",
-        "role": "PLAYER",
-    }
-    defaults.update(kwargs)
-    return UserLookupResult(**defaults)
-
-
-class TestDiscordLoginView:
-    """Tests for the Discord login redirect route."""
-
-    def test_discord_login_redirects(self, client, mocker):
-        """Verify GET /auth/discord triggers an OAuth redirect."""
-        # Given a mock OAuth discord client
-        mock_redirect_response = MagicMock(
-            status_code=302, headers={"Location": "https://discord.com/oauth2/authorize"}
+def _hit_callback(client: FlaskClient, provider: str, data: dict | None = None) -> TestResponse:
+    """Call a provider callback the way the provider does: Apple POSTs a form, others GET."""
+    if provider == "apple":
+        return client.post(
+            "/auth/apple/callback", data={"code": "abc", "state": "xyz", **(data or {})}
         )
-        mock_discord = MagicMock()
-        mock_discord.authorize_redirect.return_value = mock_redirect_response
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
-
-        # When the login route is hit
-        client.get("/auth/discord")
-
-        # Then it delegates to authlib's authorize_redirect
-        mock_discord.authorize_redirect.assert_called_once()
-
-    def test_login_clears_stale_link_mode(self, client, mocker):
-        """Verify starting a login clears a leftover link-mode flag from an abandoned link flow."""
-        # Given a stale oauth_link_mode flag from an abandoned "connect account" flow
-        with client.session_transaction() as sess:
-            sess["oauth_link_mode"] = True
-        mock_discord = MagicMock()
-        mock_discord.authorize_redirect.return_value = MagicMock(status_code=302)
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
-
-        # When a fresh login is initiated
-        client.get("/auth/discord")
-
-        # Then the stale flag is gone, so the callback resolves as a login, not a link
-        with client.session_transaction() as sess:
-            assert "oauth_link_mode" not in sess
+    return client.get(f"/auth/{provider}/callback")
 
 
-class TestDiscordCallbackView:
-    """Tests for the Discord OAuth callback route."""
+def _mock_discord_login(
+    mocker, *, email: str = "victim@example.com", verified: bool = True
+) -> None:
+    """Patch the Discord OAuth client to return a token and the given profile."""
+    mock_oauth_provider(
+        mocker,
+        "discord",
+        token={"access_token": "fake-token"},
+        profile={
+            "id": "new-discord-id",
+            "username": "someone",
+            "email": email,
+            "verified": verified,
+        },
+    )
 
-    def test_callback_sets_session_for_approved_user(self, client, mocker):
-        """Verify Discord callback sets session and redirects for approved user."""
-        # Given a mock OAuth flow returning a valid token and discord profile
-        mock_token = {"access_token": "fake-token"}
-        mock_discord = MagicMock()
-        mock_discord.authorize_access_token.return_value = mock_token
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "id": "123",
-            "username": "testuser",
-            "email": "test@example.com",
-        }
-        mock_discord.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
 
-        # Given a single approved lookup result
-        result = _make_lookup_result()
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.lookup_user_companies",
-            return_value=[result],
+@pytest.mark.parametrize("provider", PROVIDERS)
+def test_login_starts_provider_redirect_and_clears_stale_link_mode(
+    client: FlaskClient, mocker, provider: str
+) -> None:
+    """Verify a login starts the provider redirect and drops a leftover link-mode flag.
+
+    A stale flag from an abandoned "connect account" flow would make the shared callback
+    link an identity instead of logging in.
+    """
+    # Given a stale link-mode flag
+    with client.session_transaction() as sess:
+        sess["oauth_link_mode"] = True
+    mock = mock_oauth_provider(mocker, provider)
+    mock.authorize_redirect.return_value = "to-provider"
+
+    # When a fresh login is initiated
+    client.get(f"/auth/{provider}")
+
+    # Then the provider redirect is issued and the flag is gone
+    mock.authorize_redirect.assert_called_once()
+    with client.session_transaction() as sess:
+        assert "oauth_link_mode" not in sess
+
+
+class TestCallbackCredentials:
+    """Each provider's callback looks up and verifies the user with the right credential."""
+
+    @pytest.mark.parametrize(
+        ("provider", "token", "profile", "lookup_query", "credential"),
+        [
+            (
+                "discord",
+                {"access_token": "discord-cred"},
+                {"id": "d-1", "username": "u", "email": "e@e.com", "verified": True},
+                {"discord_id": "d-1"},
+                "discord-cred",
+            ),
+            (
+                "github",
+                {"access_token": "github-cred"},
+                {"id": 123, "login": "u", "email": "e@e.com"},
+                {"github_id": "123"},
+                "github-cred",
+            ),
+            (
+                "google",
+                {
+                    "access_token": "google-access",
+                    "id_token": "google-oidc",
+                    "userinfo": {"sub": "g-1", "email": "e@e.com", "email_verified": True},
+                },
+                None,
+                {"google_id": "g-1"},
+                "google-oidc",
+            ),
+            (
+                "apple",
+                {"id_token": "apple-oidc", "userinfo": {"sub": "a-1", "email": "e@e.com"}},
+                None,
+                {"apple_id": "a-1"},
+                "apple-oidc",
+            ),
+        ],
+    )
+    def test_callback_verifies_provider_credential_and_signs_in(
+        self,
+        client: FlaskClient,
+        mocker,
+        fake_vclient,
+        *,
+        provider: str,
+        token: dict,
+        profile: dict | None,
+        lookup_query: dict,
+        credential: str,
+    ) -> None:
+        """Verify the callback looks up by provider id, verifies the credential, and signs in."""
+        # Given a provider login for an existing approved user
+        mock_oauth_provider(mocker, provider, token=token, profile=profile)
+        fake_vclient.set_response(
+            Routes.USERS_LOOKUP, items=[UserLookupResultFactory.build(company_id="comp-1")]
         )
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving([result]),
+        fake_vclient.set_response(
+            Routes.IDENTITY_IDENTIFY,
+            model=IdentityResolution(
+                resolution="matched",
+                user=UserFactory.build(id="resolved-user-id", company_id="comp-1"),
+            ),
         )
 
-        # When the callback is hit
-        response = client.get("/auth/discord/callback")
+        # When the provider calls back
+        response = _hit_callback(client, provider)
 
-        # Then session has user_id and response redirects to /
+        # Then the lookup used the provider id and the API verified the right credential
+        fake_vclient.assert_called(Routes.USERS_LOOKUP, query=lookup_query)
+        fake_vclient.assert_called(
+            Routes.IDENTITY_IDENTIFY,
+            params={"company_id": "comp-1"},
+            json_subset={"provider": provider, "token": credential},
+            times=1,
+        )
+        # And the user is signed in with a long-lived session
+        assert response.location == "/"
         with client.session_transaction() as sess:
             assert sess["user_id"] == "resolved-user-id"
             assert sess["company_id"] == "comp-1"
-        assert response.status_code == 302
-        assert response.location == "/"
-
-    def test_callback_redirects_unapproved_to_pending(self, client, mocker):
-        """Verify Discord callback redirects unapproved user to pending approval."""
-        # Given a mock OAuth flow
-        mock_token = {"access_token": "fake-token"}
-        mock_discord = MagicMock()
-        mock_discord.authorize_access_token.return_value = mock_token
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "id": "456",
-            "username": "newuser",
-            "email": "new@example.com",
-        }
-        mock_discord.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
-
-        # Given a single unapproved lookup result
-        result = _make_lookup_result(user_id="unapproved-user-id", role="UNAPPROVED")
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.lookup_user_companies",
-            return_value=[result],
-        )
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving([result]),
-        )
-
-        # When the callback is hit
-        response = client.get("/auth/discord/callback")
-
-        # Then session has user_id and response redirects to pending approval
-        with client.session_transaction() as sess:
-            assert sess["user_id"] == "unapproved-user-id"
-        assert response.status_code == 302
-        assert response.location == "/pending-approval"
-
-    def test_callback_sets_session_permanent(self, client, mocker):
-        """Verify Discord callback marks session as permanent for long-lived sessions."""
-        # Given a mock OAuth flow
-        mock_discord = MagicMock()
-        mock_discord.authorize_access_token.return_value = {"access_token": "fake"}
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"id": "789", "username": "u", "email": "e@e.com"}
-        mock_discord.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
-
-        result = _make_lookup_result()
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.lookup_user_companies",
-            return_value=[result],
-        )
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving([result]),
-        )
-
-        # When the callback is hit
-        client.get("/auth/discord/callback")
-
-        # Then the session is marked as permanent
-        with client.session_transaction() as sess:
             assert sess.permanent is True
 
-    def test_callback_new_user_redirects_to_select_companies(self, client, mocker):
-        """Verify Discord callback redirects new users to company selection."""
-        # Given a mock OAuth flow
-        mock_discord = MagicMock()
-        mock_discord.authorize_access_token.return_value = {"access_token": "fake"}
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"id": "new", "username": "u", "email": "e@e.com"}
-        mock_discord.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
-
-        # Given no lookup results (new user)
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.lookup_user_companies",
-            return_value=[],
-        )
-
-        # When the callback is hit
-        response = client.get("/auth/discord/callback")
-
-        # Then redirect to select-companies with pending_oauth in session
-        assert response.status_code == 302
-        assert response.location == "/select-companies"
-        with client.session_transaction() as sess:
-            assert sess["pending_oauth"]["provider"] == "discord"
-
-
-class TestGitHubLoginView:
-    """Tests for the GitHub login redirect route."""
-
-    def test_github_login_redirects(self, client, mocker):
-        """Verify GET /auth/github triggers an OAuth redirect."""
-        # Given a mock OAuth github client
-        mock_redirect_response = MagicMock(
-            status_code=302, headers={"Location": "https://github.com/login/oauth/authorize"}
-        )
-        mock_github = MagicMock()
-        mock_github.authorize_redirect.return_value = mock_redirect_response
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", github=mock_github)
-
-        # When the login route is hit
-        client.get("/auth/github")
-
-        # Then it delegates to authlib's authorize_redirect
-        mock_github.authorize_redirect.assert_called_once()
-
-
-class TestGitHubCallbackView:
-    """Tests for the GitHub OAuth callback route."""
-
-    def test_callback_sets_session_for_approved_user(self, client, mocker):
-        """Verify GitHub callback sets session and redirects for approved user."""
-        # Given a mock OAuth flow returning a valid token and github profile
-        mock_token = {"access_token": "fake-token"}
-        mock_github = MagicMock()
-        mock_github.authorize_access_token.return_value = mock_token
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "id": 123,
-            "login": "testuser",
-            "email": "test@example.com",
-        }
-        mock_github.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", github=mock_github)
-
-        # Given a single approved lookup result
-        result = _make_lookup_result()
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.lookup_user_companies",
-            return_value=[result],
-        )
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving([result]),
-        )
-
-        # When the callback is hit
-        response = client.get("/auth/github/callback")
-
-        # Then session has user_id and response redirects to /
-        with client.session_transaction() as sess:
-            assert sess["user_id"] == "resolved-user-id"
-        assert response.status_code == 302
-        assert response.location == "/"
-
-    def test_callback_redirects_unapproved_to_pending(self, client, mocker):
-        """Verify GitHub callback redirects unapproved user to pending approval."""
-        # Given a mock OAuth flow
-        mock_token = {"access_token": "fake-token"}
-        mock_github = MagicMock()
-        mock_github.authorize_access_token.return_value = mock_token
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "id": 456,
-            "login": "newuser",
-            "email": "new@example.com",
-        }
-        mock_github.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", github=mock_github)
-
-        # Given a single unapproved lookup result
-        result = _make_lookup_result(user_id="unapproved-user-id", role="UNAPPROVED")
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.lookup_user_companies",
-            return_value=[result],
-        )
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving([result]),
-        )
-
-        # When the callback is hit
-        response = client.get("/auth/github/callback")
-
-        # Then session has user_id and response redirects to pending approval
-        with client.session_transaction() as sess:
-            assert sess["user_id"] == "unapproved-user-id"
-        assert response.status_code == 302
-        assert response.location == "/pending-approval"
-
-    def test_callback_sets_session_permanent(self, client, mocker):
-        """Verify GitHub callback marks session as permanent for long-lived sessions."""
-        # Given a mock OAuth flow
-        mock_github = MagicMock()
-        mock_github.authorize_access_token.return_value = {"access_token": "fake"}
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"id": 789, "login": "u", "email": "e@e.com"}
-        mock_github.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", github=mock_github)
-
-        result = _make_lookup_result()
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.lookup_user_companies",
-            return_value=[result],
-        )
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving([result]),
-        )
-
-        # When the callback is hit
-        client.get("/auth/github/callback")
-
-        # Then the session is marked as permanent
-        with client.session_transaction() as sess:
-            assert sess.permanent is True
-
-    def test_callback_fetches_email_from_emails_endpoint(self, client, mocker):
-        """Verify GitHub callback fetches email from /user/emails when /user returns null."""
-        # Given a mock OAuth flow where /user returns null email
-        mock_token = {"access_token": "fake-token"}
-        mock_github = MagicMock()
-        mock_github.authorize_access_token.return_value = mock_token
-
+    def test_github_without_public_email_uses_primary_verified_email(
+        self, client: FlaskClient, mocker, fake_vclient
+    ) -> None:
+        """Verify GitHub falls back to the primary verified address when /user has no email."""
+        # Given a GitHub user with no public email and no account matching the GitHub id
+        mock_github = mock_oauth_provider(mocker, "github", token={"access_token": "fake-token"})
         user_resp = MagicMock()
         user_resp.json.return_value = {"id": 999, "login": "noemail", "email": None}
         emails_resp = MagicMock()
@@ -319,403 +181,85 @@ class TestGitHubCallbackView:
             {"email": "primary@example.com", "primary": True, "verified": True},
         ]
         mock_github.get.side_effect = [user_resp, emails_resp]
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", github=mock_github)
-
-        # Given a single approved lookup result
-        result = _make_lookup_result()
-        mock_lookup = mocker.patch(
-            "vweb.routes.auth.views_oauth.lookup_user_companies",
-            return_value=[result],
-        )
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving([result]),
-        )
+        fake_vclient.set_response(Routes.USERS_LOOKUP, items=[])
 
         # When the callback is hit
         client.get("/auth/github/callback")
 
-        # Then lookup is called with the primary verified email populated
-        call_kwargs = mock_lookup.call_args[1]
-        assert call_kwargs["email"] == "primary@example.com"
-
-
-class TestGoogleLoginView:
-    """Tests for the Google login redirect route."""
-
-    def test_google_login_redirects(self, client, mocker):
-        """Verify GET /auth/google triggers an OAuth redirect."""
-        # Given a mock OAuth google client
-        mock_redirect_response = MagicMock(
-            status_code=302,
-            headers={"Location": "https://accounts.google.com/o/oauth2/v2/auth"},
-        )
-        mock_google = MagicMock()
-        mock_google.authorize_redirect.return_value = mock_redirect_response
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", google=mock_google)
-
-        # When the login route is hit
-        client.get("/auth/google")
-
-        # Then it delegates to authlib's authorize_redirect
-        mock_google.authorize_redirect.assert_called_once()
-
-
-class TestGoogleCallbackView:
-    """Tests for the Google OAuth callback route."""
-
-    def test_callback_sets_session_for_approved_user(self, client, mocker):
-        """Verify Google callback sets session and redirects for approved user."""
-        # Given a mock OAuth flow returning a token with embedded userinfo
-        mock_token = {
-            "access_token": "fake-token",
-            "id_token": "fake-id-token",
-            "userinfo": {
-                "sub": "123",
-                "name": "Test User",
-                "email": "test@example.com",
-            },
-        }
-        mock_google = MagicMock()
-        mock_google.authorize_access_token.return_value = mock_token
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", google=mock_google)
-
-        # Given a single approved lookup result
-        result = _make_lookup_result()
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.lookup_user_companies",
-            return_value=[result],
-        )
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving([result]),
+        # Then the email fallback lookup uses the primary verified address
+        fake_vclient.assert_called(
+            Routes.USERS_LOOKUP, query={"email": "primary@example.com"}, times=1
         )
 
-        # When the callback is hit
-        response = client.get("/auth/google/callback")
+    @pytest.mark.parametrize(
+        ("provider", "token", "profile", "lookup_query"),
+        [
+            (
+                "discord",
+                {"access_token": "fake-token"},
+                {"id": "d-1", "username": "u", "email": "victim@example.com", "verified": False},
+                {"discord_id": "d-1"},
+            ),
+            (
+                "google",
+                {
+                    "id_token": "fake-id-token",
+                    "userinfo": {
+                        "sub": "g-1",
+                        "email": "victim@example.com",
+                        "email_verified": False,
+                    },
+                },
+                None,
+                {"google_id": "g-1"},
+            ),
+        ],
+    )
+    def test_unverified_email_is_not_used_for_lookup(
+        self,
+        client: FlaskClient,
+        mocker,
+        fake_vclient,
+        *,
+        provider: str,
+        token: dict,
+        profile: dict | None,
+        lookup_query: dict,
+    ) -> None:
+        """Verify an unverified provider email never reaches the email lookup fallback."""
+        # Given a provider profile whose email is unverified and no user with that provider id
+        mock_oauth_provider(mocker, provider, token=token, profile=profile)
+        fake_vclient.set_response(Routes.USERS_LOOKUP, items=[])
 
-        # Then session has user_id and response redirects to /
-        with client.session_transaction() as sess:
-            assert sess["user_id"] == "resolved-user-id"
-        assert response.status_code == 302
-        assert response.location == "/"
+        # When the callback completes
+        client.get(f"/auth/{provider}/callback")
 
-    def test_callback_redirects_unapproved_to_pending(self, client, mocker):
-        """Verify Google callback redirects unapproved user to pending approval."""
-        # Given a mock OAuth flow returning a token with embedded userinfo
-        mock_token = {
-            "access_token": "fake-token",
-            "id_token": "fake-id-token",
-            "userinfo": {
-                "sub": "456",
-                "name": "New User",
-                "email": "new@example.com",
-            },
-        }
-        mock_google = MagicMock()
-        mock_google.authorize_access_token.return_value = mock_token
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", google=mock_google)
-
-        # Given a single unapproved lookup result
-        result = _make_lookup_result(user_id="unapproved-user-id", role="UNAPPROVED")
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.lookup_user_companies",
-            return_value=[result],
-        )
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving([result]),
-        )
-
-        # When the callback is hit
-        response = client.get("/auth/google/callback")
-
-        # Then session has user_id and response redirects to pending approval
-        with client.session_transaction() as sess:
-            assert sess["user_id"] == "unapproved-user-id"
-        assert response.status_code == 302
-        assert response.location == "/pending-approval"
-
-    def test_callback_sets_session_permanent(self, client, mocker):
-        """Verify Google callback marks session as permanent for long-lived sessions."""
-        # Given a mock OAuth flow returning a token with embedded userinfo
-        mock_google = MagicMock()
-        mock_google.authorize_access_token.return_value = {
-            "access_token": "fake",
-            "id_token": "fake",
-            "userinfo": {"sub": "789", "name": "u", "email": "e@e.com"},
-        }
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", google=mock_google)
-
-        result = _make_lookup_result()
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.lookup_user_companies",
-            return_value=[result],
-        )
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving([result]),
-        )
-
-        # When the callback is hit
-        client.get("/auth/google/callback")
-
-        # Then the session is marked as permanent
-        with client.session_transaction() as sess:
-            assert sess.permanent is True
+        # Then the lookup searched by provider id and never by email
+        fake_vclient.assert_called(Routes.USERS_LOOKUP, query=lookup_query)
+        fake_vclient.assert_not_called(Routes.USERS_LOOKUP, query={"email": "victim@example.com"})
 
 
-class TestAppleLoginView:
-    """Tests for the Sign in with Apple login route."""
+class TestNewUserCallback:
+    """A login that matches no account keeps the credential for registration."""
 
-    def test_apple_login_redirects(self, client, mocker):
-        """Verify GET /auth/apple starts the Apple OAuth redirect."""
-        # Given a mock OAuth apple client
-        mock_apple = MagicMock()
-        mock_apple.authorize_redirect.return_value = MagicMock(status_code=302)
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", apple=mock_apple)
-
-        # When the login route is hit
-        client.get("/auth/apple")
-
-        # Then the OAuth redirect was issued (form_post is set at registration,
-        # asserted in test_apple_oauth.py)
-        mock_apple.authorize_redirect.assert_called_once()
-
-
-class TestAppleCallbackView:
-    """Tests for the Sign in with Apple callback route (a cross-site form POST)."""
-
-    def test_callback_sets_session_for_approved_user(self, client, mocker):
-        """Verify the Apple callback POST sets the session and redirects an approved user."""
-        # Given a mock OAuth flow returning a token with embedded userinfo
-        mock_apple = MagicMock()
-        mock_apple.authorize_access_token.return_value = {
-            "id_token": "fake-id-token",
-            "userinfo": {"sub": "apple-123", "email": "test@example.com"},
-        }
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", apple=mock_apple)
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.build_apple_client_secret", return_value="secret"
-        )
-
-        # Given a single approved lookup result
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.lookup_user_companies",
-            return_value=[_make_lookup_result()],
-        )
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving([_make_lookup_result()]),
-        )
-
-        # When Apple POSTs the callback (no CSRF token — the view is exempt)
-        response = client.post("/auth/apple/callback", data={"code": "abc", "state": "xyz"})
-
-        # Then the session is set and the user lands on the home page
-        with client.session_transaction() as sess:
-            assert sess["user_id"] == "resolved-user-id"
-        assert response.status_code == 302
-        assert response.location == "/"
-
-    def test_callback_new_user_uses_name_from_form_and_id_token_credential(self, client, mocker):
-        """Verify a new Apple user's name comes from the form POST and the credential is the id_token."""
-        # Given a mock OAuth flow for a user with no existing accounts
-        mock_apple = MagicMock()
-        mock_apple.authorize_access_token.return_value = {
-            "id_token": "fake-id-token",
-            "userinfo": {"sub": "apple-new", "email": "new@example.com"},
-        }
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", apple=mock_apple)
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.build_apple_client_secret", return_value="secret"
+    def test_discord_new_user_keeps_credential_for_registration(
+        self, client: FlaskClient, mocker
+    ) -> None:
+        """Verify a new user is sent to company selection with the credential and hints stored."""
+        # Given a provider login with no existing accounts
+        mock_oauth_provider(
+            mocker,
+            "discord",
+            token={"access_token": "cred-456"},
+            profile={"id": "n", "username": "newbie", "email": "n@e.com", "verified": True},
         )
         mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=[])
 
-        # When Apple POSTs the callback with the first-login name payload
-        response = client.post(
-            "/auth/apple/callback",
-            data={
-                "code": "abc",
-                "state": "xyz",
-                "user": '{"name": {"firstName": "Ada", "lastName": "Lovelace"}}',
-            },
-        )
+        # When the callback is hit
+        response = client.get("/auth/discord/callback")
 
-        # Then the new user is sent to company selection with the verified id_token cached
-        assert response.status_code == 302
+        # Then the user picks companies next, and the pending payload carries the credential
         assert response.location == "/select-companies"
-        with client.session_transaction() as sess:
-            assert sess["pending_oauth"]["provider"] == "apple"
-            assert sess["pending_oauth"]["token"] == "fake-id-token"
-            assert sess["pending_oauth"]["username"] == "Ada Lovelace"
-            assert sess["pending_oauth"]["email"] == "new@example.com"
-
-    def test_callback_is_registered_csrf_exempt(self, app):
-        """Verify the Apple callback view is exempt from CSRF, since Apple sends no token."""
-        # Given the registered Apple callback view function
-        view = app.view_functions["auth.apple_callback"]
-
-        # Then its location is recorded in the CSRF exemption set
-        from vweb.extensions import csrf
-
-        location = f"{view.__module__}.{view.__name__}"
-        assert location in csrf._exempt_views
-
-
-class TestLogoutView:
-    """Tests for the logout route."""
-
-    @pytest.mark.usefixtures("fake_vclient")
-    def test_logout_clears_session(self, client):
-        """Verify POST /auth/logout clears session and redirects to index."""
-        # Given a session with a user_id
-        with client.session_transaction() as sess:
-            assert sess.get("user_id") is not None
-
-        # Given a valid CSRF token
-        from tests.conftest import get_csrf
-
-        csrf_token = get_csrf(client)
-
-        # When the logout endpoint is hit
-        response = client.post(
-            "/auth/logout",
-            headers={"X-CSRFToken": csrf_token},
-        )
-
-        # Then the session is cleared and response redirects to /
-        with client.session_transaction() as sess:
-            assert "user_id" not in sess
-        assert response.status_code == 302
-        assert response.location == "/"
-
-
-class TestPendingApprovalView:
-    """Tests for the pending approval page."""
-
-    def test_pending_approval_renders(self, client):
-        """Verify GET /pending-approval returns 200."""
-        # When the pending approval page is requested
-        response = client.get("/pending-approval")
-
-        # Then it renders successfully
-        assert response.status_code == 200
-
-
-class TestIdentifyIntegration:
-    """Tests for server-verified identity resolution during login."""
-
-    def test_callback_identifies_in_all_companies(self, client, mocker):
-        """Verify login runs identify in every company from the lookup results."""
-        # Given a mock OAuth flow
-        mock_discord = MagicMock()
-        mock_discord.authorize_access_token.return_value = {"access_token": "cred-123"}
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"id": "1", "username": "u", "email": "e@e.com"}
-        mock_discord.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
-
-        # Given lookup results across two companies
-        results = [
-            _make_lookup_result(company_id="c1", user_id="u1"),
-            _make_lookup_result(company_id="c2", user_id="u2", role="ADMIN"),
-        ]
-        mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=results)
-        mock_identify = mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving(results),
-        )
-
-        # When the callback is hit
-        response = client.get("/auth/discord/callback")
-
-        # Then identify ran for both companies with the OAuth credential
-        mock_identify.assert_called_once_with(["c1", "c2"], provider="discord", token="cred-123")
-        # And the verified login continues to company selection
-        assert response.location == "/select-company"
-
-    def test_google_callback_identifies_with_id_token(self, client, mocker):
-        """Verify Google login passes the OIDC ID token to identify, not the access token."""
-        # Given a Google OAuth flow returning both token types
-        mock_google = MagicMock()
-        mock_google.authorize_access_token.return_value = {
-            "access_token": "access-tok",
-            "id_token": "oidc-id-tok",
-            "userinfo": {"sub": "1", "name": "u", "email": "e@e.com"},
-        }
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", google=mock_google)
-        result = _make_lookup_result()
-        mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=[result])
-        mock_identify = mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving([result]),
-        )
-
-        # When the callback is hit
-        response = client.get("/auth/google/callback")
-
-        # Then identify received the ID token
-        assert mock_identify.call_args[1]["token"] == "oidc-id-tok"
-        # And the verified login completes
-        assert response.location == "/"
-
-    def test_callback_token_verification_failure_aborts_login(self, client, mocker):
-        """Verify a 422 from identify aborts login without setting a session."""
-        from vweb.api_client.exceptions import UnprocessableEntityError
-
-        # Given a mock OAuth flow with valid lookup results
-        mock_discord = MagicMock()
-        mock_discord.authorize_access_token.return_value = {"access_token": "bad"}
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"id": "1", "username": "u", "email": "e@e.com"}
-        mock_discord.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.lookup_user_companies",
-            return_value=[_make_lookup_result(user_id="other-user")],
-        )
-
-        # Given identify rejects the token
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            side_effect=UnprocessableEntityError("bad", 422, {"code": "TOKEN_VERIFICATION_FAILED"}),
-        )
-
-        # When the callback is hit
-        response = client.get("/auth/discord/callback")
-
-        # Then login aborts to index and no session was established for the user
-        assert response.status_code == 302
-        assert response.location == "/"
-        with client.session_transaction() as sess:
-            assert sess.get("user_id") != "other-user"
-
-        # Then a user-facing error was flashed
-        with client.session_transaction() as sess:
-            flashes = sess.get("_flashes", [])
-        assert any("could not be verified" in message for _category, message in flashes)
-
-    def test_callback_new_user_pending_oauth_stores_credential(self, client, mocker):
-        """Verify the new-user path stores the credential for later registration."""
-        # Given a mock OAuth flow and no lookup results
-        mock_discord = MagicMock()
-        mock_discord.authorize_access_token.return_value = {"access_token": "cred-456"}
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "id": "n",
-            "username": "newbie",
-            "email": "n@e.com",
-            "verified": True,
-        }
-        mock_discord.get.return_value = mock_resp
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
-        mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=[])
-
-        # When the callback is hit
-        client.get("/auth/discord/callback")
-
-        # Then the pending payload carries provider, token, and creation hints
         with client.session_transaction() as sess:
             assert sess["pending_oauth"] == {
                 "provider": "discord",
@@ -724,97 +268,208 @@ class TestIdentifyIntegration:
                 "email": "n@e.com",
             }
 
-
-def _discord_oauth(mocker, *, email: str = "victim@example.com", verified: bool = True) -> None:
-    """Patch the Discord OAuth client to return a token and the given profile."""
-    mock_discord = MagicMock()
-    mock_discord.authorize_access_token.return_value = {"access_token": "fake-token"}
-    mock_discord.get.return_value.json.return_value = {
-        "id": "new-discord-id",
-        "username": "someone",
-        "email": email,
-        "verified": verified,
-    }
-    mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
-
-
-class TestLoginIdentityBinding:
-    """Tests that a login session binds to the user the API verified, not the lookup match."""
-
-    def test_session_uses_identify_resolution_user(self, client, mocker):
-        """Verify the session binds to the user identify() resolved when it differs from lookup."""
-        # Given an email lookup that matched an existing user
-        _discord_oauth(mocker)
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.lookup_user_companies",
-            return_value=[_make_lookup_result(user_id="email-match-id", role="PLAYER")],
+    def test_apple_new_user_name_comes_from_form_post(self, client: FlaskClient, mocker) -> None:
+        """Verify a new Apple user's name comes from the form POST and the credential is the id_token."""
+        # Given an Apple login with no existing accounts
+        mock_oauth_provider(
+            mocker,
+            "apple",
+            token={
+                "id_token": "fake-id-token",
+                "userinfo": {"sub": "apple-new", "email": "new@example.com"},
+            },
         )
-        # And identify() resolving the credential to a different, newly created user
-        created = IdentityResolution(
-            resolution="created",
-            user=UserFactory.build(id="created-id", role="UNAPPROVED", company_id="comp-1"),
-        )
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value={"comp-1": created},
+        mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=[])
+
+        # When Apple POSTs the callback, without a CSRF token, with the first-login name
+        response = _hit_callback(
+            client, "apple", {"user": '{"name": {"firstName": "Ada", "lastName": "Lovelace"}}'}
         )
 
-        # When the callback completes
-        response = client.get("/auth/discord/callback")
-
-        # Then the session belongs to the verified user, not the email match
+        # Then the new user is sent to company selection with the verified id_token cached
+        assert response.location == "/select-companies"
         with client.session_transaction() as sess:
-            assert sess["user_id"] == "created-id"
-        assert response.location == "/pending-approval"
+            assert sess["pending_oauth"] == {
+                "provider": "apple",
+                "token": "fake-id-token",
+                "username": "Ada Lovelace",
+                "email": "new@example.com",
+            }
 
-    def test_no_session_when_identify_resolves_no_company(self, client, mocker):
-        """Verify login aborts when identify() verifies the credential in no matched company."""
-        # Given a logged-out visitor
+
+class TestCallbackFailures:
+    """A callback that cannot complete the login leaves the visitor signed out."""
+
+    @pytest.fixture
+    def logged_out(self, client: FlaskClient) -> FlaskClient:
+        """Return the client with an empty session."""
         with client.session_transaction() as sess:
             sess.clear()
-        # And an email lookup match that identify() refuses (per-company error swallowed)
-        _discord_oauth(mocker)
+        return client
+
+    @pytest.mark.parametrize("provider", PROVIDERS)
+    @pytest.mark.parametrize(
+        ("link_mode", "expected_location"),
+        [(False, "/"), (True, "/profile/test-user-id")],
+        ids=["login", "link"],
+    )
+    def test_cancelled_consent_returns_with_error(
+        self,
+        client: FlaskClient,
+        mocker,
+        provider: str,
+        *,
+        link_mode: bool,
+        expected_location: str,
+    ) -> None:
+        """Verify a cancelled provider consent returns home, or to the profile when linking."""
+        # Given the provider reports the user denied access
+        with client.session_transaction() as sess:
+            sess["oauth_link_mode"] = link_mode
+        mock = mock_oauth_provider(mocker, provider, token={})
+        mock.authorize_access_token.side_effect = OAuthError(error="access_denied")
+
+        # When the provider calls back
+        response = _hit_callback(client, provider)
+
+        # Then the user lands on the right page with an error and link mode is cleared
+        assert_redirects_to(response, expected_location)
+        assert [category for category, _ in session_flashes(client)] == ["error"]
+        with client.session_transaction() as sess:
+            assert "oauth_link_mode" not in sess
+
+    @pytest.mark.parametrize(
+        ("provider", "token", "profile"),
+        [
+            ("discord", {"access_token": "t"}, {"id": "d-1", "verified": False}),
+            ("github", {"access_token": "t"}, {"id": 1, "email": "e@e.com"}),
+            ("google", {"id_token": "t", "userinfo": {"sub": "g-1"}}, None),
+            ("apple", {"id_token": "t", "userinfo": {"sub": "a-1"}}, None),
+        ],
+    )
+    def test_api_unreachable_during_lookup(
+        self,
+        logged_out: FlaskClient,
+        mocker,
+        provider: str,
+        token: dict,
+        profile: dict | None,
+    ) -> None:
+        """Verify an API failure during lookup returns home with an error and no session."""
+        mock_oauth_provider(mocker, provider, token=token, profile=profile)
         mocker.patch(
             "vweb.routes.auth.views_oauth.lookup_user_companies",
-            return_value=[_make_lookup_result(user_id="email-match-id")],
+            side_effect=ServerError("down", 500, {}),
+        )
+
+        response = _hit_callback(logged_out, provider)
+
+        assert response.location == "/"
+        assert [category for category, _ in session_flashes(logged_out)] == ["error"]
+        with logged_out.session_transaction() as sess:
+            assert "user_id" not in sess
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            UnprocessableEntityError("bad", 422, {"code": "TOKEN_VERIFICATION_FAILED"}),
+            UnprocessableEntityError("bad", 422, {"code": "EMAIL_REQUIRED"}),
+            ServerError("down", 503, {"code": "PROVIDER_UNAVAILABLE"}),
+        ],
+        ids=["token-verification-failed", "email-required", "provider-unavailable"],
+    )
+    def test_identify_failure_aborts_login(
+        self, logged_out: FlaskClient, mocker, error: Exception
+    ) -> None:
+        """Verify a rejected credential aborts the login with an error and no session."""
+        # Given an account match the API then refuses to verify
+        _mock_discord_login(mocker)
+        mocker.patch(
+            "vweb.routes.auth.views_oauth.lookup_user_companies",
+            return_value=[UserLookupResultFactory.build(user_id="other-user")],
+        )
+        mocker.patch("vweb.routes.auth.views_oauth.identify_in_companies", side_effect=error)
+
+        # When the callback is hit
+        response = logged_out.get("/auth/discord/callback")
+
+        # Then login aborts to the index with an error and no session
+        assert response.location == "/"
+        assert [category for category, _ in session_flashes(logged_out)] == ["error"]
+        with logged_out.session_transaction() as sess:
+            assert "user_id" not in sess
+
+    def test_no_session_when_identify_resolves_no_company(
+        self, logged_out: FlaskClient, mocker
+    ) -> None:
+        """Verify login aborts when the credential is verified in no matched company."""
+        # Given an email lookup match that identify() refuses in every company
+        _mock_discord_login(mocker)
+        mocker.patch(
+            "vweb.routes.auth.views_oauth.lookup_user_companies",
+            return_value=[UserLookupResultFactory.build(user_id="email-match-id")],
         )
         mocker.patch("vweb.routes.auth.views_oauth.identify_in_companies", return_value={})
 
         # When the callback completes
-        response = client.get("/auth/discord/callback")
+        response = logged_out.get("/auth/discord/callback")
 
         # Then no user is signed in
-        with client.session_transaction() as sess:
-            assert "user_id" not in sess
         assert response.location == "/"
+        assert [category for category, _ in session_flashes(logged_out)] == ["error"]
+        with logged_out.session_transaction() as sess:
+            assert "user_id" not in sess
 
-    def test_discord_unverified_email_is_not_used_for_lookup(self, client, mocker, fake_vclient):
-        """Verify an unverified Discord email never reaches the email lookup fallback."""
-        # Given a Discord profile whose email is unverified and no user with that Discord ID
-        _discord_oauth(mocker, verified=False)
-        fake_vclient.set_response(Routes.USERS_LOOKUP, items=[])
 
-        # When the callback completes
-        client.get("/auth/discord/callback")
+def test_session_binds_to_verified_user_not_lookup_match(client: FlaskClient, mocker) -> None:
+    """Verify the session binds to the user identify() resolved when it differs from lookup."""
+    # Given an email lookup that matched an existing user
+    _mock_discord_login(mocker)
+    mocker.patch(
+        "vweb.routes.auth.views_oauth.lookup_user_companies",
+        return_value=[UserLookupResultFactory.build(company_id="comp-1", user_id="email-match-id")],
+    )
+    # And identify() resolving the credential to a different, newly created user
+    created = IdentityResolution(
+        resolution="created",
+        user=UserFactory.build(id="created-id", role="UNAPPROVED", company_id="comp-1"),
+    )
+    mocker.patch(
+        "vweb.routes.auth.views_oauth.identify_in_companies", return_value={"comp-1": created}
+    )
 
-        # Then the lookup searched by Discord ID and never by email
-        fake_vclient.assert_called(Routes.USERS_LOOKUP, query={"discord_id": "new-discord-id"})
-        fake_vclient.assert_not_called(Routes.USERS_LOOKUP, query={"email": "victim@example.com"})
+    # When the callback completes
+    response = client.get("/auth/discord/callback")
 
-    def test_google_unverified_email_is_not_used_for_lookup(self, client, mocker, fake_vclient):
-        """Verify an unverified Google email never reaches the email lookup fallback."""
-        # Given a Google ID token whose email is unverified
-        mock_google = MagicMock()
-        mock_google.authorize_access_token.return_value = {
-            "id_token": "fake-id-token",
-            "userinfo": {"sub": "g-1", "email": "victim@example.com", "email_verified": False},
-        }
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", google=mock_google)
-        fake_vclient.set_response(Routes.USERS_LOOKUP, items=[])
+    # Then the session belongs to the verified user, not the email match
+    with client.session_transaction() as sess:
+        assert sess["user_id"] == "created-id"
+    assert response.location == "/pending-approval"
 
-        # When the callback completes
-        client.get("/auth/google/callback")
 
-        # Then the lookup searched by Google ID and never by email
-        fake_vclient.assert_called(Routes.USERS_LOOKUP, query={"google_id": "g-1"})
-        fake_vclient.assert_not_called(Routes.USERS_LOOKUP, query={"email": "victim@example.com"})
+def test_identify_runs_in_every_matched_company(client: FlaskClient, mocker) -> None:
+    """Verify login verifies the credential in every company the lookup matched."""
+    _mock_discord_login(mocker)
+    results = [
+        UserLookupResultFactory.build(company_id="c1", user_id="u1"),
+        UserLookupResultFactory.build(company_id="c2", user_id="u2", role="ADMIN"),
+    ]
+    mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=results)
+    mock_identify = mocker.patch(
+        "vweb.routes.auth.views_oauth.identify_in_companies",
+        return_value=identify_resolving(results),
+    )
+
+    client.get("/auth/discord/callback")
+
+    mock_identify.assert_called_once_with(["c1", "c2"], provider="discord", token="fake-token")
+
+
+@pytest.mark.usefixtures("fake_vclient")
+def test_logout_clears_session(client: FlaskClient) -> None:
+    """Verify POST /auth/logout clears the session and redirects to the index."""
+    response = client.post("/auth/logout", headers={"X-CSRFToken": get_csrf(client)})
+
+    assert_redirects_to(response, "/")
+    with client.session_transaction() as sess:
+        assert "user_id" not in sess

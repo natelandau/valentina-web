@@ -21,50 +21,32 @@ CHAR_1 = {"company_id": "test-company-id", "character_id": "char-1"}
 class TestGet:
     """Tests for get()."""
 
-    def test_fetches_from_api_on_cache_miss(
+    def test_fetches_once_then_serves_cache(
         self, app: Flask, mock_cache_store: dict, fake_vclient: FakeVClient
     ) -> None:
-        """Verify get calls the API when the cache is empty."""
-        # Given an empty cache and a session with company_id
-        # When fetching the character sheet
-        with app.test_request_context("/"):
-            seed_session()
-            result = get("char-1")
-
-        # Then a CharacterFullSheet is returned and the API is hit once without available traits
-        assert isinstance(result, CharacterFullSheet)
-        (request,) = fake_vclient.assert_called(
-            Routes.CHARACTERS_FULL_SHEET, params=CHAR_1, times=1
-        )
-        assert "include_available_traits" not in request.query
-
-    def test_returns_cached_on_hit(
-        self, app: Flask, mock_cache_store: dict, fake_vclient: FakeVClient
-    ) -> None:
-        """Verify a second call returns the cached value without re-calling the API."""
-        # Given one populated fetch
-        # When fetching twice
+        """Verify the sheet is fetched once, without available traits, then served from cache."""
         with app.test_request_context("/"):
             seed_session()
             first = get("char-1")
             second = get("char-1")
 
-        # Then both share the cached instance and the API was called only once
+        assert isinstance(first, CharacterFullSheet)
         assert first is second
-        fake_vclient.assert_called(Routes.CHARACTERS_FULL_SHEET, times=1)
+        (request,) = fake_vclient.assert_called(
+            Routes.CHARACTERS_FULL_SHEET, params=CHAR_1, times=1
+        )
+        assert "include_available_traits" not in request.query
 
-    def test_include_available_traits_true_uses_distinct_key(
+    def test_include_available_traits_is_cached_separately(
         self, app: Flask, mock_cache_store: dict, fake_vclient: FakeVClient
     ) -> None:
-        """Verify include_available_traits=True and False produce separate cache entries."""
+        """Verify the sheet with available traits is a separate entry, fetched with the flag."""
         with app.test_request_context("/"):
             seed_session()
-
-            # When fetching with include_available_traits=False then True
             result_false = get("char-1", include_available_traits=False)
             result_true = get("char-1", include_available_traits=True)
 
-        # Then both API calls were made because the keys differ, one asking for available traits
+        assert result_false is not result_true
         fake_vclient.assert_called(Routes.CHARACTERS_FULL_SHEET, params=CHAR_1, times=2)
         fake_vclient.assert_called(
             Routes.CHARACTERS_FULL_SHEET,
@@ -72,92 +54,40 @@ class TestGet:
             query={"include_available_traits": "true"},
             times=1,
         )
-        assert result_false is not result_true
-
-        # Then the cache holds separate entries for each flag
-        key_false = "char_full_sheet:char-1:False"
-        key_true = "char_full_sheet:char-1:True"
-        assert key_false in mock_cache_store
-        assert key_true in mock_cache_store
 
     def test_requesting_user_not_part_of_cache_key(
         self, app: Flask, mock_cache_store: dict, fake_vclient: FakeVClient
     ) -> None:
         """Verify different requesting users share the same cache entry."""
-        # Given a cached result for user-1
         with app.test_request_context("/"):
             seed_session(user_id="user-1")
             get("char-1")
-            # When a different user requests the same character sheet
             session["user_id"] = "user-2"
             get("char-1")
 
-        # Then the API was hit only once, proving user ID is not part of the key
         fake_vclient.assert_called(Routes.CHARACTERS_FULL_SHEET, times=1)
 
 
-class TestClear:
-    """Tests for clear()."""
+def test_clear_evicts_every_variant_of_only_that_character(
+    app: Flask, mock_cache_store: dict, fake_vclient: FakeVClient
+) -> None:
+    """Verify clear refetches both variants of the cleared character and keeps others cached."""
+    with app.test_request_context("/"):
+        seed_session()
+        get("char-1", include_available_traits=False)
+        get("char-1", include_available_traits=True)
+        get("char-2")
 
-    def test_evicts_both_variants_on_clear(
-        self, app: Flask, mock_cache_store: dict, fake_vclient: FakeVClient
-    ) -> None:
-        """Verify clear evicts both the True and False key variants for a character."""
-        with app.test_request_context("/"):
-            seed_session()
+        clear("char-1")
 
-            # Given both cache variants are primed
-            get("char-1", include_available_traits=False)
-            get("char-1", include_available_traits=True)
-            fake_vclient.assert_called(Routes.CHARACTERS_FULL_SHEET, times=2)
+        get("char-1", include_available_traits=False)
+        get("char-1", include_available_traits=True)
+        get("char-2")
 
-            # When the cache is cleared
-            clear("char-1")
-
-            # Then both variants are re-fetched on the next access
-            get("char-1", include_available_traits=False)
-            get("char-1", include_available_traits=True)
-
-        # Then the API was called four times total (2 cold, 2 after clear)
-        fake_vclient.assert_called(Routes.CHARACTERS_FULL_SHEET, params=CHAR_1, times=4)
-
-    def test_clear_does_not_evict_other_characters(
-        self, app: Flask, mock_cache_store: dict, fake_vclient: FakeVClient
-    ) -> None:
-        """Verify clear only removes keys for the specified character, not others."""
-        with app.test_request_context("/"):
-            seed_session()
-
-            # Given both char-1 and char-2 are cached
-            get("char-1")
-            get("char-2")
-
-            # When only char-1 is cleared
-            clear("char-1")
-
-            # Then char-2 is still cached (no additional API call)
-            get("char-2")
-
-        fake_vclient.assert_called(Routes.CHARACTERS_FULL_SHEET, params=CHAR_1, times=1)
-        fake_vclient.assert_called(
-            Routes.CHARACTERS_FULL_SHEET, params={"character_id": "char-2"}, times=1
-        )
-
-    def test_forces_refetch_after_clear(
-        self, app: Flask, mock_cache_store: dict, fake_vclient: FakeVClient
-    ) -> None:
-        """Verify clearing the cache forces a fresh API fetch on next access."""
-        with app.test_request_context("/"):
-            seed_session()
-
-            # When fetching, clearing, then fetching again
-            first = get("char-1")
-            clear("char-1")
-            second = get("char-1")
-
-        # Then different objects are returned after the clear
-        assert first is not second
-        fake_vclient.assert_called(Routes.CHARACTERS_FULL_SHEET, params=CHAR_1, times=2)
+    fake_vclient.assert_called(Routes.CHARACTERS_FULL_SHEET, params=CHAR_1, times=4)
+    fake_vclient.assert_called(
+        Routes.CHARACTERS_FULL_SHEET, params={"character_id": "char-2"}, times=1
+    )
 
 
 class TestUpdate:

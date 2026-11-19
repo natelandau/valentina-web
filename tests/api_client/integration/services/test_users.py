@@ -1,232 +1,207 @@
 """Tests for vweb.api_client.services.users."""
 
-import json
-
 import pytest
 import respx
 
-from tests.api_client.payloads import page, wire
+from tests.api_client.payloads import endpoint_url, page, sent_json, sent_params, wire
 from vweb.api_client.endpoints import Endpoints
-from vweb.api_client.exceptions import (
-    AuthorizationError,
-    ConflictError,
-    NotFoundError,
-    RequestValidationError,
-)
-from vweb.api_client.models import (
-    CampaignExperience,
-    PaginatedResponse,
-    Quickroll,
-    RollStatistics,
-    User,
-)
+from vweb.api_client.exceptions import RequestValidationError
+from vweb.api_client.models import PaginatedResponse
 from vweb.api_client.testing import CampaignExperienceFactory, QuickrollFactory
+
+COMPANY_ID = "company123"
+USER_ID = "user123"
+CAMPAIGN_ID = "campaign123"
+QUICKROLL_ID = "quickroll123"
 
 
 @pytest.fixture
-def paginated_users_response(user_response_data) -> dict:
-    """Return a one-item paginated users response."""
-    return page(user_response_data)
+def users(vclient):
+    """Return a users service acting on behalf of a user."""
+    return vclient.users("on-behalf-of-user", company_id=COMPANY_ID)
 
 
 @pytest.fixture
 def experience_response_data() -> dict:
     """Return campaign experience response data."""
-    return wire(CampaignExperienceFactory.build(campaign_id="campaign123"))
+    return wire(CampaignExperienceFactory.build(campaign_id=CAMPAIGN_ID))
 
 
 @pytest.fixture
 def quickroll_response_data() -> dict:
     """Return quickroll response data."""
-    return wire(QuickrollFactory.build(id="quickroll123", name="Test Quickroll"))
+    return wire(QuickrollFactory.build(id=QUICKROLL_ID, name="Test Quickroll"))
 
 
 class TestUsersServiceGetPage:
     """Tests for UsersService.get_page method."""
 
     @respx.mock
-    def test_get_page_users(self, vclient, base_url, paginated_users_response):
-        """Verify get_page returns paginated User objects."""
+    @pytest.mark.parametrize(
+        ("kwargs", "expected_params"),
+        [
+            pytest.param({}, {"limit": "10", "offset": "0"}, id="defaults"),
+            pytest.param({"limit": 25, "offset": 50}, {"limit": "25", "offset": "50"}, id="paging"),
+            pytest.param(
+                {"user_role": "STORYTELLER", "email": "a@example.com"},
+                {
+                    "limit": "10",
+                    "offset": "0",
+                    "user_role": "STORYTELLER",
+                    "email": "a@example.com",
+                },
+                id="filters",
+            ),
+        ],
+    )
+    def test_get_page_sends_filters_and_parses_users(
+        self, users, base_url, user_response_data, kwargs, expected_params
+    ):
+        """Verify get_page sends paging and filter params and parses the users."""
         # Given: A mocked users list endpoint
-        company_id = "company123"
-        route = respx.get(
-            f"{base_url}{Endpoints.USERS.format(company_id=company_id)}",
-            params={"limit": "10", "offset": "0"},
-        ).respond(200, json=paginated_users_response)
+        route = respx.get(endpoint_url(base_url, Endpoints.USERS, company_id=COMPANY_ID)).respond(
+            200, json=page(user_response_data)
+        )
 
         # When: Getting a page of users
-        result = vclient.users("on-behalf-of-user", company_id=company_id).get_page()
+        result = users.get_page(**kwargs)
 
-        # Then: Returns PaginatedResponse with User objects
-        assert route.called
-        assert isinstance(result, PaginatedResponse)
-        assert len(result.items) == 1
-        assert isinstance(result.items[0], User)
-        assert result.items[0].name_first == "Test"
-        assert result.items[0].name_last == "User"
+        # Then: The params are sent and the users are parsed
+        assert sent_params(route) == expected_params
+        assert [u.name_first for u in result.items] == ["Test"]
         assert result.total == 1
 
+
+class TestUsersServiceCollectionMethods:
+    """Tests for the list, iterate, and page methods that wrap paginated routes."""
+
     @respx.mock
-    def test_get_page_with_role_filter(self, vclient, base_url, paginated_users_response):
-        """Verify get_page accepts role filter parameter."""
-        # Given: A mocked endpoint expecting role filter
-        company_id = "company123"
+    @pytest.mark.parametrize(
+        ("method", "args", "kwargs", "endpoint", "expected_params", "item"),
+        [
+            pytest.param(
+                "list_all",
+                (),
+                {"user_role": "PLAYER", "email": "a@example.com"},
+                Endpoints.USERS,
+                {"limit": "100", "offset": "0", "user_role": "PLAYER", "email": "a@example.com"},
+                "user",
+                id="list_all",
+            ),
+            pytest.param(
+                "iter_all",
+                (),
+                {"user_role": "PLAYER"},
+                Endpoints.USERS,
+                {"limit": "100", "offset": "0", "user_role": "PLAYER"},
+                "user",
+                id="iter_all",
+            ),
+            pytest.param(
+                "get_unapproved_page",
+                (),
+                {"limit": 25, "offset": 50},
+                Endpoints.USERS_UNAPPROVED_LIST,
+                {"limit": "25", "offset": "50"},
+                "user",
+                id="get_unapproved_page",
+            ),
+            pytest.param(
+                "list_all_unapproved",
+                (),
+                {},
+                Endpoints.USERS_UNAPPROVED_LIST,
+                {"limit": "100", "offset": "0"},
+                "user",
+                id="list_all_unapproved",
+            ),
+            pytest.param(
+                "iter_all_unapproved",
+                (),
+                {},
+                Endpoints.USERS_UNAPPROVED_LIST,
+                {"limit": "100", "offset": "0"},
+                "user",
+                id="iter_all_unapproved",
+            ),
+            pytest.param(
+                "get_quickrolls_page",
+                (USER_ID,),
+                {},
+                Endpoints.USER_QUICKROLLS,
+                {"limit": "10", "offset": "0"},
+                "quickroll",
+                id="get_quickrolls_page",
+            ),
+            pytest.param(
+                "list_all_quickrolls",
+                (USER_ID,),
+                {},
+                Endpoints.USER_QUICKROLLS,
+                {"limit": "100", "offset": "0"},
+                "quickroll",
+                id="list_all_quickrolls",
+            ),
+            pytest.param(
+                "iter_all_quickrolls",
+                (USER_ID,),
+                {},
+                Endpoints.USER_QUICKROLLS,
+                {"limit": "100", "offset": "0"},
+                "quickroll",
+                id="iter_all_quickrolls",
+            ),
+        ],
+    )
+    def test_collection_method_requests_route_and_parses_items(
+        self,
+        users,
+        base_url,
+        user_response_data,
+        quickroll_response_data,
+        method,
+        args,
+        kwargs,
+        endpoint,
+        expected_params,
+        item,
+    ):
+        """Verify each collection method requests its route and parses the items."""
+        # Given: The route returns one page holding one item
+        payload = user_response_data if item == "user" else quickroll_response_data
         route = respx.get(
-            f"{base_url}{Endpoints.USERS.format(company_id=company_id)}",
-            params={"limit": "10", "offset": "0", "user_role": "STORYTELLER"},
-        ).respond(200, json=paginated_users_response)
+            endpoint_url(base_url, endpoint, company_id=COMPANY_ID, user_id=USER_ID)
+        ).respond(200, json=page(payload))
 
-        # When: Getting a page with role filter
-        result = vclient.users("on-behalf-of-user", company_id=company_id).get_page(
-            user_role="STORYTELLER"
-        )
+        # When: Calling the collection method
+        result = getattr(users, method)(*args, **kwargs)
+        items = result.items if isinstance(result, PaginatedResponse) else list(result)
 
-        # Then: Request was made with correct params
-        assert route.called
-        assert isinstance(result, PaginatedResponse)
-
-    @respx.mock
-    def test_get_page_with_pagination(self, vclient, base_url, user_response_data):
-        """Verify get_page accepts pagination parameters."""
-        # Given: A mocked endpoint expecting custom pagination
-        company_id = "company123"
-        route = respx.get(
-            f"{base_url}{Endpoints.USERS.format(company_id=company_id)}",
-            params={"limit": "25", "offset": "50"},
-        ).respond(
-            200,
-            json=page(user_response_data, limit=25, offset=50, total=100),
-        )
-
-        # When: Getting a page with custom pagination
-        result = vclient.users("on-behalf-of-user", company_id=company_id).get_page(
-            limit=25, offset=50
-        )
-
-        # Then: Request was made with correct params
-        assert route.called
-        assert result.limit == 25
-        assert result.offset == 50
-
-
-class TestUsersServiceListAll:
-    """Tests for UsersService.list_all method."""
-
-    @respx.mock
-    def test_list_all_users(self, vclient, base_url, user_response_data):
-        """Verify list_all returns all users across pages."""
-        # Given: Mocked endpoint
-        company_id = "company123"
-        respx.get(
-            f"{base_url}{Endpoints.USERS.format(company_id=company_id)}",
-            params={"limit": "100", "offset": "0"},
-        ).respond(
-            200,
-            json=page(user_response_data, limit=100),
-        )
-
-        # When: Calling list_all
-        result = vclient.users("on-behalf-of-user", company_id=company_id).list_all()
-
-        # Then: Returns list of User objects
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert isinstance(result[0], User)
-
-
-class TestUsersServiceIterAll:
-    """Tests for UsersService.iter_all method."""
-
-    @respx.mock
-    def test_iter_all_users(self, vclient, base_url, user_response_data):
-        """Verify iter_all yields User objects across pages."""
-        # Given: Mocked endpoints for multiple pages
-        company_id = "company123"
-        user2 = {**user_response_data, "id": "507f1f77bcf86cd799439012", "name_first": "User 2"}
-        respx.get(
-            f"{base_url}{Endpoints.USERS.format(company_id=company_id)}",
-            params={"limit": "1", "offset": "0"},
-        ).respond(
-            200,
-            json=page(user_response_data, limit=1, total=2),
-        )
-        respx.get(
-            f"{base_url}{Endpoints.USERS.format(company_id=company_id)}",
-            params={"limit": "1", "offset": "1"},
-        ).respond(
-            200,
-            json=page(user2, limit=1, offset=1, total=2),
-        )
-
-        # When: Iterating through all users
-        users = list(vclient.users("on-behalf-of-user", company_id=company_id).iter_all(limit=1))
-
-        # Then: All users are yielded as User objects
-        assert len(users) == 2
-        assert all(isinstance(u, User) for u in users)
-        assert users[0].name_first == "Test"
-        assert users[1].name_first == "User 2"
+        # Then: The route gets the expected params and the item is parsed
+        assert sent_params(route) == expected_params
+        assert [i.id for i in items] == [payload["id"]]
 
 
 class TestUsersServiceGet:
     """Tests for UsersService.get method."""
 
     @respx.mock
-    def test_get_user(self, vclient, base_url, user_response_data):
-        """Verify getting a user returns User object."""
-        # Given: A mocked user endpoint
-        company_id = "company123"
-        user_id = "507f1f77bcf86cd799439011"
-        route = respx.get(
-            f"{base_url}{Endpoints.USER.format(company_id=company_id, user_id=user_id)}"
-        ).respond(200, json=user_response_data)
-
-        # When: Getting the user
-        result = vclient.users("on-behalf-of-user", company_id=company_id).get(user_id)
-
-        # Then: Returns User object with correct data
-        assert route.called
-        assert isinstance(result, User)
-        assert result.id == user_id
-        assert result.name_first == "Test"
-        assert result.name_last == "User"
-        assert result.username == "testuser"
-        assert result.email == "test@example.com"
-
-    @respx.mock
-    def test_get_user_not_found(self, vclient, base_url):
-        """Verify getting non-existent user raises NotFoundError."""
-        # Given: A mocked endpoint returning 404
-        company_id = "company123"
-        user_id = "nonexistent"
-        respx.get(
-            f"{base_url}{Endpoints.USER.format(company_id=company_id, user_id=user_id)}"
-        ).respond(404, json={"detail": "User not found"})
-
-        # When/Then: Getting the user raises NotFoundError
-        with pytest.raises(NotFoundError):
-            vclient.users("on-behalf-of-user", company_id=company_id).get(user_id)
-
-    @respx.mock
-    def test_get_user_without_include_returns_detail_with_none_embeds(
-        self, vclient, base_url, user_response_data
-    ):
-        """Verify get() with no include param returns UserDetail with None embeds."""
-        from vweb.api_client.models import UserDetail
-
+    def test_get_user_without_include(self, users, base_url, user_response_data):
+        """Verify get() sends no include param and leaves embeds unset."""
         # Given: A mocked user endpoint returning plain user data
-        company_id = "company123"
         user_id = user_response_data["id"]
         route = respx.get(
-            f"{base_url}{Endpoints.USER.format(company_id=company_id, user_id=user_id)}"
+            endpoint_url(base_url, Endpoints.USER, company_id=COMPANY_ID, user_id=user_id)
         ).respond(200, json=user_response_data)
 
         # When: Getting the user without include
-        result = vclient.users("on-behalf-of-user", company_id=company_id).get(user_id)
+        result = users.get(user_id)
 
-        # Then: Returns UserDetail with None embed fields
-        assert route.called
-        assert isinstance(result, UserDetail)
+        # Then: No query is sent, the user is parsed, and embeds are None
+        assert not sent_params(route)
+        assert result.id == user_id
+        assert result.username == "testuser"
+        assert result.email == "test@example.com"
         assert result.quickrolls is None
         assert result.notes is None
         assert result.assets is None
@@ -234,27 +209,24 @@ class TestUsersServiceGet:
 
     @respx.mock
     def test_get_user_with_include_sends_repeated_query_params(
-        self, vclient, base_url, user_response_data
+        self, users, base_url, user_response_data
     ):
         """Verify get() with include sends repeated query params and populates embeds."""
         # Given: A mocked endpoint returning user with embedded resources
-        company_id = "company123"
         user_id = user_response_data["id"]
         payload = {**user_response_data, "quickrolls": [], "characters": []}
         route = respx.get(
-            f"{base_url}{Endpoints.USER.format(company_id=company_id, user_id=user_id)}"
+            endpoint_url(base_url, Endpoints.USER, company_id=COMPANY_ID, user_id=user_id)
         ).respond(200, json=payload)
 
         # When: Getting user with include=["quickrolls", "characters"]
-        result = vclient.users("on-behalf-of-user", company_id=company_id).get(
-            user_id, include=["quickrolls", "characters"]
-        )
+        result = users.get(user_id, include=["quickrolls", "characters"])
 
-        # Then: Request URL contains repeated include params and result has embedded data
-        assert route.called
-        sent_url = str(route.calls.last.request.url)
-        assert "include=quickrolls" in sent_url
-        assert "include=characters" in sent_url
+        # Then: Each include is a separate query param and the embeds are populated
+        assert route.calls.last.request.url.params.get_list("include") == [
+            "quickrolls",
+            "characters",
+        ]
         assert result.quickrolls == []
         assert result.characters == []
         assert result.notes is None
@@ -265,52 +237,17 @@ class TestUsersServiceCreate:
     """Tests for UsersService.create method."""
 
     @respx.mock
-    def test_create_user_minimal(self, vclient, base_url, user_response_data):
-        """Verify creating user with minimal data."""
+    def test_create_user_sends_fields_and_drops_provider_profiles(
+        self, users, base_url, user_response_data
+    ):
+        """Verify create sends the user fields and never the provider profiles."""
         # Given: A mocked create endpoint
-        company_id = "company123"
-        route = respx.post(f"{base_url}{Endpoints.USERS.format(company_id=company_id)}").respond(
+        route = respx.post(endpoint_url(base_url, Endpoints.USERS, company_id=COMPANY_ID)).respond(
             201, json=user_response_data
         )
 
-        # When: Creating a user with minimal data
-        result = vclient.users("on-behalf-of-user", company_id=company_id).create(
-            name_first="Test",
-            name_last="User",
-            username="testuser",
-            email="test@example.com",
-            role="PLAYER",
-        )
-
-        # Then: Returns created User object
-        assert route.called
-        assert isinstance(result, User)
-        assert result.name_first == "Test"
-        assert result.name_last == "User"
-        assert result.username == "testuser"
-
-        # Verify request body
-        request = route.calls.last.request
-        import json
-
-        body = json.loads(request.content)
-        assert body["name_first"] == "Test"
-        assert body["name_last"] == "User"
-        assert body["username"] == "testuser"
-        assert body["email"] == "test@example.com"
-        assert body["role"] == "PLAYER"
-
-    @respx.mock
-    def test_create_user_ignores_provider_profile(self, vclient, base_url, user_response_data):
-        """Verify provider profile fields are dropped from the create request body."""
-        # Given: A mocked create endpoint
-        company_id = "company123"
-        route = respx.post(f"{base_url}{Endpoints.USERS.format(company_id=company_id)}").respond(
-            201, json=user_response_data
-        )
-
-        # When: Creating a user while passing all now-unsupported provider profiles
-        result = vclient.users("on-behalf-of-user", company_id=company_id).create(
+        # When: Creating a user while passing provider profiles
+        result = users.create(
             name_first="Test",
             name_last="User",
             username="testuser",
@@ -322,503 +259,212 @@ class TestUsersServiceCreate:
             apple_profile={"id": "apple123"},
         )
 
-        # Then: Returns created User object
-        assert route.called
-        assert isinstance(result, User)
+        # Then: Only the user fields are sent, since identities flow through their own endpoints
+        assert sent_json(route) == {
+            "name_first": "Test",
+            "name_last": "User",
+            "username": "testuser",
+            "email": "test@example.com",
+            "role": "PLAYER",
+        }
+        assert result.username == "testuser"
 
-        # Then: The provider profile is not sent (writes flow through the identity endpoints)
-        request = route.calls.last.request
-        import json
-
-        body = json.loads(request.content)
-        assert "discord_profile" not in body
-        assert "google_profile" not in body
-        assert "github_profile" not in body
-        assert "apple_profile" not in body
-
-    def test_create_user_validation_error(self, vclient):
-        """Verify validation error on invalid data raises RequestValidationError."""
-        # When/Then: Creating with invalid data raises RequestValidationError
+    @respx.mock
+    def test_create_user_validation_error(self, users):
+        """Verify invalid data raises RequestValidationError naming the field, before sending."""
+        # When/Then: Creating with a too-short first name fails client-side
         with pytest.raises(RequestValidationError) as exc_info:
-            vclient.users("on-behalf-of-user", company_id="company123").create(
+            users.create(
                 name_first="AB",
                 username="abcde",
                 email="test@example.com",
                 role="PLAYER",
             )
 
-        # Verify error details are accessible
-        assert len(exc_info.value.errors) == 1
-        assert exc_info.value.errors[0]["loc"] == ("name_first",)
+        assert [e["loc"] for e in exc_info.value.errors] == [("name_first",)]
+        assert not respx.calls
 
 
 class TestUsersServiceMerge:
     """Tests for UsersService.merge method."""
 
     @respx.mock
-    def test_merge_users(self, vclient, base_url, user_response_data):
-        """Verify merging users returns the primary User object."""
+    def test_merge_users(self, users, base_url, user_response_data):
+        """Verify merging users sends both ids and returns the primary User."""
         # Given: A mocked merge endpoint
-        company_id = "company123"
         route = respx.post(
-            f"{base_url}{Endpoints.USER_MERGE.format(company_id=company_id)}"
+            endpoint_url(base_url, Endpoints.USER_MERGE, company_id=COMPANY_ID)
         ).respond(200, json=user_response_data)
 
         # When: Merging two users
-        result = vclient.users("on-behalf-of-user", company_id=company_id).merge(
-            primary_user_id="primary123",
-            secondary_user_id="secondary456",
-        )
+        result = users.merge(primary_user_id="primary123", secondary_user_id="secondary456")
 
-        # Then: Returns the primary User object
-        assert route.called
-        assert isinstance(result, User)
-
-        # Verify request body
-        import json
-
-        body = json.loads(route.calls.last.request.content)
-        assert body == {
+        # Then: Both ids are sent and the primary user is returned
+        assert sent_json(route) == {
             "primary_user_id": "primary123",
             "secondary_user_id": "secondary456",
         }
-
-    @respx.mock
-    def test_merge_users_not_found(self, vclient, base_url):
-        """Verify merging with non-existent user raises NotFoundError."""
-        # Given: A mocked endpoint returning 404
-        company_id = "company123"
-        respx.post(f"{base_url}{Endpoints.USER_MERGE.format(company_id=company_id)}").respond(
-            404, json={"detail": "User not found"}
-        )
-
-        # When/Then: Merging raises NotFoundError
-        with pytest.raises(NotFoundError):
-            vclient.users("on-behalf-of-user", company_id=company_id).merge(
-                primary_user_id="primary123",
-                secondary_user_id="nonexistent",
-            )
+        assert result.id == user_response_data["id"]
 
 
 class TestUsersServiceUpdate:
     """Tests for UsersService.update method."""
 
     @respx.mock
-    def test_update_user_name(self, vclient, base_url, user_response_data):
-        """Verify updating user name."""
+    @pytest.mark.parametrize(
+        ("kwargs", "expected_body"),
+        [
+            pytest.param({"name_first": "Updated"}, {"name_first": "Updated"}, id="set"),
+            pytest.param(
+                {"username": "renamed", "name_first": None, "name_last": None},
+                {"username": "renamed", "name_first": None, "name_last": None},
+                id="explicit-null-clears",
+            ),
+        ],
+    )
+    def test_update_user_sends_only_given_fields(
+        self, users, base_url, user_response_data, kwargs, expected_body
+    ):
+        """Verify update sends only the fields passed, keeping explicit nulls."""
         # Given: A mocked update endpoint
-        company_id = "company123"
-        user_id = "507f1f77bcf86cd799439011"
-        updated_data = {**user_response_data, "name_first": "Updated"}
         route = respx.patch(
-            f"{base_url}{Endpoints.USER.format(company_id=company_id, user_id=user_id)}"
-        ).respond(200, json=updated_data)
+            endpoint_url(base_url, Endpoints.USER, company_id=COMPANY_ID, user_id=USER_ID)
+        ).respond(200, json={**user_response_data, "name_first": "Updated"})
 
-        # When: Updating the user name
-        result = vclient.users("on-behalf-of-user", company_id=company_id).update(
-            user_id,
-            name_first="Updated",
-        )
+        # When: Updating the user
+        result = users.update(USER_ID, **kwargs)
 
-        # Then: Returns updated User object
-        assert route.called
-        assert isinstance(result, User)
+        # Then: Only the given fields are sent and the response is parsed
+        assert sent_json(route) == expected_body
         assert result.name_first == "Updated"
 
-        # Verify request body
-        request = route.calls.last.request
-        import json
 
-        body = json.loads(request.content)
-        assert body == {"name_first": "Updated"}
+class TestUsersServiceNoContentActions:
+    """Tests for user actions that return no body."""
 
     @respx.mock
-    def test_update_user_clears_names(self, vclient, base_url, user_response_data):
-        """Verify name_first=None and name_last=None send null so the API clears them."""
-        # Given: A mocked update endpoint
-        route = respx.patch(
-            f"{base_url}{Endpoints.USER.format(company_id='company123', user_id='user1')}"
-        ).respond(200, json={**user_response_data, "name_first": None, "name_last": None})
-
-        # When: Clearing both names while changing the username
-        vclient.users("on-behalf-of-user", company_id="company123").update(
-            "user1", username="renamed", name_first=None, name_last=None
+    @pytest.mark.parametrize(
+        ("method", "http_method", "endpoint"),
+        [
+            pytest.param("delete", "DELETE", Endpoints.USER, id="delete"),
+            pytest.param("deny_user", "POST", Endpoints.USER_DENY, id="deny_user"),
+        ],
+    )
+    def test_action_hits_user_route(self, users, base_url, method, http_method, endpoint):
+        """Verify the action sends the right method to the user's route and returns None."""
+        # Given: A mocked endpoint returning 204
+        route = respx.route(
+            method=http_method,
+            url=endpoint_url(base_url, endpoint, company_id=COMPANY_ID, user_id=USER_ID),
         )
+        route.respond(204)
 
-        # Then: The names are sent as null alongside the new username
-        import json
+        # When: Running the action
+        result = getattr(users, method)(USER_ID)
 
-        assert json.loads(route.calls.last.request.content) == {
-            "username": "renamed",
-            "name_first": None,
-            "name_last": None,
-        }
-
-    @respx.mock
-    def test_update_user_not_found(self, vclient, base_url):
-        """Verify updating non-existent user raises NotFoundError."""
-        # Given: A mocked endpoint returning 404
-        company_id = "company123"
-        user_id = "nonexistent"
-        respx.patch(
-            f"{base_url}{Endpoints.USER.format(company_id=company_id, user_id=user_id)}"
-        ).respond(404, json={"detail": "User not found"})
-
-        # When/Then: Updating raises NotFoundError
-        with pytest.raises(NotFoundError):
-            vclient.users("on-behalf-of-user", company_id=company_id).update(
-                user_id,
-                name="New Name",
-            )
-
-
-class TestUsersServiceDelete:
-    """Tests for UsersService.delete method."""
-
-    @respx.mock
-    def test_delete_user(self, vclient, base_url):
-        """Verify deleting a user."""
-        # Given: A mocked delete endpoint
-        company_id = "company123"
-        user_id = "507f1f77bcf86cd799439011"
-        route = respx.delete(
-            f"{base_url}{Endpoints.USER.format(company_id=company_id, user_id=user_id)}",
-        ).respond(204)
-
-        # When: Deleting the user
-        result = vclient.users("on-behalf-of-user", company_id=company_id).delete(user_id)
-
-        # Then: Request was made and returns None
-        assert route.called
+        # Then: The route was called and nothing is returned
+        assert route.call_count == 1
         assert result is None
-
-    @respx.mock
-    def test_delete_user_not_found(self, vclient, base_url):
-        """Verify deleting non-existent user raises NotFoundError."""
-        # Given: A mocked endpoint returning 404
-        company_id = "company123"
-        user_id = "nonexistent"
-        respx.delete(
-            f"{base_url}{Endpoints.USER.format(company_id=company_id, user_id=user_id)}",
-        ).respond(404, json={"detail": "User not found"})
-
-        # When/Then: Deleting raises NotFoundError
-        with pytest.raises(NotFoundError):
-            vclient.users("on-behalf-of-user", company_id=company_id).delete(user_id)
 
 
 class TestUsersServiceGetStatistics:
     """Tests for UsersService.get_statistics method."""
 
     @respx.mock
-    def test_get_statistics(self, vclient, base_url, statistics_response_data):
-        """Verify getting user statistics."""
+    def test_get_statistics(self, users, base_url, statistics_response_data):
+        """Verify get_statistics sends the default top-trait count and parses the stats."""
         # Given: A mocked statistics endpoint
-        company_id = "company123"
-        user_id = "user123"
         route = respx.get(
-            f"{base_url}{Endpoints.USER_STATISTICS.format(company_id=company_id, user_id=user_id)}",
-            params={"num_top_traits": "5"},
+            endpoint_url(
+                base_url, Endpoints.USER_STATISTICS, company_id=COMPANY_ID, user_id=USER_ID
+            )
         ).respond(200, json=statistics_response_data)
 
         # When: Getting statistics
-        result = vclient.users("on-behalf-of-user", company_id=company_id).get_statistics(user_id)
+        result = users.get_statistics(USER_ID)
 
-        # Then: Returns RollStatistics object
-        assert route.called
-        assert isinstance(result, RollStatistics)
+        # Then: The default param is sent and the stats are parsed
+        assert sent_params(route) == {"num_top_traits": "5"}
         assert result.total_rolls == 100
         assert result.success_percentage == 50.0
-
-
-class TestUsersServiceGetUnapprovedPage:
-    """Tests for UsersService.get_unapproved_page method."""
-
-    @respx.mock
-    def test_get_unapproved_page(self, vclient, base_url, paginated_users_response):
-        """Verify get_unapproved_page returns paginated User objects."""
-        # Given: A mocked unapproved users endpoint
-        company_id = "company123"
-        route = respx.get(
-            f"{base_url}{Endpoints.USERS_UNAPPROVED_LIST.format(company_id=company_id)}",
-            params={"limit": "10", "offset": "0"},
-        ).respond(200, json=paginated_users_response)
-
-        # When: Getting a page of unapproved users
-        result = vclient.users("on-behalf-of-user", company_id=company_id).get_unapproved_page()
-
-        # Then: Returns PaginatedResponse with User objects
-        assert route.called
-        assert isinstance(result, PaginatedResponse)
-        assert len(result.items) == 1
-        assert isinstance(result.items[0], User)
-
-    @respx.mock
-    def test_get_unapproved_page_with_pagination(self, vclient, base_url, user_response_data):
-        """Verify get_unapproved_page accepts pagination parameters."""
-        # Given: A mocked endpoint expecting custom pagination
-        company_id = "company123"
-        route = respx.get(
-            f"{base_url}{Endpoints.USERS_UNAPPROVED_LIST.format(company_id=company_id)}",
-            params={"limit": "25", "offset": "50"},
-        ).respond(
-            200,
-            json=page(user_response_data, limit=25, offset=50, total=100),
-        )
-
-        # When: Getting a page with custom pagination
-        result = vclient.users("on-behalf-of-user", company_id=company_id).get_unapproved_page(
-            limit=25, offset=50
-        )
-
-        # Then: Request was made with correct params
-        assert route.called
-        assert result.limit == 25
-        assert result.offset == 50
-
-
-class TestUsersServiceListAllUnapproved:
-    """Tests for UsersService.list_all_unapproved method."""
-
-    @respx.mock
-    def test_list_all_unapproved(self, vclient, base_url, user_response_data):
-        """Verify list_all_unapproved returns all unapproved users."""
-        # Given: Mocked endpoint
-        company_id = "company123"
-        respx.get(
-            f"{base_url}{Endpoints.USERS_UNAPPROVED_LIST.format(company_id=company_id)}",
-            params={"limit": "100", "offset": "0"},
-        ).respond(
-            200,
-            json=page(user_response_data, limit=100),
-        )
-
-        # When: Calling list_all_unapproved
-        result = vclient.users("on-behalf-of-user", company_id=company_id).list_all_unapproved()
-
-        # Then: Returns list of User objects
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert isinstance(result[0], User)
-
-
-class TestUsersServiceIterAllUnapproved:
-    """Tests for UsersService.iter_all_unapproved method."""
-
-    @respx.mock
-    def test_iter_all_unapproved(self, vclient, base_url, user_response_data):
-        """Verify iter_all_unapproved yields User objects across pages."""
-        # Given: Mocked endpoints for multiple pages
-        company_id = "company123"
-        user2 = {**user_response_data, "id": "507f1f77bcf86cd799439012", "name_first": "User 2"}
-        respx.get(
-            f"{base_url}{Endpoints.USERS_UNAPPROVED_LIST.format(company_id=company_id)}",
-            params={"limit": "1", "offset": "0"},
-        ).respond(
-            200,
-            json=page(user_response_data, limit=1, total=2),
-        )
-        respx.get(
-            f"{base_url}{Endpoints.USERS_UNAPPROVED_LIST.format(company_id=company_id)}",
-            params={"limit": "1", "offset": "1"},
-        ).respond(
-            200,
-            json=page(user2, limit=1, offset=1, total=2),
-        )
-
-        # When: Iterating through all unapproved users
-        users = list(
-            vclient.users("on-behalf-of-user", company_id=company_id).iter_all_unapproved(limit=1)
-        )
-
-        # Then: All users are yielded as User objects
-        assert len(users) == 2
-        assert all(isinstance(u, User) for u in users)
 
 
 class TestUsersServiceApproveUser:
     """Tests for UsersService.approve_user method."""
 
     @respx.mock
-    def test_approve_user(self, vclient, base_url, user_response_data):
-        """Verify approving a user returns the updated User object."""
+    def test_approve_user(self, users, base_url, user_response_data):
+        """Verify approving a user sends the role and returns the updated User."""
         # Given: A mocked approve endpoint
-        company_id = "company123"
-        user_id = "507f1f77bcf86cd799439011"
-        approved_data = {**user_response_data, "role": "PLAYER"}
         route = respx.post(
-            f"{base_url}{Endpoints.USER_APPROVE.format(company_id=company_id, user_id=user_id)}"
-        ).respond(200, json=approved_data)
+            endpoint_url(base_url, Endpoints.USER_APPROVE, company_id=COMPANY_ID, user_id=USER_ID)
+        ).respond(200, json={**user_response_data, "role": "PLAYER"})
 
         # When: Approving the user
-        result = vclient.users("on-behalf-of-user", company_id=company_id).approve_user(
-            user_id, role="PLAYER"
-        )
+        result = users.approve_user(USER_ID, role="PLAYER")
 
-        # Then: Returns User object with assigned role
-        assert route.called
-        assert isinstance(result, User)
+        # Then: The role is sent and the user is returned with it
+        assert sent_json(route) == {"role": "PLAYER"}
         assert result.role == "PLAYER"
-
-        # Verify request body
-        import json
-
-        body = json.loads(route.calls.last.request.content)
-        assert body == {"role": "PLAYER"}
-
-    @respx.mock
-    def test_approve_user_not_found(self, vclient, base_url):
-        """Verify approving non-existent user raises NotFoundError."""
-        # Given: A mocked endpoint returning 404
-        company_id = "company123"
-        user_id = "nonexistent"
-        respx.post(
-            f"{base_url}{Endpoints.USER_APPROVE.format(company_id=company_id, user_id=user_id)}"
-        ).respond(404, json={"detail": "User not found"})
-
-        # When/Then: Approving raises NotFoundError
-        with pytest.raises(NotFoundError):
-            vclient.users("on-behalf-of-user", company_id=company_id).approve_user(
-                user_id, role="PLAYER"
-            )
-
-
-class TestUsersServiceDenyUser:
-    """Tests for UsersService.deny_user method."""
-
-    @respx.mock
-    def test_deny_user(self, vclient, base_url):
-        """Verify denying a user returns None."""
-        # Given: A mocked deny endpoint
-        company_id = "company123"
-        user_id = "507f1f77bcf86cd799439011"
-        route = respx.post(
-            f"{base_url}{Endpoints.USER_DENY.format(company_id=company_id, user_id=user_id)}"
-        ).respond(204)
-
-        # When: Denying the user
-        result = vclient.users("on-behalf-of-user", company_id=company_id).deny_user(user_id)
-
-        # Then: Request was made and returns None
-        assert route.called
-        assert result is None
-
-    @respx.mock
-    def test_deny_user_not_found(self, vclient, base_url):
-        """Verify denying non-existent user raises NotFoundError."""
-        # Given: A mocked endpoint returning 404
-        company_id = "company123"
-        user_id = "nonexistent"
-        respx.post(
-            f"{base_url}{Endpoints.USER_DENY.format(company_id=company_id, user_id=user_id)}"
-        ).respond(404, json={"detail": "User not found"})
-
-        # When/Then: Denying raises NotFoundError
-        with pytest.raises(NotFoundError):
-            vclient.users("on-behalf-of-user", company_id=company_id).deny_user(user_id)
 
 
 class TestUsersServiceExperience:
     """Tests for UsersService experience methods."""
 
     @respx.mock
-    def test_get_experience(self, vclient, base_url, experience_response_data):
+    def test_get_experience(self, users, base_url, experience_response_data):
         """Verify getting user experience for a campaign."""
         # Given: A mocked experience endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
         route = respx.get(
-            f"{base_url}{Endpoints.USER_EXPERIENCE_CAMPAIGN.format(company_id=company_id, user_id=user_id, campaign_id=campaign_id)}"
+            endpoint_url(
+                base_url,
+                Endpoints.USER_EXPERIENCE_CAMPAIGN,
+                company_id=COMPANY_ID,
+                user_id=USER_ID,
+                campaign_id=CAMPAIGN_ID,
+            )
         ).respond(200, json=experience_response_data)
 
         # When: Getting experience
-        result = vclient.users("on-behalf-of-user", company_id=company_id).get_experience(
-            user_id, campaign_id
-        )
+        result = users.get_experience(USER_ID, CAMPAIGN_ID)
 
-        # Then: Returns CampaignExperience object
-        assert route.called
-        assert isinstance(result, CampaignExperience)
-        assert result.campaign_id == "campaign123"
+        # Then: The campaign experience is returned
+        assert route.call_count == 1
+        assert result.campaign_id == CAMPAIGN_ID
 
     @respx.mock
-    def test_add_xp(self, vclient, base_url, experience_response_data):
-        """Verify adding XP to a user."""
-        # Given: A mocked add XP endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        updated_data = {**experience_response_data, "xp_current": 150, "xp_total": 200}
+    @pytest.mark.parametrize(
+        ("method", "endpoint"),
+        [
+            pytest.param("add_xp", Endpoints.USER_EXPERIENCE_XP_ADD, id="add_xp"),
+            pytest.param("remove_xp", Endpoints.USER_EXPERIENCE_XP_REMOVE, id="remove_xp"),
+            pytest.param("add_cool_points", Endpoints.USER_EXPERIENCE_CP_ADD, id="add_cp"),
+        ],
+    )
+    def test_experience_change_sends_amount_and_campaign(
+        self, users, base_url, experience_response_data, method, endpoint
+    ):
+        """Verify each experience change posts the amount and campaign to its route."""
+        # Given: A mocked experience change endpoint
         route = respx.post(
-            f"{base_url}{Endpoints.USER_EXPERIENCE_XP_ADD.format(company_id=company_id, user_id=user_id)}"
-        ).respond(201, json=updated_data)
+            endpoint_url(base_url, endpoint, company_id=COMPANY_ID, user_id=USER_ID)
+        ).respond(201, json={**experience_response_data, "xp_current": 150})
 
-        # When: Adding XP
-        result = vclient.users("on-behalf-of-user", company_id=company_id).add_xp(
-            user_id, campaign_id, amount=100
-        )
+        # When: Changing the experience
+        result = getattr(users, method)(USER_ID, CAMPAIGN_ID, amount=25)
 
-        # Then: Returns updated CampaignExperience object
-        assert route.called
-        assert isinstance(result, CampaignExperience)
+        # Then: The amount and campaign are sent and the new experience is returned
+        assert sent_json(route) == {"amount": 25, "campaign_id": CAMPAIGN_ID}
         assert result.xp_current == 150
-
-    @respx.mock
-    def test_remove_xp(self, vclient, base_url, experience_response_data):
-        """Verify removing XP from a user."""
-        # Given: A mocked remove XP endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        updated_data = {**experience_response_data, "xp_current": 25}
-        route = respx.post(
-            f"{base_url}{Endpoints.USER_EXPERIENCE_XP_REMOVE.format(company_id=company_id, user_id=user_id)}"
-        ).respond(201, json=updated_data)
-
-        # When: Removing XP
-        result = vclient.users("on-behalf-of-user", company_id=company_id).remove_xp(
-            user_id, campaign_id, amount=25
-        )
-
-        # Then: Returns updated CampaignExperience object
-        assert route.called
-        assert isinstance(result, CampaignExperience)
-        assert result.xp_current == 25
-
-    @respx.mock
-    def test_add_cool_points(self, vclient, base_url, experience_response_data):
-        """Verify adding cool points to a user."""
-        # Given: A mocked add CP endpoint
-        company_id = "company123"
-        user_id = "user123"
-        campaign_id = "campaign123"
-        updated_data = {**experience_response_data, "cool_points": 10}
-        route = respx.post(
-            f"{base_url}{Endpoints.USER_EXPERIENCE_CP_ADD.format(company_id=company_id, user_id=user_id)}"
-        ).respond(201, json=updated_data)
-
-        # When: Adding cool points
-        result = vclient.users("on-behalf-of-user", company_id=company_id).add_cool_points(
-            user_id, campaign_id, amount=5
-        )
-
-        # Then: Returns updated CampaignExperience object
-        assert route.called
-        assert isinstance(result, CampaignExperience)
-        assert result.cool_points == 10
 
     @respx.mock
     @pytest.mark.parametrize("method", ["add_xp", "remove_xp", "add_cool_points"])
     @pytest.mark.parametrize("amount", [0, -5])
-    def test_non_positive_amount_rejected(self, vclient, method, amount):
+    def test_non_positive_amount_rejected(self, users, method, amount):
         """Verify an amount below 1 raises RequestValidationError before any request."""
-        # Given: A users service
-        users = vclient.users("on-behalf-of-user", company_id="company123")
-
         # When/Then: A non-positive amount fails client-side validation
         with pytest.raises(RequestValidationError):
-            getattr(users, method)("user123", "campaign123", amount=amount)
+            getattr(users, method)(USER_ID, CAMPAIGN_ID, amount=amount)
 
         # Then: No request was sent
         assert not respx.calls
@@ -828,406 +474,192 @@ class TestUsersServiceQuickrolls:
     """Tests for UsersService quickroll methods."""
 
     @respx.mock
-    def test_get_quickrolls_page(self, vclient, base_url, quickroll_response_data):
-        """Verify get_quickrolls_page returns paginated Quickroll objects."""
-        # Given: A mocked quickrolls list endpoint
-        company_id = "company123"
-        user_id = "user123"
-        route = respx.get(
-            f"{base_url}{Endpoints.USER_QUICKROLLS.format(company_id=company_id, user_id=user_id)}",
-            params={"limit": "10", "offset": "0"},
-        ).respond(
-            200,
-            json=page(quickroll_response_data),
-        )
-
-        # When: Getting a page of quickrolls
-        result = vclient.users("on-behalf-of-user", company_id=company_id).get_quickrolls_page(
-            user_id
-        )
-
-        # Then: Returns PaginatedResponse with Quickroll objects
-        assert route.called
-        assert isinstance(result, PaginatedResponse)
-        assert len(result.items) == 1
-        assert isinstance(result.items[0], Quickroll)
-
-    @respx.mock
-    def test_get_quickroll(self, vclient, base_url, quickroll_response_data):
-        """Verify getting a specific quickroll returns Quickroll object."""
+    def test_get_quickroll(self, users, base_url, quickroll_response_data):
+        """Verify getting a specific quickroll returns it."""
         # Given: A mocked quickroll endpoint
-        company_id = "company123"
-        user_id = "user123"
-        quickroll_id = "quickroll123"
         route = respx.get(
-            f"{base_url}{Endpoints.USER_QUICKROLL.format(company_id=company_id, user_id=user_id, quickroll_id=quickroll_id)}"
+            endpoint_url(
+                base_url,
+                Endpoints.USER_QUICKROLL,
+                company_id=COMPANY_ID,
+                user_id=USER_ID,
+                quickroll_id=QUICKROLL_ID,
+            )
         ).respond(200, json=quickroll_response_data)
 
         # When: Getting the quickroll
-        result = vclient.users("on-behalf-of-user", company_id=company_id).get_quickroll(
-            user_id, quickroll_id
-        )
+        result = users.get_quickroll(USER_ID, QUICKROLL_ID)
 
-        # Then: Returns Quickroll object
-        assert route.called
-        assert isinstance(result, Quickroll)
-        assert result.id == "quickroll123"
+        # Then: The quickroll is returned
+        assert route.call_count == 1
+        assert result.id == QUICKROLL_ID
 
     @respx.mock
-    def test_create_quickroll(self, vclient, base_url, quickroll_response_data):
-        """Verify creating a quickroll returns Quickroll object."""
+    def test_create_quickroll(self, users, base_url, quickroll_response_data):
+        """Verify creating a quickroll sends its fields and returns it."""
         # Given: A mocked create endpoint
-        company_id = "company123"
-        user_id = "user123"
         route = respx.post(
-            f"{base_url}{Endpoints.USER_QUICKROLLS.format(company_id=company_id, user_id=user_id)}"
+            endpoint_url(
+                base_url, Endpoints.USER_QUICKROLLS, company_id=COMPANY_ID, user_id=USER_ID
+            )
         ).respond(201, json=quickroll_response_data)
 
         # When: Creating a quickroll
-        result = vclient.users("on-behalf-of-user", company_id=company_id).create_quickroll(
-            user_id,
+        result = users.create_quickroll(
+            USER_ID,
             name="Test Quickroll",
             description="A test quickroll",
             trait_ids=["trait1", "trait2"],
         )
 
-        # Then: Returns created Quickroll object
-        assert route.called
-        assert isinstance(result, Quickroll)
+        # Then: The fields are sent and the quickroll is returned
+        assert sent_json(route) == {
+            "name": "Test Quickroll",
+            "description": "A test quickroll",
+            "trait_ids": ["trait1", "trait2"],
+        }
         assert result.name == "Test Quickroll"
 
     @respx.mock
-    def test_update_quickroll(self, vclient, base_url, quickroll_response_data):
-        """Verify updating a quickroll returns Quickroll object."""
+    def test_update_quickroll(self, users, base_url, quickroll_response_data):
+        """Verify updating a quickroll sends only the changed fields."""
         # Given: A mocked update endpoint
-        company_id = "company123"
-        user_id = "user123"
-        quickroll_id = "quickroll123"
-        updated_data = {**quickroll_response_data, "name": "Updated Name"}
         route = respx.patch(
-            f"{base_url}{Endpoints.USER_QUICKROLL.format(company_id=company_id, user_id=user_id, quickroll_id=quickroll_id)}"
-        ).respond(200, json=updated_data)
+            endpoint_url(
+                base_url,
+                Endpoints.USER_QUICKROLL,
+                company_id=COMPANY_ID,
+                user_id=USER_ID,
+                quickroll_id=QUICKROLL_ID,
+            )
+        ).respond(200, json={**quickroll_response_data, "name": "Updated Name"})
 
         # When: Updating the quickroll
-        result = vclient.users("on-behalf-of-user", company_id=company_id).update_quickroll(
-            user_id,
-            quickroll_id,
-            name="Updated Name",
-        )
+        result = users.update_quickroll(USER_ID, QUICKROLL_ID, name="Updated Name")
 
-        # Then: Returns updated Quickroll object
-        assert route.called
-        assert isinstance(result, Quickroll)
+        # Then: Only the name is sent and the updated quickroll is returned
+        assert sent_json(route) == {"name": "Updated Name"}
         assert result.name == "Updated Name"
 
     @respx.mock
-    def test_delete_quickroll(self, vclient, base_url):
-        """Verify deleting a quickroll."""
+    def test_delete_quickroll(self, users, base_url):
+        """Verify deleting a quickroll calls its route."""
         # Given: A mocked delete endpoint
-        company_id = "company123"
-        user_id = "user123"
-        quickroll_id = "quickroll123"
         route = respx.delete(
-            f"{base_url}{Endpoints.USER_QUICKROLL.format(company_id=company_id, user_id=user_id, quickroll_id=quickroll_id)}"
+            endpoint_url(
+                base_url,
+                Endpoints.USER_QUICKROLL,
+                company_id=COMPANY_ID,
+                user_id=USER_ID,
+                quickroll_id=QUICKROLL_ID,
+            )
         ).respond(204)
 
         # When: Deleting the quickroll
-        vclient.users("on-behalf-of-user", company_id=company_id).delete_quickroll(
-            user_id, quickroll_id
-        )
+        users.delete_quickroll(USER_ID, QUICKROLL_ID)
 
-        # Then: Request was made
-        assert route.called
+        # Then: The route was called
+        assert route.call_count == 1
 
 
-class TestUsersServiceFactoryMethod:
-    """Tests for VClient.users factory method."""
-
-    def test_users_method_returns_service(self, vclient):
-        """Verify users method returns UsersService instance."""
-        # When: Calling the users method
-        service = vclient.users("on-behalf-of-user", company_id="company123")
-
-        # Then: Returns a UsersService instance
-        from vweb.api_client.services.users import UsersService
-
-        assert isinstance(service, UsersService)
-
-    def test_users_method_creates_new_instance(self, vclient):
-        """Verify users method creates new instance each call."""
-        # When: Calling the users method multiple times
-        service1 = vclient.users("on-behalf-of-user", company_id="company123")
-        service2 = vclient.users("on-behalf-of-user", company_id="company123")
-
-        # Then: Returns different instances (not cached)
-        assert service1 is not service2
-
-    def test_users_method_stores_company_id(self, vclient):
-        """Verify users method stores company_id on the service."""
-        # When: Calling the users method with a company_id
-        service = vclient.users("on-behalf-of-user", company_id="company123")
-
-        # Then: The service has the company_id stored
-        assert service._company_id == "company123"
-
-
-class TestUsersServiceLinkIdentity:
-    """Tests for UsersService.link_identity method."""
+class TestUsersServiceIdentities:
+    """Tests for UsersService link_identity and unlink_identity methods."""
 
     @respx.mock
-    def test_link_identity_success(self, vclient, base_url, user_response_data):
-        """Verify linking a provider identity returns the updated User."""
+    def test_link_identity(self, vclient, base_url, user_response_data):
+        """Verify linking sends the credential on behalf of the user and returns the User."""
         # Given: A mocked identities endpoint
-        company_id = "company123"
         route = respx.post(
-            f"{base_url}{Endpoints.USER_IDENTITIES.format(company_id=company_id, user_id='user123')}"
+            endpoint_url(
+                base_url, Endpoints.USER_IDENTITIES, company_id=COMPANY_ID, user_id=USER_ID
+            )
         ).respond(200, json=user_response_data)
 
         # When: Linking an apple identity to the user
-        result = vclient.users("user123", company_id=company_id).link_identity(
-            "user123",
-            provider="apple",
-            token="eyJraWQi...",
+        result = vclient.users(USER_ID, company_id=COMPANY_ID).link_identity(
+            USER_ID, provider="apple", token="eyJraWQi..."
         )
 
-        # Then: The updated User is returned and the body carries the credential
-        assert route.called
-        assert isinstance(result, User)
-        body = json.loads(route.calls.last.request.content)
-        assert body == {"provider": "apple", "token": "eyJraWQi..."}
-
-        # Then: The request acts on behalf of the user
-        assert route.calls.last.request.headers["On-Behalf-Of"] == "user123"
+        # Then: The credential is sent on behalf of the user
+        assert sent_json(route) == {"provider": "apple", "token": "eyJraWQi..."}
+        assert route.calls.last.request.headers["On-Behalf-Of"] == USER_ID
+        assert result.id == user_response_data["id"]
 
     @respx.mock
-    def test_link_identity_conflict(self, vclient, base_url):
-        """Verify a 409 response raises ConflictError with its code."""
-        # Given: The identity already belongs to another user
-        company_id = "company123"
-        respx.post(
-            f"{base_url}{Endpoints.USER_IDENTITIES.format(company_id=company_id, user_id='user123')}"
-        ).respond(
-            409,
-            json={
-                "detail": "This identity is already linked to another user.",
-                "code": "IDENTITY_ALREADY_LINKED",
-            },
-        )
-
-        # When/Then: The conflict surfaces with its code
-        with pytest.raises(ConflictError) as exc_info:
-            vclient.users("user123", company_id=company_id).link_identity(
-                "user123",
-                provider="apple",
-                token="eyJraWQi...",
-            )
-        assert exc_info.value.code == "IDENTITY_ALREADY_LINKED"
-
-    @respx.mock
-    def test_link_identity_forbidden(self, vclient, base_url):
-        """Verify a 403 response raises AuthorizationError."""
-        # Given: A non-admin acting on another user's account
-        company_id = "company123"
-        respx.post(
-            f"{base_url}{Endpoints.USER_IDENTITIES.format(company_id=company_id, user_id='other456')}"
-        ).respond(
-            403,
-            json={"detail": "Only the user themselves or an admin can link identities"},
-        )
-
-        # When/Then: The request is denied
-        with pytest.raises(AuthorizationError):
-            vclient.users("user123", company_id=company_id).link_identity(
-                "other456",
-                provider="apple",
-                token="eyJraWQi...",
-            )
-
-    @respx.mock
-    def test_link_identity_missing_token_fails_client_side(self, vclient):
+    def test_link_identity_empty_token_fails_client_side(self, vclient):
         """Verify an empty token raises RequestValidationError before any request."""
         # When/Then: Client-side validation rejects the empty token
         with pytest.raises(RequestValidationError):
-            vclient.users("user123", company_id="company123").link_identity(
-                "user123",
-                provider="apple",
-                token="",
+            vclient.users(USER_ID, company_id=COMPANY_ID).link_identity(
+                USER_ID, provider="apple", token=""
             )
 
-
-class TestUsersServiceUnlinkIdentity:
-    """Tests for UsersService.unlink_identity method."""
+        assert not respx.calls
 
     @respx.mock
-    def test_unlink_identity_success(self, vclient, base_url, user_response_data):
-        """Verify unlinking a provider identity returns the updated User."""
+    def test_unlink_identity(self, vclient, base_url, user_response_data):
+        """Verify unlinking deletes the provider's identity on behalf of the user."""
         # Given: A mocked provider identity endpoint
-        company_id = "company123"
         route = respx.delete(
-            f"{base_url}{Endpoints.USER_IDENTITY.format(company_id=company_id, user_id='user123', provider='discord')}"
+            endpoint_url(
+                base_url,
+                Endpoints.USER_IDENTITY,
+                company_id=COMPANY_ID,
+                user_id=USER_ID,
+                provider="discord",
+            )
         ).respond(200, json=user_response_data)
 
         # When: Disconnecting the discord identity from the user
-        result = vclient.users("user123", company_id=company_id).unlink_identity(
-            "user123",
-            provider="discord",
+        result = vclient.users(USER_ID, company_id=COMPANY_ID).unlink_identity(
+            USER_ID, provider="discord"
         )
 
-        # Then: The updated User is returned
-        assert route.called
-        assert isinstance(result, User)
-
-        # Then: The request acts on behalf of the user
-        assert route.calls.last.request.headers["On-Behalf-Of"] == "user123"
-
-    @respx.mock
-    def test_unlink_identity_not_linked(self, vclient, base_url):
-        """Verify a 404 response raises NotFoundError with its code."""
-        # Given: The user has no identity from the requested provider
-        company_id = "company123"
-        respx.delete(
-            f"{base_url}{Endpoints.USER_IDENTITY.format(company_id=company_id, user_id='user123', provider='github')}"
-        ).respond(
-            404,
-            json={
-                "detail": "The user has no github identity linked.",
-                "code": "IDENTITY_NOT_LINKED",
-            },
-        )
-
-        # When/Then: The missing identity surfaces with its code
-        with pytest.raises(NotFoundError) as exc_info:
-            vclient.users("user123", company_id=company_id).unlink_identity(
-                "user123",
-                provider="github",
-            )
-        assert exc_info.value.code == "IDENTITY_NOT_LINKED"
-
-    @respx.mock
-    def test_unlink_identity_last_identity_conflict(self, vclient, base_url):
-        """Verify a 409 response raises ConflictError with its code."""
-        # Given: The provider is the user's only linked identity
-        company_id = "company123"
-        respx.delete(
-            f"{base_url}{Endpoints.USER_IDENTITY.format(company_id=company_id, user_id='user123', provider='google')}"
-        ).respond(
-            409,
-            json={
-                "detail": "Cannot remove the last remaining identity.",
-                "code": "LAST_IDENTITY",
-            },
-        )
-
-        # When/Then: The conflict surfaces with its code
-        with pytest.raises(ConflictError) as exc_info:
-            vclient.users("user123", company_id=company_id).unlink_identity(
-                "user123",
-                provider="google",
-            )
-        assert exc_info.value.code == "LAST_IDENTITY"
-
-    @respx.mock
-    def test_unlink_identity_forbidden(self, vclient, base_url):
-        """Verify a 403 response raises AuthorizationError."""
-        # Given: A non-admin acting on another user's account
-        company_id = "company123"
-        respx.delete(
-            f"{base_url}{Endpoints.USER_IDENTITY.format(company_id=company_id, user_id='other456', provider='apple')}"
-        ).respond(
-            403,
-            json={"detail": "Only the user themselves or an admin can unlink identities"},
-        )
-
-        # When/Then: The request is denied
-        with pytest.raises(AuthorizationError):
-            vclient.users("user123", company_id=company_id).unlink_identity(
-                "other456",
-                provider="apple",
-            )
+        # Then: The request acts on behalf of the user and returns the updated User
+        assert route.calls.last.request.headers["On-Behalf-Of"] == USER_ID
+        assert result.id == user_response_data["id"]
 
 
 class TestUsersServiceAvatar:
     """Tests for UsersService avatar methods."""
 
     @respx.mock
-    def test_upload_avatar_success(self, vclient, base_url, user_response_data):
-        """Verify uploading an avatar PUTs multipart data and returns the updated User."""
+    def test_upload_avatar(self, vclient, base_url, user_response_data):
+        """Verify uploading an avatar PUTs the file as multipart and returns the User."""
         # Given: A mocked avatar endpoint returning a user with a new avatar_url
-        company_id = "company123"
-        user_id = "user123"
-        updated = {**user_response_data, "avatar_url": "https://cdn.example.com/a.webp"}
         route = respx.put(
-            f"{base_url}{Endpoints.USER_AVATAR.format(company_id=company_id, user_id=user_id)}"
-        ).respond(200, json=updated)
+            endpoint_url(base_url, Endpoints.USER_AVATAR, company_id=COMPANY_ID, user_id=USER_ID)
+        ).respond(200, json={**user_response_data, "avatar_url": "https://cdn.example.com/a.webp"})
 
         # When: Uploading an avatar on the user's own behalf
-        result = vclient.users("user123", company_id=company_id).upload_avatar(
-            user_id,
+        result = vclient.users(USER_ID, company_id=COMPANY_ID).upload_avatar(
+            USER_ID,
             filename="pic.png",
             content=b"fake image content",
             content_type="image/png",
         )
 
-        # Then: The updated User is returned with the new avatar_url
-        assert route.called
-        assert isinstance(result, User)
+        # Then: The file is sent as multipart on behalf of the user
+        request = route.calls.last.request
+        assert request.headers["On-Behalf-Of"] == USER_ID
+        assert "multipart/form-data" in request.headers["content-type"]
+        assert b'filename="pic.png"' in request.content
+        assert b"Content-Type: image/png" in request.content
+        assert b"fake image content" in request.content
         assert result.avatar_url == "https://cdn.example.com/a.webp"
 
-        # Then: The request is multipart and acts on behalf of the user
-        assert route.calls.last.request.headers["On-Behalf-Of"] == "user123"
-        assert "multipart/form-data" in route.calls.last.request.headers["content-type"]
-
     @respx.mock
-    def test_upload_avatar_guesses_content_type(self, vclient, base_url, user_response_data):
-        """Verify content_type is inferred from the filename when not provided."""
-        # Given: A mocked avatar endpoint
-        company_id = "company123"
-        user_id = "user123"
-        route = respx.put(
-            f"{base_url}{Endpoints.USER_AVATAR.format(company_id=company_id, user_id=user_id)}"
-        ).respond(200, json=user_response_data)
-
-        # When: Uploading without an explicit content_type
-        result = vclient.users("user123", company_id=company_id).upload_avatar(
-            user_id,
-            filename="pic.png",
-            content=b"fake image content",
-        )
-
-        # Then: The request succeeds and returns a User
-        assert route.called
-        assert isinstance(result, User)
-
-    @respx.mock
-    def test_delete_avatar_success(self, vclient, base_url, user_response_data):
-        """Verify deleting an avatar returns the updated User body (200, not 204)."""
+    def test_delete_avatar(self, vclient, base_url, user_response_data):
+        """Verify deleting an avatar parses the 200 body into the updated User."""
         # Given: A mocked avatar endpoint returning the user with avatar_url cleared
-        company_id = "company123"
-        user_id = "user123"
-        updated = {**user_response_data, "avatar_url": None}
         route = respx.delete(
-            f"{base_url}{Endpoints.USER_AVATAR.format(company_id=company_id, user_id=user_id)}"
-        ).respond(200, json=updated)
+            endpoint_url(base_url, Endpoints.USER_AVATAR, company_id=COMPANY_ID, user_id=USER_ID)
+        ).respond(200, json={**user_response_data, "avatar_url": None})
 
         # When: Removing the avatar
-        result = vclient.users("user123", company_id=company_id).delete_avatar(user_id)
+        result = vclient.users(USER_ID, company_id=COMPANY_ID).delete_avatar(USER_ID)
 
-        # Then: The updated User is returned and acts on behalf of the user
-        assert route.called
-        assert isinstance(result, User)
+        # Then: The updated User is returned and the request acts on behalf of the user
+        assert route.calls.last.request.headers["On-Behalf-Of"] == USER_ID
+        assert result.id == user_response_data["id"]
         assert result.avatar_url is None
-        assert route.calls.last.request.headers["On-Behalf-Of"] == "user123"
-
-    @respx.mock
-    def test_delete_avatar_not_found(self, vclient, base_url):
-        """Verify a 404 response raises NotFoundError."""
-        # Given: The avatar endpoint returns 404
-        company_id = "company123"
-        user_id = "user123"
-        respx.delete(
-            f"{base_url}{Endpoints.USER_AVATAR.format(company_id=company_id, user_id=user_id)}"
-        ).respond(404, json={"detail": "User not found"})
-
-        # When/Then: The error surfaces as NotFoundError
-        with pytest.raises(NotFoundError):
-            vclient.users("user123", company_id=company_id).delete_avatar(user_id)

@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import re
+import socket
 import subprocess
-from typing import TYPE_CHECKING
+import tempfile
+from typing import IO, TYPE_CHECKING, Any
 
 import pytest
+import werkzeug.test
 
 from tests.helpers import (
+    build_global_context,
     build_mock_options_service,
     build_mock_system_service,
     make_cache_store_mock,
 )
-from vweb.api_client.models.companies import CompanySettings
 from vweb.api_client.models.diceroll import DiceRollResultSchema
 from vweb.api_client.testing import (
     AssetFactory,
@@ -21,48 +24,21 @@ from vweb.api_client.testing import (
     CampaignChapterFactory,
     CampaignFactory,
     CharacterFactory,
-    CompanyFactory,
     FakeVClient,
-    UserFactory,
 )
 from vweb.config import APISettings, RedisSettings, Settings
-from vweb.lib.cache.global_context import GlobalContext
-
-# Polyfactory randomizes CompanySettings, including permission fields. When it rolls
-# "UNRESTRICTED" for permission_manage_campaign, PLAYER-role tests flake because
-# can_manage_campaign() returns True from the company rather than the user's role.
-# Force a deterministic, permission-locked CompanySettings unless the caller passes one.
-_original_company_build = CompanyFactory.build
-
-_TEST_COMPANY_SETTINGS = CompanySettings(
-    id="settings-1",
-    character_autogen_xp_cost=0,
-    character_autogen_num_choices=3,
-    character_autogen_starting_points=0,
-    permission_manage_campaign="STORYTELLER",
-    permission_manage_npc="STORYTELLER",
-    permission_grant_xp="STORYTELLER",
-    permission_free_trait_changes="STORYTELLER",
-    permission_recoup_xp="DENIED",
-)
-
-
-def _build_company_with_settings(**kwargs):  # noqa: ANN202
-    # Hand each company its OWN copy of the default settings. Tests (e.g. guard_ctx)
-    # mutate company.settings in place; sharing one instance would leak those edits
-    # across tests and cause order-dependent failures.
-    kwargs.setdefault("settings", _TEST_COMPANY_SETTINGS.model_copy(deep=True))
-    return _original_company_build(**kwargs)
-
-
-CompanyFactory.build = staticmethod(_build_company_with_settings)  # type: ignore[method-assign]  # ty:ignore[invalid-assignment]
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+    from unittest.mock import MagicMock
+
     from flask import Flask
     from flask.testing import FlaskClient
     from pytest_mock import MockerFixture
+    from werkzeug.test import TestResponse
 
     from vweb.api_client.models import Asset, Campaign, CampaignBook, CampaignChapter, Character
+    from vweb.lib.cache.global_context import GlobalContext
 
 
 @pytest.fixture
@@ -116,24 +92,8 @@ def client(app) -> FlaskClient:
 
 @pytest.fixture
 def mock_global_context() -> GlobalContext:
-    """Build a minimal GlobalContext with factory-built model instances."""
-    company = CompanyFactory.build(name="Test Company")
-    user = UserFactory.build(
-        id="test-user-id",
-        name_first="Test",
-        name_last="User",
-        company_id="test-company-id",
-    )
-
-    campaign = CampaignFactory.build(name="Test Campaign")
-
-    return GlobalContext(
-        company=company,
-        users=[user],
-        campaigns=[campaign],
-        characters_by_campaign={campaign.id: []},
-        resources_modified_at="2026-01-01T00:00:00+00:00",
-    )
+    """Build the signed-in player's GlobalContext that every request sees by default."""
+    return build_global_context(user_role="PLAYER")
 
 
 @pytest.fixture
@@ -234,9 +194,71 @@ def _isolate_from_git_hook_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _mock_api(mocker, mock_global_context) -> None:
+def _block_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail any test that opens a network connection instead of using fake_vclient or respx."""
+
+    def _guard(real: Callable[..., Any]) -> Callable[..., Any]:
+        def _refuse(sock: socket.socket, address: str | tuple[Any, ...]) -> Any:
+            if sock.family == socket.AF_UNIX:
+                return real(sock, address)
+            sock.close()
+            msg = f"Test tried to open a network connection to {address!r}"
+            raise RuntimeError(msg)
+
+        return _refuse
+
+    monkeypatch.setattr(socket.socket, "connect", _guard(socket.socket.connect))
+    monkeypatch.setattr(socket.socket, "connect_ex", _guard(socket.socket.connect_ex))
+
+
+@pytest.fixture(autouse=True)
+def _close_test_client_upload_spools(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Close the temp files Werkzeug's test client spools large multipart bodies into.
+
+    Werkzeug never closes them, so the leak surfaces as a ResourceWarning in a later test.
+    """
+    opened: list[IO[bytes]] = []
+
+    def _tracked(*args: Any, **kwargs: Any) -> IO[bytes]:
+        spool = tempfile.TemporaryFile(*args, **kwargs)  # noqa: SIM115
+        opened.append(spool)
+        return spool
+
+    monkeypatch.setattr(werkzeug.test, "TemporaryFile", _tracked)
+    yield
+    for spool in opened:
+        spool.close()
+
+
+@pytest.fixture
+def mock_context_load(mocker: MockerFixture, mock_global_context: GlobalContext) -> MagicMock:
+    """Patch the global context load every request runs, serving `mock_global_context`.
+
+    Set `side_effect` on the returned mock to make the load fail.
+    """
+    return mocker.patch("vweb.lib.cache.global_context.load", return_value=mock_global_context)
+
+
+@pytest.fixture
+def use_context(mock_context_load: MagicMock) -> Callable[..., GlobalContext]:
+    """Return a function that serves a GlobalContext to every following request.
+
+    Call it with a built context, or with `build_global_context` keyword arguments
+    (`user_role` is required), and use the context it returns.
+    """
+
+    def _use(context: GlobalContext | None = None, /, **kwargs: Any) -> GlobalContext:
+        if context is None:
+            context = build_global_context(**kwargs)
+        mock_context_load.return_value = context
+        return context
+
+    return _use
+
+
+@pytest.fixture(autouse=True)
+def _mock_api(mocker, mock_context_load) -> None:
     """Prevent before_request hooks and route handlers from calling the real API."""
-    mocker.patch("vweb.lib.cache.global_context.load", return_value=mock_global_context)
     mocker.patch("vweb.lib.cache.global_context.clear")
 
     mock_dict_api = mocker.patch("vweb.lib.cache.dictionary.api_services")
@@ -269,6 +291,37 @@ def get_csrf(client) -> str:
     body = response.get_data(as_text=True)
     match = re.search(r'X-CSRFToken":\s*"([^"]+)"', body)
     return match.group(1) if match else ""
+
+
+def htmx_post(
+    client: FlaskClient,
+    url: str,
+    data: dict[str, Any] | None = None,
+    *,
+    htmx: bool = True,
+    **kwargs: Any,
+) -> TestResponse:
+    """POST with a valid CSRF token, as an HTMX request unless `htmx` is False.
+
+    Args:
+        client: The Flask test client.
+        url: The URL to post to.
+        data: Form fields to send.
+        htmx: Send the HX-Request header. Pass False for a plain form submission.
+        **kwargs: Passed to `client.post`, e.g. `content_type`.
+
+    Returns:
+        TestResponse: The response.
+    """
+    headers = {"X-CSRFToken": get_csrf(client)}
+    if htmx:
+        headers["HX-Request"] = "true"
+    return client.post(url, data=data, headers=headers, **kwargs)
+
+
+def htmx_delete(client: FlaskClient, url: str) -> TestResponse:
+    """DELETE as an HTMX request with a valid CSRF token."""
+    return client.delete(url, headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)})
 
 
 def make_dice_roll_result(**overrides: object) -> DiceRollResultSchema:

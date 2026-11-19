@@ -16,10 +16,6 @@ from vweb.api_client.testing import (
     Routes,
 )
 from vweb.routes.fragments_shared_cards.audit_log import (
-    FieldDiff,
-    OtherEntry,
-    _resolve_book,
-    _resolve_chapter,
     format_change_value,
     get_audit_log_page,
     resolve_acting_user,
@@ -30,215 +26,88 @@ from vweb.routes.fragments_shared_cards.audit_log import (
 if TYPE_CHECKING:
     from flask import Flask
 
+    from vweb.api_client.models.audit_logs import AuditLog
     from vweb.lib.cache.global_context import GlobalContext
 
 
 class TestFormatChangeValue:
     """Tests for format_change_value."""
 
-    def test_none_renders_muted_em_dash(self) -> None:
-        """Verify None renders as a muted em-dash span."""
-        # When formatting None
-        result = format_change_value(None)
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (None, "—"),
+            (True, "Yes"),
+            (False, "No"),
+            ("plain", "plain"),
+            (0, "0"),
+            (42, "42"),
+            (3.14, "3.14"),
+        ],
+    )
+    def test_scalars_render_readable_text(self, value: object, expected: str) -> None:
+        """Verify scalar values render as readable text."""
+        assert expected in str(format_change_value(value))
 
-        # Then the result is a muted em-dash
-        assert "—" in str(result)
-        assert "opacity-40" in str(result)
+    @pytest.mark.parametrize(
+        "value",
+        ["<script>alert(1)</script>", ["<script>alert(1)</script>"]],
+        ids=["string", "list"],
+    )
+    def test_html_is_escaped(self, value: object) -> None:
+        """Verify HTML inside a value is escaped, whether scalar or nested in a collection."""
+        html = str(format_change_value(value))
 
-    def test_true_renders_yes(self) -> None:
-        """Verify True renders as 'Yes'."""
-        # When formatting True
-        result = format_change_value(value=True)
-
-        # Then the result is 'Yes'
-        assert str(result) == "Yes"
-
-    def test_false_renders_no(self) -> None:
-        """Verify False renders as 'No'."""
-        # When formatting False
-        result = format_change_value(value=False)
-
-        # Then the result is 'No'
-        assert str(result) == "No"
-
-    def test_string_escapes_html(self) -> None:
-        """Verify strings containing HTML are escaped."""
-        # When formatting a string containing HTML
-        result = format_change_value("<script>alert(1)</script>")
-
-        # Then the HTML is escaped
-        assert "<script>" not in str(result)
-        assert "&lt;script&gt;" in str(result)
-
-    def test_int_renders_as_string(self) -> None:
-        """Verify ints stringify directly."""
-        # When formatting an int
-        result = format_change_value(42)
-
-        # Then the result is "42"
-        assert str(result) == "42"
-
-    def test_list_renders_as_pre_json(self) -> None:
-        """Verify lists render as pretty-printed JSON inside a <pre> block."""
-        # When formatting a list
-        result = format_change_value(["a", "b", "c"])
-
-        # Then the output is a <pre> with JSON
-        html = str(result)
-        assert html.startswith("<pre")
-        assert '"a"' in html
-        assert '"b"' in html
-        assert '"c"' in html
-
-    def test_dict_renders_as_pre_json(self) -> None:
-        """Verify dicts render as pretty-printed JSON inside a <pre> block."""
-        # When formatting a dict
-        result = format_change_value({"name": "Alice", "age": 30})
-
-        # Then the output is a <pre> with JSON
-        html = str(result)
-        assert html.startswith("<pre")
-        assert '"name"' in html
-        assert '"Alice"' in html
-
-    def test_list_with_html_content_is_escaped(self) -> None:
-        """Verify HTML special characters inside a list are escaped in the pre block."""
-        # Given a list containing HTML injection attempt
-        result = format_change_value(["<script>alert(1)</script>"])
-
-        # Then the script tag is escaped
-        html = str(result)
         assert "<script>" not in html
         assert "&lt;script&gt;" in html
 
-    def test_datetime_falls_back_via_default_str(self) -> None:
-        """Verify a datetime nested in a list renders via default=str (JSON-safe)."""
-        # Given a list containing a datetime
-        value = [datetime(2026, 4, 23, 12, 0, 0, tzinfo=UTC)]
+    @pytest.mark.parametrize(
+        ("value", "expected_parts"),
+        [
+            (["a", "b", "c"], ['"a"', '"b"', '"c"']),
+            ({"name": "Alice", "age": 30}, ['"name"', '"Alice"', '"age"', "30"]),
+            ([datetime(2026, 4, 23, 12, 0, 0, tzinfo=UTC)], ["2026-04-23"]),
+        ],
+        ids=["list", "dict", "datetime-in-list"],
+    )
+    def test_collections_render_as_preformatted_json(
+        self, value: object, expected_parts: list[str]
+    ) -> None:
+        """Verify lists and dicts render as JSON in a preformatted block, stringifying datetimes."""
+        html = str(format_change_value(value))
 
-        # When formatting the list
-        result = format_change_value(value)
-
-        # Then the datetime is stringified, not an error
-        html = str(result)
-        assert "2026-04-23" in html
+        assert html.startswith("<pre")
+        for part in expected_parts:
+            assert part in html
 
 
 class TestSplitChanges:
     """Tests for split_changes."""
 
-    def test_none_returns_empty_lists(self) -> None:
-        """Verify None input returns two empty lists."""
-        # When splitting None
-        diffs, others = split_changes(None)
+    @pytest.mark.parametrize("changes", [None, {}])
+    def test_empty_input_returns_empty_lists(self, changes: dict | None) -> None:
+        """Verify missing or empty changes yield no diffs and no other entries."""
+        assert split_changes(changes) == ([], [])
 
-        # Then both lists are empty
-        assert diffs == []
-        assert others == []
-
-    def test_empty_dict_returns_empty_lists(self) -> None:
-        """Verify an empty dict returns two empty lists."""
-        # When splitting an empty dict
-        diffs, others = split_changes({})
-
-        # Then both lists are empty
-        assert diffs == []
-        assert others == []
-
-    def test_canonical_entry_goes_to_diffs(self) -> None:
-        """Verify a canonical {old, new} entry becomes a FieldDiff."""
-        # Given a canonical changes dict
-        changes = {"name": {"old": "Alice", "new": "Bob"}}
-
-        # When splitting
-        diffs, others = split_changes(changes)
-
-        # Then the entry lands in diffs
-        assert len(diffs) == 1
-        assert isinstance(diffs[0], FieldDiff)
-        assert diffs[0].field == "name"
-        assert "Alice" in str(diffs[0].old)
-        assert "Bob" in str(diffs[0].new)
-        assert others == []
-
-    def test_canonical_entry_tolerates_extra_keys(self) -> None:
-        """Verify entries with extra keys beyond old/new still count as canonical."""
-        # Given an entry with old/new plus an extra metadata key
-        changes = {"role": {"old": "PLAYER", "new": "ADMIN", "by": "user-1"}}
-
-        # When splitting
-        diffs, others = split_changes(changes)
-
-        # Then it's still treated as canonical (old and new both present)
-        assert len(diffs) == 1
-        assert diffs[0].field == "role"
-        assert others == []
-
-    def test_off_shape_scalar_goes_to_others(self) -> None:
-        """Verify a flat scalar value lands in others, not diffs."""
-        # Given a non-canonical entry
-        changes = {"deleted_by": "user-1"}
-
-        # When splitting
-        diffs, others = split_changes(changes)
-
-        # Then it lands in others
-        assert diffs == []
-        assert len(others) == 1
-        assert isinstance(others[0], OtherEntry)
-        assert others[0].key == "deleted_by"
-        assert "user-1" in str(others[0].value)
-
-    def test_off_shape_dict_goes_to_others(self) -> None:
-        """Verify a nested dict without old/new lands in others."""
-        # Given a nested dict that doesn't match {old, new}
-        changes = {"meta": {"version": 3, "hash": "abc"}}
-
-        # When splitting
-        diffs, others = split_changes(changes)
-
-        # Then it lands in others
-        assert diffs == []
-        assert len(others) == 1
-        assert others[0].key == "meta"
-
-    def test_mixed_input(self) -> None:
-        """Verify mixed input sorts into diffs and others correctly."""
-        # Given a mix of canonical and off-shape entries
+    def test_sorts_canonical_and_off_shape_entries(self) -> None:
+        """Verify {old, new} entries become diffs and everything else is kept as other entries."""
+        # Given canonical entries (one with an extra key) and off-shape entries
         changes = {
-            "name": {"old": "A", "new": "B"},
-            "meta": {"version": 3},
+            "name": {"old": "Alice", "new": "Bob"},
+            "role": {"old": "PLAYER", "new": "ADMIN", "by": "user-1"},
+            "meta": {"version": 3, "hash": "abc"},
             "deleted_by": "user-1",
         }
 
         # When splitting
         diffs, others = split_changes(changes)
 
-        # Then canonical lands in diffs, others in others
-        assert len(diffs) == 1
-        assert diffs[0].field == "name"
-        assert len(others) == 2
+        # Then canonical entries are diffs with their values, and nothing is dropped
+        assert [d.field for d in diffs] == ["name", "role"]
+        assert "Alice" in str(diffs[0].old)
+        assert "Bob" in str(diffs[0].new)
         assert {e.key for e in others} == {"meta", "deleted_by"}
-
-
-@pytest.mark.parametrize(
-    ("value", "expected_substring"),
-    [
-        (None, "—"),
-        (True, "Yes"),
-        (False, "No"),
-        ("plain", "plain"),
-        (0, "0"),
-        (3.14, "3.14"),
-    ],
-)
-def test_format_change_value_scalars(value, expected_substring) -> None:
-    """Verify scalar values render with the expected substring in output."""
-    # When formatting the scalar
-    result = format_change_value(value)
-
-    # Then the substring is present
-    assert expected_substring in str(result)
+        assert "user-1" in str(next(e.value for e in others if e.key == "deleted_by"))
 
 
 class TestResolveActingUser:
@@ -247,27 +116,19 @@ class TestResolveActingUser:
     def test_empty_id_returns_empty_strings(
         self, app: Flask, mock_global_context: GlobalContext
     ) -> None:
-        """Verify an empty/None acting_user_id returns ("", "")."""
-        # When resolving an empty ID
+        """Verify an empty acting_user_id returns no name and no URL."""
         with app.test_request_context():
-            name, url = resolve_acting_user("", mock_global_context)
-
-        # Then both are empty strings
-        assert name == ""
-        assert url == ""
+            assert resolve_acting_user("", mock_global_context) == ("", "")
 
     def test_known_user_returns_username_and_url(
         self, app: Flask, mock_global_context: GlobalContext
     ) -> None:
         """Verify a known acting_user_id returns (username, profile_url)."""
-        # Given a user in context
         user = mock_global_context.users[0]
 
-        # When resolving the user's ID
         with app.test_request_context():
             name, url = resolve_acting_user(user.id, mock_global_context)
 
-        # Then the tuple carries the username and a profile URL
         assert name == user.username
         assert user.id in url
 
@@ -275,184 +136,156 @@ class TestResolveActingUser:
         self, app: Flask, mock_global_context: GlobalContext
     ) -> None:
         """Verify an unknown acting_user_id falls back to ('[deleted]', '')."""
-        # When resolving an unknown ID
         with app.test_request_context():
-            name, url = resolve_acting_user("unknown-user", mock_global_context)
-
-        # Then the deleted sentinel is returned with no URL
-        assert name == "[deleted]"
-        assert url == ""
+            assert resolve_acting_user("unknown-user", mock_global_context) == ("[deleted]", "")
 
 
-class TestResolveEntitiesSkipIds:
-    """Tests for resolve_entities' new skip_ids parameter."""
+class TestResolveEntities:
+    """Tests for resolve_entities."""
 
-    def test_skip_ids_none_matches_baseline(
-        self, app: Flask, mock_global_context: GlobalContext
-    ) -> None:
-        """Verify skip_ids=None behaves identically to no skip_ids."""
-        # Given a user in context
-        user = mock_global_context.users[0]
-        log = AuditLogFactory.build(
-            user_id=user.id,
-            campaign_id=None,
-            character_id=None,
-            book_id=None,
-            chapter_id=None,
-        )
-
-        # When resolving with skip_ids=None
-        with app.test_request_context():
-            result = resolve_entities(log, mock_global_context, skip_ids=None)
-
-        # Then the user is still in the result
-        assert len(result) == 1
-        assert result[0][0] == "User"
-
-    def test_skip_ids_omits_matching_entity(
-        self, app: Flask, mock_global_context: GlobalContext
-    ) -> None:
-        """Verify entities whose IDs are in skip_ids are omitted from the result."""
-        # Given a log with a user and a campaign, both in context
-        user = mock_global_context.users[0]
-        campaign = mock_global_context.campaigns[0]
-        log = AuditLogFactory.build(
-            user_id=user.id,
-            campaign_id=campaign.id,
-            character_id=None,
-            book_id=None,
-            chapter_id=None,
-        )
-
-        # When resolving with the user's ID in skip_ids
-        with app.test_request_context():
-            result = resolve_entities(log, mock_global_context, skip_ids={user.id})
-
-        # Then only the campaign appears, not the user
-        assert len(result) == 1
-        assert result[0][0] == "Campaign"
-
-    def test_skip_ids_with_multiple_ids(
-        self, app: Flask, mock_global_context: GlobalContext
-    ) -> None:
-        """Verify skip_ids with multiple IDs omits all matching entities."""
-        # Given a log with user, campaign, and character
-        user = mock_global_context.users[0]
-        campaign = mock_global_context.campaigns[0]
-        character = CharacterFactory.build()
+    @pytest.fixture
+    def entity_context(
+        self, mock_global_context: GlobalContext, mocker
+    ) -> dict[str, tuple[str, str]]:
+        """Put one known user, campaign, character, book, and chapter where the resolver looks."""
+        character = CharacterFactory.build(id="char-known", name="Known Character")
         mock_global_context.characters = [character]
+        book = CampaignBookFactory.build(id="book-known", name="Known Book")
+        chapter = CampaignChapterFactory.build(id="chapter-known", name="Known Chapter")
+        mocker.patch("vweb.lib.cache.campaign_content.books", return_value=[book])
+        mocker.patch("vweb.lib.cache.campaign_content.chapters", return_value=[chapter])
+        user = mock_global_context.users[0]
+        campaign = mock_global_context.campaigns[0]
+        return {
+            "User": (user.id, user.username),
+            "Campaign": (campaign.id, campaign.name),
+            "Character": (character.id, character.name),
+            "Book": (book.id, book.name),
+            "Chapter": (chapter.id, chapter.name),
+        }
 
+    @staticmethod
+    def _log_for(
+        label: str, entity_id: str, campaign_id: str | None, book_id: str | None
+    ) -> AuditLog:
+        """Build an audit log that carries only the entity under test plus its scoping ids."""
+        ids: dict[str, str | None] = {
+            "user_id": None,
+            "campaign_id": campaign_id,
+            "character_id": None,
+            "book_id": book_id,
+            "chapter_id": None,
+        }
+        ids[f"{label.lower()}_id"] = entity_id
+        return AuditLogFactory.build(**ids)  # ty:ignore[invalid-argument-type]
+
+    @pytest.mark.parametrize("label", ["User", "Campaign", "Character", "Book", "Chapter"])
+    def test_known_entity_resolves_to_name_and_url(
+        self,
+        app: Flask,
+        mock_global_context: GlobalContext,
+        entity_context: dict[str, tuple[str, str]],
+        label: str,
+    ) -> None:
+        """Verify each entity type found in context or cache resolves to its name and a link."""
+        # Given a log pointing at a known entity
+        entity_id, expected_name = entity_context[label]
+        campaign_id = mock_global_context.campaigns[0].id
+        log = self._log_for(label, entity_id, campaign_id, "book-known")
+
+        # When resolving
+        with app.test_request_context():
+            result = {
+                lbl: (name, url) for lbl, name, url in resolve_entities(log, mock_global_context)
+            }
+
+        # Then the entity shows its name with a link to it
+        name, url = result[label]
+        assert name == expected_name
+        assert url is not None
+        assert entity_id in url
+
+    @pytest.mark.parametrize(
+        ("label", "campaign_id", "book_id"),
+        [
+            ("User", None, None),
+            ("Campaign", None, None),
+            ("Character", None, None),
+            ("Book", "campaign-1", None),
+            ("Book", None, None),
+            ("Chapter", "campaign-1", "book-known"),
+            ("Chapter", "campaign-1", None),
+        ],
+        ids=[
+            "user-unknown",
+            "campaign-unknown",
+            "character-unknown",
+            "book-unknown",
+            "book-without-campaign",
+            "chapter-unknown",
+            "chapter-without-book",
+        ],
+    )
+    def test_unresolvable_entity_shows_deleted_without_link(
+        self,
+        app: Flask,
+        mock_global_context: GlobalContext,
+        entity_context: dict[str, tuple[str, str]],
+        label: str,
+        campaign_id: str | None,
+        book_id: str | None,
+    ) -> None:
+        """Verify an entity missing from context, cache, or its scoping ids shows as deleted."""
+        # Given a log pointing at an entity that cannot be found
+        log = self._log_for(label, "missing-id", campaign_id, book_id)
+
+        # When resolving
+        with app.test_request_context():
+            result = {
+                lbl: (name, url) for lbl, name, url in resolve_entities(log, mock_global_context)
+            }
+
+        # Then the entity is listed as deleted with no link
+        assert result[label] == ("[deleted]", None)
+
+    @pytest.mark.parametrize(
+        ("skip", "expected_labels"),
+        [
+            (None, ["User", "Campaign", "Character"]),
+            ({"User"}, ["Campaign", "Character"]),
+            ({"User", "Character"}, ["Campaign"]),
+        ],
+        ids=["no-skip", "skip-one", "skip-many"],
+    )
+    def test_skip_ids_omits_matching_entities(
+        self,
+        app: Flask,
+        mock_global_context: GlobalContext,
+        entity_context: dict[str, tuple[str, str]],
+        skip: set[str] | None,
+        expected_labels: list[str],
+    ) -> None:
+        """Verify entities whose ids are in skip_ids are left out of the result."""
+        # Given a log with a user, campaign, and character
         log = AuditLogFactory.build(
-            user_id=user.id,
-            campaign_id=campaign.id,
-            character_id=character.id,
+            user_id=entity_context["User"][0],
+            campaign_id=entity_context["Campaign"][0],
+            character_id=entity_context["Character"][0],
             book_id=None,
             chapter_id=None,
         )
+        skip_ids = {entity_context[label][0] for label in skip} if skip else None
 
-        # When resolving with two IDs in skip_ids
+        # When resolving with skip_ids
         with app.test_request_context():
-            result = resolve_entities(log, mock_global_context, skip_ids={user.id, character.id})
+            result = resolve_entities(log, mock_global_context, skip_ids=skip_ids)
 
-        # Then only the campaign remains
-        assert len(result) == 1
-        assert result[0][0] == "Campaign"
-
-
-class TestResolveBook:
-    """Tests for _resolve_book's lazy-cache resolution."""
-
-    def test_falsy_campaign_id_returns_deleted_without_accessor(
-        self, app: Flask, mock_global_context: GlobalContext, mocker
-    ) -> None:
-        """Verify a falsy campaign_id returns the deleted sentinel without hitting the accessor."""
-        # Given a patched accessor that would otherwise return a book
-        mock_get_books = mocker.patch(
-            "vweb.lib.cache.campaign_content.books",
-            autospec=True,
-            return_value=[CampaignBookFactory.build()],
-        )
-
-        # When resolving a book with no campaign_id
-        with app.test_request_context():
-            result = _resolve_book("book-1", None, mock_global_context)
-
-        # Then the deleted sentinel is returned and the accessor was never called
-        assert result == ("Book", "[deleted]", None)
-        mock_get_books.assert_not_called()
-
-    def test_known_book_returns_name_and_url(
-        self, app: Flask, mock_global_context: GlobalContext, mocker
-    ) -> None:
-        """Verify a book found via the lazy accessor returns its name and detail URL."""
-        # Given a book the accessor will return for the campaign
-        book = CampaignBookFactory.build()
-        mocker.patch(
-            "vweb.lib.cache.campaign_content.books",
-            autospec=True,
-            return_value=[book],
-        )
-
-        # When resolving that book by its campaign
-        with app.test_request_context():
-            label, name, url = _resolve_book(book.id, "campaign-1", mock_global_context)
-
-        # Then the tuple carries the book name and a detail URL
-        assert label == "Book"
-        assert name == book.name
-        assert url is not None
-        assert book.id in url
-
-
-class TestResolveChapter:
-    """Tests for _resolve_chapter's lazy-cache resolution."""
-
-    def test_missing_book_id_returns_deleted_without_accessor(
-        self, app: Flask, mock_global_context: GlobalContext, mocker
-    ) -> None:
-        """Verify a missing book_id returns the deleted sentinel without hitting the accessor."""
-        # Given a patched accessor that would otherwise return a chapter
-        mock_get_chapters = mocker.patch(
-            "vweb.lib.cache.campaign_content.chapters",
-            autospec=True,
-            return_value=[CampaignChapterFactory.build()],
-        )
-
-        # When resolving a chapter with a campaign but no book_id
-        with app.test_request_context():
-            result = _resolve_chapter("chapter-1", None, "campaign-1", mock_global_context)
-
-        # Then the deleted sentinel is returned and the accessor was never called
-        assert result == ("Chapter", "[deleted]", None)
-        mock_get_chapters.assert_not_called()
-
-    def test_known_chapter_returns_name_and_url(
-        self, app: Flask, mock_global_context: GlobalContext, mocker
-    ) -> None:
-        """Verify a chapter found via the lazy accessor returns its name and detail URL."""
-        # Given a chapter the accessor will return for the book
-        chapter = CampaignChapterFactory.build()
-        mocker.patch(
-            "vweb.lib.cache.campaign_content.chapters",
-            autospec=True,
-            return_value=[chapter],
-        )
-
-        # When resolving that chapter by its campaign and book
-        with app.test_request_context():
-            label, name, url = _resolve_chapter(
-                chapter.id, "book-1", "campaign-1", mock_global_context
-            )
-
-        # Then the tuple carries the chapter name and a detail URL
-        assert label == "Chapter"
-        assert name == chapter.name
-        assert url is not None
-        assert chapter.id in url
+        # Then only the entities not skipped remain
+        assert [label for label, _, _ in result] == expected_labels
 
 
 class TestGetAuditLogPage:
-    """Tests for the canonical vclient wrapper."""
+    """Tests for the canonical API wrapper."""
 
     def test_all_filters_forwarded(self, app: Flask, fake_vclient) -> None:
         """Verify all non-empty filters are forwarded with dates parsed."""
@@ -496,9 +329,22 @@ class TestGetAuditLogPage:
             "date_to": "2026-01-31T00:00:00",
         }
 
-    def test_get_audit_log_page_caches_per_company_and_filters(self, app, fake_vclient):
-        """Verify repeated identical audit-log queries hit the API once."""
-        # Given a request context with a company and an empty cache
+    def test_empty_filters_are_left_out(self, app: Flask, fake_vclient) -> None:
+        """Verify empty-string filters are left out of the API call."""
+        with app.test_request_context():
+            session["company_id"] = "test-company-id"
+
+            get_audit_log_page(limit=10, offset=0)
+
+        (request,) = fake_vclient.assert_called(
+            Routes.COMPANIES_AUDIT_LOGS_LIST,
+            params={"company_id": "test-company-id"},
+            times=1,
+        )
+        assert request.query == {"limit": "10", "offset": "0"}
+
+    def test_identical_queries_hit_api_once(self, app: Flask, fake_vclient) -> None:
+        """Verify repeated identical audit-log queries are served from the cache."""
         with app.test_request_context("/"):
             session["company_id"] = "comp-1"
             from vweb.extensions import cache
@@ -506,11 +352,9 @@ class TestGetAuditLogPage:
             cache.clear()
             fake_vclient.set_response(Routes.COMPANIES_AUDIT_LOGS_LIST, items=[])
 
-            # When called twice with identical filters
             get_audit_log_page(limit=10, offset=0, campaign_id="camp-1")
             get_audit_log_page(limit=10, offset=0, campaign_id="camp-1")
 
-        # Then the API is hit only once
         fake_vclient.assert_called(
             Routes.COMPANIES_AUDIT_LOGS_LIST,
             params={"company_id": "comp-1"},
@@ -518,9 +362,8 @@ class TestGetAuditLogPage:
             times=1,
         )
 
-    def test_get_audit_log_page_caches_distinct_filters_separately(self, app, fake_vclient):
+    def test_distinct_filters_are_cached_separately(self, app: Flask, fake_vclient) -> None:
         """Verify differing filter args miss the cache and hit the API each time."""
-        # Given a request context with a company and an empty cache
         with app.test_request_context("/"):
             session["company_id"] = "comp-1"
             from vweb.extensions import cache
@@ -528,27 +371,8 @@ class TestGetAuditLogPage:
             cache.clear()
             fake_vclient.set_response(Routes.COMPANIES_AUDIT_LOGS_LIST, items=[])
 
-            # When called twice with different offsets
             get_audit_log_page(limit=10, offset=0)
             get_audit_log_page(limit=10, offset=10)
 
-        # Then the API is hit once per distinct filter set
-        fake_vclient.assert_called(Routes.COMPANIES_AUDIT_LOGS_LIST, times=2)
         fake_vclient.assert_called(Routes.COMPANIES_AUDIT_LOGS_LIST, query={"offset": 0}, times=1)
         fake_vclient.assert_called(Routes.COMPANIES_AUDIT_LOGS_LIST, query={"offset": 10}, times=1)
-
-    def test_empty_filters_become_none(self, app: Flask, fake_vclient) -> None:
-        """Verify empty-string filters are left out of the API call."""
-        with app.test_request_context():
-            session["company_id"] = "test-company-id"
-
-            # When calling with no filters set
-            get_audit_log_page(limit=10, offset=0)
-
-        # Then only paging reaches the API, with no filters or dates
-        (request,) = fake_vclient.assert_called(
-            Routes.COMPANIES_AUDIT_LOGS_LIST,
-            params={"company_id": "test-company-id"},
-            times=1,
-        )
-        assert request.query == {"limit": "10", "offset": "0"}

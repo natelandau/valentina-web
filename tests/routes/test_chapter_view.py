@@ -6,492 +6,308 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tests.conftest import get_csrf
-from tests.helpers import build_global_context
-from vweb.api_client.testing import CampaignChapterFactory, Routes
+from tests.conftest import get_csrf, htmx_post
+from vweb.api_client.testing import CampaignChapterFactory, CharacterFactory, Routes
+from vweb.lib.form_validation import name_errors, position_number
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from werkzeug.test import TestResponse
+
     from vweb.api_client.models import CampaignChapter
+
+CHAPTER_WRITE_ROUTES = (
+    Routes.CHAPTERS_CREATE,
+    Routes.CHAPTERS_UPDATE,
+    Routes.CHAPTERS_RENUMBER,
+    Routes.CHAPTERS_DELETE,
+    Routes.CHAPTERS_ASSETS_DELETE,
+)
+
+BOOK_URL = "/campaign/camp-1/book/book-1"
 
 
 @pytest.fixture
-def _mock_chapter_lookup(mocker, fake_vclient, mock_book, mock_campaign, mock_chapters) -> None:
-    """Mock book and chapter lookups and serve the chapter API routes for chapter detail."""
-    mocker.patch(
-        "vweb.routes.chapter.views.fetch_book_or_404",
-        return_value=(mock_book, mock_campaign),
-    )
+def set_chapters(mocker, mock_chapters) -> Callable[[list[CampaignChapter]], None]:
+    """Return a function that sets the book's chapter list served by the content cache."""
 
-    def _fetch_chapter(campaign_id: str, book_id: str, chapter_id: str) -> CampaignChapter:
-        return next((c for c in mock_chapters if c.id == chapter_id), mock_chapters[1])
+    def _set(chapters: list[CampaignChapter]) -> None:
+        mocker.patch("vweb.lib.cache.campaign_content.chapters", return_value=chapters)
 
-    mocker.patch(
-        "vweb.routes.chapter.views.fetch_chapter_or_404",
-        side_effect=_fetch_chapter,
-    )
-    mocker.patch(
-        "vweb.lib.cache.campaign_content.chapters",
-        return_value=mock_chapters,
-    )
+    _set(mock_chapters)
+    return _set
+
+
+@pytest.fixture(autouse=True)
+def _chapter_content(set_role, set_chapters, mocker, fake_vclient, mock_book) -> None:
+    """Serve one book with three chapters and no images to a player in the test campaign."""
+    set_role("PLAYER")
+    mocker.patch("vweb.lib.cache.campaign_content.books", return_value=[mock_book])
     fake_vclient.set_response(Routes.CHAPTERS_ASSETS_LIST, items=[])
     fake_vclient.set_response(Routes.CHAPTERS_NOTES_LIST, items=[])
     fake_vclient.set_response(
         Routes.CHAPTERS_CREATE,
-        model=CampaignChapterFactory.build(
-            id="ch-new", book_id="book-1", number=4, name="New Chapter"
-        ),
+        model=CampaignChapterFactory.build(id="ch-new", book_id="book-1", number=4),
     )
 
 
-@pytest.mark.usefixtures("_mock_chapter_lookup")
-class TestChapterDetailGet:
-    """Tests for chapter detail GET route."""
+@pytest.fixture
+def clear_content_cache(mocker):
+    """Patch the campaign content cache clear so tests can check what it invalidates."""
+    return mocker.patch("vweb.lib.cache.campaign_content.clear")
 
-    def test_returns_200(self, client, mock_campaign, mock_book) -> None:
-        """Verify chapter detail page returns 200."""
-        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2")
+
+class TestChapterDetail:
+    """Tests for the chapter detail page."""
+
+    def test_shows_chapter_and_links_siblings(self, client) -> None:
+        """Verify the page shows the chapter and links to the other chapters in the book."""
+        response = client.get(f"{BOOK_URL}/chapter/ch-2")
+
         assert response.status_code == 200
-
-    def test_contains_chapter_title(self, client, mock_campaign, mock_book) -> None:
-        """Verify chapter name appears in the response."""
-        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2")
         assert b"Chapter Two" in response.data
-
-    def test_carousel_links_to_sibling_chapters(self, client, mock_campaign, mock_book) -> None:
-        """Verify the chapter carousel renders anchors to sibling chapters."""
-        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2")
         assert b"chapter/ch-1" in response.data
         assert b"chapter/ch-3" in response.data
 
-
-@pytest.mark.usefixtures("_mock_chapter_lookup")
-class TestChapterEditPermissions:
-    """Tests for chapter edit permission checks."""
-
-    def test_non_privileged_get_edit_returns_403(
-        self, client, mocker, mock_campaign, mock_book
-    ) -> None:
-        """Non-privileged users cannot access chapter edit form."""
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=False)
-        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2/edit")
-        assert response.status_code == 403
-
-    def test_non_privileged_post_edit_returns_403(
-        self, client, mocker, mock_campaign, mock_book
-    ) -> None:
-        """Non-privileged users cannot submit chapter edit form."""
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=False)
-        csrf = get_csrf(client)
-        response = client.post(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2/edit",
-            data={"name": "New", "csrf_token": csrf},
+    def test_sidebar_links_associated_characters(self, client, set_role, set_chapters) -> None:
+        """Verify the sidebar links to each character associated with the chapter."""
+        # Given a chapter associated with a character on the campaign roster
+        hero = CharacterFactory.build(id="hero-1", name="Sidebar Hero", campaign_id="camp-1")
+        set_role("PLAYER", characters=[hero])
+        set_chapters(
+            [CampaignChapterFactory.build(id="ch-2", book_id="book-1", character_ids=["hero-1"])]
         )
+
+        # When viewing the chapter
+        response = client.get(f"{BOOK_URL}/chapter/ch-2")
+
+        # Then the sidebar links to the character
+        assert b"Sidebar Hero" in response.data
+        assert b"/character/hero-1" in response.data
+
+    @pytest.mark.parametrize(("role", "shows_add_card"), [("STORYTELLER", True), ("PLAYER", False)])
+    def test_new_chapter_card_only_for_managers(
+        self, client, set_role, role, shows_add_card
+    ) -> None:
+        """Verify only campaign managers get the carousel card that opens the create form."""
+        set_role(role)
+
+        response = client.get(f"{BOOK_URL}/chapter/ch-2")
+
+        assert (b"/book/book-1/chapter?from_chapter=ch-2" in response.data) is shows_add_card
+
+
+class TestChapterAccessControl:
+    """Tests that players cannot manage chapters."""
+
+    @pytest.mark.parametrize(
+        ("method", "suffix"),
+        [
+            ("get", "/chapter"),
+            ("post", "/chapter"),
+            ("get", "/chapter/ch-2/edit"),
+            ("post", "/chapter/ch-2/edit"),
+            ("delete", "/chapter/ch-2"),
+            ("delete", "/chapter/ch-2/images/asset-1"),
+        ],
+    )
+    def test_player_is_forbidden(self, client, fake_vclient, method, suffix) -> None:
+        """Verify a player gets 403 and no chapter write reaches the API."""
+        # When a player sends the request directly
+        response = getattr(client, method)(
+            f"{BOOK_URL}{suffix}",
+            data={"name": "New Name", "csrf_token": get_csrf(client)},
+            headers={"X-CSRFToken": get_csrf(client)},
+        )
+
+        # Then it is refused before any write
         assert response.status_code == 403
+        for route in CHAPTER_WRITE_ROUTES:
+            fake_vclient.assert_not_called(route)
 
 
-@pytest.mark.usefixtures("_mock_chapter_lookup")
+@pytest.mark.usefixtures("storyteller")
 class TestChapterCreate:
-    """Tests for chapter create route."""
+    """Tests for the chapter create form."""
 
-    def test_non_privileged_returns_403(self, client, mocker, mock_campaign, mock_book) -> None:
-        """Non-privileged users cannot create chapters."""
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=False)
-        csrf = get_csrf(client)
-        response = client.post(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter",
-            data={"name": "New Chapter", "csrf_token": csrf},
-        )
-        assert response.status_code == 403
+    @pytest.fixture
+    def post_create(self, client) -> Callable[..., TestResponse]:
+        """Return a function that submits the create form."""
 
-    def test_create_redirects_to_new_chapter(
-        self, client, mocker, mock_campaign, mock_book
-    ) -> None:
-        """Verify a successful create responds with HX-Redirect to the new chapter."""
-        # Given a privileged user
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-        csrf = get_csrf(client)
+        def _post(**form: str | list[str]) -> TestResponse:
+            return htmx_post(client, f"{BOOK_URL}/chapter", form, htmx=False)
 
-        # When submitting the create form
-        response = client.post(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter",
-            data={"name": "New Chapter", "csrf_token": csrf},
-        )
+        return _post
 
-        # Then the client is redirected to the new chapter's detail page
+    @pytest.mark.parametrize(
+        ("query", "target_id", "cancel_path"),
+        [
+            ("", "book-chapters-card", BOOK_URL),
+            ("?from_chapter=ch-2", "chapter-content", f"{BOOK_URL}/chapter/ch-2"),
+            ("?target=evil%20x", "book-chapters-card", BOOK_URL),
+        ],
+        ids=["from-book", "from-chapter", "ignores-client-target"],
+    )
+    def test_form_targets_launching_page(self, client, query, target_id, cancel_path) -> None:
+        """Verify the form swaps into, and cancels back to, the page that opened it.
+
+        The swap target is derived server side, so a client-supplied target is never reflected.
+        """
+        response = client.get(f"{BOOK_URL}/chapter{query}")
+
+        body = response.get_data(as_text=True)
+        assert f'id="{target_id}"' in body
+        assert f'hx-get="{cancel_path}"' in body
+        assert "evil" not in body
+
+    def test_creates_chapter_and_redirects_to_it(self, post_create, fake_vclient) -> None:
+        """Verify the chapter is created with its characters and the client is sent to it."""
+        response = post_create(name="New Chapter", character_ids=["c1", "c2"])
+
         assert response.status_code == 200
-        assert (
-            response.headers.get("HX-Redirect")
-            == f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-new"
+        assert response.headers.get("HX-Redirect") == f"{BOOK_URL}/chapter/ch-new"
+        fake_vclient.assert_called(
+            Routes.CHAPTERS_CREATE,
+            params={"campaign_id": "camp-1", "book_id": "book-1"},
+            json_subset={"name": "New Chapter", "character_ids": ["c1", "c2"]},
+            times=1,
         )
 
-    def test_get_form_defaults_to_book_page_target(
-        self, client, mocker, mock_campaign, mock_book
-    ) -> None:
-        """Verify the create form defaults to the book page's chapters card target."""
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter")
-        assert b'id="book-chapters-card"' in response.data
+    def test_create_clears_book_and_campaign_caches(self, post_create, clear_content_cache) -> None:
+        """Verify creating a chapter refreshes the book's chapters and the books' chapter counts."""
+        post_create(name="New Chapter")
 
-    def test_get_form_derives_chapter_target_from_from_chapter(
-        self, client, mocker, mock_campaign, mock_book
-    ) -> None:
-        """Verify from_chapter alone retargets the form to the chapter card and Cancel."""
-        # Given a privileged user
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+        _, kwargs = clear_content_cache.call_args
+        assert kwargs["book_id"] == "book-1"
+        assert kwargs["campaign_id"] == "camp-1"
 
-        # When fetching the form launched from a chapter page (from_chapter only)
-        response = client.get(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter?from_chapter=ch-2"
-        )
+    def test_blank_name_rerenders_form_without_calling_api(self, post_create, fake_vclient) -> None:
+        """Verify a blank name shows a form error and nothing is created."""
+        response = post_create(name="   ")
 
-        # Then the swap target is derived as the chapter content card and Cancel restores ch-2
-        assert b'id="chapter-content"' in response.data
-        assert b"/chapter/ch-2" in response.data
+        assert response.status_code == 200
+        assert name_errors("")[0] in response.get_data(as_text=True)
+        fake_vclient.assert_not_called(Routes.CHAPTERS_CREATE)
 
-    def test_get_form_ignores_client_supplied_target(
-        self, client, mocker, mock_campaign, mock_book
-    ) -> None:
-        """Verify a client-supplied target query param cannot reach the swap attributes."""
-        # Given a privileged user
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-
-        # When requesting the form with a bogus target and no from_chapter
-        response = client.get(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter?target=evil%20x"
-        )
-
-        # Then the target is derived server-side (book chapters card) and the input is not reflected
-        assert b'id="book-chapters-card"' in response.data
-        assert b"evil" not in response.data
-
-    def test_create_clears_campaign_content_cache(
-        self, client, mocker, mock_campaign, mock_book
-    ) -> None:
-        """Verify creating a chapter invalidates the book and campaign book-list caches."""
-        # Given a privileged user and a patched cache-clear
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-        clear_cache = mocker.patch("vweb.lib.cache.campaign_content.clear")
-        csrf = get_csrf(client)
-
-        # When creating a chapter
-        client.post(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter",
-            data={"name": "New Chapter", "csrf_token": csrf},
-        )
-
-        # Then both the book's chapter cache and the campaign's book-list cache
-        # are invalidated so each book's num_chapters facet refreshes
-        _, kwargs = clear_cache.call_args
-        assert kwargs["book_id"] == mock_book.id
-        assert kwargs["campaign_id"] == mock_campaign.id
-
-    def test_create_api_rejection_rerenders_form_with_its_reason(
-        self, client, mocker, mock_campaign, mock_book, fake_vclient
-    ) -> None:
-        """Verify an API rejection on create shows its field message on the form."""
-        # Given a privileged user and an API that rejects the name
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
+    def test_api_rejection_rerenders_form_with_its_reason(self, post_create, fake_vclient) -> None:
+        """Verify an API rejection on create shows its reason on the form."""
         fake_vclient.set_error(
             Routes.CHAPTERS_CREATE,
             status_code=400,
             invalid_parameters=[{"field": "name", "message": "Name is already taken"}],
         )
 
-        # When creating a chapter
-        response = client.post(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter",
-            data={"name": "Taken Name", "csrf_token": get_csrf(client)},
-        )
+        response = post_create(name="Taken Name")
 
-        # Then the form shows the API's reason instead of a server error
         assert response.status_code == 200
         assert b"Name is already taken" in response.data
 
 
-@pytest.mark.usefixtures("_mock_chapter_lookup")
-class TestChapterDelete:
-    """Tests for chapter delete route."""
+@pytest.mark.usefixtures("storyteller")
+class TestChapterEdit:
+    """Tests for the chapter edit form."""
 
-    def test_non_privileged_returns_403(self, client, mocker, mock_campaign, mock_book) -> None:
-        """Non-privileged users cannot delete chapters."""
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=False)
-        csrf = get_csrf(client)
-        response = client.delete(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-1",
-            headers={"X-CSRFToken": csrf},
-        )
-        assert response.status_code == 403
+    @pytest.fixture
+    def post_edit(self, client) -> Callable[..., TestResponse]:
+        """Return a function that submits the edit form for chapter two."""
 
-    def test_delete_redirects_to_book_page(
-        self, client, mocker, mock_campaign, mock_book, mock_chapters
-    ) -> None:
-        """Privileged delete redirects back to the parent book page via HX-Redirect."""
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-        csrf = get_csrf(client)
-        response = client.delete(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-1",
-            headers={"X-CSRFToken": csrf},
-        )
-        assert response.status_code == 200
-        assert (
-            response.headers.get("HX-Redirect")
-            == f"/campaign/{mock_campaign.id}/book/{mock_book.id}"
-        )
+        def _post(**form: str | list[str]) -> TestResponse:
+            return htmx_post(client, f"{BOOK_URL}/chapter/ch-2/edit", form, htmx=False)
 
-    def test_delete_clears_campaign_content_cache(
-        self, client, mocker, mock_campaign, mock_book
-    ) -> None:
-        """Verify deleting a chapter invalidates the book and campaign book-list caches."""
-        # Given a privileged user and a patched cache-clear
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-        clear_cache = mocker.patch("vweb.lib.cache.campaign_content.clear")
-        csrf = get_csrf(client)
+        return _post
 
-        # When deleting the chapter
-        client.delete(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-1",
-            headers={"X-CSRFToken": csrf},
-        )
+    @pytest.mark.parametrize(
+        ("selected", "expected"), [(["c9"], ["c9"]), ([], [])], ids=["one", "none-clears"]
+    )
+    def test_sends_selected_characters(self, post_edit, fake_vclient, selected, expected) -> None:
+        """Verify the selected characters are sent, and none selected clears the associations."""
+        post_edit(name="Chapter Two", character_ids=selected)
 
-        # Then both the book's chapter cache and the campaign's book-list cache
-        # are invalidated so each book's num_chapters facet refreshes
-        _, kwargs = clear_cache.call_args
-        assert kwargs["book_id"] == mock_book.id
-        assert kwargs["campaign_id"] == mock_campaign.id
-
-
-@pytest.mark.usefixtures("_mock_chapter_lookup")
-class TestChapterCharacterAssociations:
-    """Tests for associating characters via the chapter create/edit forms."""
-
-    def test_create_forwards_character_ids(
-        self, client, mocker, mock_campaign, mock_book, fake_vclient
-    ) -> None:
-        """Verify selected character ids are forwarded to the create call."""
-        # Given a privileged user
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-        csrf = get_csrf(client)
-
-        # When creating a chapter with two selected characters
-        client.post(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter",
-            data={"name": "New Chapter", "character_ids": ["c1", "c2"], "csrf_token": csrf},
-        )
-
-        # Then the ids reach the API's create call
         fake_vclient.assert_called(
-            Routes.CHAPTERS_CREATE,
-            params={"campaign_id": mock_campaign.id, "book_id": mock_book.id},
-            json_subset={"name": "New Chapter", "character_ids": ["c1", "c2"]},
+            Routes.CHAPTERS_UPDATE,
+            params={"campaign_id": "camp-1", "book_id": "book-1", "chapter_id": "ch-2"},
+            json_subset={"character_ids": expected},
             times=1,
         )
 
-    def test_edit_forwards_character_ids(
-        self, client, mocker, mock_campaign, mock_book, fake_vclient
+    @pytest.mark.parametrize(
+        ("form", "error"),
+        [
+            ({"name": "  "}, name_errors("")[0]),
+            ({"name": "Chapter Two", "number": "0"}, position_number("0", 1)[1]),
+        ],
+        ids=["blank-name", "number-below-one"],
+    )
+    def test_invalid_input_rerenders_form_without_calling_api(
+        self, post_edit, fake_vclient, form, error
     ) -> None:
-        """Verify the chapter edit form forwards the selected ids to update."""
-        # Given a privileged user
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-        csrf = get_csrf(client)
+        """Verify invalid input shows a form error and nothing reaches the API."""
+        response = post_edit(**form)
 
-        # When submitting the edit form with one selected character
-        client.post(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2/edit",
-            data={"name": "Chapter Two", "character_ids": ["c9"], "csrf_token": csrf},
-        )
-
-        # Then the id list reaches the API's update call
-        fake_vclient.assert_called(
-            Routes.CHAPTERS_UPDATE,
-            params={"campaign_id": mock_campaign.id, "book_id": mock_book.id, "chapter_id": "ch-2"},
-            json_subset={"character_ids": ["c9"]},
-            times=1,
-        )
-
-    def test_edit_clears_associations_when_none_selected(
-        self, client, mocker, mock_campaign, mock_book, fake_vclient
-    ) -> None:
-        """Verify submitting the edit form with no characters clears associations."""
-        # Given a privileged user
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-        csrf = get_csrf(client)
-
-        # When submitting the edit form with no character_ids
-        client.post(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2/edit",
-            data={"name": "Chapter Two", "csrf_token": csrf},
-        )
-
-        # Then an empty list is sent to clear all associations
-        fake_vclient.assert_called(
-            Routes.CHAPTERS_UPDATE,
-            params={"campaign_id": mock_campaign.id, "book_id": mock_book.id, "chapter_id": "ch-2"},
-            json_subset={"character_ids": []},
-            times=1,
-        )
-
-    def test_edit_invalid_character_id_rerenders_form(
-        self, client, mocker, mock_campaign, mock_book, fake_vclient
-    ) -> None:
-        """Verify a server-rejected character id re-renders the form, not a 500."""
-        # Given a privileged user and an update that the API rejects
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-        fake_vclient.set_error(
-            Routes.CHAPTERS_UPDATE,
-            status_code=400,
-            detail="unknown character",
-            invalid_parameters=[{"field": "character_ids", "message": "unknown character"}],
-        )
-        csrf = get_csrf(client)
-
-        # When submitting with an invalid character id
-        response = client.post(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2/edit",
-            data={"name": "Chapter Two", "character_ids": ["nope"], "csrf_token": csrf},
-        )
-
-        # Then the form is re-rendered with the API's error and no 500 is raised
         assert response.status_code == 200
-        assert b"chapter-content" in response.data
-        assert b"unknown character" in response.data
-
-    def test_edit_renumber_rejection_rerenders_form(
-        self, client, mocker, mock_campaign, mock_book, mock_chapters, fake_vclient
-    ) -> None:
-        """Verify an API rejection on renumber re-renders the form, not a 500."""
-        # Given a privileged user and a renumber that the API rejects
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-        fake_vclient.set_error(
-            Routes.CHAPTERS_RENUMBER, status_code=400, detail="Number is out of range"
-        )
-        chapter = mock_chapters[1]
-
-        # When submitting the edit form with a new number
-        response = client.post(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/{chapter.id}/edit",
-            data={
-                "name": "Chapter Two",
-                "number": str(chapter.number + 5),
-                "csrf_token": get_csrf(client),
-            },
-        )
-
-        # Then the form shows the API's reason
-        assert response.status_code == 200
-        assert b"Number is out of range" in response.data
-
-    def test_edit_number_below_one_rerenders_form_without_calling_api(
-        self, client, mocker, mock_campaign, mock_book, fake_vclient
-    ) -> None:
-        """Verify a number below 1 shows a form error before any API call."""
-        # Given a privileged user
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-
-        # When submitting the edit form with number 0
-        response = client.post(
-            f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2/edit",
-            data={"name": "Chapter Two", "number": "0", "csrf_token": get_csrf(client)},
-        )
-
-        # Then the form shows the error and nothing reaches the API
-        assert response.status_code == 200
-        assert b"Number must be 1 or greater" in response.data
+        assert error in response.get_data(as_text=True)
         fake_vclient.assert_not_called(Routes.CHAPTERS_UPDATE)
 
-
-class TestChapterSidebarCharacters:
-    """Tests for associated-character links in the chapter sidebar."""
-
-    def test_sidebar_links_associated_characters(
-        self, client, mocker, mock_campaign, mock_book, fake_vclient
+    @pytest.mark.parametrize(
+        ("route", "form"),
+        [
+            (Routes.CHAPTERS_UPDATE, {"name": "Chapter Two", "character_ids": ["nope"]}),
+            (Routes.CHAPTERS_RENUMBER, {"name": "Chapter Two", "number": "7"}),
+        ],
+        ids=["update", "renumber"],
+    )
+    def test_api_rejection_rerenders_form_with_its_reason(
+        self, post_edit, fake_vclient, route, form
     ) -> None:
-        """Verify the chapter sidebar renders a link to each associated character."""
-        # Given a campaign whose roster contains the associated character
-        from vweb.api_client.testing import CampaignChapterFactory, CharacterFactory
+        """Verify an API rejection on update or renumber shows its reason instead of a 500."""
+        fake_vclient.set_error(route, status_code=400, detail="Rejected by the API")
 
-        hero = CharacterFactory.build(
-            id="hero-1", type="PLAYER", name="Sidebar Hero", campaign_id=mock_campaign.id
-        )
-        ctx = build_global_context(user_role="PLAYER", campaign=mock_campaign, characters=[hero])
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        response = post_edit(**form)
 
-        chapter = CampaignChapterFactory.build(
-            id="ch-2", book_id=mock_book.id, number=2, name="Chapter Two", character_ids=["hero-1"]
-        )
-        mocker.patch("vweb.routes.chapter.views.fetch_chapter_or_404", return_value=chapter)
-        mocker.patch(
-            "vweb.routes.chapter.views.fetch_book_or_404", return_value=(mock_book, mock_campaign)
-        )
-        fake_vclient.set_response(Routes.CHAPTERS_ASSETS_LIST, items=[])
-        fake_vclient.set_response(Routes.CHAPTERS_NOTES_LIST, items=[])
-        mocker.patch("vweb.lib.cache.campaign_content.chapters", return_value=[chapter])
+        assert response.status_code == 200
+        assert b"Rejected by the API" in response.data
 
-        # When viewing the chapter
-        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2")
-
-        # Then the sidebar links to the character detail page
-        assert b"Sidebar Hero" in response.data
-        assert b"/character/hero-1" in response.data
-
-
-class TestChapterEditPickerPreservesAssociations:
-    """Tests that the edit form preserves associations the picker cannot offer."""
-
-    def test_edit_form_preserves_non_selectable_associated_character(
-        self, client, mocker, mock_campaign, mock_book
+    def test_edit_form_keeps_associations_the_picker_cannot_offer(
+        self, client, set_role, set_chapters
     ) -> None:
-        """Verify an already-associated storyteller character survives an edit-form render."""
-        # Given a roster with a storyteller character the picker would not offer
-        from vweb.api_client.testing import CampaignChapterFactory, CharacterFactory
-
+        """Verify an associated storyteller character is kept in the picker, not dropped."""
+        # Given a chapter associated with a storyteller character the picker would not offer
         boss = CharacterFactory.build(
-            id="boss-1", type="STORYTELLER", name="Story Boss", campaign_id=mock_campaign.id
+            id="boss-1", type="STORYTELLER", name="Story Boss", campaign_id="camp-1"
         )
-        ctx = build_global_context(
-            user_role="STORYTELLER", campaign=mock_campaign, characters=[boss]
-        )
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mocker.patch("vweb.routes.chapter.views.can_manage_campaign", return_value=True)
-
-        chapter = CampaignChapterFactory.build(
-            id="ch-2", book_id=mock_book.id, number=2, name="Chapter Two", character_ids=["boss-1"]
-        )
-        mocker.patch("vweb.routes.chapter.views.fetch_chapter_or_404", return_value=chapter)
-        mocker.patch(
-            "vweb.routes.chapter.views.fetch_book_or_404", return_value=(mock_book, mock_campaign)
+        set_role("STORYTELLER", characters=[boss])
+        set_chapters(
+            [CampaignChapterFactory.build(id="ch-2", book_id="book-1", character_ids=["boss-1"])]
         )
 
-        # When rendering the chapter edit form
-        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2/edit")
+        # When opening the edit form
+        response = client.get(f"{BOOK_URL}/chapter/ch-2/edit")
 
-        # Then the storyteller association is seeded into the picker, not silently dropped
+        # Then the association is seeded into the picker
         assert response.status_code == 200
         assert b"boss-1" in response.data
         assert b"Story Boss" in response.data
 
 
-@pytest.mark.usefixtures("_mock_chapter_lookup")
-class TestChapterCarouselAddCard:
-    """Tests for the create-chapter add-card in the chapter carousel."""
+@pytest.mark.usefixtures("storyteller")
+class TestChapterDelete:
+    """Tests for deleting a chapter."""
 
-    def test_add_card_visible_for_manager(self, client, mocker, mock_campaign, mock_book) -> None:
-        """Verify managers see the New Chapter add-card in the carousel."""
-        # Given a storyteller user
-        ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+    def test_deletes_chapter_and_redirects_to_book(
+        self, client, fake_vclient, clear_content_cache
+    ) -> None:
+        """Verify the chapter is deleted, caches are cleared, and the client returns to the book."""
+        response = client.delete(
+            f"{BOOK_URL}/chapter/ch-1", headers={"X-CSRFToken": get_csrf(client)}
+        )
 
-        # When rendering a chapter detail page
-        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2")
-
-        # Then the add-card renders the create-form URL scoped to the current chapter
-        assert b"New Chapter" in response.data
-        assert b"/book/book-1/chapter?from_chapter=ch-2" in response.data
-
-    def test_add_card_hidden_for_player(self, client, mock_campaign, mock_book) -> None:
-        """Verify players do not see the New Chapter add-card."""
-        # Given the default PLAYER user, when rendering a chapter detail page
-        response = client.get(f"/campaign/{mock_campaign.id}/book/{mock_book.id}/chapter/ch-2")
-
-        # Then no create affordance renders
-        assert b"New Chapter" not in response.data
-        assert b"from_chapter=ch-2" not in response.data
+        assert response.headers.get("HX-Redirect") == BOOK_URL
+        fake_vclient.assert_called(
+            Routes.CHAPTERS_DELETE,
+            params={"campaign_id": "camp-1", "book_id": "book-1", "chapter_id": "ch-1"},
+            times=1,
+        )
+        _, kwargs = clear_content_cache.call_args
+        assert kwargs["book_id"] == "book-1"
+        assert kwargs["campaign_id"] == "camp-1"

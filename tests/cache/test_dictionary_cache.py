@@ -6,315 +6,95 @@ import pytest
 
 from tests.helpers import seed_session
 from vweb.api_client.testing import DictionaryTermFactory, FakeResponse, Routes
-from vweb.lib.cache.dictionary import (
-    clear,
-    search,
-    term,
-    terms,
-)
+from vweb.lib.cache.dictionary import clear, search, term, terms
 
 pytestmark = pytest.mark.usefixtures("real_cache_services")
 
 
-class TestTerms:
-    """Tests for terms()."""
+def test_terms_fetched_once_and_sorted(app, mock_cache_store, fake_vclient) -> None:
+    """Verify the company's terms are fetched once and sorted by name, ignoring case."""
+    names = ["zephyr", "Amaranth", "Beast"]
+    fake_vclient.set_response(
+        Routes.DICTIONARY_LIST, items=[DictionaryTermFactory.build(term=n) for n in names]
+    )
 
-    def test_fetches_from_api_on_cache_miss(self, app, mock_cache_store, fake_vclient) -> None:
-        """Verify terms calls the API when the cache is empty."""
-        # Given three terms returned by the API
-        term_list = DictionaryTermFactory.batch(3)
-        fake_vclient.set_response(Routes.DICTIONARY_LIST, items=term_list)
+    with app.test_request_context("/"):
+        seed_session()
+        first = terms()
+        second = terms()
 
-        # When fetching all terms
-        with app.test_request_context("/"):
-            seed_session()
-            result = terms()
-
-        # Then the result is a sorted list of 3 terms and the API was called once
-        assert len(result) == 3
-        assert result == sorted(result, key=lambda t: t.term.lower())
-        fake_vclient.assert_called(
-            Routes.DICTIONARY_LIST, params={"company_id": "test-company-id"}, times=1
-        )
-
-    def test_returns_cached_on_hit(self, app, mock_cache_store, fake_vclient) -> None:
-        """Verify terms returns cached list without calling the API again."""
-        # Given terms are already cached from a first call
-        term_list = DictionaryTermFactory.batch(3)
-        fake_vclient.set_response(Routes.DICTIONARY_LIST, items=term_list)
-
-        with app.test_request_context("/"):
-            seed_session()
-            first = terms()
-            second = terms()
-
-        # Then the API is called only once and both results are the same object
-        assert first is second
-        fake_vclient.assert_called(
-            Routes.DICTIONARY_LIST, params={"company_id": "test-company-id"}, times=1
-        )
-
-    def test_returns_empty_list_when_no_terms(self, app, mock_cache_store, fake_vclient) -> None:
-        """Verify terms returns an empty list when the API returns no terms."""
-        # Given the API returns an empty list
-        fake_vclient.set_response(Routes.DICTIONARY_LIST, items=[])
-
-        # When fetching all terms
-        with app.test_request_context("/"):
-            seed_session()
-            result = terms()
-
-        # Then the result is an empty list
-        assert result == []
-
-    def test_terms_sorted_alphabetically(self, app, mock_cache_store, fake_vclient) -> None:
-        """Verify terms returns terms sorted alphabetically by term name."""
-        # Given terms with specific names in non-alphabetical order
-        term_list = [
-            DictionaryTermFactory.build(term="Zephyr"),
-            DictionaryTermFactory.build(term="Amaranth"),
-            DictionaryTermFactory.build(term="Beast"),
-        ]
-        fake_vclient.set_response(Routes.DICTIONARY_LIST, items=term_list)
-
-        # When fetching all terms
-        with app.test_request_context("/"):
-            seed_session()
-            result = terms()
-
-        # Then the result is sorted alphabetically
-        assert [t.term for t in result] == ["Amaranth", "Beast", "Zephyr"]
+    assert [t.term for t in first] == ["Amaranth", "Beast", "zephyr"]
+    assert second is first
+    fake_vclient.assert_called(
+        Routes.DICTIONARY_LIST, params={"company_id": "test-company-id"}, times=1
+    )
 
 
-class TestTerm:
-    """Tests for term()."""
+def test_term_lookup_by_id(app, mock_cache_store, fake_vclient) -> None:
+    """Verify a term is found by id, and None for an unknown id."""
+    known = DictionaryTermFactory.build(id="term-1")
+    fake_vclient.set_response(Routes.DICTIONARY_LIST, items=[known])
 
-    def test_returns_term_for_known_id(self, app, mock_cache_store, fake_vclient) -> None:
-        """Verify term returns the correct term for a known ID."""
-        # Given a term exists in the cache
-        t = DictionaryTermFactory.build(id="term-1", term="Amaranth")
-        fake_vclient.set_response(Routes.DICTIONARY_LIST, items=[t])
+    with app.test_request_context("/"):
+        seed_session()
 
-        # When looking up by ID
-        with app.test_request_context("/"):
-            seed_session()
-            result = term("term-1")
-
-        # Then the term is returned
-        assert result == t
-
-    def test_returns_none_for_unknown_id(self, app, mock_cache_store, fake_vclient) -> None:
-        """Verify term returns None for an unknown term ID."""
-        # Given the cache has terms but not the requested one
-        fake_vclient.set_response(
-            Routes.DICTIONARY_LIST, items=[DictionaryTermFactory.build(id="other")]
-        )
-
-        # When looking up an unknown ID
-        with app.test_request_context("/"):
-            seed_session()
-            result = term("nonexistent")
-
-        # Then None is returned
-        assert result is None
+        assert term("term-1") == known
+        assert term("nonexistent") is None
 
 
-class TestClear:
-    """Tests for clear()."""
+def test_clear_forces_refetch(app, mock_cache_store, fake_vclient) -> None:
+    """Verify clear forces a fresh API fetch on next access."""
+    fake_vclient.set_responses(
+        Routes.DICTIONARY_LIST,
+        [
+            FakeResponse(items=DictionaryTermFactory.batch(2)),
+            FakeResponse(items=DictionaryTermFactory.batch(3)),
+        ],
+    )
 
-    def test_forces_refetch_on_next_call(self, app, mock_cache_store, fake_vclient) -> None:
-        """Verify clear forces a fresh API fetch on next access."""
-        # Given terms are cached
-        terms_v1 = DictionaryTermFactory.batch(2)
-        terms_v2 = DictionaryTermFactory.batch(3)
-        fake_vclient.set_responses(
-            Routes.DICTIONARY_LIST,
-            [FakeResponse(items=terms_v1), FakeResponse(items=terms_v2)],
-        )
+    with app.test_request_context("/"):
+        seed_session()
+        assert len(terms()) == 2
 
-        with app.test_request_context("/"):
-            seed_session()
-            first = terms()
-            assert len(first) == 2
+        clear()
 
-            # When the cache is cleared
-            clear()
+        assert len(terms()) == 3
 
-            # Then the next call fetches fresh data
-            second = terms()
-            assert len(second) == 3
-
-        fake_vclient.assert_called(Routes.DICTIONARY_LIST, times=2)
+    fake_vclient.assert_called(Routes.DICTIONARY_LIST, times=2)
 
 
-class TestSearch:
-    """Tests for search()."""
-
-    def test_filters_by_substring_match(self, app, mock_cache_store, fake_vclient) -> None:
-        """Verify search filters terms by substring match on term name."""
-        # Given terms with specific names
-        term_list = [
-            DictionaryTermFactory.build(term="Amaranth"),
-            DictionaryTermFactory.build(term="Auspex"),
-            DictionaryTermFactory.build(term="Beast"),
-        ]
-        fake_vclient.set_response(Routes.DICTIONARY_LIST, items=term_list)
-
-        # When searching for a substring
-        with app.test_request_context("/"):
-            seed_session()
-            result = search("aus")
-
-        # Then only matching terms are returned
-        assert len(result) == 1
-        assert result[0].term == "Auspex"
-
-    def test_case_insensitive_search(self, app, mock_cache_store, fake_vclient) -> None:
-        """Verify search performs case-insensitive matching."""
-        # Given a term with mixed case
-        t = DictionaryTermFactory.build(term="Auspex")
-        fake_vclient.set_response(Routes.DICTIONARY_LIST, items=[t])
-
-        # When searching with uppercase
-        with app.test_request_context("/"):
-            seed_session()
-            result = search("AUS")
-
-        # Then the term is found
-        assert len(result) == 1
-        assert result[0].term == "Auspex"
-
-    def test_empty_query_returns_all(self, app, mock_cache_store, fake_vclient) -> None:
-        """Verify search returns all terms when query is empty."""
-        # Given three terms
-        term_list = DictionaryTermFactory.batch(3)
-        fake_vclient.set_response(Routes.DICTIONARY_LIST, items=term_list)
-
-        # When searching with empty string
-        with app.test_request_context("/"):
-            seed_session()
-            result = search("")
-
-        # Then all terms are returned
-        assert len(result) == 3
-
-    def test_no_matches_returns_empty(self, app, mock_cache_store, fake_vclient) -> None:
-        """Verify search returns empty list when no terms match."""
-        # Given terms that don't match the query
-        term_list = [
-            DictionaryTermFactory.build(term="Amaranth"),
-            DictionaryTermFactory.build(term="Beast"),
-        ]
-        fake_vclient.set_response(Routes.DICTIONARY_LIST, items=term_list)
-
-        # When searching for a non-matching string
-        with app.test_request_context("/"):
-            seed_session()
-            result = search("zzz")
-
-        # Then an empty list is returned
-        assert result == []
+_SEARCH_TERMS = [
+    ("Amaranth", []),
+    ("Auspex", ["heightened senses", "auspicious"]),
+    ("Beast", ["The Monster"]),
+]
 
 
-class TestSearchSynonyms:
-    """Tests for search() synonym matching."""
+@pytest.mark.parametrize(
+    ("query", "include_synonyms", "expected"),
+    [
+        pytest.param("aus", False, ["Auspex"], id="substring"),
+        pytest.param("AUS", False, ["Auspex"], id="case-insensitive"),
+        pytest.param("", False, ["Amaranth", "Auspex", "Beast"], id="empty-query-all"),
+        pytest.param("", True, ["Amaranth", "Auspex", "Beast"], id="empty-query-all-synonyms"),
+        pytest.param("zzz", True, [], id="no-match"),
+        pytest.param("heightened", True, ["Auspex"], id="synonym"),
+        pytest.param("heightened", False, [], id="synonyms-off"),
+        pytest.param("monster", True, ["Beast"], id="synonym-case-insensitive"),
+        pytest.param("aus", True, ["Auspex"], id="name-and-synonym-once"),
+    ],
+)
+def test_search(
+    app, mock_cache_store, fake_vclient, query: str, expected: list[str], *, include_synonyms: bool
+) -> None:
+    """Verify search matches names, and synonyms when asked, by case-insensitive substring."""
+    fake_vclient.set_response(
+        Routes.DICTIONARY_LIST,
+        items=[DictionaryTermFactory.build(term=n, synonyms=s) for n, s in _SEARCH_TERMS],
+    )
 
-    def test_synonym_match_returns_term(self, app, mock_cache_store, fake_vclient) -> None:
-        """Verify search matches against synonyms when include_synonyms is True."""
-        # Given a term with a synonym that matches the query but term name does not
-        term_list = [
-            DictionaryTermFactory.build(term="Auspex", synonyms=["heightened senses"]),
-            DictionaryTermFactory.build(term="Beast", synonyms=[]),
-        ]
-        fake_vclient.set_response(Routes.DICTIONARY_LIST, items=term_list)
+    with app.test_request_context("/"):
+        seed_session()
+        result = search(query, include_synonyms=include_synonyms)
 
-        # When searching for the synonym text
-        with app.test_request_context("/"):
-            seed_session()
-            result = search("heightened", include_synonyms=True)
-
-        # Then the parent term is returned
-        assert len(result) == 1
-        assert result[0].term == "Auspex"
-
-    def test_synonym_match_excluded_when_disabled(
-        self, app, mock_cache_store, fake_vclient
-    ) -> None:
-        """Verify synonym matches are excluded when include_synonyms is False."""
-        # Given a term with a synonym
-        term_list = [
-            DictionaryTermFactory.build(term="Auspex", synonyms=["heightened senses"]),
-        ]
-        fake_vclient.set_response(Routes.DICTIONARY_LIST, items=term_list)
-
-        # When searching with synonyms disabled
-        with app.test_request_context("/"):
-            seed_session()
-            result = search("heightened", include_synonyms=False)
-
-        # Then no results are returned
-        assert result == []
-
-    def test_term_name_match_ignores_synonym_flag(
-        self, app, mock_cache_store, fake_vclient
-    ) -> None:
-        """Verify term name match works regardless of include_synonyms value."""
-        # Given a term whose name matches the query
-        term_list = [DictionaryTermFactory.build(term="Auspex", synonyms=["heightened senses"])]
-        fake_vclient.set_response(Routes.DICTIONARY_LIST, items=term_list)
-
-        # When searching with synonyms disabled
-        with app.test_request_context("/"):
-            seed_session()
-            result = search("aus", include_synonyms=False)
-
-        # Then the term is still found by name
-        assert len(result) == 1
-        assert result[0].term == "Auspex"
-
-    def test_empty_query_returns_all_regardless_of_flag(
-        self, app, mock_cache_store, fake_vclient
-    ) -> None:
-        """Verify empty query returns all terms regardless of include_synonyms."""
-        # Given three terms
-        term_list = DictionaryTermFactory.batch(3)
-        fake_vclient.set_response(Routes.DICTIONARY_LIST, items=term_list)
-
-        # When searching with empty query and synonyms disabled
-        with app.test_request_context("/"):
-            seed_session()
-            result = search("", include_synonyms=False)
-
-        # Then all terms are returned
-        assert len(result) == 3
-
-    def test_no_duplicate_when_both_name_and_synonym_match(
-        self, app, mock_cache_store, fake_vclient
-    ) -> None:
-        """Verify a term appears only once when both name and synonym match."""
-        # Given a term whose name and a synonym both contain the query
-        term_list = [DictionaryTermFactory.build(term="Aus", synonyms=["aus-pex"])]
-        fake_vclient.set_response(Routes.DICTIONARY_LIST, items=term_list)
-
-        # When searching
-        with app.test_request_context("/"):
-            seed_session()
-            result = search("aus", include_synonyms=True)
-
-        # Then the term appears exactly once
-        assert len(result) == 1
-
-    def test_synonym_match_is_case_insensitive(self, app, mock_cache_store, fake_vclient) -> None:
-        """Verify synonym matching is case-insensitive."""
-        # Given a term with an uppercase synonym
-        term_list = [DictionaryTermFactory.build(term="Beast", synonyms=["The Monster"])]
-        fake_vclient.set_response(Routes.DICTIONARY_LIST, items=term_list)
-
-        # When searching with lowercase
-        with app.test_request_context("/"):
-            seed_session()
-            result = search("monster", include_synonyms=True)
-
-        # Then the term is found
-        assert len(result) == 1
-        assert result[0].term == "Beast"
+    assert [t.term for t in result] == expected

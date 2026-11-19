@@ -2,14 +2,15 @@
 
 import contextvars
 import threading
-import time
 from collections.abc import Callable, Iterator
 from functools import partial
+from math import ceil
 
 import httpx
 import pytest
 import respx
 
+from tests.api_client.payloads import endpoint_url, page, wire
 from vweb.api_client import VClient
 from vweb.api_client.constants import ON_BEHALF_OF_HEADER
 from vweb.api_client.endpoints import Endpoints
@@ -32,7 +33,7 @@ def client(base_url, api_key) -> Iterator[VClient]:
 
 
 def _users_url(base_url: str) -> str:
-    return f"{base_url}{Endpoints.USERS.format(company_id=COMPANY_ID)}"
+    return endpoint_url(base_url, Endpoints.USERS, company_id=COMPANY_ID)
 
 
 def _page_handler(
@@ -40,25 +41,32 @@ def _page_handler(
     *,
     limit: int,
     total: int | None = None,
-    delays: dict[int, float] | None = None,
+    hold_offset: int | None = None,
 ) -> tuple[Callable[[httpx.Request], respx.MockResponse], list[httpx.Request], list[str]]:
-    """Build a respx side effect that serves ``users`` by the request's offset."""
+    """Build a respx side effect that serves ``users`` by the request's offset.
+
+    The page at ``hold_offset`` is not answered until every other page has been
+    requested, so the remaining pages are in flight on pool workers before it finishes.
+    """
+    total = len(users) if total is None else total
+    page_count = ceil(total / limit)
     seen: list[httpx.Request] = []
     threads: list[str] = []
+    lock = threading.Lock()
+    all_requested = threading.Event()
 
     def handler(request: httpx.Request) -> respx.MockResponse:
         offset = int(request.url.params["offset"])
-        seen.append(request)
-        threads.append(threading.current_thread().name)
-        time.sleep((delays or {}).get(offset, 0))
+        with lock:
+            seen.append(request)
+            threads.append(threading.current_thread().name)
+            if len(seen) == page_count:
+                all_requested.set()
+        if offset == hold_offset:
+            assert all_requested.wait(timeout=5), "other pages were never requested"
         return respx.MockResponse(
             200,
-            json={
-                "items": users[offset : offset + limit],
-                "limit": limit,
-                "offset": offset,
-                "total": len(users) if total is None else total,
-            },
+            json=page(*users[offset : offset + limit], limit=limit, offset=offset, total=total),
         )
 
     return handler, seen, threads
@@ -70,9 +78,9 @@ class TestListAllParallel:
     @respx.mock
     def test_returns_items_in_offset_order_when_pages_finish_out_of_order(self, client, base_url):
         """Verify a slow early page does not reorder the result."""
-        # Given: Seven users served two per page, with the second page slowest
-        users = [UserFactory.build(id=f"u{i}").model_dump(mode="json") for i in range(7)]
-        handler, seen, _ = _page_handler(users, limit=2, delays={2: 0.1})
+        # Given: Seven users served two per page, with the second page answered last
+        users = [wire(UserFactory.build(id=f"u{i}")) for i in range(7)]
+        handler, seen, _ = _page_handler(users, limit=2, hold_offset=2)
         respx.get(_users_url(base_url)).mock(side_effect=handler)
 
         # When: Listing every user with a page size of two
@@ -86,8 +94,8 @@ class TestListAllParallel:
     def test_pages_keep_filters_and_on_behalf_of_header(self, client, base_url):
         """Verify pages fetched on worker threads send the same query and headers."""
         # Given: Five users served two per page
-        users = [UserFactory.build(id=f"u{i}").model_dump(mode="json") for i in range(5)]
-        handler, seen, threads = _page_handler(users, limit=2, delays={2: 0.05, 4: 0.05})
+        users = [wire(UserFactory.build(id=f"u{i}")) for i in range(5)]
+        handler, seen, threads = _page_handler(users, limit=2, hold_offset=2)
         respx.get(_users_url(base_url)).mock(side_effect=handler)
 
         # When: Listing users with a filter
@@ -106,7 +114,7 @@ class TestListAllParallel:
     def test_single_page_makes_one_request(self, client, base_url):
         """Verify a collection that fits in one page needs no further requests."""
         # Given: Two users that fit in the first page
-        users = [UserFactory.build(id=f"u{i}").model_dump(mode="json") for i in range(2)]
+        users = [wire(UserFactory.build(id=f"u{i}")) for i in range(2)]
         handler, seen, _ = _page_handler(users, limit=100)
         respx.get(_users_url(base_url)).mock(side_effect=handler)
 
@@ -121,15 +129,13 @@ class TestListAllParallel:
     def test_trusts_the_first_page_total(self, client, base_url):
         """Verify offsets come from the first page even if a later page reports more items."""
         # Given: A first page that reports three users, then a collection that grows
-        users = [UserFactory.build(id=f"u{i}").model_dump(mode="json") for i in range(6)]
+        users = [wire(UserFactory.build(id=f"u{i}")) for i in range(6)]
 
         def handler(request: httpx.Request) -> respx.MockResponse:
             offset = int(request.url.params["offset"])
             total = 3 if offset == 0 else 6
             items = users[offset : offset + 2]
-            return respx.MockResponse(
-                200, json={"items": items, "limit": 2, "offset": offset, "total": total}
-            )
+            return respx.MockResponse(200, json=page(*items, limit=2, offset=offset, total=total))
 
         route = respx.get(_users_url(base_url)).mock(side_effect=handler)
 
@@ -144,7 +150,7 @@ class TestListAllParallel:
     def test_page_error_propagates(self, client, base_url):
         """Verify an error on any later page is raised from list_all."""
         # Given: Six users where the page at offset four fails
-        users = [UserFactory.build(id=f"u{i}").model_dump(mode="json") for i in range(6)]
+        users = [wire(UserFactory.build(id=f"u{i}")) for i in range(6)]
         handler, _, _ = _page_handler(users, limit=2)
 
         def failing(request: httpx.Request) -> respx.MockResponse:
@@ -170,14 +176,19 @@ class TestRunParallel:
 
     def test_returns_results_in_call_order(self, client):
         """Verify results line up with the calls, not with finish order."""
+        # Given: Calls where the first finishes only after the last has run
+        last_ran = threading.Event()
 
-        # Given: Calls where the first finishes last
         def slow() -> str:
-            time.sleep(0.05)
+            last_ran.wait(timeout=5)
             return "slow"
 
+        def faster() -> str:
+            last_ran.set()
+            return "faster"
+
         # When: Running them in parallel
-        results = client.run_parallel(slow, lambda: "fast", lambda: "faster")
+        results = client.run_parallel(slow, lambda: "fast", faster)
 
         # Then: Results follow call order
         assert results == ("slow", "fast", "faster")
@@ -261,12 +272,15 @@ class TestRunParallel:
             base_url=base_url, api_key=api_key, max_parallel_requests=2, set_as_default=False
         )
         workers: list[threading.Thread] = []
+        worker_ran = threading.Event()
 
         def record() -> None:
-            time.sleep(0.02)
             workers.append(threading.current_thread())
+            worker_ran.set()
 
-        client.run_parallel(record, record, record)
+        # The caller's own call waits so the queued calls reach the pool instead of
+        # being run on the calling thread.
+        client.run_parallel(partial(worker_ran.wait, timeout=5), record, record)
         pool_threads = [t for t in workers if t.name.startswith("vclient")]
         assert pool_threads
 

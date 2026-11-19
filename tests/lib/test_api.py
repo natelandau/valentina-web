@@ -12,13 +12,12 @@ from werkzeug.exceptions import NotFound
 from tests.conftest import make_dice_roll_result
 from tests.helpers import build_global_context
 from vweb.api_client import campaigns_service
-from vweb.api_client.exceptions import APIConnectionError
 from vweb.api_client.testing import (
     CampaignBookFactory,
     CampaignChapterFactory,
+    CampaignExperienceFactory,
     CampaignFactory,
     CharacterFactory,
-    CompanyFactory,
     DicerollFactory,
     NoteFactory,
     Routes,
@@ -30,200 +29,114 @@ from vweb.lib.api import (
     fetch_book_or_404,
     fetch_chapter_or_404,
     get_active_campaign,
+    get_character_and_campaign,
     get_characters_for_campaign,
     get_selectable_characters,
+    get_user_campaign_experience,
     resolve_characters,
     validate_and_submit_experience,
 )
 from vweb.lib.cache.dicerolls import recent
-from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
     from vweb.api_client.models import Character
+    from vweb.lib.cache.global_context import GlobalContext
 
 
-_COOL_POINTS_UNCONFIRMED = (
-    "Could not confirm the cool point grant. Check the user's cool points before submitting again."
+_OLDER = CampaignFactory.build(id="older", date_modified=datetime(2025, 1, 1, tzinfo=UTC))
+_NEWER = CampaignFactory.build(id="newer", date_modified=datetime(2026, 1, 1, tzinfo=UTC))
+
+
+@pytest.mark.parametrize(
+    ("campaigns", "remembered", "expected"),
+    [
+        pytest.param([_OLDER, _NEWER], "older", "older", id="remembered"),
+        pytest.param([_OLDER, _NEWER], None, "newer", id="most-recent"),
+        pytest.param([_OLDER, _NEWER], "deleted", "newer", id="stale-remembered"),
+        pytest.param([], None, None, id="no-campaigns"),
+    ],
 )
-_COOL_POINTS_UNCONFIRMED_AFTER_XP = (
-    "XP was granted, but the cool point grant could not be confirmed. "
-    "Check the user's cool points before submitting again."
+def test_get_active_campaign(app, campaigns, remembered, expected) -> None:
+    """Verify the remembered campaign wins while it exists, else the most recently modified."""
+    with app.test_request_context():
+        g.global_context = build_global_context(user_role="PLAYER", campaigns=campaigns)
+        if remembered:
+            session["last_campaign_id"] = remembered
+
+        result = get_active_campaign()
+
+    assert (result.id if result else None) == expected
+
+
+def test_get_active_campaign_without_context(app) -> None:
+    """Verify pages without a loaded context (unauthenticated) get None instead of an error."""
+    with app.test_request_context():
+        assert get_active_campaign() is None
+
+
+def test_get_character_and_campaign(app) -> None:
+    """Verify a character resolves with its campaign, and an unknown id resolves to nothing."""
+    campaign = CampaignFactory.build(id="camp1")
+    hero = CharacterFactory.build(id="hero", campaign_id="camp1")
+
+    with app.test_request_context():
+        g.global_context = build_global_context(user_role="PLAYER", campaign=campaign)
+        g.global_context.characters = [hero]
+
+        assert get_character_and_campaign("hero") == (hero, campaign)
+        assert get_character_and_campaign("missing") == (None, None)
+
+
+def test_get_user_campaign_experience(app) -> None:
+    """Verify a user's experience is found per campaign, and None for unknown users or campaigns."""
+    exp = CampaignExperienceFactory.build(campaign_id="camp1")
+    user = UserFactory.build(id="test-user-id", campaign_experience=[exp])
+
+    with app.test_request_context():
+        g.global_context = build_global_context(user_role="PLAYER", user=user)
+
+        assert get_user_campaign_experience("test-user-id", "camp1") == exp
+        assert get_user_campaign_experience("test-user-id", "other") is None
+        assert get_user_campaign_experience("nobody", "camp1") is None
+
+
+@pytest.mark.parametrize(
+    ("context_campaign", "books"),
+    [
+        pytest.param("other", [], id="campaign-missing"),
+        pytest.param("camp1", [], id="book-missing"),
+        pytest.param("camp1", [CampaignBookFactory.build(id="b1")], id="found"),
+    ],
 )
+def test_fetch_book_or_404(app, mocker, context_campaign: str, books: list) -> None:
+    """Verify the book and its campaign are returned only when both exist, else 404."""
+    campaign = CampaignFactory.build(id=context_campaign)
+    mocker.patch("vweb.lib.cache.campaign_content.books", return_value=books)
+
+    with app.test_request_context("/"):
+        g.global_context = build_global_context(user_role="PLAYER", campaign=campaign)
+
+        if context_campaign == "camp1" and books:
+            assert fetch_book_or_404("camp1", "b1") == (books[0], campaign)
+        else:
+            with pytest.raises(NotFound):
+                fetch_book_or_404("camp1", "b1")
 
 
-def _build_ctx(campaigns: list) -> GlobalContext:
-    """Build a GlobalContext for helper tests without hitting the API."""
-    company = CompanyFactory.build(name="Test Company")
-    user = UserFactory.build(id="test-user-id", company_id="test-company-id")
-    return GlobalContext(
-        company=company,
-        users=[user],
-        campaigns=campaigns,
-        characters_by_campaign={c.id: [] for c in campaigns},
-        resources_modified_at="2026-01-01T00:00:00+00:00",
+@pytest.mark.parametrize("found", [True, False])
+def test_fetch_chapter_or_404(app, mocker, *, found: bool) -> None:
+    """Verify the chapter is returned when the book lists it, else 404."""
+    chapter = CampaignChapterFactory.build(id="ch1", book_id="b1")
+    mocker.patch(
+        "vweb.lib.cache.campaign_content.chapters", return_value=[chapter] if found else []
     )
 
+    with app.test_request_context("/"):
+        g.global_context = build_global_context(user_role="PLAYER")
 
-def test_get_active_campaign_returns_session_campaign(app) -> None:
-    """Verify the helper returns the campaign stored in the session when it still exists."""
-    # Given two campaigns, one of which is in the session
-    older = CampaignFactory.build(name="Older", date_modified=datetime(2025, 1, 1, tzinfo=UTC))
-    newer = CampaignFactory.build(name="Newer", date_modified=datetime(2026, 1, 1, tzinfo=UTC))
-    ctx = _build_ctx([older, newer])
-
-    with app.test_request_context():
-        g.global_context = ctx
-        session["last_campaign_id"] = older.id
-
-        # When resolving the active campaign
-        result = get_active_campaign()
-
-    # Then the session campaign is returned, not the most recent
-    assert result is not None
-    assert result.id == older.id
-
-
-def test_get_active_campaign_falls_back_to_most_recent(app) -> None:
-    """Verify the helper returns the most-recently-modified campaign with no session key."""
-    # Given two campaigns and no session entry
-    older = CampaignFactory.build(name="Older", date_modified=datetime(2025, 1, 1, tzinfo=UTC))
-    newer = CampaignFactory.build(name="Newer", date_modified=datetime(2026, 1, 1, tzinfo=UTC))
-    ctx = _build_ctx([older, newer])
-
-    with app.test_request_context():
-        g.global_context = ctx
-
-        # When resolving the active campaign
-        result = get_active_campaign()
-
-    # Then the most-recently-modified campaign is returned
-    assert result is not None
-    assert result.id == newer.id
-
-
-def test_get_active_campaign_falls_back_when_session_points_to_deleted_campaign(app) -> None:
-    """Verify a stale session id falls through to the most-recently-modified campaign."""
-    # Given two existing campaigns and a session pointing to a deleted one
-    older = CampaignFactory.build(name="Older", date_modified=datetime(2025, 1, 1, tzinfo=UTC))
-    newer = CampaignFactory.build(name="Newer", date_modified=datetime(2026, 1, 1, tzinfo=UTC))
-    ctx = _build_ctx([older, newer])
-
-    with app.test_request_context():
-        g.global_context = ctx
-        session["last_campaign_id"] = "deleted-campaign-id"
-
-        # When resolving the active campaign
-        result = get_active_campaign()
-
-    # Then the fallback kicks in and returns the newer campaign
-    assert result is not None
-    assert result.id == newer.id
-
-
-def test_get_active_campaign_returns_none_when_user_has_no_campaigns(app) -> None:
-    """Verify the helper returns None when the user has zero campaigns."""
-    # Given a global context with no campaigns
-    ctx = _build_ctx([])
-
-    with app.test_request_context():
-        g.global_context = ctx
-
-        # When resolving the active campaign
-        result = get_active_campaign()
-
-    # Then None is returned
-    assert result is None
-
-
-def test_get_active_campaign_returns_none_when_context_is_missing(app) -> None:
-    """Verify the helper returns None when g.global_context is unset (unauthenticated pages)."""
-    # Given a request context with no g.global_context attribute
-    with app.test_request_context():
-        # When resolving the active campaign
-        result = get_active_campaign()
-
-    # Then None is returned instead of raising AttributeError
-    assert result is None
-
-
-class TestFetchBookOr404:
-    """Tests for the ``fetch_book_or_404`` lookup helper in lib/api.py."""
-
-    def test_returns_book_and_campaign_when_both_exist(self, app, mocker) -> None:
-        """Verify the helper returns the (book, campaign) pair when both exist."""
-        # Given a campaign in the context and a book returned by the lazy cache
-        campaign = CampaignFactory.build(id="camp1")
-        book = CampaignBookFactory.build(id="b1", campaign_id="camp1")
-        ctx = build_global_context(user_role="PLAYER", campaign=campaign)
-        mocker.patch("vweb.lib.cache.campaign_content.books", return_value=[book])
-
-        with app.test_request_context("/"):
-            g.global_context = ctx
-
-            # When fetching the book
-            result_book, result_campaign = fetch_book_or_404("camp1", "b1")
-
-        # Then both the book and campaign are returned
-        assert result_book.id == "b1"
-        assert result_campaign.id == "camp1"
-
-    def test_aborts_404_when_campaign_missing(self, app, mocker) -> None:
-        """Verify the helper aborts 404 when the campaign is not in the context."""
-        # Given a context whose campaign id does not match the request
-        ctx = build_global_context(user_role="PLAYER", campaign=CampaignFactory.build(id="other"))
-        mocker.patch("vweb.lib.cache.campaign_content.books", return_value=[])
-
-        with app.test_request_context("/"):
-            g.global_context = ctx
-
-            # When fetching a book for an unknown campaign, then it aborts 404
-            with pytest.raises(NotFound):
-                fetch_book_or_404("camp1", "b1")
-
-    def test_aborts_404_when_book_missing(self, app, mocker) -> None:
-        """Verify the helper aborts 404 when the book is absent from the cache result."""
-        # Given a valid campaign but a book cache that omits the requested book
-        campaign = CampaignFactory.build(id="camp1")
-        ctx = build_global_context(user_role="PLAYER", campaign=campaign)
-        mocker.patch("vweb.lib.cache.campaign_content.books", return_value=[])
-
-        with app.test_request_context("/"):
-            g.global_context = ctx
-
-            # When fetching a missing book, then it aborts 404
-            with pytest.raises(NotFound):
-                fetch_book_or_404("camp1", "b1")
-
-
-class TestFetchChapterOr404:
-    """Tests for the ``fetch_chapter_or_404`` lookup helper in lib/api.py."""
-
-    def test_returns_chapter_when_present(self, app, mocker) -> None:
-        """Verify the helper returns the chapter when present in the cache result."""
-        # Given a chapter returned by the lazy chapter cache
-        chapter = CampaignChapterFactory.build(id="ch1", book_id="b1")
-        ctx = build_global_context(user_role="PLAYER")
-        mocker.patch("vweb.lib.cache.campaign_content.chapters", return_value=[chapter])
-
-        with app.test_request_context("/"):
-            g.global_context = ctx
-
-            # When fetching the chapter
-            result = fetch_chapter_or_404("camp1", "b1", "ch1")
-
-        # Then the matching chapter is returned
-        assert result.id == "ch1"
-
-    def test_aborts_404_when_chapter_missing(self, app, mocker) -> None:
-        """Verify the helper aborts 404 when the chapter is absent from the cache result."""
-        # Given a chapter cache that omits the requested chapter
-        ctx = build_global_context(user_role="PLAYER")
-        mocker.patch("vweb.lib.cache.campaign_content.chapters", return_value=[])
-
-        with app.test_request_context("/"):
-            g.global_context = ctx
-
-            # When fetching a missing chapter, then it aborts 404
+        if found:
+            assert fetch_chapter_or_404("camp1", "b1", "ch1") is chapter
+        else:
             with pytest.raises(NotFound):
                 fetch_chapter_or_404("camp1", "b1", "ch1")
 
@@ -244,7 +157,7 @@ class TestRecentDicerolls:
         """Verify trait names resolve and the API's newest-first order is preserved as-is."""
         # Given two player rolls returned by the API in newest-first order
         campaign = CampaignFactory.build(id="camp-1")
-        user = UserFactory.build(id="user-1", role="PLAYER")
+        user = UserFactory.build(id="user-1")
         player_char = CharacterFactory.build(
             id="char-player", type="PLAYER", name="Hero", campaign_id=campaign.id
         )
@@ -294,7 +207,7 @@ class TestRecentDicerolls:
     def test_passes_campaignid_and_limit_to_service(self, app, fake_vclient, mocker) -> None:
         """Verify the campaign id scope and limit are forwarded to the dicerolls API."""
         campaign = CampaignFactory.build(id="camp-1")
-        user = UserFactory.build(id="user-1", role="PLAYER")
+        user = UserFactory.build(id="user-1")
 
         mocker.patch("vweb.lib.cache.blueprint.traits", return_value={})
         fake_vclient.set_response(Routes.DICEROLLS_LIST, items=[])
@@ -381,7 +294,7 @@ class TestRecentDicerollsScopes:
         """Verify character-scoped calls trust the API scope and do not set character_type."""
         # Given a diceroll for an NPC character (would be filtered out in campaign-only mode)
         campaign = CampaignFactory.build(id="camp-1")
-        user = UserFactory.build(id="user-1", role="PLAYER")
+        user = UserFactory.build(id="user-1")
         npc_char = CharacterFactory.build(
             id="npc-1", type="NPC", name="NPC", campaign_id=campaign.id
         )
@@ -554,259 +467,162 @@ class TestResolveCharacters:
 class TestValidateAndSubmitExperience:
     """Tests for validate_and_submit_experience."""
 
-    @pytest.mark.parametrize(
-        ("form_data", "expected_error"),
-        [
-            ({"xp": "-5", "cool_points": "0"}, "XP cannot be negative"),
-            ({"xp": "0", "cool_points": "-1"}, "Cool Points cannot be negative"),
-            ({"xp": "0", "cool_points": "0"}, "Enter at least one value greater than zero"),
-        ],
-        ids=["negative-xp", "negative-cool-points", "all-zero"],
-    )
-    def test_rejects_amounts_below_one_without_calling_the_api(
-        self, app, fake_vclient, form_data: dict, expected_error: str
-    ) -> None:
-        """Verify zero and negative amounts return an error and send nothing."""
-        # When submitting the form data
+    @staticmethod
+    def _submit(app, form_data: dict) -> list[str]:
         with app.test_request_context():
             session["company_id"] = "company-1"
             session["user_id"] = "st1"
-            errors = validate_and_submit_experience(form_data, user_id="u1", campaign_id="c1")
+            return validate_and_submit_experience(form_data, user_id="u1", campaign_id="c1")
 
-        # Then the error is returned and the API is not called
-        assert errors == [expected_error]
+    @pytest.mark.parametrize(
+        "form_data",
+        [
+            pytest.param({"xp": "-5", "cool_points": "0"}, id="negative-xp"),
+            pytest.param({"xp": "0", "cool_points": "-1"}, id="negative-cool-points"),
+            pytest.param({"xp": "0", "cool_points": "0"}, id="all-zero"),
+            pytest.param({"xp": "abc", "cool_points": "1"}, id="non-integer-xp"),
+            pytest.param({"xp": "1", "cool_points": "1.5"}, id="non-integer-cool-points"),
+        ],
+    )
+    def test_rejects_invalid_amounts_without_calling_the_api(
+        self, app, fake_vclient, form_data: dict
+    ) -> None:
+        """Verify non-integer, zero, and negative amounts return an error and send nothing."""
+        assert len(self._submit(app, form_data)) == 1
         assert fake_vclient.requests == []
 
-    def test_submits_only_positive_amounts(self, app, fake_vclient, mocker) -> None:
-        """Verify a positive XP amount is sent and a zero cool point amount is skipped."""
-        # Given the cache clear is stubbed
-        mocker.patch("vweb.lib.api.cache.global_context.clear_current")
+    @pytest.mark.parametrize(
+        ("xp", "cool_points"),
+        [(3, 0), (0, 2), (3, 2)],
+        ids=["xp-only", "cool-points-only", "both"],
+    )
+    def test_submits_only_positive_amounts(
+        self, app, fake_vclient, mocker, xp: int, cool_points: int
+    ) -> None:
+        """Verify each positive amount is granted as the signed-in user and zero ones are skipped."""
+        clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
 
-        # When submitting 3 XP and no cool points
-        with app.test_request_context():
-            session["company_id"] = "company-1"
-            session["user_id"] = "st1"
-            errors = validate_and_submit_experience(
-                {"xp": "3", "cool_points": "0"}, user_id="u1", campaign_id="c1"
-            )
+        errors = self._submit(app, {"xp": str(xp), "cool_points": str(cool_points)})
 
-        # Then only XP is added, as the signed-in user
         assert errors == []
-        (request,) = fake_vclient.assert_called(
-            Routes.USERS_EXPERIENCE_XP_ADD,
-            params={"company_id": "company-1", "user_id": "u1"},
-            json={"amount": 3, "campaign_id": "c1"},
-            times=1,
-        )
-        assert request.headers["on-behalf-of"] == "st1"
-        fake_vclient.assert_not_called(Routes.USERS_EXPERIENCE_CP_ADD)
+        clear.assert_called_once()
+        for route, amount in (
+            (Routes.USERS_EXPERIENCE_XP_ADD, xp),
+            (Routes.USERS_EXPERIENCE_CP_ADD, cool_points),
+        ):
+            if amount:
+                (request,) = fake_vclient.assert_called(
+                    route,
+                    params={"company_id": "company-1", "user_id": "u1"},
+                    json={"amount": amount, "campaign_id": "c1"},
+                    times=1,
+                )
+                assert request.headers["on-behalf-of"] == "st1"
+            else:
+                fake_vclient.assert_not_called(route)
 
-    def test_refused_xp_returns_field_error_and_skips_cool_points(self, app, fake_vclient) -> None:
-        """Verify an API field error on XP is returned and cool points are not sent."""
-        # Given an XP grant the API refuses
-        fake_vclient.set_error(
-            Routes.USERS_EXPERIENCE_XP_ADD,
-            status_code=400,
-            invalid_parameters=[
-                {"field": "amount", "message": "Input should be less than or equal to 10000"}
-            ],
-        )
-
-        # When submitting both amounts
-        with app.test_request_context():
-            session["company_id"] = "company-1"
-            session["user_id"] = "st1"
-            errors = validate_and_submit_experience(
+    @pytest.mark.parametrize(
+        ("refused_route", "form_data", "xp_reset", "cache_cleared"),
+        [
+            # A refused XP grant stops before cool points
+            pytest.param(
+                Routes.USERS_EXPERIENCE_XP_ADD,
                 {"xp": "99999", "cool_points": "1"},
-                user_id="u1",
-                campaign_id="c1",
-            )
+                False,
+                False,
+                id="xp",
+            ),
+            # XP already landed, so XP resets to stop a resubmit granting it twice
+            pytest.param(
+                Routes.USERS_EXPERIENCE_CP_ADD,
+                {"xp": "5", "cool_points": "99"},
+                True,
+                True,
+                id="cp-after-xp",
+            ),
+            pytest.param(
+                Routes.USERS_EXPERIENCE_CP_ADD,
+                {"xp": "0", "cool_points": "99"},
+                False,
+                False,
+                id="cp-alone",
+            ),
+        ],
+    )
+    def test_refused_grant_shows_the_api_reason(
+        self, app, fake_vclient, mocker, *, refused_route, form_data, xp_reset, cache_cleared
+    ) -> None:
+        """Verify an API refusal shows its reason and only resets XP once XP was granted."""
+        fake_vclient.set_error(
+            refused_route,
+            status_code=400,
+            invalid_parameters=[{"field": "amount", "message": "Too many"}],
+        )
+        clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
+        xp_before = form_data["xp"]
 
-        # Then the field error is returned and cool points are not granted
-        assert errors == ["XP: Input should be less than or equal to 10000"]
-        fake_vclient.assert_called(Routes.USERS_EXPERIENCE_XP_ADD, json_subset={"amount": 99999})
+        errors = self._submit(app, form_data)
+
+        assert len(errors) == 1
+        assert "Too many" in errors[0]
+        assert form_data["xp"] == ("0" if xp_reset else xp_before)
+        assert clear.called is cache_cleared
+        if refused_route == Routes.USERS_EXPERIENCE_XP_ADD:
+            fake_vclient.assert_not_called(Routes.USERS_EXPERIENCE_CP_ADD)
+
+    @pytest.mark.parametrize(
+        ("failing_route", "form_data", "xp_reset"),
+        [
+            pytest.param(
+                Routes.USERS_EXPERIENCE_XP_ADD, {"xp": "3", "cool_points": "2"}, True, id="xp"
+            ),
+            pytest.param(
+                Routes.USERS_EXPERIENCE_CP_ADD,
+                {"xp": "5", "cool_points": "2"},
+                True,
+                id="cp-after-xp",
+            ),
+            pytest.param(
+                Routes.USERS_EXPERIENCE_CP_ADD,
+                {"xp": "0", "cool_points": "2"},
+                False,
+                id="cp-alone",
+            ),
+        ],
+    )
+    def test_server_error_is_an_unknown_outcome(
+        self, app, fake_vclient, mocker, failing_route, form_data, xp_reset
+    ) -> None:
+        """Verify a 5xx, which may follow an applied grant, asks the user to check the total.
+
+        The context is refreshed, XP resets so a resubmit cannot grant it twice, and the
+        server's detail is never shown.
+        """
+        fake_vclient.set_error(failing_route, status_code=500, detail="db exploded")
+        clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
+        xp_before = form_data["xp"]
+
+        errors = self._submit(app, form_data)
+
+        assert len(errors) == 1
+        assert "db exploded" not in errors[0]
+        assert form_data["xp"] == ("0" if xp_reset else xp_before)
+        clear.assert_called_once()
+        if failing_route == Routes.USERS_EXPERIENCE_XP_ADD:
+            fake_vclient.assert_not_called(Routes.USERS_EXPERIENCE_CP_ADD)
+
+    def test_unreachable_api_is_an_unknown_outcome(self, app, fake_vclient, mocker) -> None:
+        """Verify a network failure is reported, not raised, and resets XP like a 5xx."""
+        fake_vclient.set_connection_error(Routes.USERS_EXPERIENCE_XP_ADD)
+        clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
+        form_data = {"xp": "5", "cool_points": "2"}
+
+        errors = self._submit(app, form_data)
+
+        assert len(errors) == 1
+        assert form_data["xp"] == "0"
         fake_vclient.assert_not_called(Routes.USERS_EXPERIENCE_CP_ADD)
-
-    def test_refused_cool_points_after_xp_reports_partial_grant(
-        self, app, fake_vclient, mocker
-    ) -> None:
-        """Verify a cool point failure after XP succeeds resets XP and clears the cache."""
-        # Given XP that succeeds and cool points the API refuses
-        fake_vclient.set_error(
-            Routes.USERS_EXPERIENCE_CP_ADD,
-            status_code=400,
-            invalid_parameters=[{"field": "amount", "message": "Too many"}],
-        )
-        clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
-        form_data = {"xp": "5", "cool_points": "99999"}
-
-        # When submitting both amounts
-        with app.test_request_context():
-            session["company_id"] = "company-1"
-            session["user_id"] = "st1"
-            errors = validate_and_submit_experience(form_data, user_id="u1", campaign_id="c1")
-
-        # Then the partial grant is reported, XP is reset, and the cache is cleared
-        assert errors == ["XP was granted, but cool points were not. Cool points: Too many"]
-        assert form_data["xp"] == "0"
         clear.assert_called_once()
-        fake_vclient.assert_called(Routes.USERS_EXPERIENCE_XP_ADD, json_subset={"amount": 5})
-        fake_vclient.assert_called(Routes.USERS_EXPERIENCE_CP_ADD, json_subset={"amount": 99999})
-
-    def test_refused_xp_bound_reads_as_xp_sentence(self, app, fake_vclient) -> None:
-        """Verify an API bound on the XP amount names XP instead of the amount field."""
-        # Given an XP grant the API refuses with its constraint text
-        fake_vclient.set_error(
-            Routes.USERS_EXPERIENCE_XP_ADD,
-            status_code=400,
-            detail="Validation failed for one or more fields.",
-            invalid_parameters=[{"field": "amount", "message": "Must be at most 10000."}],
-        )
-
-        # When submitting XP
-        with app.test_request_context():
-            session["company_id"] = "company-1"
-            session["user_id"] = "st1"
-            errors = validate_and_submit_experience(
-                {"xp": "99999", "cool_points": "0"},
-                user_id="u1",
-                campaign_id="c1",
-            )
-
-        # Then the message names XP and the bound from the API
-        assert errors == ["XP: Must be at most 10000."]
-
-    def test_unreachable_api_on_cool_points_after_xp_reports_partial_grant(
-        self, app, mocker
-    ) -> None:
-        """Verify a network failure on cool points after XP succeeds is reported, not raised."""
-        # Given XP that succeeds and a cool point call that cannot reach the API
-        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
-        users_service.add_cool_points.side_effect = APIConnectionError(
-            "Could not reach the API: down"
-        )
-        clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
-        form_data = {"xp": "5", "cool_points": "2"}
-
-        # When submitting both amounts
-        with app.test_request_context():
-            session["company_id"] = "company-1"
-            session["user_id"] = "st1"
-            errors = validate_and_submit_experience(form_data, user_id="u1", campaign_id="c1")
-
-        # Then the unknown outcome is reported and XP is reset so a retry cannot grant it twice
-        assert errors == [_COOL_POINTS_UNCONFIRMED_AFTER_XP]
-        assert form_data["xp"] == "0"
-        clear.assert_called_once()
-
-    def test_unreachable_api_on_cool_points_alone_reports_unknown_outcome(
-        self, app, mocker
-    ) -> None:
-        """Verify a network failure on cool points says the outcome is unknown."""
-        # Given a cool point call that cannot reach the API and no XP requested
-        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
-        users_service.add_cool_points.side_effect = APIConnectionError(
-            "Could not reach the API: down"
-        )
-        clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
-
-        # When submitting only cool points
-        with app.test_request_context():
-            session["company_id"] = "company-1"
-            session["user_id"] = "st1"
-            errors = validate_and_submit_experience(
-                {"xp": "0", "cool_points": "2"}, user_id="u1", campaign_id="c1"
-            )
-
-        # Then the user is told to check before resubmitting
-        assert errors == [_COOL_POINTS_UNCONFIRMED]
-        clear.assert_called_once()
-
-    def test_unreachable_api_on_xp_reports_unknown_outcome(self, app, mocker) -> None:
-        """Verify a network failure on XP is reported, not raised, and skips cool points."""
-        # Given an XP call that cannot reach the API
-        users_service = mocker.patch("vweb.lib.api_services.users_service").return_value
-        users_service.add_xp.side_effect = APIConnectionError("Could not reach the API: timed out")
-        clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
-        form_data = {"xp": "5", "cool_points": "2"}
-
-        # When submitting both amounts
-        with app.test_request_context():
-            session["company_id"] = "company-1"
-            session["user_id"] = "st1"
-            errors = validate_and_submit_experience(form_data, user_id="u1", campaign_id="c1")
-
-        # Then the user is told to check XP and cool points are not attempted
-        assert errors == [
-            "Could not confirm the XP grant. Check the user's XP before submitting again."
-        ]
-        users_service.add_cool_points.assert_not_called()
-        clear.assert_called_once()
-        assert form_data["xp"] == "0"
-
-    def test_server_error_on_xp_reports_unknown_outcome(self, app, fake_vclient, mocker) -> None:
-        """Verify a 500 on XP is treated as an unknown outcome without the API detail."""
-        # Given an XP grant that fails server-side, possibly after the grant was applied
-        fake_vclient.set_error(
-            Routes.USERS_EXPERIENCE_XP_ADD, status_code=500, detail="db exploded"
-        )
-        clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
-        form_data = {"xp": "3", "cool_points": "0"}
-
-        # When submitting XP
-        with app.test_request_context():
-            session["company_id"] = "company-1"
-            session["user_id"] = "st1"
-            errors = validate_and_submit_experience(form_data, user_id="u1", campaign_id="c1")
-
-        # Then the user is told to check XP, and XP is reset so a retry cannot grant it twice
-        assert errors == [
-            "Could not confirm the XP grant. Check the user's XP before submitting again."
-        ]
-        assert form_data["xp"] == "0"
-        clear.assert_called_once()
-
-    def test_server_error_on_cool_points_after_xp_reports_unknown_outcome(
-        self, app, fake_vclient, mocker
-    ) -> None:
-        """Verify a 500 on cool points after XP succeeds is treated as an unknown outcome."""
-        # Given XP that succeeds and a cool point grant that fails server-side
-        fake_vclient.set_error(Routes.USERS_EXPERIENCE_CP_ADD, status_code=502)
-        mocker.patch("vweb.lib.api.cache.global_context.clear_current")
-        form_data = {"xp": "5", "cool_points": "2"}
-
-        # When submitting both amounts
-        with app.test_request_context():
-            session["company_id"] = "company-1"
-            session["user_id"] = "st1"
-            errors = validate_and_submit_experience(form_data, user_id="u1", campaign_id="c1")
-
-        # Then the user is told to check cool points and XP is reset
-        assert errors == [_COOL_POINTS_UNCONFIRMED_AFTER_XP]
-        assert form_data["xp"] == "0"
-
-    def test_refused_cool_points_alone_returns_field_error(self, app, fake_vclient, mocker) -> None:
-        """Verify a cool point refusal with no XP returns the field message and keeps the cache."""
-        # Given cool points the API refuses and no XP requested
-        fake_vclient.set_error(
-            Routes.USERS_EXPERIENCE_CP_ADD,
-            status_code=400,
-            invalid_parameters=[{"field": "amount", "message": "Too many"}],
-        )
-        clear = mocker.patch("vweb.lib.api.cache.global_context.clear_current")
-
-        # When submitting only cool points
-        with app.test_request_context():
-            session["company_id"] = "company-1"
-            session["user_id"] = "st1"
-            errors = validate_and_submit_experience(
-                {"xp": "0", "cool_points": "5"}, user_id="u1", campaign_id="c1"
-            )
-
-        # Then the field message is returned and nothing else happens
-        assert errors == ["Cool points: Too many"]
-        fake_vclient.assert_not_called(Routes.USERS_EXPERIENCE_XP_ADD)
-        clear.assert_not_called()
 
 
 def test_count_notes_returns_api_total(app, fake_vclient) -> None:

@@ -182,11 +182,9 @@ def _link_term_in_text(
 
     # Escape the externally sourced URL once so quotes cannot break out of href.
     escaped_link = escape(term.link) if is_http_url(term.link) else ""
-    detail_url = (
-        escape(url_for("dictionary.term_detail", term_id=term.id))
-        if term.definition and link_type == "html"
-        else ""
-    )
+    detail_url = url_for("dictionary.term_detail", term_id=term.id) if term.definition else ""
+    if link_type == "html":
+        detail_url = escape(detail_url)
 
     for pattern in patterns:
         if term.definition:
@@ -200,7 +198,7 @@ def _link_term_in_text(
                 )
             else:
                 value = pattern.sub(
-                    lambda m: f"[{m.group(0)}]({url_for('dictionary.term', term=term.term)})",
+                    lambda m: f"[{m.group(0)}]({detail_url})",
                     value,
                 )
         elif escaped_link:

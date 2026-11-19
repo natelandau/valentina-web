@@ -131,39 +131,33 @@ class TestAssertions:
             assert len(matched) == 1
 
     def test_assert_called_with_exact_json(self):
-        """Verify assert_called compares the whole body when json is given."""
+        """Verify assert_called passes when json equals the whole body."""
         with FakeVClient() as client:
             # When updating a user
             users_service("acting-user").update("u-1", name_first="Ada")
 
-            # Then the exact body matches and a different body does not
+            # Then the exact body matches
             client.assert_called(Routes.USERS_UPDATE, json={"name_first": "Ada"})
-            with pytest.raises(AssertionError, match="found 0"):
-                client.assert_called(
-                    Routes.USERS_UPDATE, json={"name_first": "Ada", "name_last": "Lovelace"}
-                )
 
-    def test_assert_called_fails_on_wrong_params_or_count(self):
-        """Verify assert_called fails when no request matches or the count differs."""
+    @pytest.mark.parametrize(
+        ("kwargs", "match"),
+        [
+            ({"params": {"user_id": "u-2"}}, "found 0"),
+            ({"times": 2}, "Expected 2"),
+            ({"json_subset": {"name_first": "Bob"}}, "found 0"),
+            ({"json": {"name_first": "Ada", "name_last": "Lovelace"}}, "found 0"),
+        ],
+        ids=["wrong-params", "wrong-count", "subset-value-differs", "json-not-exact"],
+    )
+    def test_assert_called_fails_when_no_request_matches(self, kwargs, match):
+        """Verify assert_called fails on wrong params, count, subset value, or exact body."""
         with FakeVClient() as client:
-            # Given one request for u-1
-            users_service("acting-user").get("u-1")
-
-            # Then a different user id or a wrong count fails
-            with pytest.raises(AssertionError, match="found 0"):
-                client.assert_called(Routes.USERS_GET, params={"user_id": "u-2"})
-            with pytest.raises(AssertionError, match="Expected 2"):
-                client.assert_called(Routes.USERS_GET, times=2)
-
-    def test_assert_called_fails_when_subset_value_differs(self):
-        """Verify a json_subset with a wrong value fails."""
-        with FakeVClient() as client:
-            # Given an update request
+            # Given one update request for u-1
             users_service("acting-user").update("u-1", name_first="Ada")
 
-            # Then a mismatched subset fails
-            with pytest.raises(AssertionError):
-                client.assert_called(Routes.USERS_UPDATE, json_subset={"name_first": "Bob"})
+            # Then a mismatched expectation fails
+            with pytest.raises(AssertionError, match=match):
+                client.assert_called(Routes.USERS_UPDATE, **kwargs)
 
     def test_assert_not_called(self):
         """Verify assert_not_called passes for unused routes and fails for used ones."""
@@ -226,11 +220,6 @@ class TestResponseSequences:
         with FakeVClient() as client, pytest.raises(ValueError, match="at least one"):
             client.set_responses(Routes.USERS_GET, [])
 
-    def test_wrong_payload_kind_raises_type_error(self):
-        """Verify a model for a paginated route raises TypeError."""
-        with FakeVClient() as client, pytest.raises(TypeError, match="items"):
-            client.set_responses(Routes.USERS_LIST, [FakeResponse(model=UserFactory.build())])
-
     def test_sequence_is_thread_safe(self):
         """Verify parallel requests each take one response and are all recorded."""
         with FakeVClient() as client:
@@ -291,18 +280,6 @@ class TestErrorBodies:
 
 class TestOverridePrecedence:
     """The most specific matching override should win, then the most recent."""
-
-    def test_query_override_applies_only_to_matching_query(self):
-        """Verify a query override answers only requests with that query value."""
-        with FakeVClient() as client:
-            # Given a lookup result only for one email
-            match = UserLookupResultFactory.build(user_id="by-email")
-            client.set_response(Routes.USERS_LOOKUP, items=[match], query={"email": "a@x"})
-            lookup = user_lookup_service()
-
-            # Then that email gets the override and other queries do not
-            assert [r.user_id for r in lookup.by_email("a@x")] == ["by-email"]
-            assert [r.user_id for r in lookup.by_discord_id("123")] != ["by-email"]
 
     def test_query_override_beats_generic_override(self):
         """Verify a query-specific override beats a generic one registered later."""

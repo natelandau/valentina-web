@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from flask import session
 
 from tests.helpers import seed_session
+from vweb.api_client.constants import ON_BEHALF_OF_HEADER
 from vweb.lib import api_services
 from vweb.lib.api_services import NoRequestScopeError
 
@@ -18,67 +19,63 @@ if TYPE_CHECKING:
 
     from vweb.api_client.services.base import BaseService
 
-USER_SCOPED: list[tuple[str, Callable[[], BaseService], dict[str, str]]] = [
-    ("users", api_services.users, {}),
-    ("campaigns", api_services.campaigns, {}),
-    ("books", lambda: api_services.books("camp-1"), {"campaign_id": "camp-1"}),
-    (
-        "chapters",
-        lambda: api_services.chapters("camp-1", "book-1"),
-        {"campaign_id": "camp-1", "book_id": "book-1"},
-    ),
-    ("characters", api_services.characters, {}),
-    (
-        "character_traits",
-        lambda: api_services.character_traits("char-1"),
-        {"character_id": "char-1"},
-    ),
-    ("dicerolls", api_services.dicerolls, {}),
-    ("character_autogen", api_services.character_autogen, {}),
+USER_SCOPED: list[tuple[str, Callable[[], Any], tuple[str, ...]]] = [
+    ("users", api_services.users, ()),
+    ("campaigns", api_services.campaigns, ()),
+    ("books", lambda: api_services.books("camp-1"), ("camp-1",)),
+    ("chapters", lambda: api_services.chapters("camp-1", "book-1"), ("camp-1", "book-1")),
+    ("characters", api_services.characters, ()),
+    ("character_traits", lambda: api_services.character_traits("char-1"), ("char-1",)),
+    ("dicerolls", api_services.dicerolls, ()),
+    ("character_autogen", api_services.character_autogen, ()),
 ]
 
-COMPANY_SCOPED: list[tuple[str, Callable[[], BaseService]]] = [
-    ("character_blueprint", api_services.character_blueprint),
-    ("dictionary", api_services.dictionary),
-    ("options", api_services.options),
+COMPANY_SCOPED: list[tuple[str, Callable[[], BaseService], Callable[[Any], object]]] = [
+    ("character_blueprint", api_services.character_blueprint, lambda svc: svc.list_all_concepts()),
+    ("dictionary", api_services.dictionary, lambda svc: svc.list_all()),
+    ("options", api_services.options, lambda svc: svc.get_options()),
 ]
 
 
 @pytest.mark.parametrize(
-    ("build", "scope"), [s[1:] for s in USER_SCOPED], ids=[s[0] for s in USER_SCOPED]
+    ("build", "path_ids"), [s[1:] for s in USER_SCOPED], ids=[s[0] for s in USER_SCOPED]
 )
-def test_user_scoped_service_uses_session_company_and_user(
+def test_user_scoped_service_acts_as_session_user(
     app: Flask,
     fake_vclient,
-    build: Callable[[], BaseService],
-    scope: dict[str, str],
+    build: Callable[[], Any],
+    path_ids: tuple[str, ...],
 ) -> None:
-    """Verify each user-scoped accessor acts as the session user in the session company."""
+    """Verify each user-scoped accessor calls the session company as the session user."""
     with app.test_request_context():
         seed_session(user_id="u-1", company_id="co-1")
 
-        svc = build()
+        build().list_all()
 
-    assert svc._on_behalf_of == "u-1"
-    assert svc._scope == {"company_id": "co-1", **scope}
+    request = fake_vclient.requests[-1]
+    assert request.headers.get(ON_BEHALF_OF_HEADER.lower()) == "u-1"
+    for expected in ("co-1", *path_ids):
+        assert f"/{expected}/" in f"{request.path}/"
 
 
 @pytest.mark.parametrize(
-    "build", [s[1] for s in COMPANY_SCOPED], ids=[s[0] for s in COMPANY_SCOPED]
+    ("build", "call"), [s[1:] for s in COMPANY_SCOPED], ids=[s[0] for s in COMPANY_SCOPED]
 )
 def test_company_scoped_service_sends_no_on_behalf_of(
     app: Flask,
     fake_vclient,
     build: Callable[[], BaseService],
+    call: Callable[[Any], object],
 ) -> None:
-    """Verify company-wide accessors use the session company and send no On-Behalf-Of user."""
+    """Verify company-wide accessors call the session company with no On-Behalf-Of user."""
     with app.test_request_context():
         seed_session(user_id="u-1", company_id="co-1")
 
-        svc = build()
+        call(build())
 
-    assert svc._on_behalf_of is None
-    assert svc._scope == {"company_id": "co-1"}
+    request = fake_vclient.requests[-1]
+    assert ON_BEHALF_OF_HEADER.lower() not in request.headers
+    assert "/co-1/" in request.path
 
 
 @pytest.mark.parametrize("build", [s[1] for s in USER_SCOPED], ids=[s[0] for s in USER_SCOPED])

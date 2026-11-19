@@ -6,15 +6,18 @@ import json
 import re
 import time
 from html.parser import HTMLParser
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import pytest
 
-from tests.conftest import get_csrf
-from tests.helpers import assert_shows_error, build_global_context, setup_form_options
+from tests.conftest import htmx_post
+from tests.helpers import assert_shows_error, session_flashes, setup_form_options
 from vweb.api_client.testing import (
+    BulkAssignTraitFailureFactory,
+    BulkAssignTraitResponseFactory,
     CharacterConceptFactory,
     CharacterFactory,
+    CompanyFactory,
     Routes,
     VampireClanFactory,
     WerewolfAuspiceFactory,
@@ -22,7 +25,18 @@ from vweb.api_client.testing import (
 )
 
 if TYPE_CHECKING:
-    from flask.testing import TestResponse
+    from collections.abc import Callable
+
+    from flask.testing import FlaskClient, TestResponse
+
+    from vweb.api_client.models import Campaign, Character
+
+_PROFILE = {
+    "name_first": "Ada",
+    "name_last": "Lovelace",
+    "game_version": "V5",
+    "character_class": "MORTAL",
+}
 
 
 def _mock_form_options(mocker) -> None:
@@ -40,33 +54,70 @@ def _mock_form_options(mocker) -> None:
     )
 
 
+@pytest.fixture
+def use_campaign(mocker, use_context) -> Callable[..., Campaign]:
+    """Return a function that serves a context and the form options, returning its campaign."""
+
+    def _use(
+        role: str = "PLAYER",
+        *,
+        characters: list[Character] | None = None,
+        manage_npc: Literal["UNRESTRICTED", "STORYTELLER"] = "STORYTELLER",
+    ) -> Campaign:
+        company = CompanyFactory.build()
+        company.settings.permission_manage_npc = manage_npc
+        ctx = use_context(user_role=role, company=company, characters=characters)
+        _mock_form_options(mocker)
+        return ctx.campaigns[0]
+
+    return _use
+
+
+def _post_profile(
+    client: FlaskClient, campaign_id: str, query: str = "", **fields: str
+) -> TestResponse:
+    return htmx_post(
+        client, f"/campaign/{campaign_id}/characters/profile_edit{query}", {**_PROFILE, **fields}
+    )
+
+
+def _seed_temp_character(client: FlaskClient, char_id: str, *, age_seconds: float = 0) -> None:
+    with client.session_transaction() as sess:
+        sess["temp_character_id"] = char_id
+        sess["temp_character_created_at"] = time.time() - age_seconds
+
+
+def _offered_character_types(body: str) -> list[str]:
+    select = re.search(r'<select name="character_type".*?</select>', body, re.DOTALL)
+    if select:
+        return re.findall(r'<option value="([A-Z]+)"', select.group(0))
+    hidden = re.search(r'<input type="hidden" name="character_type" value="([A-Z]+)"', body)
+    return [hidden.group(1)] if hidden else []
+
+
 class TestManualProfileView:
     """Tests for GET /campaign/<id>/characters/profile_edit."""
 
-    def test_renders_profile_form(self, client, mocker) -> None:
+    def test_renders_profile_form(self, client, use_campaign) -> None:
         """Verify the profile form renders for an authenticated player."""
         # Given a campaign in global context
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
+        campaign = use_campaign()
 
         # When requesting the profile form
         response = client.get(f"/campaign/{campaign.id}/characters/profile_edit")
 
-        # Then the page renders successfully with form fields
-        assert response.status_code == 200
+        # Then the page renders with the profile fields
         body = response.get_data(as_text=True)
-        assert "name_first" in body
-        assert "character_class" in body
+        assert 'name="name_first"' in body
+        assert 'name="character_class"' in body
 
-    def test_options_without_game_versions_are_not_hidden(self, client, mocker) -> None:
+    def test_options_without_game_versions_are_not_hidden(
+        self, client, mocker, use_campaign
+    ) -> None:
         """Verify options with an empty game_versions list are never hidden by the version filter."""
         # Given form options where werewolf tribes/auspices carry no game_versions
         # (the real blueprint data leaves these untagged, unlike vampire clans)
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        campaign = use_campaign()
         setup_form_options(
             mocker,
             "vweb.routes.character_create.manual_views.fetch_form_options",
@@ -97,82 +148,33 @@ class TestManualProfileView:
         # Then 404 is returned
         assert response.status_code == 404
 
-    def test_character_type_hidden_for_restricted_player(self, client, mocker) -> None:
-        """Verify a restricted player gets no type dropdown, only a hidden PLAYER input."""
-        # Given a PLAYER user under the default storyteller-only NPC setting
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
+    @pytest.mark.parametrize(
+        ("role", "manage_npc", "expected_types"),
+        [
+            ("PLAYER", "STORYTELLER", ["PLAYER"]),
+            ("PLAYER", "UNRESTRICTED", ["PLAYER", "NPC"]),
+            ("STORYTELLER", "STORYTELLER", ["PLAYER", "NPC", "STORYTELLER"]),
+        ],
+        ids=["restricted-player", "unrestricted-player", "storyteller"],
+    )
+    def test_offers_only_permitted_character_types(
+        self, client, use_campaign, role, manage_npc, expected_types
+    ) -> None:
+        """Verify the type choice offers only the types the user may assign."""
+        # Given a user with the given role and NPC setting
+        campaign = use_campaign(role, manage_npc=manage_npc)
 
         # When requesting the profile form
         response = client.get(f"/campaign/{campaign.id}/characters/profile_edit")
 
-        # Then no select is rendered and a hidden PLAYER input carries the type
-        body = response.get_data(as_text=True)
-        assert '<select name="character_type"' not in body
-        assert 'type="hidden"' in body
-        assert 'name="character_type"' in body
-        assert 'value="PLAYER"' in body
+        # Then only the permitted types are offered
+        offered = _offered_character_types(response.get_data(as_text=True))
+        assert sorted(offered) == sorted(expected_types)
 
-    def test_character_type_includes_storyteller_for_storyteller(self, client, mocker) -> None:
-        """Verify storytellers see the STORYTELLER option in the character_type dropdown."""
-        # Given a STORYTELLER user
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
-
-        # When requesting the profile form
-        response = client.get(f"/campaign/{campaign.id}/characters/profile_edit")
-
-        # Then the dropdown includes the STORYTELLER option
-        body = response.get_data(as_text=True)
-        assert 'name="character_type"' in body
-        assert 'value="STORYTELLER"' in body
-
-    def test_character_type_shows_npc_for_unrestricted_player(self, client, mocker) -> None:
-        """Verify a player sees PLAYER and NPC (not STORYTELLER) when NPC mgmt is UNRESTRICTED."""
-        # Given a PLAYER user under an UNRESTRICTED permission_manage_npc setting
-        from vweb.api_client.models.companies import CompanySettings
-        from vweb.api_client.testing import CompanyFactory
-
-        company = CompanyFactory.build(
-            name="Test Company",
-            settings=CompanySettings(
-                id="settings-1",
-                character_autogen_xp_cost=0,
-                character_autogen_num_choices=3,
-                character_autogen_starting_points=0,
-                permission_manage_campaign="STORYTELLER",
-                permission_manage_npc="UNRESTRICTED",
-                permission_grant_xp="STORYTELLER",
-                permission_free_trait_changes="STORYTELLER",
-                permission_recoup_xp="DENIED",
-            ),
-        )
-        ctx = build_global_context(user_role="PLAYER", company=company)
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
-
-        # When requesting the profile form
-        response = client.get(f"/campaign/{campaign.id}/characters/profile_edit")
-
-        # Then the dropdown is present with PLAYER and NPC but not STORYTELLER
-        body = response.get_data(as_text=True)
-        assert '<select name="character_type"' in body
-        assert 'value="PLAYER"' in body
-        assert 'value="NPC"' in body
-        assert 'value="STORYTELLER"' not in body
-
-    def test_prefills_from_query_params(self, client, mocker) -> None:
+    def test_prefills_from_query_params(self, client, use_campaign) -> None:
         """Verify form is prefilled from query parameters (back button support)."""
         # Given a campaign
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
+        campaign = use_campaign()
 
         # When requesting with query params
         response = client.get(
@@ -184,13 +186,10 @@ class TestManualProfileView:
         assert 'value="Ada"' in body
         assert 'value="Lovelace"' in body
 
-    def test_query_values_stay_inside_alpine_string_literals(self, client, mocker) -> None:
+    def test_query_values_stay_inside_alpine_string_literals(self, client, use_campaign) -> None:
         """Verify quote characters in query values cannot break out of the x-data expression."""
         # Given a campaign
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
+        campaign = use_campaign()
         payload = "';alert(1);'\""
 
         # When a link carries quote characters in the prefilled class and version
@@ -206,48 +205,115 @@ class TestManualProfileView:
             assert literal is not None
             assert json.loads(literal.group(1)) == payload
 
-    def test_create_post_inline_errors_on_api_rejection(self, client, mocker, fake_vclient) -> None:
-        """Verify an API rejection of a submitted character type shows an inline error."""
-        # Given a player whose crafted character_type the API will reject
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
-        fake_vclient.set_error(Routes.CHARACTERS_CREATE, status_code=403)
 
-        csrf = get_csrf(client)
+class TestResumeTempCharacter:
+    """Tests for returning to the profile step of an in-progress character."""
 
-        # When submitting the profile form with a forbidden character_type
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit",
-            data={
-                "name_first": "Ada",
-                "name_last": "Lovelace",
-                "game_version": "V5",
-                "character_class": "MORTAL",
-                "character_type": "STORYTELLER",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
+    def test_resume_prefills_from_temp_character(self, client, use_campaign, fake_vclient) -> None:
+        """Verify resuming shows the in-progress character's saved profile."""
+        # Given an in-progress character in the session
+        campaign = use_campaign()
+        fake_vclient.set_response(
+            Routes.CHARACTERS_GET,
+            model=CharacterFactory.build(id="temp-1", name_first="Saved", name_last="Draft"),
+            params={"character_id": "temp-1"},
+        )
+        _seed_temp_character(client, "temp-1")
+
+        # When resuming the profile step
+        response = client.get(f"/campaign/{campaign.id}/characters/profile_edit?resume=1")
+
+        # Then the saved profile fills the form and the draft stays in the session
+        body = response.get_data(as_text=True)
+        assert 'value="Saved"' in body
+        assert 'value="Draft"' in body
+        with client.session_transaction() as sess:
+            assert sess["temp_character_id"] == "temp-1"
+
+    def test_resume_falls_back_when_draft_cannot_load(
+        self, client, use_campaign, fake_vclient
+    ) -> None:
+        """Verify a draft the API cannot return is dropped and the query values are used."""
+        # Given an in-progress character the API no longer returns
+        campaign = use_campaign()
+        fake_vclient.set_error(Routes.CHARACTERS_GET, status_code=404)
+        _seed_temp_character(client, "temp-1")
+
+        # When resuming the profile step
+        response = client.get(
+            f"/campaign/{campaign.id}/characters/profile_edit?resume=1&name_first=Fallback"
         )
 
-        # Then the profile form re-renders with an inline error alert (not a 500)
-        assert response.status_code == 200
-        assert_shows_error(response)
+        # Then the query values fill the form and the stale draft is forgotten
+        assert 'value="Fallback"' in response.get_data(as_text=True)
+        with client.session_transaction() as sess:
+            assert "temp_character_id" not in sess
 
-    def test_create_post_inline_errors_on_validation_error(
-        self,
-        client,
-        mocker,
-        fake_vclient,
+    def test_fresh_visit_forgets_draft(self, client, use_campaign, fake_vclient) -> None:
+        """Verify opening the form without resume starts a new character."""
+        # Given an in-progress character in the session
+        campaign = use_campaign()
+        _seed_temp_character(client, "temp-1")
+
+        # When opening the form without resuming
+        client.get(f"/campaign/{campaign.id}/characters/profile_edit")
+
+        # Then the draft is forgotten and not fetched
+        with client.session_transaction() as sess:
+            assert "temp_character_id" not in sess
+        fake_vclient.assert_not_called(Routes.CHARACTERS_GET)
+
+
+class TestManualProfileCreate:
+    """Tests for POST /campaign/<id>/characters/profile_edit in create mode."""
+
+    def test_valid_profile_creates_temp_character(self, client, use_campaign, fake_vclient) -> None:
+        """Verify a valid profile creates a temporary character and moves on to traits."""
+        # Given an API that creates the draft
+        campaign = use_campaign()
+        fake_vclient.set_response(
+            Routes.CHARACTERS_CREATE, model=CharacterFactory.build(id="temp-new")
+        )
+
+        # When submitting the profile
+        response = _post_profile(client, campaign.id)
+
+        # Then a temporary character is created for the user and remembered in the session
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_CREATE,
+            json_subset={
+                **_PROFILE,
+                "campaign_id": campaign.id,
+                "is_temporary": True,
+                "user_player_id": "test-user-id",
+            },
+            times=1,
+        )
+        with client.session_transaction() as sess:
+            assert sess["temp_character_id"] == "temp-new"
+
+        # And the traits step posts to the finalize endpoint
+        body = response.get_data(as_text=True)
+        assert f"/campaign/{campaign.id}/characters/profile_edit/create" in body
+
+    def test_missing_name_rerenders_without_saving(
+        self, client, use_campaign, fake_vclient
     ) -> None:
-        """Verify a field-level validation error from the API renders inline."""
-        # Given a player whose submission the API rejects with field-level errors
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
+        """Verify an invalid profile keeps the user's input and is not sent to the API."""
+        # Given a campaign
+        campaign = use_campaign()
 
+        # When submitting without a first name
+        response = _post_profile(client, campaign.id, name_first="")
+
+        # Then the form keeps the entered values and nothing is created
+        assert 'value="Lovelace"' in response.get_data(as_text=True)
+        fake_vclient.assert_not_called(Routes.CHARACTERS_CREATE)
+
+    def test_api_field_error_shows_inline(self, client, use_campaign, fake_vclient) -> None:
+        """Verify a field-level validation error from the API is shown on the form."""
+        # Given an API that rejects the first name
+        campaign = use_campaign()
         fake_vclient.set_error(
             Routes.CHARACTERS_CREATE,
             status_code=400,
@@ -255,409 +321,182 @@ class TestManualProfileView:
             invalid_parameters=[{"field": "name_first", "message": "Name already taken"}],
         )
 
-        csrf = get_csrf(client)
+        # When submitting the profile
+        response = _post_profile(client, campaign.id)
 
-        # When submitting the profile form
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit",
-            data={
-                "name_first": "Ada",
-                "name_last": "Lovelace",
-                "game_version": "V5",
-                "character_class": "MORTAL",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
-        )
+        # Then the API's message is shown
+        assert "Name already taken" in response.get_data(as_text=True)
 
-        # Then the form re-renders with a field-level inline error (not a 500)
-        fake_vclient.assert_called(
-            Routes.CHARACTERS_CREATE, json_subset={"name_first": "Ada", "name_last": "Lovelace"}
-        )
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "text-error" in body
-        assert "Name already taken" in body
-
-    def test_create_post_inline_errors_on_invalid_character_type(self, client, mocker) -> None:
-        """Verify an invalid character_type value renders inline instead of a 500."""
+    def test_invalid_character_type_shows_error(self, client, use_campaign) -> None:
+        """Verify an unknown character_type value renders an inline error instead of a 500."""
         # Given a player crafting an invalid character_type enum value
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
-
-        csrf = get_csrf(client)
+        campaign = use_campaign()
 
         # When submitting the profile form with a bogus character_type
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit",
-            data={
-                "name_first": "Ada",
-                "name_last": "Lovelace",
-                "game_version": "V5",
-                "character_class": "MORTAL",
-                "character_type": "NOT_A_REAL_TYPE",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
-        )
+        response = _post_profile(client, campaign.id, character_type="NOT_A_REAL_TYPE")
 
-        # Then the form re-renders with an inline error alert (not a 500)
+        # Then the form re-renders with an error
         assert response.status_code == 200
         assert_shows_error(response)
 
-    def test_create_rejects_npc_for_restricted_player(self, client, mocker, fake_vclient) -> None:
-        """Verify a restricted player cannot create an NPC even with a crafted type."""
+    @pytest.mark.parametrize("character_type", ["NPC", "STORYTELLER"])
+    def test_player_cannot_create_privileged_type(
+        self, client, use_campaign, fake_vclient, character_type
+    ) -> None:
+        """Verify a restricted player cannot create an NPC or storyteller character."""
         # Given a PLAYER under the default storyteller-only NPC setting
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
-        csrf = get_csrf(client)
+        campaign = use_campaign()
 
-        # When submitting the profile form with a crafted NPC type
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit",
-            data={
-                "name_first": "Ada",
-                "name_last": "Lovelace",
-                "game_version": "V5",
-                "character_class": "MORTAL",
-                "character_type": "NPC",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
-        )
+        # When submitting the profile form with a crafted type
+        response = _post_profile(client, campaign.id, character_type=character_type)
 
         # Then the form re-renders with an error and no character is created
-        assert response.status_code == 200
         assert_shows_error(response)
         fake_vclient.assert_not_called(Routes.CHARACTERS_CREATE)
-
-    def test_create_rejects_storyteller_type_for_player(self, client, mocker, fake_vclient) -> None:
-        """Verify a non-storyteller cannot create a STORYTELLER-type character."""
-        # Given a PLAYER (STORYTELLER type is always privileged-only)
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
-        csrf = get_csrf(client)
-
-        # When submitting the profile form with a crafted STORYTELLER type
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit",
-            data={
-                "name_first": "Ada",
-                "name_last": "Lovelace",
-                "game_version": "V5",
-                "character_class": "MORTAL",
-                "character_type": "STORYTELLER",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
-        )
-
-        # Then the form re-renders with an error and no character is created
-        assert response.status_code == 200
-        assert_shows_error(response)
-        fake_vclient.assert_not_called(Routes.CHARACTERS_CREATE)
-
-
-class TestManualTraitsView:
-    """Tests for POST /campaign/<id>/characters/profile_edit/traits."""
-
-    def test_traits_stub_returns_placeholder(self, client, mocker) -> None:
-        """Verify the traits POST stub returns a placeholder response."""
-        # Given a campaign in global context
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        csrf = get_csrf(client)
-
-        # When posting to the traits stub URL
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit/traits",
-            data={"csrf_token": csrf},
-            headers={"HX-Request": "true"},
-        )
-
-        # Then the stub response is returned
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "coming soon" in body
-
-    def test_profile_post_rerenders_on_missing_name(self, client, mocker) -> None:
-        """Verify missing name_first on profile POST re-renders form with error."""
-        # Given a campaign
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
-        csrf = get_csrf(client)
-
-        # When posting to profile URL without name_first
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit",
-            data={
-                "name_last": "Lovelace",
-                "game_version": "V5",
-                "character_class": "MORTAL",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
-        )
-
-        # Then profile form is re-rendered with field-level error
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "text-error" in body
-
-    def test_profile_post_validates_vampire_requires_clan(self, client, mocker) -> None:
-        """Verify vampire class requires vampire_clan_id on profile POST."""
-        # Given a campaign
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
-        csrf = get_csrf(client)
-
-        # When posting vampire without clan to the profile URL
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit",
-            data={
-                "name_first": "Drac",
-                "name_last": "Ula",
-                "game_version": "V5",
-                "character_class": "VAMPIRE",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
-        )
-
-        # Then profile form is re-rendered with field-level error
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "text-error" in body
-
-    def test_profile_post_validates_hunter_requires_creed(self, client, mocker) -> None:
-        """Verify hunter class requires creed on profile POST."""
-        # Given a campaign
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
-        csrf = get_csrf(client)
-
-        # When posting hunter without creed to the profile URL
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit",
-            data={
-                "name_first": "Van",
-                "name_last": "Helsing",
-                "game_version": "V5",
-                "character_class": "HUNTER",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
-        )
-
-        # Then profile form is re-rendered with field-level error
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "text-error" in body
 
 
 class TestManualFinalizeView:
     """Tests for POST /campaign/<id>/characters/profile_edit/create."""
+
+    def _set_temp_character(self, fake_vclient, campaign_id: str, **kwargs) -> None:
+        fake_vclient.set_response(
+            Routes.CHARACTERS_GET,
+            model=CharacterFactory.build(
+                id="new-manual-char",
+                campaign_id=campaign_id,
+                is_temporary=True,
+                user_creator_id="test-user-id",
+                **kwargs,
+            ),
+            params={"character_id": "new-manual-char"},
+        )
+
+    def _post_finalize(self, client: FlaskClient, campaign_id: str) -> TestResponse:
+        return htmx_post(
+            client,
+            f"/campaign/{campaign_id}/characters/profile_edit/create",
+            {**_PROFILE, "trait:trait-1": "3", "trait:trait-2": "0"},
+        )
 
     @pytest.mark.parametrize(
         ("character_type", "player_id"),
         [("PLAYER", "test-user-id"), ("NPC", None), ("STORYTELLER", None)],
     )
     def test_creates_character_and_redirects(
-        self, client, mocker, fake_vclient, character_type: str, player_id: str | None
+        self, client, use_campaign, fake_vclient, character_type: str, player_id: str | None
     ) -> None:
-        """Verify successful creation redirects to the character sheet, with or without a player."""
-        from vweb.api_client.testing import BulkAssignTraitResponseFactory, Routes
-
-        # Given a campaign and a temp character the requester created, which has no player
+        """Verify finalizing assigns the chosen traits free and makes the character permanent."""
+        # Given a temp character the requester created, which has no player
         # when it is an NPC or storyteller character
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        temp_char = CharacterFactory.build(
-            id="new-manual-char",
-            campaign_id=campaign.id,
-            is_temporary=True,
-            type=character_type,
-            user_player_id=player_id,
-            user_creator_id="test-user-id",
-        )
-        fake_vclient.set_response(
-            Routes.CHARACTERS_GET,
-            model=temp_char,
-            params={"character_id": "new-manual-char"},
+        campaign = use_campaign()
+        self._set_temp_character(
+            fake_vclient, campaign.id, type=character_type, user_player_id=player_id
         )
         fake_vclient.set_response(
             Routes.CHARACTER_TRAITS_BULK_ASSIGN,
-            model=BulkAssignTraitResponseFactory.build(),
-            params={"character_id": "new-manual-char"},
+            model=BulkAssignTraitResponseFactory.build(failed=[]),
         )
-        fake_vclient.set_response(
+        _seed_temp_character(client, "new-manual-char")
+
+        # When submitting the finalize form
+        response = self._post_finalize(client, campaign.id)
+
+        # Then only the positive trait is assigned at no cost and the character is kept
+        [assign] = fake_vclient.requests_for(
+            Routes.CHARACTER_TRAITS_BULK_ASSIGN, params={"character_id": "new-manual-char"}
+        )
+        assert [(t["trait_id"], t["value"], t["currency"]) for t in assign.json] == [
+            ("trait-1", 3, "NO_COST")
+        ]
+        fake_vclient.assert_called(
             Routes.CHARACTERS_UPDATE,
-            model=temp_char,
             params={"character_id": "new-manual-char"},
+            json={"is_temporary": False},
+            times=1,
         )
 
-        with client.session_transaction() as sess:
-            sess["temp_character_id"] = "new-manual-char"
-            sess["temp_character_created_at"] = time.time()
-
-        csrf = get_csrf(client)
-
-        # When submitting the finalize form
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit/create",
-            data={
-                "name_first": "Ada",
-                "name_last": "Lovelace",
-                "game_version": "V5",
-                "character_class": "MORTAL",
-                "trait:trait-1": "3",
-                "trait:trait-2": "0",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
-        )
-
-        # Then character is finalized and redirect is set
-        assert response.status_code == 200
+        # And the user goes to the new character with the draft forgotten
         assert "/character/new-manual-char" in response.headers.get("HX-Redirect", "")
-
-    def test_redirects_to_profile_when_no_temp_character(self, client, mocker) -> None:
-        """Verify redirect to profile form when no temp_character_id in session."""
-        # Given a campaign but no temp character in session
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        csrf = get_csrf(client)
-
-        # When submitting the finalize form without a temp character
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit/create",
-            data={
-                "name_first": "Ada",
-                "name_last": "Lovelace",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
-        )
-
-        # Then redirect to profile is returned
-        assert response.status_code == 200
-        assert "profile_edit" in response.headers.get("HX-Redirect", "")
-
-    def test_rerenders_traits_on_api_error(self, client, mocker, fake_vclient) -> None:
-        """Verify API error re-renders traits form with error flash."""
-        from vweb.api_client.testing import CharacterFullSheetFactory, Routes
-
-        # Given a campaign and a failing API
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        temp_char = CharacterFactory.build(
-            id="new-manual-char",
-            campaign_id=campaign.id,
-            is_temporary=True,
-            user_player_id="test-user-id",
-            user_creator_id="test-user-id",
-        )
-        full_sheet = CharacterFullSheetFactory.build(id="new-manual-char")
-        fake_vclient.set_error(
-            Routes.CHARACTER_TRAITS_BULK_ASSIGN,
-            status_code=500,
-            params={"character_id": "new-manual-char"},
-        )
-        fake_vclient.set_response(
-            Routes.CHARACTERS_GET,
-            model=temp_char,
-            params={"character_id": "new-manual-char"},
-        )
-        fake_vclient.set_response(
-            Routes.CHARACTERS_FULL_SHEET,
-            model=full_sheet,
-            params={"character_id": "new-manual-char"},
-        )
-
         with client.session_transaction() as sess:
-            sess["temp_character_id"] = "new-manual-char"
-            sess["temp_character_created_at"] = time.time()
+            assert "temp_character_id" not in sess
 
-        csrf = get_csrf(client)
-
-        # When submitting the finalize form
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit/create",
-            data={
-                "name_first": "Ada",
-                "name_last": "Lovelace",
-                "game_version": "V5",
-                "character_class": "MORTAL",
-                "trait:trait-1": "3",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
+    def test_failed_traits_warn_but_finalize(self, client, use_campaign, fake_vclient) -> None:
+        """Verify traits the API could not assign are reported while the character is kept."""
+        # Given a bulk assign where one trait fails
+        campaign = use_campaign()
+        self._set_temp_character(fake_vclient, campaign.id)
+        fake_vclient.set_response(
+            Routes.CHARACTER_TRAITS_BULK_ASSIGN,
+            model=BulkAssignTraitResponseFactory.build(
+                failed=[BulkAssignTraitFailureFactory.build(trait_id="trait-1")]
+            ),
         )
-
-        # Then traits form is re-rendered with the fallback, not the API's internals
-        assert response.status_code == 200
-        assert_shows_error(response)
-        body = response.get_data(as_text=True)
-        assert "Failed to create character. Please try again." in body
-        assert "Error 500" not in body
-
-
-class TestManualFinalizeLoadError:
-    """Tests for a failure loading the character being finalized."""
-
-    def test_server_error_flashes_fallback(self, client, mocker) -> None:
-        """Verify a server error loading the character flashes the fallback, not the detail."""
-        from vweb.api_client.exceptions import ServerError
-
-        # Given loading the in-progress character fails server-side
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mocker.patch(
-            "vweb.routes.character_create.manual_views.finalizable_temp_character",
-            side_effect=ServerError("boom", 500, {"detail": "db exploded"}),
-        )
+        _seed_temp_character(client, "new-manual-char")
 
         # When finalizing
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit/create",
-            data={"trait:trait-1": "3", "csrf_token": get_csrf(client)},
-            headers={"HX-Request": "true"},
-        )
+        response = self._post_finalize(client, campaign.id)
 
-        # Then the fallback is flashed and the user is sent back to the profile step
+        # Then a warning names the failed trait and the character is still finalized
+        flashes = session_flashes(client)
+        assert any(cat == "warning" and "trait-1" in msg for cat, msg in flashes)
+        fake_vclient.assert_called(Routes.CHARACTERS_UPDATE, json={"is_temporary": False})
+        assert "/character/new-manual-char" in response.headers.get("HX-Redirect", "")
+
+    def test_redirects_to_profile_when_no_temp_character(self, client, use_campaign) -> None:
+        """Verify redirect to profile form when no temp_character_id in session."""
+        # Given a campaign but no temp character in session
+        campaign = use_campaign()
+
+        # When submitting the finalize form without a temp character
+        response = self._post_finalize(client, campaign.id)
+
+        # Then redirect to profile is returned
         assert "profile_edit" in response.headers.get("HX-Redirect", "")
-        with client.session_transaction() as sess:
-            flashes = list(sess.get("_flashes", []))
-        assert flashes == [("error", "Could not load the character in progress. Please try again.")]
+
+    def test_rerenders_traits_on_api_error(self, client, use_campaign, fake_vclient) -> None:
+        """Verify a server error assigning traits re-renders the traits form without internals."""
+        # Given a failing bulk assign
+        campaign = use_campaign()
+        self._set_temp_character(fake_vclient, campaign.id, user_player_id="test-user-id")
+        fake_vclient.set_error(
+            Routes.CHARACTER_TRAITS_BULK_ASSIGN, status_code=500, detail="db exploded"
+        )
+        _seed_temp_character(client, "new-manual-char")
+
+        # When submitting the finalize form
+        response = self._post_finalize(client, campaign.id)
+
+        # Then the traits form shows an error without the API's internals
+        assert_shows_error(response)
+        assert "db exploded" not in response.get_data(as_text=True)
+        fake_vclient.assert_not_called(Routes.CHARACTERS_UPDATE)
+
+    def test_load_server_error_returns_to_profile(self, client, use_campaign, fake_vclient) -> None:
+        """Verify a server error loading the draft returns to the profile step with an error."""
+        # Given loading the in-progress character fails server-side
+        campaign = use_campaign()
+        fake_vclient.set_error(Routes.CHARACTERS_GET, status_code=500, detail="db exploded")
+        _seed_temp_character(client, "new-manual-char")
+
+        # When finalizing
+        response = self._post_finalize(client, campaign.id)
+
+        # Then an error is flashed without the detail and the user returns to the profile step
+        assert "profile_edit" in response.headers.get("HX-Redirect", "")
+        flashes = session_flashes(client)
+        assert [cat for cat, _ in flashes] == ["error"]
+        assert "db exploded" not in flashes[0][1]
+        fake_vclient.assert_not_called(Routes.CHARACTER_TRAITS_BULK_ASSIGN)
 
 
 class TestManualFinalizeGuards:
     """Tests that finalize only assigns free traits to the requester's in-progress character."""
 
     def _post_finalize(self, client, campaign_id: str) -> TestResponse:
-        return client.post(
+        return htmx_post(
+            client,
             f"/campaign/{campaign_id}/characters/profile_edit/create",
-            data={"trait:trait-1": "5", "csrf_token": get_csrf(client)},
-            headers={"HX-Request": "true"},
+            {"trait:trait-1": "5"},
         )
 
     @pytest.mark.parametrize(
@@ -670,13 +509,11 @@ class TestManualFinalizeGuards:
         ids=["already-permanent", "other-creator", "other-campaign"],
     )
     def test_refuses_character_that_is_not_the_requesters_temp_character(
-        self, client, mocker, fake_vclient, is_temporary, owner, same_campaign
+        self, client, use_campaign, fake_vclient, is_temporary, owner, same_campaign
     ) -> None:
         """Verify a stale or foreign temp_character_id cannot receive NO_COST traits."""
         # Given a session pointing at a character that is permanent or created by someone else
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        campaign = use_campaign()
         character = CharacterFactory.build(
             id="char-1",
             campaign_id=campaign.id if same_campaign else "other-campaign",
@@ -686,105 +523,79 @@ class TestManualFinalizeGuards:
         fake_vclient.set_response(
             Routes.CHARACTERS_GET, model=character, params={"character_id": "char-1"}
         )
-        assign = mocker.patch("vweb.routes.character_create.manual_views.bulk_assign_traits")
-        with client.session_transaction() as sess:
-            sess["temp_character_id"] = "char-1"
-            sess["temp_character_created_at"] = time.time()
+        _seed_temp_character(client, "char-1")
 
         # When the finalize form is replayed
         response = self._post_finalize(client, campaign.id)
 
         # Then no traits are assigned and the stale session is cleared
-        assign.assert_not_called()
+        fake_vclient.assert_not_called(Routes.CHARACTER_TRAITS_BULK_ASSIGN)
         assert "profile_edit" in response.headers.get("HX-Redirect", "")
         with client.session_transaction() as sess:
             assert "temp_character_id" not in sess
 
-    def test_refuses_expired_temp_session(self, client, mocker, fake_vclient) -> None:
-        """Verify a temp session older than the TTL cannot finalize."""
-        # Given a temp session created well past the TTL
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        assign = mocker.patch("vweb.routes.character_create.manual_views.bulk_assign_traits")
-        with client.session_transaction() as sess:
-            sess["temp_character_id"] = "char-1"
-            sess["temp_character_created_at"] = time.time() - 24 * 60 * 60
+    @pytest.mark.parametrize(
+        ("age_seconds", "api_status"),
+        [(24 * 60 * 60, None), (0, 404)],
+        ids=["expired-session", "deleted-character"],
+    )
+    def test_refuses_stale_temp_session(
+        self, client, use_campaign, fake_vclient, age_seconds, api_status
+    ) -> None:
+        """Verify an expired session or a deleted draft cannot finalize."""
+        # Given a temp session past the TTL, or one whose character no longer exists
+        campaign = use_campaign()
+        if api_status:
+            fake_vclient.set_error(Routes.CHARACTERS_GET, status_code=api_status)
+        _seed_temp_character(client, "char-1", age_seconds=age_seconds)
 
         # When finalizing
         response = self._post_finalize(client, campaign.id)
 
-        # Then nothing is assigned
-        assign.assert_not_called()
+        # Then nothing is assigned and the stale session is cleared
+        fake_vclient.assert_not_called(Routes.CHARACTER_TRAITS_BULK_ASSIGN)
         assert "profile_edit" in response.headers.get("HX-Redirect", "")
+        with client.session_transaction() as sess:
+            assert "temp_character_id" not in sess
 
 
 class TestProfileEditMode:
     """Tests for GET/POST /campaign/<id>/characters/profile_edit?character_id=<id>."""
 
-    def test_edit_mode_prefills_from_character(self, client, mocker, fake_vclient) -> None:
-        """Verify edit mode pre-fills form from existing character."""
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
-
-        character = CharacterFactory.build(
-            id="char-123",
-            name_first="Ada",
-            name_last="Lovelace",
-            campaign_id=campaign.id,
-        )
+    def _set_character(self, fake_vclient, **kwargs) -> None:
         fake_vclient.set_response(
-            Routes.CHARACTERS_GET, model=character, params={"character_id": "char-123"}
+            Routes.CHARACTERS_GET,
+            model=CharacterFactory.build(id="char-123", **kwargs),
+            params={"character_id": "char-123"},
         )
 
+    def test_edit_mode_prefills_from_character(self, client, use_campaign, fake_vclient) -> None:
+        """Verify edit mode pre-fills form from existing character."""
+        # Given an existing character
+        campaign = use_campaign()
+        self._set_character(
+            fake_vclient, name_first="Ada", name_last="Lovelace", campaign_id=campaign.id
+        )
+
+        # When opening the edit form
         response = client.get(
             f"/campaign/{campaign.id}/characters/profile_edit?character_id=char-123",
             headers={"HX-Request": "true"},
         )
 
-        assert response.status_code == 200
+        # Then the character's names fill the form
         body = response.get_data(as_text=True)
         assert 'value="Ada"' in body
         assert 'value="Lovelace"' in body
 
-    def test_edit_mode_game_version_disabled(self, client, mocker, fake_vclient) -> None:
-        """Verify game version is disabled in edit mode."""
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
-
-        character = CharacterFactory.build(
-            id="char-123", campaign_id=campaign.id, game_version="V5"
-        )
-        fake_vclient.set_response(
-            Routes.CHARACTERS_GET, model=character, params={"character_id": "char-123"}
-        )
-
-        response = client.get(
-            f"/campaign/{campaign.id}/characters/profile_edit?character_id=char-123",
-            headers={"HX-Request": "true"},
-        )
-
-        # Collapse whitespace so the assertions are insensitive to template formatting
-        body = " ".join(response.get_data(as_text=True).split())
-        assert '<select class="select w-full" disabled>' in body
-        assert '<input type="hidden" name="game_version" value="V5" />' in body
-
-    def test_edit_mode_character_class_locked(self, client, mocker, fake_vclient) -> None:
-        """Verify character class cannot be changed in edit mode, since the API keeps it."""
-        # Given an existing hunter
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
-        character = CharacterFactory.build(
-            id="char-123", campaign_id=campaign.id, character_class="HUNTER", game_version="V5"
-        )
-        fake_vclient.set_response(
-            Routes.CHARACTERS_GET, model=character, params={"character_id": "char-123"}
+    def test_edit_mode_locks_class_and_game_version(
+        self, client, use_campaign, fake_vclient
+    ) -> None:
+        """Verify class and game version cannot be changed in edit mode, since the API keeps them."""
+        # Given an existing V5 hunter
+        campaign = use_campaign()
+        self._set_character(
+            fake_vclient, campaign_id=campaign.id, character_class="HUNTER", game_version="V5"
         )
 
         # When the edit form renders
@@ -793,178 +604,90 @@ class TestProfileEditMode:
             headers={"HX-Request": "true"},
         )
 
-        # Then the class is shown read-only and submitted as a hidden field
-        body = " ".join(response.get_data(as_text=True).split())
-        assert '<input type="hidden" name="character_class" value="HUNTER" />' in body
+        # Then neither field can be chosen and both are submitted unchanged
+        body = response.get_data(as_text=True)
         assert '<select name="character_class"' not in body
+        assert '<select name="game_version"' not in body
+        assert re.search(r'name="character_class"\s+value="HUNTER"', body)
+        assert re.search(r'name="game_version"\s+value="V5"', body)
 
-    def test_edit_post_updates_and_redirects(self, client, mocker, fake_vclient) -> None:
-        """Verify successful edit POST updates character and redirects."""
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
-
-        character = CharacterFactory.build(
-            id="char-123",
+    def test_edit_post_updates_and_redirects(self, client, use_campaign, fake_vclient) -> None:
+        """Verify a valid edit updates the character and redirects to it."""
+        # Given the user's own character
+        campaign = use_campaign()
+        self._set_character(
+            fake_vclient,
             campaign_id=campaign.id,
             game_version="V5",
             character_class="MORTAL",
             user_player_id="test-user-id",
         )
-        fake_vclient.set_response(
-            Routes.CHARACTERS_GET, model=character, params={"character_id": "char-123"}
-        )
-        fake_vclient.set_response(
-            Routes.CHARACTERS_UPDATE, model=character, params={"character_id": "char-123"}
-        )
 
-        csrf = get_csrf(client)
-
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit?character_id=char-123",
-            data={
-                "name_first": "Updated",
-                "name_last": "Name",
-                "game_version": "V5",
-                "character_class": "MORTAL",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
+        # When submitting the edit
+        response = _post_profile(
+            client, campaign.id, "?character_id=char-123", name_first="Updated", name_last="Name"
         )
 
-        assert response.status_code == 200
+        # Then the new values are sent and the user returns to the character
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_UPDATE,
+            params={"character_id": "char-123"},
+            json_subset={"name_first": "Updated", "name_last": "Name"},
+            times=1,
+        )
         assert "/character/char-123" in response.headers.get("HX-Redirect", "")
 
-    def test_edit_post_validation_error_rerenders(self, client, mocker, fake_vclient) -> None:
-        """Verify validation error in edit mode re-renders form with errors."""
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
+    def test_edit_post_validation_error_rerenders(self, client, use_campaign, fake_vclient) -> None:
+        """Verify an invalid edit re-renders the form without updating."""
+        # Given the user's own character
+        campaign = use_campaign()
+        self._set_character(fake_vclient, campaign_id=campaign.id, user_player_id="test-user-id")
 
-        character = CharacterFactory.build(
-            id="char-123", campaign_id=campaign.id, user_player_id="test-user-id"
-        )
-        fake_vclient.set_response(
-            Routes.CHARACTERS_GET, model=character, params={"character_id": "char-123"}
-        )
+        # When submitting a too-short first name
+        response = _post_profile(client, campaign.id, "?character_id=char-123", name_first="Ab")
 
-        csrf = get_csrf(client)
+        # Then the form keeps the input and nothing is updated
+        assert 'value="Ab"' in response.get_data(as_text=True)
+        fake_vclient.assert_not_called(Routes.CHARACTERS_UPDATE)
 
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit?character_id=char-123",
-            data={
-                "name_first": "Ab",
-                "name_last": "Lovelace",
-                "game_version": "V5",
-                "character_class": "MORTAL",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
-        )
-
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "text-error" in body
-
-    def test_edit_post_api_error_shows_general_error(self, client, mocker, fake_vclient) -> None:
-        """Verify API error in edit mode shows general error message."""
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
-
-        character = CharacterFactory.build(
-            id="char-123", campaign_id=campaign.id, user_player_id="test-user-id"
-        )
-        fake_vclient.set_response(
-            Routes.CHARACTERS_GET, model=character, params={"character_id": "char-123"}
-        )
+    @pytest.mark.parametrize(
+        "failing_route",
+        [Routes.CHARACTERS_UPDATE, Routes.CHARACTERS_GET],
+        ids=["update-fails", "load-fails"],
+    )
+    def test_edit_server_error_shows_error_without_detail(
+        self, client, use_campaign, fake_vclient, failing_route
+    ) -> None:
+        """Verify a server error loading or saving the character shows an error, not the detail."""
+        # Given the user's own character and a failing API call
+        campaign = use_campaign()
+        self._set_character(fake_vclient, campaign_id=campaign.id, user_player_id="test-user-id")
         fake_vclient.set_error(
-            Routes.CHARACTERS_UPDATE, status_code=500, params={"character_id": "char-123"}
-        )
-
-        csrf = get_csrf(client)
-
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit?character_id=char-123",
-            data={
-                "name_first": "Updated",
-                "name_last": "Name",
-                "game_version": "V5",
-                "character_class": "MORTAL",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
-        )
-
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "alert-error" in body
-
-    def test_edit_load_server_error_shows_fallback(self, client, mocker, fake_vclient) -> None:
-        """Verify a server error loading the character shows the fallback, not the detail."""
-        # Given loading the character fails server-side
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
-        fake_vclient.set_error(
-            Routes.CHARACTERS_GET,
+            failing_route,
             status_code=500,
             detail="db exploded",
             params={"character_id": "char-123"},
         )
 
         # When submitting the edit form
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit?character_id=char-123",
-            data={
-                "name_first": "Updated",
-                "name_last": "Name",
-                "game_version": "V5",
-                "character_class": "MORTAL",
-                "csrf_token": get_csrf(client),
-            },
-            headers={"HX-Request": "true"},
-        )
+        response = _post_profile(client, campaign.id, "?character_id=char-123")
 
-        # Then the fallback is shown and the detail is not
-        body = response.get_data(as_text=True)
-        assert "Failed to load character. Please try again." in body
-        assert "db exploded" not in body
+        # Then an error is shown without the detail
+        assert_shows_error(response)
+        assert "db exploded" not in response.get_data(as_text=True)
 
-    def test_edit_denied_for_non_editor(self, client, mocker, fake_vclient) -> None:
+    def test_edit_denied_for_non_editor(self, client, use_campaign, fake_vclient) -> None:
         """Verify a player cannot edit a character they do not own."""
         # Given a player and an existing player character owned by someone else
-        other_char = CharacterFactory.build(
-            id="char-other",
-            user_player_id="someone-else",
-            type="PLAYER",
-        )
-        ctx = build_global_context(user_role="PLAYER", characters=[other_char])
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
-
+        other_char = CharacterFactory.build(id="char-other", user_player_id="someone-else")
+        campaign = use_campaign(characters=[other_char])
         fake_vclient.set_response(
             Routes.CHARACTERS_GET, model=other_char, params={"character_id": "char-other"}
         )
-        csrf = get_csrf(client)
 
         # When submitting an edit for that character
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit?character_id=char-other",
-            data={
-                "name_first": "Ada",
-                "name_last": "Lovelace",
-                "game_version": "V5",
-                "character_class": "MORTAL",
-                "character_type": "PLAYER",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
+        response = _post_profile(
+            client, campaign.id, "?character_id=char-other", character_type="PLAYER"
         )
 
         # Then the update is never attempted and the user is redirected away
@@ -972,41 +695,24 @@ class TestProfileEditMode:
         assert response.headers.get("HX-Redirect") is not None
 
     def test_edit_rejects_npc_type_for_restricted_player(
-        self, client, mocker, fake_vclient
+        self, client, use_campaign, fake_vclient
     ) -> None:
         """Verify a player who owns a character cannot switch its type to NPC when restricted."""
         # Given a restricted player editing their OWN player character (passes the edit guard)
         own_char = CharacterFactory.build(
-            id="char-own",
-            user_player_id="test-user-id",
-            type="PLAYER",
+            id="char-own", user_player_id="test-user-id", type="PLAYER"
         )
-        ctx = build_global_context(user_role="PLAYER", characters=[own_char])
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        _mock_form_options(mocker)
-
+        campaign = use_campaign(characters=[own_char])
         fake_vclient.set_response(
             Routes.CHARACTERS_GET, model=own_char, params={"character_id": "char-own"}
         )
-        csrf = get_csrf(client)
 
         # When submitting an edit that switches the type to NPC
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/profile_edit?character_id=char-own",
-            data={
-                "name_first": "Ada",
-                "name_last": "Lovelace",
-                "game_version": "V5",
-                "character_class": "MORTAL",
-                "character_type": "NPC",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
+        response = _post_profile(
+            client, campaign.id, "?character_id=char-own", character_type="NPC"
         )
 
         # Then the form re-renders with an error and no update occurs
-        assert response.status_code == 200
         assert_shows_error(response)
         fake_vclient.assert_not_called(Routes.CHARACTERS_UPDATE)
 

@@ -1,769 +1,184 @@
 """Tests for vweb.api_client.validate_constants."""
 
+import typing
+
 import pytest
 
 from vweb.api_client import constants
 from vweb.api_client.validate_constants import (
     CONSTANT_MAP,
-    ConstantMapping,
     ConstantMismatch,
     ValidationResult,
     print_report,
     validate,
 )
 
-
-class TestConstantMapping:
-    """Tests for ConstantMapping dataclass."""
-
-    def test_create_mapping(self):
-        """Verify creating a ConstantMapping with category and option."""
-        mapping = ConstantMapping(api_category="characters", api_option="CharacterClass")
-        assert mapping.api_category == "characters"
-        assert mapping.api_option == "CharacterClass"
-
-    def test_mapping_is_frozen(self):
-        """Verify ConstantMapping instances are immutable."""
-        mapping = ConstantMapping(api_category="characters", api_option="CharacterClass")
-        with pytest.raises(AttributeError):
-            mapping.api_category = "other"
+# Client-only Literal types that have no API /options counterpart
+CLIENT_ONLY_LITERALS = {
+    "AuditLogInclude",
+    "BookInclude",
+    "ChapterInclude",
+    "CharacterInclude",
+    "UserInclude",
+}
 
 
-class TestConstantMismatch:
-    """Tests for ConstantMismatch dataclass."""
+def _matching_options() -> dict[str, dict]:
+    """Return an options payload that agrees with every mapped local constant."""
+    options: dict[str, dict] = {}
+    for name, mapping in CONSTANT_MAP.items():
+        values = list(typing.get_args(getattr(constants, name)))
+        options.setdefault(mapping.api_category, {})[mapping.api_option] = values
+    return options
 
-    def test_create_mismatch(self):
-        """Verify creating a ConstantMismatch with all fields."""
-        mismatch = ConstantMismatch(
-            constant_name="CharacterClass",
+
+def test_every_literal_constant_is_mapped() -> None:
+    """Verify every API-backed Literal in constants.py is checked against the API."""
+    literal_names = {
+        name
+        for name in dir(constants)
+        if not name.startswith("_")
+        and typing.get_origin(getattr(constants, name)) is typing.Literal
+    }
+
+    assert literal_names - CLIENT_ONLY_LITERALS - set(CONSTANT_MAP) == set()
+
+
+def test_every_mapping_names_an_existing_constant() -> None:
+    """Verify the map has no entry for a constant that no longer exists."""
+    assert [name for name in CONSTANT_MAP if not hasattr(constants, name)] == []
+
+
+def test_matching_options_are_valid() -> None:
+    """Verify options that agree with every constant validate cleanly."""
+    result = validate(_matching_options())
+
+    assert result.is_valid is True
+    assert result.mismatches == []
+    assert result.unmapped_api_options == {}
+
+
+@pytest.mark.parametrize(
+    ("api_values", "missing", "extra"),
+    [
+        pytest.param(["ALIVE", "DEAD", "UNDEAD"], {"UNDEAD"}, set(), id="new-api-value"),
+        pytest.param(["ALIVE"], set(), {"DEAD"}, id="value-dropped-by-api"),
+        pytest.param(None, set(), {"ALIVE", "DEAD"}, id="option-absent-from-api"),
+    ],
+)
+def test_value_drift_is_reported(
+    api_values: list[str] | None, missing: set[str | int], extra: set[str | int]
+) -> None:
+    """Verify each side's extra values are reported against the drifted constant."""
+    options = _matching_options()
+    if api_values is None:
+        del options["characters"]["CharacterStatus"]
+    else:
+        options["characters"]["CharacterStatus"] = api_values
+
+    result = validate(options)
+
+    assert result.is_valid is False
+    assert result.mismatches == [
+        ConstantMismatch(
+            constant_name="CharacterStatus",
             api_category="characters",
-            api_option="CharacterClass",
-            missing_from_client={"CHANGELING"},
-            extra_in_client={"MORTAL"},
+            api_option="CharacterStatus",
+            missing_from_client=missing,
+            extra_in_client=extra,
         )
-        assert mismatch.constant_name == "CharacterClass"
-        assert mismatch.missing_from_client == {"CHANGELING"}
-        assert mismatch.extra_in_client == {"MORTAL"}
+    ]
 
 
-class TestValidationResult:
-    """Tests for ValidationResult dataclass."""
+@pytest.mark.parametrize(
+    ("category", "option", "value"),
+    [
+        pytest.param("characters", "_related", ["x"], id="underscore-metadata-key"),
+        pytest.param("characters", "TrackerRules", {"V5": {}}, id="non-list-value"),
+        pytest.param(
+            "character_autogeneration",
+            "CharacterClassPercentileChance",
+            ["MORTAL: 0-50"],
+            id="ignored-informational-option",
+        ),
+    ],
+)
+def test_non_enum_options_are_not_reported_unmapped(
+    category: str, option: str, value: object
+) -> None:
+    """Verify metadata, nested tables, and ignored options are not treated as missing enums."""
+    options = _matching_options()
+    options.setdefault(category, {})[option] = value
 
-    def test_valid_result(self):
-        """Verify creating a valid ValidationResult."""
-        result = ValidationResult(is_valid=True, mismatches=[], unmapped_api_options={})
-        assert result.is_valid is True
-        assert result.mismatches == []
-        assert result.unmapped_api_options == {}
-
-
-class TestConstantMap:
-    """Tests for the CONSTANT_MAP mapping table."""
-
-    def test_all_api_constants_are_mapped(self):
-        """Verify every Literal constant in constants.py has a mapping entry."""
-        import typing
-
-        from vweb.api_client import constants
-
-        # Client-only Literal types that don't correspond to an API /options value
-        client_only = {
-            "AuditLogInclude",
-            "BookInclude",
-            "ChapterInclude",
-            "CharacterInclude",
-            "UserInclude",
-        }
-
-        literal_names = [
-            name
-            for name in dir(constants)
-            if not name.startswith("_")
-            and hasattr(getattr(constants, name), "__origin__")
-            and getattr(constants, name).__origin__ is typing.Literal
-        ]
-        for name in literal_names:
-            if name not in client_only:
-                assert name in CONSTANT_MAP, f"Constant '{name}' is not in CONSTANT_MAP"
-
-    def test_map_has_no_extra_entries(self):
-        """Verify CONSTANT_MAP has no entries for non-existent constants."""
-        from vweb.api_client import constants
-
-        for name in CONSTANT_MAP:
-            assert hasattr(constants, name), f"CONSTANT_MAP entry '{name}' has no matching constant"
+    assert validate(options).is_valid is True
 
 
-class TestValidate:
-    """Tests for the validate() function."""
+def test_non_dict_category_is_skipped() -> None:
+    """Verify a top-level value that is not a category of options is skipped."""
+    options: dict = _matching_options() | {"_version": "1.2.3"}
 
-    def test_all_constants_match(self):
-        """Verify validate returns is_valid=True when all constants match API."""
-        # Given: API options that exactly match local constants
-        api_options = {
-            "audit_logs": {
-                "AuditEntityType": [
-                    "ASSET",
-                    "BOOK",
-                    "CAMPAIGN",
-                    "CHAPTER",
-                    "CHARACTER",
-                    "CHARACTER_HEALTH",
-                    "CHARACTER_INVENTORY",
-                    "CHARACTER_TRAIT",
-                    "CHARACTER_TRAIT_SPECIALTY",
-                    "CHARGEN_SESSION",
-                    "COMPANY",
-                    "DEVELOPER",
-                    "DICTIONARY_TERM",
-                    "EXPERIENCE",
-                    "NOTE",
-                    "QUICKROLL",
-                    "USER",
+    assert validate(options).is_valid is True
+
+
+def test_new_api_option_is_reported_unmapped() -> None:
+    """Verify an API enum with no local constant is reported by category."""
+    options = _matching_options()
+    options["characters"]["NewOptionType"] = ["FOO"]
+
+    result = validate(options)
+
+    assert result.is_valid is False
+    assert result.unmapped_api_options == {"characters": ["NewOptionType"]}
+
+
+@pytest.mark.parametrize(
+    ("result", "expected_lines"),
+    [
+        pytest.param(
+            ValidationResult(is_valid=True),
+            [f"{len(CONSTANT_MAP)}/{len(CONSTANT_MAP)} constants in sync"],
+            id="in-sync",
+        ),
+        pytest.param(
+            ValidationResult(
+                is_valid=False,
+                mismatches=[
+                    ConstantMismatch(
+                        constant_name="CharacterStatus",
+                        api_category="characters",
+                        api_option="CharacterStatus",
+                        missing_from_client={"UNDEAD"},
+                    ),
+                    ConstantMismatch(
+                        constant_name="GameVersion",
+                        api_category="characters",
+                        api_option="GameVersion",
+                        extra_in_client={"V4"},
+                    ),
                 ],
-                "AuditOperation": ["CREATE", "UPDATE", "DELETE"],
-            },
-            "characters": {
-                "AbilityFocus": ["JACK_OF_ALL_TRADES", "BALANCED", "SPECIALIST"],
-                "AutoGenExperienceLevel": ["NEW", "INTERMEDIATE", "ADVANCED", "ELITE"],
-                "BlueprintTraitOrderBy": ["NAME", "SHEET"],
-                "CharacterClass": ["VAMPIRE", "WEREWOLF", "MAGE", "HUNTER", "GHOUL", "MORTAL"],
-                "CharacterStatus": ["ALIVE", "DEAD"],
-                "CharacterType": ["PLAYER", "NPC", "STORYTELLER"],
-                "GameVersion": ["V4", "V5"],
-                "HunterCreed": [
-                    "ENTREPRENEURIAL",
-                    "FAITHFUL",
-                    "INQUISITIVE",
-                    "MARTIAL",
-                    "UNDERGROUND",
-                ],
-                "HunterEdgeType": ["ASSETS", "APTITUDES", "ENDOWMENTS"],
-                "InventoryItemType": [
-                    "BOOK",
-                    "CONSUMABLE",
-                    "ENCHANTED",
-                    "EQUIPMENT",
-                    "OTHER",
-                    "WEAPON",
-                ],
-                "SpecialtyType": ["ACTION", "OTHER", "PASSIVE", "RITUAL", "SPELL"],
-                "TraitModifyCurrency": ["NO_COST", "XP", "STARTING_POINTS"],
-                "TrackerAction": [
-                    "spend",
-                    "gain",
-                    "damage",
-                    "heal",
-                    "add_stain",
-                    "remove_stain",
-                    "reset",
-                ],
-                "TrackerType": ["COUNTER", "DAMAGE", "STAINS"],
-                "WerewolfRenown": ["GLORY", "HONOR", "WISDOM"],
-            },
-            "companies": {
-                "CompanyPermission": ["USER", "ADMIN", "OWNER", "REVOKE"],
-                "PermissionManageCampaign": ["UNRESTRICTED", "STORYTELLER"],
-                "PermissionManageNPC": ["UNRESTRICTED", "STORYTELLER"],
-                "PermissionsGrantXP": ["UNRESTRICTED", "PLAYER", "STORYTELLER"],
-                "PermissionsFreeTraitChanges": ["UNRESTRICTED", "WITHIN_24_HOURS", "STORYTELLER"],
-                "PermissionsRecoupXP": ["UNRESTRICTED", "DENIED", "WITHIN_SESSION"],
-                "SpecialtyRules": ["FIXED_COST", "RATING_BASED"],
-            },
-            "gameplay": {
-                "DiceSize": [4, 6, 8, 10, 20, 100],
-                "RollResultType": ["SUCCESS", "FAILURE", "BOTCH", "CRITICAL", "OTHER"],
-            },
-            "users": {
-                "IdentityProvider": ["apple", "google", "discord", "github"],
-                "IdentityResolution": ["matched", "linked", "created"],
-                "UserRole": ["ADMIN", "STORYTELLER", "PLAYER", "UNAPPROVED", "DEACTIVATED"],
-            },
-            "assets": {
-                "AssetType": ["image", "text", "audio", "video", "document", "archive", "other"],
-            },
-        }
-
-        # When: Validating
-        result = validate(api_options)
-
-        # Then: Everything matches
-        assert result.is_valid is True
-        assert result.mismatches == []
-        assert result.unmapped_api_options == {}
-
-    def test_missing_from_client(self):
-        """Verify validate detects values in API but missing from client."""
-        # Given: API has an extra value for CharacterStatus
-        api_options = {
-            "audit_logs": {
-                "AuditEntityType": [
-                    "ASSET",
-                    "BOOK",
-                    "CAMPAIGN",
-                    "CHAPTER",
-                    "CHARACTER",
-                    "CHARACTER_HEALTH",
-                    "CHARACTER_INVENTORY",
-                    "CHARACTER_TRAIT",
-                    "CHARACTER_TRAIT_SPECIALTY",
-                    "CHARGEN_SESSION",
-                    "COMPANY",
-                    "DEVELOPER",
-                    "DICTIONARY_TERM",
-                    "EXPERIENCE",
-                    "NOTE",
-                    "QUICKROLL",
-                    "USER",
-                ],
-                "AuditOperation": ["CREATE", "UPDATE", "DELETE"],
-            },
-            "characters": {
-                "AbilityFocus": ["JACK_OF_ALL_TRADES", "BALANCED", "SPECIALIST"],
-                "AutoGenExperienceLevel": ["NEW", "INTERMEDIATE", "ADVANCED", "ELITE"],
-                "BlueprintTraitOrderBy": ["NAME", "SHEET"],
-                "CharacterClass": ["VAMPIRE", "WEREWOLF", "MAGE", "HUNTER", "GHOUL", "MORTAL"],
-                "CharacterStatus": ["ALIVE", "DEAD", "UNDEAD"],
-                "CharacterType": ["PLAYER", "NPC", "STORYTELLER"],
-                "GameVersion": ["V4", "V5"],
-                "HunterCreed": [
-                    "ENTREPRENEURIAL",
-                    "FAITHFUL",
-                    "INQUISITIVE",
-                    "MARTIAL",
-                    "UNDERGROUND",
-                ],
-                "HunterEdgeType": ["ASSETS", "APTITUDES", "ENDOWMENTS"],
-                "InventoryItemType": [
-                    "BOOK",
-                    "CONSUMABLE",
-                    "ENCHANTED",
-                    "EQUIPMENT",
-                    "OTHER",
-                    "WEAPON",
-                ],
-                "SpecialtyType": ["ACTION", "OTHER", "PASSIVE", "RITUAL", "SPELL"],
-                "TraitModifyCurrency": ["NO_COST", "XP", "STARTING_POINTS"],
-                "TrackerAction": [
-                    "spend",
-                    "gain",
-                    "damage",
-                    "heal",
-                    "add_stain",
-                    "remove_stain",
-                    "reset",
-                ],
-                "TrackerType": ["COUNTER", "DAMAGE", "STAINS"],
-                "WerewolfRenown": ["GLORY", "HONOR", "WISDOM"],
-            },
-            "companies": {
-                "CompanyPermission": ["USER", "ADMIN", "OWNER", "REVOKE"],
-                "PermissionManageCampaign": ["UNRESTRICTED", "STORYTELLER"],
-                "PermissionManageNPC": ["UNRESTRICTED", "STORYTELLER"],
-                "PermissionsGrantXP": ["UNRESTRICTED", "PLAYER", "STORYTELLER"],
-                "PermissionsFreeTraitChanges": ["UNRESTRICTED", "WITHIN_24_HOURS", "STORYTELLER"],
-                "PermissionsRecoupXP": ["UNRESTRICTED", "DENIED", "WITHIN_SESSION"],
-                "SpecialtyRules": ["FIXED_COST", "RATING_BASED"],
-            },
-            "gameplay": {
-                "DiceSize": [4, 6, 8, 10, 20, 100],
-                "RollResultType": ["SUCCESS", "FAILURE", "BOTCH", "CRITICAL", "OTHER"],
-            },
-            "users": {
-                "IdentityProvider": ["apple", "google", "discord", "github"],
-                "IdentityResolution": ["matched", "linked", "created"],
-                "UserRole": ["ADMIN", "STORYTELLER", "PLAYER", "UNAPPROVED", "DEACTIVATED"],
-            },
-            "assets": {
-                "AssetType": ["image", "text", "audio", "video", "document", "archive", "other"],
-            },
-        }
-
-        # When: Validating
-        result = validate(api_options)
-
-        # Then: Mismatch detected
-        assert result.is_valid is False
-        assert len(result.mismatches) == 1
-        assert result.mismatches[0].constant_name == "CharacterStatus"
-        assert result.mismatches[0].missing_from_client == {"UNDEAD"}
-        assert result.mismatches[0].extra_in_client == set()
-
-    def test_extra_in_client(self):
-        """Verify validate detects values in client but missing from API."""
-        # Given: API is missing "MORTAL" from CharacterClass
-        api_options = {
-            "audit_logs": {
-                "AuditEntityType": [
-                    "ASSET",
-                    "BOOK",
-                    "CAMPAIGN",
-                    "CHAPTER",
-                    "CHARACTER",
-                    "CHARACTER_HEALTH",
-                    "CHARACTER_INVENTORY",
-                    "CHARACTER_TRAIT",
-                    "CHARACTER_TRAIT_SPECIALTY",
-                    "CHARGEN_SESSION",
-                    "COMPANY",
-                    "DEVELOPER",
-                    "DICTIONARY_TERM",
-                    "EXPERIENCE",
-                    "NOTE",
-                    "QUICKROLL",
-                    "USER",
-                ],
-                "AuditOperation": ["CREATE", "UPDATE", "DELETE"],
-            },
-            "characters": {
-                "AbilityFocus": ["JACK_OF_ALL_TRADES", "BALANCED", "SPECIALIST"],
-                "AutoGenExperienceLevel": ["NEW", "INTERMEDIATE", "ADVANCED", "ELITE"],
-                "BlueprintTraitOrderBy": ["NAME", "SHEET"],
-                "CharacterClass": ["VAMPIRE", "WEREWOLF", "MAGE", "HUNTER", "GHOUL"],
-                "CharacterStatus": ["ALIVE", "DEAD"],
-                "CharacterType": ["PLAYER", "NPC", "STORYTELLER"],
-                "GameVersion": ["V4", "V5"],
-                "HunterCreed": [
-                    "ENTREPRENEURIAL",
-                    "FAITHFUL",
-                    "INQUISITIVE",
-                    "MARTIAL",
-                    "UNDERGROUND",
-                ],
-                "HunterEdgeType": ["ASSETS", "APTITUDES", "ENDOWMENTS"],
-                "InventoryItemType": [
-                    "BOOK",
-                    "CONSUMABLE",
-                    "ENCHANTED",
-                    "EQUIPMENT",
-                    "OTHER",
-                    "WEAPON",
-                ],
-                "SpecialtyType": ["ACTION", "OTHER", "PASSIVE", "RITUAL", "SPELL"],
-                "TraitModifyCurrency": ["NO_COST", "XP", "STARTING_POINTS"],
-                "TrackerAction": [
-                    "spend",
-                    "gain",
-                    "damage",
-                    "heal",
-                    "add_stain",
-                    "remove_stain",
-                    "reset",
-                ],
-                "TrackerType": ["COUNTER", "DAMAGE", "STAINS"],
-                "WerewolfRenown": ["GLORY", "HONOR", "WISDOM"],
-            },
-            "companies": {
-                "CompanyPermission": ["USER", "ADMIN", "OWNER", "REVOKE"],
-                "PermissionManageCampaign": ["UNRESTRICTED", "STORYTELLER"],
-                "PermissionManageNPC": ["UNRESTRICTED", "STORYTELLER"],
-                "PermissionsGrantXP": ["UNRESTRICTED", "PLAYER", "STORYTELLER"],
-                "PermissionsFreeTraitChanges": ["UNRESTRICTED", "WITHIN_24_HOURS", "STORYTELLER"],
-                "PermissionsRecoupXP": ["UNRESTRICTED", "DENIED", "WITHIN_SESSION"],
-                "SpecialtyRules": ["FIXED_COST", "RATING_BASED"],
-            },
-            "gameplay": {
-                "DiceSize": [4, 6, 8, 10, 20, 100],
-                "RollResultType": ["SUCCESS", "FAILURE", "BOTCH", "CRITICAL", "OTHER"],
-            },
-            "users": {
-                "IdentityProvider": ["apple", "google", "discord", "github"],
-                "IdentityResolution": ["matched", "linked", "created"],
-                "UserRole": ["ADMIN", "STORYTELLER", "PLAYER", "UNAPPROVED", "DEACTIVATED"],
-            },
-            "assets": {
-                "AssetType": ["image", "text", "audio", "video", "document", "archive", "other"],
-            },
-        }
-
-        # When: Validating
-        result = validate(api_options)
-
-        # Then: Mismatch detected
-        assert result.is_valid is False
-        assert len(result.mismatches) == 1
-        assert result.mismatches[0].constant_name == "CharacterClass"
-        assert result.mismatches[0].extra_in_client == {"MORTAL"}
-        assert result.mismatches[0].missing_from_client == set()
-
-    def test_unmapped_api_options(self):
-        """Verify validate detects API options with no local constant."""
-        # Given: API has an extra option not in CONSTANT_MAP
-        api_options = {
-            "audit_logs": {
-                "AuditEntityType": [
-                    "ASSET",
-                    "BOOK",
-                    "CAMPAIGN",
-                    "CHAPTER",
-                    "CHARACTER",
-                    "CHARACTER_HEALTH",
-                    "CHARACTER_INVENTORY",
-                    "CHARACTER_TRAIT",
-                    "CHARACTER_TRAIT_SPECIALTY",
-                    "CHARGEN_SESSION",
-                    "COMPANY",
-                    "DEVELOPER",
-                    "DICTIONARY_TERM",
-                    "EXPERIENCE",
-                    "NOTE",
-                    "QUICKROLL",
-                    "USER",
-                ],
-                "AuditOperation": ["CREATE", "UPDATE", "DELETE"],
-            },
-            "characters": {
-                "AbilityFocus": ["JACK_OF_ALL_TRADES", "BALANCED", "SPECIALIST"],
-                "AutoGenExperienceLevel": ["NEW", "INTERMEDIATE", "ADVANCED", "ELITE"],
-                "BlueprintTraitOrderBy": ["NAME", "SHEET"],
-                "CharacterClass": ["VAMPIRE", "WEREWOLF", "MAGE", "HUNTER", "GHOUL", "MORTAL"],
-                "CharacterStatus": ["ALIVE", "DEAD"],
-                "CharacterType": ["PLAYER", "NPC", "STORYTELLER"],
-                "GameVersion": ["V4", "V5"],
-                "HunterCreed": [
-                    "ENTREPRENEURIAL",
-                    "FAITHFUL",
-                    "INQUISITIVE",
-                    "MARTIAL",
-                    "UNDERGROUND",
-                ],
-                "HunterEdgeType": ["ASSETS", "APTITUDES", "ENDOWMENTS"],
-                "InventoryItemType": [
-                    "BOOK",
-                    "CONSUMABLE",
-                    "ENCHANTED",
-                    "EQUIPMENT",
-                    "OTHER",
-                    "WEAPON",
-                ],
-                "NewOptionType": ["FOO", "BAR"],
-                "SpecialtyType": ["ACTION", "OTHER", "PASSIVE", "RITUAL", "SPELL"],
-                "TraitModifyCurrency": ["NO_COST", "XP", "STARTING_POINTS"],
-                "TrackerAction": [
-                    "spend",
-                    "gain",
-                    "damage",
-                    "heal",
-                    "add_stain",
-                    "remove_stain",
-                    "reset",
-                ],
-                "TrackerType": ["COUNTER", "DAMAGE", "STAINS"],
-                "WerewolfRenown": ["GLORY", "HONOR", "WISDOM"],
-            },
-            "companies": {
-                "CompanyPermission": ["USER", "ADMIN", "OWNER", "REVOKE"],
-                "PermissionManageCampaign": ["UNRESTRICTED", "STORYTELLER"],
-                "PermissionManageNPC": ["UNRESTRICTED", "STORYTELLER"],
-                "PermissionsGrantXP": ["UNRESTRICTED", "PLAYER", "STORYTELLER"],
-                "PermissionsFreeTraitChanges": ["UNRESTRICTED", "WITHIN_24_HOURS", "STORYTELLER"],
-                "PermissionsRecoupXP": ["UNRESTRICTED", "DENIED", "WITHIN_SESSION"],
-                "SpecialtyRules": ["FIXED_COST", "RATING_BASED"],
-            },
-            "gameplay": {
-                "DiceSize": [4, 6, 8, 10, 20, 100],
-                "RollResultType": ["SUCCESS", "FAILURE", "BOTCH", "CRITICAL", "OTHER"],
-            },
-            "users": {
-                "IdentityProvider": ["apple", "google", "discord", "github"],
-                "IdentityResolution": ["matched", "linked", "created"],
-                "UserRole": ["ADMIN", "STORYTELLER", "PLAYER", "UNAPPROVED", "DEACTIVATED"],
-            },
-            "assets": {
-                "AssetType": ["image", "text", "audio", "video", "document", "archive", "other"],
-            },
-        }
-
-        # When: Validating
-        result = validate(api_options)
-
-        # Then: Unmapped option detected
-        assert result.is_valid is False
-        assert result.unmapped_api_options == {"characters": ["NewOptionType"]}
-
-    def test_skips_ignored_api_options(self):
-        """Verify validate ignores informational options listed in IGNORED_API_OPTIONS."""
-        # Given: the autogen percentile table (an ignored option) alongside a real unmapped one
-        api_options = {
-            "character_autogeneration": {
-                "CharacterClassPercentileChance": ["MORTAL: 0-50", "VAMPIRE: 51-60"],
-                "NewOptionType": ["FOO", "BAR"],
-            },
-        }
-
-        # When: Validating
-        result = validate(api_options)
-
-        # Then: only the genuinely unmapped option is reported
-        assert result.unmapped_api_options == {"character_autogeneration": ["NewOptionType"]}
-
-    def test_skips_related_keys(self):
-        """Verify validate ignores _related keys in the API response."""
-        # Given: API response includes _related metadata
-        api_options = {
-            "audit_logs": {
-                "AuditEntityType": [
-                    "ASSET",
-                    "BOOK",
-                    "CAMPAIGN",
-                    "CHAPTER",
-                    "CHARACTER",
-                    "CHARACTER_HEALTH",
-                    "CHARACTER_INVENTORY",
-                    "CHARACTER_TRAIT",
-                    "CHARACTER_TRAIT_SPECIALTY",
-                    "CHARGEN_SESSION",
-                    "COMPANY",
-                    "DEVELOPER",
-                    "DICTIONARY_TERM",
-                    "EXPERIENCE",
-                    "NOTE",
-                    "QUICKROLL",
-                    "USER",
-                ],
-                "AuditOperation": ["CREATE", "UPDATE", "DELETE"],
-            },
-            "characters": {
-                "AbilityFocus": ["JACK_OF_ALL_TRADES", "BALANCED", "SPECIALIST"],
-                "AutoGenExperienceLevel": ["NEW", "INTERMEDIATE", "ADVANCED", "ELITE"],
-                "BlueprintTraitOrderBy": ["NAME", "SHEET"],
-                "CharacterClass": ["VAMPIRE", "WEREWOLF", "MAGE", "HUNTER", "GHOUL", "MORTAL"],
-                "CharacterStatus": ["ALIVE", "DEAD"],
-                "CharacterType": ["PLAYER", "NPC", "STORYTELLER"],
-                "GameVersion": ["V4", "V5"],
-                "HunterCreed": [
-                    "ENTREPRENEURIAL",
-                    "FAITHFUL",
-                    "INQUISITIVE",
-                    "MARTIAL",
-                    "UNDERGROUND",
-                ],
-                "HunterEdgeType": ["ASSETS", "APTITUDES", "ENDOWMENTS"],
-                "InventoryItemType": [
-                    "BOOK",
-                    "CONSUMABLE",
-                    "ENCHANTED",
-                    "EQUIPMENT",
-                    "OTHER",
-                    "WEAPON",
-                ],
-                "SpecialtyType": ["ACTION", "OTHER", "PASSIVE", "RITUAL", "SPELL"],
-                "TraitModifyCurrency": ["NO_COST", "XP", "STARTING_POINTS"],
-                "TrackerAction": [
-                    "spend",
-                    "gain",
-                    "damage",
-                    "heal",
-                    "add_stain",
-                    "remove_stain",
-                    "reset",
-                ],
-                "TrackerType": ["COUNTER", "DAMAGE", "STAINS"],
-                "WerewolfRenown": ["GLORY", "HONOR", "WISDOM"],
-                "_related": {"concepts": "https://example.com/concepts"},
-            },
-            "companies": {
-                "CompanyPermission": ["USER", "ADMIN", "OWNER", "REVOKE"],
-                "PermissionManageCampaign": ["UNRESTRICTED", "STORYTELLER"],
-                "PermissionManageNPC": ["UNRESTRICTED", "STORYTELLER"],
-                "PermissionsGrantXP": ["UNRESTRICTED", "PLAYER", "STORYTELLER"],
-                "PermissionsFreeTraitChanges": ["UNRESTRICTED", "WITHIN_24_HOURS", "STORYTELLER"],
-                "PermissionsRecoupXP": ["UNRESTRICTED", "DENIED", "WITHIN_SESSION"],
-                "SpecialtyRules": ["FIXED_COST", "RATING_BASED"],
-            },
-            "gameplay": {
-                "DiceSize": [4, 6, 8, 10, 20, 100],
-                "RollResultType": ["SUCCESS", "FAILURE", "BOTCH", "CRITICAL", "OTHER"],
-            },
-            "users": {
-                "IdentityProvider": ["apple", "google", "discord", "github"],
-                "IdentityResolution": ["matched", "linked", "created"],
-                "UserRole": ["ADMIN", "STORYTELLER", "PLAYER", "UNAPPROVED", "DEACTIVATED"],
-            },
-            "assets": {
-                "AssetType": ["image", "text", "audio", "video", "document", "archive", "other"],
-            },
-        }
-
-        # When: Validating
-        result = validate(api_options)
-
-        # Then: _related is ignored, result is valid
-        assert result.is_valid is True
-        assert result.unmapped_api_options == {}
-
-    def test_skips_non_list_values(self):
-        """Verify validate ignores non-list values (dicts, strings) in API categories."""
-        # Given: API has a dict value that should be skipped
-        api_options = {
-            "audit_logs": {
-                "AuditEntityType": [
-                    "ASSET",
-                    "BOOK",
-                    "CAMPAIGN",
-                    "CHAPTER",
-                    "CHARACTER",
-                    "CHARACTER_HEALTH",
-                    "CHARACTER_INVENTORY",
-                    "CHARACTER_TRAIT",
-                    "CHARACTER_TRAIT_SPECIALTY",
-                    "CHARGEN_SESSION",
-                    "COMPANY",
-                    "DEVELOPER",
-                    "DICTIONARY_TERM",
-                    "EXPERIENCE",
-                    "NOTE",
-                    "QUICKROLL",
-                    "USER",
-                ],
-                "AuditOperation": ["CREATE", "UPDATE", "DELETE"],
-            },
-            "characters": {
-                "AbilityFocus": ["JACK_OF_ALL_TRADES", "BALANCED", "SPECIALIST"],
-                "AutoGenExperienceLevel": ["NEW", "INTERMEDIATE", "ADVANCED", "ELITE"],
-                "BlueprintTraitOrderBy": ["NAME", "SHEET"],
-                "CharacterClass": ["VAMPIRE", "WEREWOLF", "MAGE", "HUNTER", "GHOUL", "MORTAL"],
-                "CharacterStatus": ["ALIVE", "DEAD"],
-                "CharacterType": ["PLAYER", "NPC", "STORYTELLER"],
-                "GameVersion": ["V4", "V5"],
-                "HunterCreed": [
-                    "ENTREPRENEURIAL",
-                    "FAITHFUL",
-                    "INQUISITIVE",
-                    "MARTIAL",
-                    "UNDERGROUND",
-                ],
-                "HunterEdgeType": ["ASSETS", "APTITUDES", "ENDOWMENTS"],
-                "InventoryItemType": [
-                    "BOOK",
-                    "CONSUMABLE",
-                    "ENCHANTED",
-                    "EQUIPMENT",
-                    "OTHER",
-                    "WEAPON",
-                ],
-                "SpecialtyType": ["ACTION", "OTHER", "PASSIVE", "RITUAL", "SPELL"],
-                "TraitModifyCurrency": ["NO_COST", "XP", "STARTING_POINTS"],
-                "TrackerAction": [
-                    "spend",
-                    "gain",
-                    "damage",
-                    "heal",
-                    "add_stain",
-                    "remove_stain",
-                    "reset",
-                ],
-                "TrackerType": ["COUNTER", "DAMAGE", "STAINS"],
-                "WerewolfRenown": ["GLORY", "HONOR", "WISDOM"],
-                "SomeMetadata": {"key": "value"},
-            },
-            "companies": {
-                "CompanyPermission": ["USER", "ADMIN", "OWNER", "REVOKE"],
-                "PermissionManageCampaign": ["UNRESTRICTED", "STORYTELLER"],
-                "PermissionManageNPC": ["UNRESTRICTED", "STORYTELLER"],
-                "PermissionsGrantXP": ["UNRESTRICTED", "PLAYER", "STORYTELLER"],
-                "PermissionsFreeTraitChanges": ["UNRESTRICTED", "WITHIN_24_HOURS", "STORYTELLER"],
-                "PermissionsRecoupXP": ["UNRESTRICTED", "DENIED", "WITHIN_SESSION"],
-                "SpecialtyRules": ["FIXED_COST", "RATING_BASED"],
-            },
-            "gameplay": {
-                "DiceSize": [4, 6, 8, 10, 20, 100],
-                "RollResultType": ["SUCCESS", "FAILURE", "BOTCH", "CRITICAL", "OTHER"],
-            },
-            "users": {
-                "IdentityProvider": ["apple", "google", "discord", "github"],
-                "IdentityResolution": ["matched", "linked", "created"],
-                "UserRole": ["ADMIN", "STORYTELLER", "PLAYER", "UNAPPROVED", "DEACTIVATED"],
-            },
-            "assets": {
-                "AssetType": ["image", "text", "audio", "video", "document", "archive", "other"],
-            },
-        }
-
-        # When: Validating
-        result = validate(api_options)
-
-        # Then: SomeMetadata (a dict, not a list) is ignored
-        assert result.is_valid is True
-        assert result.unmapped_api_options == {}
-
-
-class TestPrintReport:
-    """Tests for the print_report() function."""
-
-    def test_valid_report_output(self, capsys):
-        """Verify print_report shows success for valid result."""
-        # Given: A valid result
-        result = ValidationResult(is_valid=True, mismatches=[], unmapped_api_options={})
-
-        # When: Printing the report
-        print_report(result)
-
-        # Then: Output contains success message
-        captured = capsys.readouterr()
-        assert "30/30 constants in sync" in captured.out
-
-    def test_mismatch_report_output(self, capsys):
-        """Verify print_report shows mismatch details."""
-        # Given: A result with a mismatch
-        result = ValidationResult(
-            is_valid=False,
-            mismatches=[
-                ConstantMismatch(
-                    constant_name="CharacterStatus",
-                    api_category="characters",
-                    api_option="CharacterStatus",
-                    missing_from_client={"UNDEAD"},
-                    extra_in_client=set(),
-                )
+            ),
+            [
+                "characters.CharacterStatus",
+                "['UNDEAD']",
+                "characters.GameVersion",
+                "['V4']",
+                "2 mismatch(es)",
             ],
-            unmapped_api_options={},
-        )
+            id="mismatch",
+        ),
+        pytest.param(
+            ValidationResult(is_valid=False, unmapped_api_options={"characters": ["NewOption"]}),
+            ["characters.NewOption", "1 unmapped API option(s)"],
+            id="unmapped",
+        ),
+    ],
+)
+def test_print_report_lists_each_problem(
+    capsys: pytest.CaptureFixture[str], result: ValidationResult, expected_lines: list[str]
+) -> None:
+    """Verify the report names each drifted constant, its values, and each unmapped option."""
+    print_report(result)
 
-        # When: Printing the report
-        print_report(result)
-
-        # Then: Output contains mismatch details
-        captured = capsys.readouterr()
-        assert "CharacterStatus" in captured.out
-        assert "UNDEAD" in captured.out
-
-    def test_unmapped_report_output(self, capsys):
-        """Verify print_report shows unmapped API options."""
-        # Given: A result with unmapped options
-        result = ValidationResult(
-            is_valid=False,
-            mismatches=[],
-            unmapped_api_options={"characters": ["NewOptionType"]},
-        )
-
-        # When: Printing the report
-        print_report(result)
-
-        # Then: Output contains unmapped option
-        captured = capsys.readouterr()
-        assert "NewOptionType" in captured.out
-        assert "characters" in captured.out
-
-
-class TestTrackerConstants:
-    """Tests for the tracker constants added with trait trackers and health."""
-
-    @pytest.mark.parametrize("name", ["TrackerType", "TrackerAction"])
-    def test_tracker_constants_mapped(self, name: str) -> None:
-        """Verify tracker constants map to the characters options category."""
-        assert CONSTANT_MAP[name] == ConstantMapping("characters", name)
-
-    def test_tracker_rules_not_reported_unmapped(self) -> None:
-        """Verify the nested TrackerRules dict is not flagged as an unmapped option."""
-        options = {
-            "characters": {
-                "TrackerRules": {"V5": {"DAMAGE": {"actions": ["damage", "heal", "reset"]}}}
-            }
-        }
-        assert "characters" not in validate(options).unmapped_api_options
-
-    def test_damage_type_removed(self) -> None:
-        """Verify the removed DamageType constant is neither defined nor mapped."""
-        assert "DamageType" not in CONSTANT_MAP
-        assert not hasattr(constants, "DamageType")
+    out = capsys.readouterr().out
+    for line in expected_lines:
+        assert line in out

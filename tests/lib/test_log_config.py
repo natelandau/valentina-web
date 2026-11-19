@@ -68,3 +68,18 @@ def test_client_log_emitted_once_when_enabled():
 
     assert messages.count("Send request") == 1
     assert not [r for r in stdlib_records if r.name.startswith(PREFIX)]
+
+
+def test_custom_stdlib_level_reaches_loguru():
+    """Verify a stdlib record at a level loguru does not know is forwarded by its number."""
+    messages: list[tuple[int, str]] = []
+    sink_id = logger.add(
+        lambda m: messages.append((m.record["level"].no, m.record["message"])), level=0
+    )
+    record = logging.LogRecord("lib", 7, __file__, 1, "custom level", None, None)
+    try:
+        InterceptHandler().emit(record)
+    finally:
+        logger.remove(sink_id)
+
+    assert messages == [(7, "custom level")]

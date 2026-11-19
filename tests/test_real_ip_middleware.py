@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from vweb.app import _RealIPMiddleware
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Callable, Iterable
 
 
 def _call(headers: dict[str, str], *, depth: int = 1) -> dict:
@@ -25,7 +27,11 @@ def _call(headers: dict[str, str], *, depth: int = 1) -> dict:
         "wsgi.url_scheme": "http",
         **headers,
     }
-    _RealIPMiddleware(inner, trusted_proxy_depth=depth)(environ, lambda *_: None)
+
+    def start_response(*_: object) -> Callable[[bytes], object]:
+        return lambda _data: None
+
+    _RealIPMiddleware(inner, trusted_proxy_depth=depth)(environ, start_response)
     return seen
 
 
@@ -38,28 +44,42 @@ def test_client_forwarded_host_is_ignored() -> None:
     assert environ["HTTP_HOST"] == "valentina-noir.com"
 
 
-def test_forwarded_proto_uses_value_appended_by_trusted_proxy() -> None:
-    """Verify the scheme comes from the trusted proxy's entry, not a client-prepended one."""
-    # When a client prepends a value and the trusted proxy appends the real scheme
-    environ = _call({"HTTP_X_FORWARDED_PROTO": "http, https"})
-
-    # Then the proxy's value wins
-    assert environ["wsgi.url_scheme"] == "https"
-
-
-def test_forwarded_proto_single_value_trusted_at_any_depth() -> None:
-    """Verify an overwritten single-value header still sets the scheme behind several proxies."""
-    # When the nearest proxy overwrites the header and two proxies are trusted
-    environ = _call({"HTTP_X_FORWARDED_PROTO": "https"}, depth=2)
-
-    # Then the scheme follows the proxy so force_https does not redirect forever
-    assert environ["wsgi.url_scheme"] == "https"
+@pytest.mark.parametrize(
+    ("proto", "depth"),
+    [
+        # A client prepends a value and the trusted proxy appends the real scheme
+        pytest.param("http, https", 1, id="proxy-appended-value-wins"),
+        # The nearest proxy overwrites the header, so force_https must not redirect forever
+        pytest.param("https", 2, id="single-value-at-any-depth"),
+    ],
+)
+def test_forwarded_proto_sets_scheme(proto: str, depth: int) -> None:
+    """Verify the scheme comes from the rightmost X-Forwarded-Proto entry."""
+    assert _call({"HTTP_X_FORWARDED_PROTO": proto}, depth=depth)["wsgi.url_scheme"] == "https"
 
 
-def test_forwarded_for_skips_trusted_proxy_entries() -> None:
-    """Verify the client IP is read from the right of X-Forwarded-For past trusted proxies."""
-    # When a client spoofs a leading entry ahead of the real chain
-    environ = _call({"HTTP_X_FORWARDED_FOR": "6.6.6.6, 203.0.113.9, 172.16.0.2"})
-
-    # Then the entry just left of the trusted proxy is used
-    assert environ["REMOTE_ADDR"] == "203.0.113.9"
+@pytest.mark.parametrize(
+    ("headers", "depth", "expected"),
+    [
+        # A client spoofs a leading entry ahead of the real chain
+        pytest.param(
+            {"HTTP_X_FORWARDED_FOR": "6.6.6.6, 203.0.113.9, 172.16.0.2"},
+            1,
+            "203.0.113.9",
+            id="xff-skips-trusted-proxy",
+        ),
+        pytest.param(
+            {"HTTP_CF_CONNECTING_IP": " 198.51.100.7 ", "HTTP_X_FORWARDED_FOR": "6.6.6.6, 1.1.1.1"},
+            1,
+            "198.51.100.7",
+            id="cloudflare-header-wins",
+        ),
+        pytest.param(
+            {"HTTP_X_FORWARDED_FOR": "172.16.0.2"}, 1, "10.0.0.1", id="xff-shorter-than-depth"
+        ),
+        pytest.param({}, 1, "10.0.0.1", id="no-proxy-headers"),
+    ],
+)
+def test_client_ip_resolution(headers: dict[str, str], depth: int, expected: str) -> None:
+    """Verify which address becomes REMOTE_ADDR for each set of proxy headers."""
+    assert _call(headers, depth=depth)["REMOTE_ADDR"] == expected

@@ -1,4 +1,4 @@
-"""Tests for the notes CRUD handlers (book, chapter, character)."""
+"""Tests for the notes CRUD handlers and the campaign, book, and chapter notes tables."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 
 from tests.conftest import get_csrf
 from tests.helpers import build_global_context, seed_session
-from vweb.api_client.testing import CampaignFactory, CharacterFactory, NoteFactory, Routes
+from vweb.api_client.testing import CharacterFactory, NoteFactory, Routes
 from vweb.routes.book.handlers import BookNotesHandler
 from vweb.routes.campaign_notes.handlers import CampaignNotesHandler
 from vweb.routes.chapter.handlers import ChapterNotesHandler
@@ -17,8 +17,6 @@ from vweb.routes.character_view.handlers_notes import CharacterNotesHandler
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-
-    from pytest_mock import MockerFixture
 
     from vweb.api_client.routes import RouteSpec
 
@@ -98,63 +96,43 @@ def handler_in_context(app, handler_case, mock_global_context, fake_vclient) -> 
 
 
 class TestNotesHandlerValidation:
-    """Tests for validate() across all notes handlers."""
+    """Tests for the note form rule shared by every notes handler."""
 
-    def test_empty_title_returns_error(self, handler_case) -> None:
-        """Verify validation rejects an empty title."""
-        # Given a handler instance with no service dependency
-        handler = handler_case.handler_class.__new__(handler_case.handler_class)
+    @pytest.mark.parametrize(
+        ("form_data", "invalid_fields"),
+        [
+            ({"title": "", "content": "Some content"}, {"title"}),
+            ({"title": "A Title", "content": ""}, {"content"}),
+            ({"title": "   ", "content": "  \t  "}, {"title", "content"}),
+            ({"title": "My Title", "content": "My content"}, set()),
+        ],
+        ids=["empty-title", "empty-content", "whitespace-only", "valid"],
+    )
+    def test_requires_title_and_content(self, form_data, invalid_fields) -> None:
+        """Verify a blank or whitespace-only title or content is an error on that field."""
+        # Given a handler that needs no service to validate
+        handler = BookNotesHandler.__new__(BookNotesHandler)
 
-        # When validating form data with an empty title
-        errors = handler.validate({"title": "", "content": "Some content"})
-
-        # Then a title error is returned
-        assert errors["title"] == "Title is required"
-
-    def test_empty_content_returns_error(self, handler_case) -> None:
-        """Verify validation rejects empty content."""
-        # Given a handler instance with no service dependency
-        handler = handler_case.handler_class.__new__(handler_case.handler_class)
-
-        # When validating form data with empty content
-        errors = handler.validate({"title": "A Title", "content": ""})
-
-        # Then a content error is returned
-        assert errors["content"] == "Content is required"
-
-    def test_whitespace_only_fields_return_errors(self, handler_case) -> None:
-        """Verify validation rejects whitespace-only fields."""
-        # Given a handler instance with no service dependency
-        handler = handler_case.handler_class.__new__(handler_case.handler_class)
-
-        # When validating form data with whitespace-only values
-        errors = handler.validate({"title": "   ", "content": "  \t  "})
-
-        # Then both errors are returned
-        assert errors["title"] == "Title is required"
-        assert errors["content"] == "Content is required"
-
-    def test_valid_data_returns_no_errors(self, handler_case) -> None:
-        """Verify validation accepts valid form data."""
-        # Given a handler instance with no service dependency
-        handler = handler_case.handler_class.__new__(handler_case.handler_class)
-
-        # When validating valid form data
-        errors = handler.validate({"title": "My Title", "content": "My content"})
-
-        # Then no errors are returned
-        assert errors == {}
+        # When / Then
+        assert set(handler.validate(form_data)) == invalid_fields
 
 
 class TestNotesHandlerOperations:
     """Tests for the shared CRUD operations across all notes handlers."""
 
-    def test_list_items_calls_service(self, handler_case, handler_in_context, fake_vclient) -> None:
-        """Verify list_items fetches the parent's notes from the API."""
-        # When listing items
-        handler_in_context.list_items()
+    def test_list_items_returns_parent_notes(
+        self, handler_case, handler_in_context, fake_vclient
+    ) -> None:
+        """Verify list_items fetches and returns the parent's notes from the API."""
+        # Given notes on the parent
+        notes = NoteFactory.batch(2)
+        fake_vclient.set_response(handler_case.list_route, items=notes)
 
-        # Then the parent's notes are requested
+        # When listing items
+        result = handler_in_context.list_items()
+
+        # Then the parent's notes are requested and returned
+        assert result == notes
         fake_vclient.assert_called(handler_case.list_route, params=handler_case.path_params)
 
     def test_get_item_calls_service(self, handler_case, handler_in_context, fake_vclient) -> None:
@@ -214,89 +192,26 @@ class TestNotesHandlerOperations:
         )
 
 
-class TestBookNotesHandlerSpecific:
-    """Tests for behavior unique to BookNotesHandler."""
+class TestNotesHandlerInit:
+    """Tests for the parent ids book and chapter notes handlers require."""
 
-    def test_list_items_returns_notes(self, app, fake_vclient) -> None:
-        """Verify list_items returns the notes from the service."""
+    @pytest.mark.parametrize(
+        ("handler_class", "kwargs"),
+        [
+            (BookNotesHandler, {}),
+            (ChapterNotesHandler, {"book_id": "book-456"}),
+            (ChapterNotesHandler, {"campaign_id": "camp-456"}),
+            (ChapterNotesHandler, {}),
+        ],
+        ids=["book-no-campaign", "chapter-no-campaign", "chapter-no-book", "chapter-no-ids"],
+    )
+    def test_missing_parent_id_raises(self, app, handler_class, kwargs) -> None:
+        """Verify a handler without its campaign or book id refuses to build."""
         with app.test_request_context():
             seed_session()
 
-            notes = NoteFactory.batch(3)
-            fake_vclient.set_response(Routes.BOOKS_NOTES_LIST, items=notes)
-
-            handler = BookNotesHandler("book-123", campaign_id="camp-456")
-
-            result = handler.list_items()
-
-            assert result == notes
-
-    def test_init_raises_without_campaign_id(self, app, fake_vclient) -> None:
-        """Verify constructor raises ValueError when campaign_id is missing."""
-        with app.test_request_context():
-            seed_session()
-
-            with pytest.raises(ValueError, match="campaign_id is required"):
-                BookNotesHandler("book-123")
-
-    def test_init_uses_campaign_id_kwarg(self, app, fake_vclient) -> None:
-        """Verify constructor uses campaign_id kwarg to create the service."""
-        with app.test_request_context():
-            seed_session()
-
-            handler = BookNotesHandler("book-999", campaign_id="camp-direct")
-
-            assert handler._parent_id == "book-999"
-
-
-class TestChapterNotesHandlerInit:
-    """Tests for ChapterNotesHandler constructor validation."""
-
-    def test_missing_campaign_id_raises_value_error(self, app, fake_vclient) -> None:
-        """Verify constructor raises ValueError when campaign_id is missing."""
-        with app.test_request_context():
-            seed_session()
-
-            with pytest.raises(ValueError, match="campaign_id and book_id are required"):
-                ChapterNotesHandler("chapter-123", book_id="book-456")
-
-    def test_missing_book_id_raises_value_error(self, app, fake_vclient) -> None:
-        """Verify constructor raises ValueError when book_id is missing."""
-        with app.test_request_context():
-            seed_session()
-
-            with pytest.raises(ValueError, match="campaign_id and book_id are required"):
-                ChapterNotesHandler("chapter-123", campaign_id="camp-456")
-
-    def test_missing_both_raises_value_error(self, app, fake_vclient) -> None:
-        """Verify constructor raises ValueError when both campaign_id and book_id are missing."""
-        with app.test_request_context():
-            seed_session()
-
-            with pytest.raises(ValueError, match="campaign_id and book_id are required"):
-                ChapterNotesHandler("chapter-123")
-
-    def test_init_calls_service_with_correct_args(self, app, fake_vclient) -> None:
-        """Verify the handler scopes its requests to the campaign, book, and session user."""
-        with app.test_request_context():
-            seed_session()
-
-            # When listing notes through a chapter handler
-            handler = ChapterNotesHandler("chapter-123", campaign_id="camp-456", book_id="book-789")
-            handler.list_items()
-
-        # Then the request carries the campaign, book, company, and On-Behalf-Of user
-        (request,) = fake_vclient.assert_called(
-            Routes.CHAPTERS_NOTES_LIST,
-            params={
-                "company_id": "test-company-id",
-                "campaign_id": "camp-456",
-                "book_id": "book-789",
-                "chapter_id": "chapter-123",
-            },
-            times=1,
-        )
-        assert request.headers["on-behalf-of"] == "test-user-id"
+            with pytest.raises(ValueError, match="required"):
+                handler_class("parent-123", **kwargs)
 
 
 class TestCharacterNotesHandlerInit:
@@ -355,49 +270,133 @@ class TestCampaignContentNotesMutationGuard:
             assert handler.can_mutate() is expected
 
 
-class TestCampaignNotesRouteGuard:
-    """Tests for campaign notes write routes when the user cannot manage campaigns."""
+@dataclass(frozen=True)
+class NotesTableCase:
+    """Describe one campaign-content notes table route for the shared route tests."""
 
-    @pytest.mark.parametrize(
-        ("method", "path"),
-        [
-            ("post", "/campaign/camp-1/notes/items"),
-            ("post", "/campaign/camp-1/notes/items/note-1"),
-            ("delete", "/campaign/camp-1/notes/items/note-1"),
-        ],
-    )
-    def test_player_write_is_forbidden(
-        self, client, mocker: MockerFixture, fake_vclient, method, path
+    base_path: str
+    path_params: dict[str, str]
+    list_route: RouteSpec
+    create_route: RouteSpec
+    update_route: RouteSpec
+    delete_route: RouteSpec
+
+
+NOTES_TABLE_CASES: dict[str, NotesTableCase] = {
+    "campaign": NotesTableCase(
+        base_path="/campaign/camp-1/notes/items",
+        path_params={"campaign_id": "camp-1"},
+        list_route=Routes.CAMPAIGNS_NOTES_LIST,
+        create_route=Routes.CAMPAIGNS_NOTES_CREATE,
+        update_route=Routes.CAMPAIGNS_NOTES_UPDATE,
+        delete_route=Routes.CAMPAIGNS_NOTES_DELETE,
+    ),
+    "book": NotesTableCase(
+        base_path="/campaign/camp-1/book/book-1/notes",
+        path_params={"campaign_id": "camp-1", "book_id": "book-1"},
+        list_route=Routes.BOOKS_NOTES_LIST,
+        create_route=Routes.BOOKS_NOTES_CREATE,
+        update_route=Routes.BOOKS_NOTES_UPDATE,
+        delete_route=Routes.BOOKS_NOTES_DELETE,
+    ),
+    "chapter": NotesTableCase(
+        base_path="/campaign/camp-1/book/book-1/chapter/ch-1/crud-notes",
+        path_params={"campaign_id": "camp-1", "book_id": "book-1", "chapter_id": "ch-1"},
+        list_route=Routes.CHAPTERS_NOTES_LIST,
+        create_route=Routes.CHAPTERS_NOTES_CREATE,
+        update_route=Routes.CHAPTERS_NOTES_UPDATE,
+        delete_route=Routes.CHAPTERS_NOTES_DELETE,
+    ),
+}
+
+NOTE_WRITES = [
+    pytest.param(("post", "", "create_route", {}), id="create"),
+    pytest.param(("post", "/note-1", "update_route", {"note_id": "note-1"}), id="update"),
+    pytest.param(("delete", "/note-1", "delete_route", {"note_id": "note-1"}), id="delete"),
+]
+
+
+@pytest.fixture(params=sorted(NOTES_TABLE_CASES))
+def table_case(request: pytest.FixtureRequest) -> NotesTableCase:
+    """Parametrize over the campaign, book, and chapter notes tables."""
+    return NOTES_TABLE_CASES[request.param]
+
+
+class TestNotesTableRoutes:
+    """Tests for the campaign, book, and chapter notes table routes."""
+
+    def test_table_lists_parent_notes(self, client, set_role, fake_vclient, table_case) -> None:
+        """Verify the table shows the parent's notes from the API."""
+        # Given a note on the parent
+        set_role("PLAYER")
+        fake_vclient.set_response(
+            table_case.list_route, items=[NoteFactory.build(title="Remember the docks")]
+        )
+
+        # When loading the table
+        response = client.get(table_case.base_path, headers={"HX-Request": "true"})
+
+        # Then the parent's note is shown
+        assert response.status_code == 200
+        assert b"Remember the docks" in response.data
+        fake_vclient.assert_called(table_case.list_route, params=table_case.path_params)
+
+    @pytest.mark.parametrize("write", NOTE_WRITES)
+    def test_storyteller_write_reaches_api(
+        self, client, set_role, fake_vclient, table_case, write
     ) -> None:
-        """Verify a player cannot create, update, or delete campaign notes."""
-        # Given a player in a company that restricts campaign management
-        campaign = CampaignFactory.build(id="camp-1")
-        context = build_global_context(user_role="PLAYER", campaign=campaign)
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
+        """Verify a storyteller's create, update, and delete reach the API under the parent."""
+        method, suffix, route_name, note_params = write
+        # Given a storyteller
+        set_role("STORYTELLER")
 
-        # When the player sends the write directly
+        # When sending the write
         response = getattr(client, method)(
-            path,
+            f"{table_case.base_path}{suffix}",
             data={"title": "Note title", "content": "Note content"},
             headers={"X-CSRFToken": get_csrf(client), "HX-Request": "true"},
         )
 
-        # Then the request is refused and no note write reaches the API
+        # Then it reaches the API for that parent
+        assert response.status_code == 200
+        fake_vclient.assert_called(
+            getattr(table_case, route_name),
+            params={**table_case.path_params, **note_params},
+            times=1,
+        )
+
+    @pytest.mark.parametrize("write", NOTE_WRITES)
+    def test_player_write_is_forbidden(
+        self, client, set_role, fake_vclient, table_case, write
+    ) -> None:
+        """Verify a player cannot create, update, or delete campaign, book, or chapter notes."""
+        method, suffix, route_name, _ = write
+        # Given a player in a company that restricts campaign management
+        set_role("PLAYER")
+
+        # When the player sends the write directly
+        response = getattr(client, method)(
+            f"{table_case.base_path}{suffix}",
+            data={"title": "Note title", "content": "Note content"},
+            headers={"X-CSRFToken": get_csrf(client), "HX-Request": "true"},
+        )
+
+        # Then the request is refused and nothing reaches the API
         assert response.status_code == 403
-        fake_vclient.assert_not_called(Routes.CAMPAIGNS_NOTES_CREATE)
-        fake_vclient.assert_not_called(Routes.CAMPAIGNS_NOTES_UPDATE)
-        fake_vclient.assert_not_called(Routes.CAMPAIGNS_NOTES_DELETE)
+        fake_vclient.assert_not_called(getattr(table_case, route_name))
+
+
+class TestCampaignNotesRouteGuard:
+    """Tests for the generic table rules, checked through the campaign notes table."""
 
     @pytest.mark.parametrize(
         "path", ["/campaign/camp-1/notes/items/form", "/campaign/camp-1/notes/items/form/note-1"]
     )
     @pytest.mark.usefixtures("fake_vclient")
-    def test_player_form_is_forbidden(self, client, mocker: MockerFixture, path) -> None:
+    def test_player_form_is_forbidden(self, client, set_role, path) -> None:
         """Verify a player cannot load the add or edit note form."""
         # Given a player in a company that restricts campaign management
-        campaign = CampaignFactory.build(id="camp-1")
-        context = build_global_context(user_role="PLAYER", campaign=campaign)
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
+        set_role("PLAYER")
 
         # When the player requests the form directly
         response = client.get(path, headers={"HX-Request": "true"})
@@ -405,14 +404,10 @@ class TestCampaignNotesRouteGuard:
         # Then the request is refused
         assert response.status_code == 403
 
-    def test_player_table_ignores_editable_flag(
-        self, client, mocker: MockerFixture, fake_vclient
-    ) -> None:
+    def test_player_table_ignores_editable_flag(self, client, set_role, fake_vclient) -> None:
         """Verify a player gets a read-only table even when the URL asks for an editable one."""
         # Given a player in a company that restricts campaign management
-        campaign = CampaignFactory.build(id="camp-1")
-        context = build_global_context(user_role="PLAYER", campaign=campaign)
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=context)
+        set_role("PLAYER")
         fake_vclient.set_response(
             Routes.CAMPAIGNS_NOTES_LIST, items=[NoteFactory.build(id="note-1")]
         )

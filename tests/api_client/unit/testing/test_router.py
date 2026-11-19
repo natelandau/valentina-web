@@ -1,205 +1,161 @@
 """Tests for the _FakeRouter."""
 
 import json
+import re
+from collections.abc import Callable
 
 import httpx2
+import pytest
 
 from vweb.api_client.endpoints import Endpoints
+from vweb.api_client.routes import Routes, RouteSpec
 from vweb.api_client.testing._router import _FakeRouter
 
+BASE = "https://fake.test"
 
-class TestFakeRouterPatternMatching:
-    """Router should match requests to registered routes."""
 
-    def test_matches_simple_endpoint(self):
-        router = _FakeRouter()
-        request = httpx2.Request("GET", "https://fake.test/api/v1/health")
-        response = router.handle(request)
-        assert response.status_code == 200
+def _url(pattern: str, **params: str) -> str:
+    """Fill a route pattern's path parameters, defaulting each to ``<name>-1``."""
+    path = re.sub(r"\{([^}]+)\}", lambda m: params.get(m[1], f"{m[1]}-1"), pattern)
+    return f"{BASE}{path}"
 
-    def test_matches_parameterized_endpoint(self):
-        router = _FakeRouter()
-        request = httpx2.Request(
-            "GET",
-            "https://fake.test/api/v1/companies/abc123/campaigns",
-        )
-        response = router.handle(request)
-        assert response.status_code == 200
-        body = json.loads(response.content)
-        assert "items" in body
-        assert "total" in body
 
-    def test_detail_endpoint_returns_single_object(self):
-        router = _FakeRouter()
-        request = httpx2.Request(
-            "GET",
-            "https://fake.test/api/v1/companies/abc/campaigns/c1",
-        )
-        response = router.handle(request)
-        assert response.status_code == 200
-        body = json.loads(response.content)
-        assert "items" not in body
-        assert "id" in body
+def _handle(router: _FakeRouter, method: str, pattern: str, **params: str) -> httpx2.Response:
+    return router.handle(httpx2.Request(method, _url(pattern, **params)))
 
-    def test_delete_returns_204(self):
-        router = _FakeRouter()
-        request = httpx2.Request(
-            "DELETE",
-            "https://fake.test/api/v1/companies/abc/campaigns/c1",
-        )
-        response = router.handle(request)
-        assert response.status_code == 204
 
-    def test_unmatched_route_returns_404(self):
-        router = _FakeRouter()
-        request = httpx2.Request("GET", "https://fake.test/api/v1/nonexistent")
-        response = router.handle(request)
-        assert response.status_code == 404
+@pytest.mark.parametrize(
+    ("route", "status", "check_body"),
+    [
+        pytest.param(
+            Routes.CAMPAIGNS_GET,
+            200,
+            lambda body: "id" in body and "items" not in body,
+            id="single",
+        ),
+        pytest.param(
+            Routes.CAMPAIGNS_LIST,
+            200,
+            lambda body: len(body["items"]) == body["total"] == 1,
+            id="paginated",
+        ),
+        pytest.param(
+            Routes.USERS_LOOKUP,
+            200,
+            lambda body: isinstance(body, list) and len(body) == 1,
+            id="list",
+        ),
+        pytest.param(Routes.OPTIONS_GET, 200, lambda body: body == {}, id="raw-json"),
+        pytest.param(Routes.CAMPAIGNS_DELETE, 204, None, id="no-content"),
+    ],
+)
+def test_default_response_matches_route_style(
+    route: RouteSpec, status: int, check_body: Callable[[object], bool] | None
+) -> None:
+    """Verify each route answers by default in the envelope its response style calls for."""
+    response = _handle(_FakeRouter(), route.method, route.pattern)
+
+    assert response.status_code == status
+    if check_body is None:
+        assert response.content == b""
+    else:
+        assert check_body(json.loads(response.content))
+
+
+def test_unmatched_route_returns_404() -> None:
+    """Verify a path that names no API route gets a 404."""
+    response = _FakeRouter().handle(httpx2.Request("GET", f"{BASE}/api/v1/nonexistent"))
+
+    assert response.status_code == 404
 
 
 class TestFakeRouterOverrides:
     """Router should support user-defined route overrides."""
 
-    def test_override_replaces_default(self):
+    def test_override_replaces_default(self) -> None:
+        """Verify an override answers in place of the default, with its own status and body."""
         router = _FakeRouter()
-        custom_json = {"items": [{"id": "custom"}], "total": 1, "limit": 10, "offset": 0}
-        router.add_route("GET", Endpoints.CAMPAIGNS, json=custom_json)
-        request = httpx2.Request(
-            "GET",
-            "https://fake.test/api/v1/companies/abc/campaigns",
-        )
-        response = router.handle(request)
-        body = json.loads(response.content)
-        assert body["items"][0]["id"] == "custom"
+        router.add_route("GET", Endpoints.CAMPAIGN, json={"error": "gone"}, status_code=404)
 
-    def test_override_with_status_code(self):
-        router = _FakeRouter()
-        router.add_route("GET", Endpoints.CAMPAIGN, json={"error": "not found"}, status_code=404)
-        request = httpx2.Request(
-            "GET",
-            "https://fake.test/api/v1/companies/abc/campaigns/c1",
-        )
-        response = router.handle(request)
+        response = _handle(router, "GET", Endpoints.CAMPAIGN)
+
         assert response.status_code == 404
+        assert json.loads(response.content) == {"error": "gone"}
 
-    def test_override_with_params_matches_specific_id(self):
-        """Verify parameterized override only matches the specified path parameter value."""
+    def test_override_without_body_sends_empty_response(self) -> None:
+        """Verify an override with no JSON sends an empty body."""
         router = _FakeRouter()
-        router.add_route(
-            "GET",
-            Endpoints.CAMPAIGN,
-            json={"id": "campaign-aaa", "name": "Alpha"},
-            params={"campaign_id": "aaa"},
-        )
+        router.add_route("GET", Endpoints.CAMPAIGN, json=None, status_code=204)
 
-        # When requesting the matching campaign_id
-        matched = httpx2.Request(
-            "GET",
-            "https://fake.test/api/v1/companies/co1/campaigns/aaa",
-        )
-        response = router.handle(matched)
-        body = json.loads(response.content)
-        assert body["id"] == "campaign-aaa"
+        response = _handle(router, "GET", Endpoints.CAMPAIGN)
 
-        # When requesting a different campaign_id, the default factory response is used
-        other = httpx2.Request(
-            "GET",
-            "https://fake.test/api/v1/companies/co1/campaigns/bbb",
-        )
-        response = router.handle(other)
-        body = json.loads(response.content)
-        assert body["id"] != "campaign-aaa"
+        assert response.status_code == 204
+        assert response.content == b""
 
-    def test_multiple_parameterized_overrides(self):
-        """Verify different param values return different responses."""
+    def test_parameterized_overrides_match_only_their_ids(self) -> None:
+        """Verify overrides pinned to path values answer only those values."""
         router = _FakeRouter()
-        router.add_route(
-            "GET",
-            Endpoints.CAMPAIGN,
-            json={"id": "aaa", "name": "Alpha"},
-            params={"campaign_id": "aaa"},
-        )
-        router.add_route(
-            "GET",
-            Endpoints.CAMPAIGN,
-            json={"id": "bbb", "name": "Beta"},
-            params={"campaign_id": "bbb"},
-        )
+        for campaign_id in ("aaa", "bbb"):
+            router.add_route(
+                "GET",
+                Endpoints.CAMPAIGN,
+                json={"id": campaign_id},
+                params={"campaign_id": campaign_id},
+            )
 
-        # When requesting campaign aaa
-        resp_a = router.handle(
-            httpx2.Request("GET", "https://fake.test/api/v1/companies/co1/campaigns/aaa")
-        )
-        assert json.loads(resp_a.content)["id"] == "aaa"
+        def body_for(campaign_id: str) -> dict:
+            response = _handle(router, "GET", Endpoints.CAMPAIGN, campaign_id=campaign_id)
+            return json.loads(response.content)
 
-        # When requesting campaign bbb
-        resp_b = router.handle(
-            httpx2.Request("GET", "https://fake.test/api/v1/companies/co1/campaigns/bbb")
-        )
-        assert json.loads(resp_b.content)["id"] == "bbb"
+        assert body_for("aaa")["id"] == "aaa"
+        assert body_for("bbb")["id"] == "bbb"
+        assert body_for("ccc")["id"] not in {"aaa", "bbb"}
 
-    def test_parameterized_override_beats_generic_override(self):
-        """Verify parameterized overrides take priority regardless of insertion order."""
+    def test_parameterized_override_beats_generic_override(self) -> None:
+        """Verify a pinned override wins over a generic one regardless of insertion order."""
         router = _FakeRouter()
-
-        # Given a generic override added first
+        router.add_route("GET", Endpoints.CAMPAIGN, json={"id": "generic"})
         router.add_route(
-            "GET",
-            Endpoints.CAMPAIGN,
-            json={"id": "generic"},
-        )
-        # Given a parameterized override added second
-        router.add_route(
-            "GET",
-            Endpoints.CAMPAIGN,
-            json={"id": "specific"},
-            params={"campaign_id": "target"},
+            "GET", Endpoints.CAMPAIGN, json={"id": "specific"}, params={"campaign_id": "target"}
         )
 
-        # When requesting the targeted campaign_id
-        response = router.handle(
-            httpx2.Request("GET", "https://fake.test/api/v1/companies/co1/campaigns/target")
-        )
-        body = json.loads(response.content)
-        assert body["id"] == "specific"
+        target = _handle(router, "GET", Endpoints.CAMPAIGN, campaign_id="target")
+        other = _handle(router, "GET", Endpoints.CAMPAIGN, campaign_id="other")
 
-        # When requesting a different campaign_id, the generic override is used
-        response = router.handle(
-            httpx2.Request("GET", "https://fake.test/api/v1/companies/co1/campaigns/other")
-        )
-        body = json.loads(response.content)
-        assert body["id"] == "generic"
+        assert json.loads(target.content)["id"] == "specific"
+        assert json.loads(other.content)["id"] == "generic"
 
 
 class TestFakeRouterPathHandling:
-    """Router should honor custom methods and encoded path values."""
+    """Router should honor custom methods, ad-hoc patterns, and encoded path values."""
 
-    def test_add_route_with_unlisted_method_on_known_pattern(self):
+    def test_add_route_with_unlisted_method_on_known_pattern(self) -> None:
         """Verify an override answers a method that no default route has for its pattern."""
-        # Given a PUT override on a pattern whose only default is GET
         router = _FakeRouter()
         router.add_route("PUT", Endpoints.CAMPAIGN, json={"id": "put"})
 
-        # When a PUT request hits that pattern
-        response = router.handle(
-            httpx2.Request("PUT", "https://fake.test/api/v1/companies/co1/campaigns/c1")
-        )
+        response = _handle(router, "PUT", Endpoints.CAMPAIGN)
 
-        # Then the override answers it
         assert response.status_code == 200
         assert json.loads(response.content) == {"id": "put"}
 
-    def test_encoded_slash_in_path_value_stays_one_segment(self):
+    def test_ad_hoc_override_answers_only_its_own_path(self) -> None:
+        """Verify an override on an unlisted pattern answers that path and no other."""
+        router = _FakeRouter()
+        router.add_route("GET", "/api/v1/experimental/{thing_id}", json={"ok": True})
+
+        matched = router.handle(httpx2.Request("GET", f"{BASE}/api/v1/experimental/t1"))
+        other = router.handle(httpx2.Request("GET", f"{BASE}/api/v1/nonexistent"))
+
+        assert json.loads(matched.content) == {"ok": True}
+        assert other.status_code == 404
+
+    def test_encoded_slash_in_path_value_stays_one_segment(self) -> None:
         """Verify a percent-encoded slash in an id resolves the route and decodes the value."""
-        # Given a router
         router = _FakeRouter()
 
-        # When the campaign id holds an encoded slash
-        response = router.handle(
-            httpx2.Request("GET", "https://fake.test/api/v1/companies/co1/campaigns/a%2Fb")
-        )
+        response = _handle(router, "GET", Endpoints.CAMPAIGN, campaign_id="a%2Fb")
 
-        # Then the route resolves and the captured value is decoded
         assert response.status_code == 200
         (recorded,) = router.requests
         assert recorded.route is not None

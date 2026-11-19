@@ -76,9 +76,17 @@ class _Reply:
     status_code: int
     json: JsonBody | None
     headers: dict[str, str] | None = None
+    connection_error: bool = False
 
     def to_response(self) -> httpx2.Response:
-        """Build the httpx response for this reply."""
+        """Build the httpx response for this reply.
+
+        Raises:
+            httpx2.ConnectError: When the reply stands for a request that never got an answer.
+        """
+        if self.connection_error:
+            msg = "Fake connection refused"
+            raise httpx2.ConnectError(msg)
         if self.json is None:
             return httpx2.Response(status_code=self.status_code, headers=self.headers)
         return httpx2.Response(status_code=self.status_code, json=self.json, headers=self.headers)

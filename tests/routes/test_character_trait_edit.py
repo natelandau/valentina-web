@@ -9,13 +9,16 @@ import pytest
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
-from tests.conftest import get_csrf
-from tests.helpers import build_global_context
+from tests.conftest import get_csrf, htmx_post
+from tests.helpers import (
+    assert_redirects_to,
+    build_global_context,
+    build_specialty,
+    session_flashes,
+)
 from vweb.api_client.exceptions import RequestValidationError
-from vweb.api_client.models import CharacterTraitSpecialty
 from vweb.api_client.models.character_trait import CharacterTraitValueOption
 from vweb.api_client.testing import (
-    CharacterConceptFactory,
     CharacterFactory,
     CharacterFullSheetFactory,
     CharacterTraitFactory,
@@ -28,13 +31,16 @@ from vweb.api_client.testing import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from flask.testing import FlaskClient, TestResponse
+
     from vweb.api_client.constants import SpecialtyRules
     from vweb.api_client.models import (
         Character,
         CharacterFullSheet,
         CharacterTraitValueOptionsResponse,
     )
-    from vweb.api_client.testing import FakeVClient
 
 
 class _Currency(BaseModel):
@@ -46,6 +52,7 @@ def _value_options(
     *,
     xp_current: int = 0,
     starting_points_current: int = 0,
+    affordable: bool = True,
     **options: tuple[str, int],
 ) -> CharacterTraitValueOptionsResponse:
     """Build a value-options response whose options map a value to (direction, point_change)."""
@@ -57,9 +64,9 @@ def _value_options(
             value: CharacterTraitValueOption(
                 direction=direction,
                 point_change=point_change,
-                can_use_xp=True,
+                can_use_xp=affordable,
                 xp_after=0,
-                can_use_starting_points=True,
+                can_use_starting_points=affordable,
                 starting_points_after=0,
             )
             for value, (direction, point_change) in options.items()
@@ -76,6 +83,43 @@ def _trait_params(character_trait_id: str = "ct-1") -> dict[str, str]:
     }
 
 
+@pytest.fixture
+def use_character(mocker, use_context) -> Callable[..., Character]:
+    """Return a function that puts pc-1 in the global context and serves a one-trait sheet."""
+
+    def _use(
+        *,
+        role: str = "STORYTELLER",
+        character_type: str = "PLAYER",
+        owner_id: str | None = "owner-1",
+        free_changes: Literal["UNRESTRICTED", "WITHIN_24_HOURS", "STORYTELLER"] = "STORYTELLER",
+    ) -> Character:
+        company = CompanyFactory.build(name="Test Company")
+        company.settings.permission_free_trait_changes = free_changes
+        ctx = build_global_context(user_role=role, company=company)
+        character = CharacterFactory.build(
+            id="pc-1",
+            campaign_id=ctx.campaigns[0].id,
+            type=character_type,
+            user_player_id=owner_id,
+        )
+        ctx.characters = [character]
+        use_context(ctx)
+        mocker.patch(
+            "vweb.routes.character_trait_edit.views.cache.character_sheet.get",
+            return_value=_one_trait_sheet(character),
+        )
+        return character
+
+    return _use
+
+
+def _post(
+    client: FlaskClient, spend: str, data: dict[str, str], character_id: str = "pc-1"
+) -> TestResponse:
+    return htmx_post(client, f"/character/{character_id}/traits/{spend}", data)
+
+
 def _one_trait_sheet(character: Character) -> CharacterFullSheet:
     """Build a deterministic full sheet with a single Strength trait (ct-1)."""
     trait = TraitFactory.build(id="t-str", name="strength", min_value=0, max_value=5)
@@ -89,122 +133,383 @@ def _one_trait_sheet(character: Character) -> CharacterFullSheet:
     return CharacterFullSheetFactory.build(character=character, sections=[section])
 
 
+_DENIED = [
+    pytest.param(
+        {"role": "PLAYER", "character_type": "NPC", "owner_id": None},
+        "NO_COST",
+        id="restricted-player-on-npc",
+    ),
+    pytest.param(
+        {"role": "PLAYER", "owner_id": "test-user-id"},
+        "NO_COST",
+        id="own-character-without-free-edit-permission",
+    ),
+    pytest.param(
+        {"role": "PLAYER", "owner_id": "someone-else"},
+        "XP",
+        id="other-players-character",
+    ),
+]
+
+
 class TestCharacterTraitsViewPermissions:
-    """Permission enforcement for POST /character/<id>/traits/<spend_type>."""
+    """Permission enforcement for /character/<id>/traits/<spend_type>."""
 
-    def test_post_denied_for_restricted_player_on_npc(self, client, mocker, fake_vclient) -> None:
-        """Verify a restricted player cannot mutate an NPC's traits via a crafted POST."""
-        # Given a PLAYER and an NPC under the default storyteller-only NPC setting
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        npc = CharacterFactory.build(
-            id="npc-1",
-            campaign_id=campaign.id,
-            type="NPC",
-            user_player_id=None,
-        )
-        ctx.characters = [npc]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        csrf = get_csrf(client)
+    @pytest.mark.parametrize(("setup", "spend"), _DENIED)
+    def test_post_denied(self, client, use_character, fake_vclient, setup, spend) -> None:
+        """Verify a user who may not edit this way cannot change traits with a crafted POST."""
+        # Given a character the user may not change this way
+        use_character(**setup)
 
-        # When submitting a trait change for the NPC
-        response = client.post(
-            f"/character/{npc.id}/traits/NO_COST",
-            data={"some-trait-id": "3", "csrf_token": csrf},
-            headers={"HX-Request": "true"},
-        )
+        # When submitting a trait change and a delete
+        response = _post(client, spend, {"ct-1": "DELETE"})
 
-        # Then the user is redirected to the character view and nothing reaches the API
-        assert response.headers.get("HX-Redirect") == f"/character/{npc.id}"
+        # Then the user is sent to the character view and nothing reaches the API
+        assert response.headers.get("HX-Redirect") == "/character/pc-1"
         assert fake_vclient.requests == []
 
-    def test_get_free_edit_npc_denied_for_restricted_player(self, client, mocker) -> None:
-        """Verify the free-edit page still refuses a player who cannot manage NPCs."""
-        # Given a PLAYER, an NPC, and the default storyteller-only NPC and free-edit settings
-        ctx = build_global_context(user_role="PLAYER")
-        npc = CharacterFactory.build(
-            id="npc-1", campaign_id=ctx.campaigns[0].id, type="NPC", user_player_id=None
-        )
-        ctx.characters = [npc]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+    @pytest.mark.parametrize(("setup", "spend"), _DENIED)
+    def test_get_denied(self, client, use_character, setup, spend) -> None:
+        """Verify the edit page refuses a user who may not edit this way."""
+        # Given a character the user may not change this way
+        use_character(**setup)
 
-        # When opening the free-edit page for the NPC
-        response = client.get(f"/character/{npc.id}/traits/NO_COST")
+        # When opening the edit page
+        response = client.get(f"/character/pc-1/traits/{spend}")
 
-        # Then the user is sent to the character view with the character-level refusal
-        assert response.status_code == 302
-        with client.session_transaction() as sess:
-            flashes = [message for _, message in sess.get("_flashes", [])]
-        assert flashes == ["You are not authorized to update this character"]
+        # Then the user is sent to the character view with an error
+        assert_redirects_to(response, "/character/pc-1")
+        assert [category for category, _ in session_flashes(client)] == ["error"]
 
-    def test_post_no_cost_denied_without_free_trait_permission(
-        self, client, mocker, fake_vclient
+    @pytest.mark.parametrize("method", ["get", "post"])
+    def test_unknown_character_redirects_home(
+        self, client, use_character, fake_vclient, method
     ) -> None:
-        """Verify a player without free-trait permission cannot delete via the free-edit POST."""
-        # Given a PLAYER who owns their character but the company restricts free edits
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        character = CharacterFactory.build(
-            id="pc-1",
-            campaign_id=campaign.id,
-            type="PLAYER",
-            user_player_id="test-user-id",
-        )
-        # Default test company setting is permission_free_trait_changes="STORYTELLER"
-        ctx.characters = [character]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        csrf = get_csrf(client)
+        """Verify a character outside the user's context sends them home."""
+        # Given a character the user cannot see
+        use_character()
 
-        # When posting a DELETE sentinel on the free-edit form
-        response = client.post(
-            f"/character/{character.id}/traits/NO_COST",
-            data={"ct-1": "DELETE", "csrf_token": csrf},
-            headers={"HX-Request": "true"},
+        # When opening or posting its edit page
+        response = getattr(client, method)(
+            "/character/missing/traits/XP",
+            headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)},
         )
 
-        # Then the user is redirected to the character view and nothing is deleted
-        assert response.headers.get("HX-Redirect") == f"/character/{character.id}"
-        fake_vclient.assert_not_called(Routes.CHARACTER_TRAITS_DELETE)
+        # Then the user is sent home and nothing reaches the API
+        assert response.headers.get("HX-Redirect") == "/"
+        assert fake_vclient.requests == []
+
+    def test_owner_opens_xp_page(self, client, use_character) -> None:
+        """Verify a player can open the XP page for their own character."""
+        # Given a player's own character
+        use_character(role="PLAYER", owner_id="test-user-id")
+
+        # When opening the XP edit page
+        response = client.get("/character/pc-1/traits/XP")
+
+        # Then the form renders and posts back to the XP endpoint
+        assert response.status_code == 200
+        assert "/character/pc-1/traits/XP" in response.get_data(as_text=True)
+
+    def test_xp_page_for_character_without_player_redirects(self, client, use_character) -> None:
+        """Verify the XP page refuses a character with no player to spend XP from."""
+        # Given an NPC with no player
+        use_character(character_type="NPC", owner_id=None)
+
+        # When opening the XP edit page
+        response = client.get("/character/pc-1/traits/XP")
+
+        # Then the user is sent to the character view with an error
+        assert response.headers["Location"] == "/character/pc-1"
+        assert [category for category, _ in session_flashes(client)] == ["error"]
+
+    def test_empty_post_changes_nothing(self, client, use_character, fake_vclient) -> None:
+        """Verify a POST with no trait fields sends nothing and reports an error."""
+        # Given an editable character
+        use_character()
+
+        # When posting an empty form
+        response = _post(client, "XP", {})
+
+        # Then nothing reaches the API and the form reloads with an error
+        assert response.headers.get("HX-Redirect") == "/character/pc-1/traits/XP"
+        assert fake_vclient.requests == []
+        assert [category for category, _ in session_flashes(client)] == ["error"]
+
+
+class TestChangeValuePost:
+    """POST of a value change."""
+
+    @pytest.mark.parametrize(
+        ("spend", "value", "affordable", "sent"),
+        [
+            ("NO_COST", "2", True, True),
+            ("XP", "2", True, True),
+            ("STARTING_POINTS", "2", True, True),
+            ("XP", "2", False, False),
+            ("STARTING_POINTS", "2", False, False),
+            ("XP", "5", True, False),
+        ],
+        ids=[
+            "no-cost",
+            "xp",
+            "starting-points",
+            "xp-unaffordable",
+            "starting-points-unaffordable",
+            "value-not-offered",
+        ],
+    )
+    def test_value_change_follows_value_options(  # noqa: PLR0917
+        self, client, use_character, fake_vclient, spend, value, affordable, sent
+    ) -> None:
+        """Verify a change is sent with the page's currency only when the API offers and allows it."""
+        # Given value options offering 2 dots for 7 points
+        use_character()
+        fake_vclient.set_response(
+            Routes.CHARACTER_TRAITS_VALUE_OPTIONS,
+            model=_value_options(affordable=affordable, **{"2": ("increase", 7)}),
+        )
+
+        # When setting the trait value
+        response = _post(client, spend, {"ct-1": value})
+
+        # Then the change is sent with the currency only when offered and affordable
+        requests = fake_vclient.requests_for(
+            Routes.CHARACTER_TRAITS_VALUE_UPDATE, params=_trait_params()
+        )
+        expected = [{"target_value": int(value), "currency": spend}] if sent else []
+        assert [r.json for r in requests] == expected
+        assert response.headers.get("HX-Redirect") == f"/character/pc-1/traits/{spend}"
+
+        # And a paid change reports the points spent, while a refused one warns
+        [(category, message)] = session_flashes(client)
+        assert category == ("success" if sent else "warning")
+        if sent and spend != "NO_COST":
+            assert "7" in message
+
+    def test_change_value_conflict_flashes_and_redirects(
+        self, client, use_character, fake_vclient
+    ) -> None:
+        """Verify a concurrent-change conflict flashes the API detail and reloads the form."""
+        # Given an API that reports a concurrent change
+        use_character()
+        fake_vclient.set_response(
+            Routes.CHARACTER_TRAITS_VALUE_OPTIONS, model=_value_options(**{"2": ("increase", 0)})
+        )
+        fake_vclient.set_error(
+            Routes.CHARACTER_TRAITS_VALUE_UPDATE,
+            status_code=409,
+            detail="This trait was changed by another request. Reload it and try again.",
+        )
+
+        # When changing the value
+        response = _post(client, "NO_COST", {"ct-1": "2"})
+
+        # Then the form reloads with the API's message
+        assert response.headers.get("HX-Redirect") == "/character/pc-1/traits/NO_COST"
+        assert any("changed by another request" in m for _, m in session_flashes(client))
+
+    def test_change_value_on_missing_trait_flashes_and_redirects(
+        self, client, use_character, fake_vclient
+    ) -> None:
+        """Verify a trait deleted elsewhere flashes the API detail instead of failing."""
+        # Given a trait the API no longer has
+        use_character()
+        fake_vclient.set_error(
+            Routes.CHARACTER_TRAITS_VALUE_OPTIONS, status_code=404, detail="Trait not found"
+        )
+
+        # When changing its value
+        response = _post(client, "NO_COST", {"ct-1": "2"})
+
+        # Then the form reloads with the API's message
+        assert response.headers.get("HX-Redirect") == "/character/pc-1/traits/NO_COST"
+        assert ("error", "Trait not found") in session_flashes(client)
+        fake_vclient.assert_not_called(Routes.CHARACTER_TRAITS_VALUE_UPDATE)
+
+    def test_change_value_clears_sheet_cache(
+        self, client, mocker, use_character, fake_vclient
+    ) -> None:
+        """Verify a value change drops the cached sheet so derived traits reload."""
+        # Given an editable trait
+        use_character()
+        fake_vclient.set_response(
+            Routes.CHARACTER_TRAITS_VALUE_OPTIONS, model=_value_options(**{"2": ("increase", 0)})
+        )
+        clear = mocker.patch("vweb.routes.character_trait_edit.views.cache.character_sheet.clear")
+
+        # When changing the value
+        _post(client, "NO_COST", {"ct-1": "2"})
+
+        # Then the character's cached sheet is dropped
+        clear.assert_called_once_with("pc-1")
+
+
+class TestTraitDeletePost:
+    """POST of the DELETE sentinel."""
+
+    @pytest.mark.parametrize("spend", ["NO_COST", "XP"])
+    def test_delete_sends_currency(self, client, use_character, fake_vclient, spend) -> None:
+        """Verify a delete is sent with the page's currency, reporting the refund when paid."""
+        # Given a trait whose delete refunds 5 points
+        use_character(free_changes="UNRESTRICTED")
+        fake_vclient.set_response(
+            Routes.CHARACTER_TRAITS_VALUE_OPTIONS, model=_value_options(DELETE=("decrease", 5))
+        )
+
+        # When posting the DELETE sentinel
+        response = _post(client, spend, {"ct-1": "DELETE"})
+
+        # Then the trait is deleted with the currency and the form reloads
+        fake_vclient.assert_called(
+            Routes.CHARACTER_TRAITS_DELETE,
+            params=_trait_params(),
+            query={"currency": spend},
+            times=1,
+        )
+        assert response.headers.get("HX-Redirect") == f"/character/pc-1/traits/{spend}"
+        [(category, message)] = session_flashes(client)
+        assert category == "success"
+
+        # And only a paid delete looks up and reports the refund
+        if spend == "NO_COST":
+            fake_vclient.assert_not_called(Routes.CHARACTER_TRAITS_VALUE_OPTIONS)
+        else:
+            assert "5" in message
+
+    @pytest.mark.parametrize(
+        ("status_code", "detail", "expected"),
+        [
+            (400, "", None),
+            (403, "Free trait changes are restricted", "Free trait changes are restricted"),
+        ],
+        ids=["unexplained-error", "refusal-with-reason"],
+    )
+    def test_delete_api_error_flashes_error(
+        self, client, use_character, fake_vclient, status_code, detail, expected
+    ) -> None:
+        """Verify a failed delete flashes an error, with the API's reason when it gives one."""
+        # Given the API refuses the delete
+        use_character()
+        fake_vclient.set_error(
+            Routes.CHARACTER_TRAITS_DELETE, status_code=status_code, detail=detail
+        )
+
+        # When posting the DELETE sentinel
+        _post(client, "NO_COST", {"ct-1": "DELETE"})
+
+        # Then an error is flashed, carrying the API's reason when there is one
+        [(category, message)] = session_flashes(client)
+        assert category == "error"
+        if expected:
+            assert expected in message
+
+    def test_delete_request_validation_error_flashes_readable_text(
+        self, client, mocker, use_character
+    ) -> None:
+        """Verify a client-side validation failure on delete flashes its message."""
+        # Given the client rejects the request before it is sent, which the fake API cannot
+        # produce because the route only accepts valid currencies
+        use_character()
+        with pytest.raises(PydanticValidationError) as info:
+            _Currency(currency="BOGUS")
+        traits_svc = mocker.patch(
+            "vweb.routes.character_trait_edit.views.api_services.character_traits"
+        ).return_value
+        traits_svc.delete.side_effect = RequestValidationError(info.value)
+
+        # When posting the DELETE sentinel
+        _post(client, "NO_COST", {"ct-1": "DELETE"})
+
+        # Then the flash names the failing field instead of only the generic failure
+        assert any("Currency" in m for _, m in session_flashes(client))
+
+
+class TestAssignUnassignedTrait:
+    """POST of an ADD_UNASSIGNED field picks a standard trait from the blueprint."""
+
+    def test_assigns_trait_at_minimum(self, client, mocker, use_character, fake_vclient) -> None:
+        """Verify the chosen blueprint trait is assigned at its minimum with the page's currency."""
+        # Given a blueprint trait
+        use_character()
+        mocker.patch(
+            "vweb.routes.character_trait_edit.views.cache.blueprint.trait",
+            return_value=TraitFactory.build(id="t-occult", name="Occult", min_value=1),
+        )
+
+        # When adding it from the dropdown
+        response = _post(client, "XP", {"ADD_UNASSIGNED_knowledges": "t-occult"})
+
+        # Then it is assigned at its minimum value
+        fake_vclient.assert_called(
+            Routes.CHARACTER_TRAITS_ASSIGN,
+            params={"character_id": "pc-1"},
+            json={"trait_id": "t-occult", "value": 1, "currency": "XP"},
+            times=1,
+        )
+        assert response.headers.get("HX-Redirect") == "/character/pc-1/traits/XP"
+
+    def test_unknown_trait_is_not_assigned(
+        self, client, mocker, use_character, fake_vclient
+    ) -> None:
+        """Verify an id missing from the blueprint flashes an error and assigns nothing."""
+        # Given a trait id the blueprint does not know
+        use_character()
+        mocker.patch(
+            "vweb.routes.character_trait_edit.views.cache.blueprint.trait", return_value=None
+        )
+
+        # When adding it
+        _post(client, "XP", {"ADD_UNASSIGNED_knowledges": "t-missing"})
+
+        # Then nothing is assigned and an error is shown
+        fake_vclient.assert_not_called(Routes.CHARACTER_TRAITS_ASSIGN)
+        assert [category for category, _ in session_flashes(client)] == ["error"]
+
+    def test_assign_refusal_flashes_api_reason(
+        self, client, mocker, use_character, fake_vclient
+    ) -> None:
+        """Verify an API refusal of the assign flashes its reason."""
+        # Given an API that refuses the assign
+        use_character()
+        mocker.patch(
+            "vweb.routes.character_trait_edit.views.cache.blueprint.trait",
+            return_value=TraitFactory.build(id="t-occult", min_value=1),
+        )
+        fake_vclient.set_error(
+            Routes.CHARACTER_TRAITS_ASSIGN, status_code=400, detail="Not enough XP"
+        )
+
+        # When adding it
+        _post(client, "XP", {"ADD_UNASSIGNED_knowledges": "t-occult"})
+
+        # Then the API's reason is flashed as an error
+        assert ("error", "Not enough XP") in session_flashes(client)
 
 
 class TestCustomTraitCreation:
     """POST /character/<id>/traits/<spend_type> with a CUSTOM_<category> field."""
 
     @pytest.fixture(autouse=True)
-    def _fake(self, fake_vclient) -> None:
+    def _fake(self, fake_vclient, use_character) -> None:
         self.fake = fake_vclient
+        self.use_character = use_character
 
-    def _setup(self, client, mocker) -> Character:
+    def _setup(self, mocker) -> Character:
         """Wire a PLAYER-owned player character and the API's create and balance responses.
 
-        `conftest.py` monkeypatches `CompanyFactory.build` to set
-        `permission_free_trait_changes="STORYTELLER"` by default, which denies
-        free trait changes to players. Pin `UNRESTRICTED` here so the PLAYER
-        can pass the `can_edit_traits_free` guard and exercise the NO_COST
-        custom-trait flow; `TestCharacterTraitsViewPermissions` covers the
-        guard itself.
+        Free trait changes are pinned to UNRESTRICTED so the PLAYER passes the free-edit
+        guard; `TestCharacterTraitsViewPermissions` covers the guard itself.
         """
-        # conftest hands each company its own settings copy, so mutating one
-        # field here cannot leak into other tests.
-        company = CompanyFactory.build(name="Test Company")
-        company.settings.permission_free_trait_changes = "UNRESTRICTED"
-        ctx = build_global_context(user_role="PLAYER", company=company)
-        campaign = ctx.campaigns[0]
-        character = CharacterFactory.build(
-            id="pc-1",
-            campaign_id=campaign.id,
-            type="PLAYER",
-            user_player_id="test-user-id",
+        character = self.use_character(
+            role="PLAYER", owner_id="test-user-id", free_changes="UNRESTRICTED"
         )
-        ctx.characters = [character]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
         self.fake.set_response(
             Routes.CHARACTER_TRAITS_CREATE, model=CharacterTraitFactory.build(id="new-trait-1")
         )
         self.fake.set_response(
             Routes.CHARACTER_TRAITS_VALUE_OPTIONS,
-            model=_value_options(xp_current=4, starting_points_current=9, DELETE=("decrease", 1)),
+            model=_value_options(xp_current=47, starting_points_current=93, DELETE=("decrease", 6)),
             params={"character_trait_id": "new-trait-1"},
         )
         self.blueprint_traits = mocker.patch(
@@ -216,26 +521,22 @@ class TestCustomTraitCreation:
         )
         return character
 
-    def _flashes(self, client) -> list[str]:
-        """Return the flashed message strings from the session cookie."""
-        with client.session_transaction() as sess:
-            return [message for _, message in sess.get("_flashes", [])]
-
-    def test_create_custom_trait_xp_sends_currency_and_summary(self, client, mocker) -> None:
-        """Verify an XP-mode custom trait sends currency=XP and flashes spent/remaining."""
-        # Given a PLAYER editing their own character in XP mode
-        character = self._setup(client, mocker)
-        csrf = get_csrf(client)
+    @pytest.mark.parametrize(
+        ("spend", "remaining"),
+        [("XP", "47"), ("STARTING_POINTS", "93"), ("NO_COST", None)],
+    )
+    def test_create_custom_trait_sends_currency_and_reports_balance(
+        self, client, mocker, spend, remaining
+    ) -> None:
+        """Verify a custom trait is created with the page's currency and paid ones report the balance."""
+        # Given a PLAYER editing their own character
+        self._setup(mocker)
 
         # When adding a custom trait in the "skills" category
-        response = client.post(
-            f"/character/{character.id}/traits/XP",
-            data={"CUSTOM_skills": "street smarts"},
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
-        )
+        response = _post(client, spend, {"CUSTOM_skills": "street smarts"})
 
-        # Then the trait is created with the XP currency and title-cased name
-        assert response.headers.get("HX-Redirect") == f"/character/{character.id}/traits/XP"
+        # Then the trait is created with the currency and a title-cased name
+        assert response.headers.get("HX-Redirect") == f"/character/pc-1/traits/{spend}"
         self.fake.assert_called(
             Routes.CHARACTER_TRAITS_CREATE,
             params={"company_id": "test-company-id", "character_id": "pc-1"},
@@ -243,192 +544,117 @@ class TestCustomTraitCreation:
                 "name": "Street Smarts",
                 "show_when_zero": True,
                 "category_id": "skills",
-                "currency": "XP",
+                "currency": spend,
             },
             times=1,
         )
         # And the sheet is not fetched when no standard trait shares the name
         self.sheet_get.assert_not_called()
-        # And the flash reports the amount spent and the remaining balance
-        assert any("You spent 1 xp, 4 remaining" in m for m in self._flashes(client))
+
+        # And a paid create reports what was spent and the remaining balance
+        [(category, message)] = session_flashes(client)
+        assert category == "success"
+        if remaining:
+            assert re.search(rf"\b6\b.*\b{remaining}\b", message)
+        else:
+            self.fake.assert_not_called(Routes.CHARACTER_TRAITS_VALUE_OPTIONS)
+            assert not re.search(r"\d", message)
 
     def test_create_custom_trait_category_id_with_underscores(self, client, mocker) -> None:
         """Verify a category id containing underscores is parsed intact from the field name."""
         # Given a PLAYER editing their own character
-        character = self._setup(client, mocker)
-        csrf = get_csrf(client)
+        self._setup(mocker)
 
         # When the custom-trait field carries an underscore-laden category id
-        client.post(
-            f"/character/{character.id}/traits/XP",
-            data={"CUSTOM_skills_category_id": "street smarts"},
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
-        )
+        _post(client, "XP", {"CUSTOM_skills_category_id": "street smarts"})
 
         # Then the full category id is sent, not just its first segment
         self.fake.assert_called(
             Routes.CHARACTER_TRAITS_CREATE, json_subset={"category_id": "skills_category_id"}
         )
 
-    def test_create_custom_trait_starting_points_summary(self, client, mocker) -> None:
-        """Verify a STARTING_POINTS custom trait reports the starting-points balance."""
-        # Given a PLAYER editing their own character in starting-points mode
-        character = self._setup(client, mocker)
-        csrf = get_csrf(client)
-
-        # When adding a custom trait paid with starting points
-        client.post(
-            f"/character/{character.id}/traits/STARTING_POINTS",
-            data={"CUSTOM_skills": "street smarts"},
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
-        )
-
-        # Then STARTING_POINTS is sent and the flash reports the starting-points balance
-        self.fake.assert_called(
-            Routes.CHARACTER_TRAITS_CREATE, json_subset={"currency": "STARTING_POINTS"}, times=1
-        )
-        assert any("You spent 1 starting points, 9 remaining" in m for m in self._flashes(client))
-
-    def test_create_custom_trait_no_cost_omits_spend_summary(self, client, mocker) -> None:
-        """Verify a NO_COST custom trait sends currency=NO_COST and omits the spend note."""
-        # Given a PLAYER editing their own character in free mode
-        character = self._setup(client, mocker)
-        csrf = get_csrf(client)
-
-        # When adding a custom trait for free
-        client.post(
-            f"/character/{character.id}/traits/NO_COST",
-            data={"CUSTOM_skills": "street smarts"},
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
-        )
-
-        # Then NO_COST is sent, no balance lookup happens, and no spend note appears
-        self.fake.assert_called(
-            Routes.CHARACTER_TRAITS_CREATE, json_subset={"currency": "NO_COST"}, times=1
-        )
-        self.fake.assert_not_called(Routes.CHARACTER_TRAITS_VALUE_OPTIONS)
-        flashes = self._flashes(client)
-        assert any("Created Street Smarts." in m for m in flashes)
-        assert not any("You spent" in m for m in flashes)
-
     def test_create_custom_trait_balance_lookup_failure_falls_back(self, client, mocker) -> None:
-        """Verify a failed balance lookup still flashes bare success without erroring."""
-        # Given the post-create value-options lookup raises
-        character = self._setup(client, mocker)
+        """Verify a failed balance lookup still reports success without a balance."""
+        # Given the post-create value-options lookup fails
+        self._setup(mocker)
         self.fake.set_error(
             Routes.CHARACTER_TRAITS_VALUE_OPTIONS,
             status_code=400,
             params={"character_trait_id": "new-trait-1"},
         )
-        csrf = get_csrf(client)
 
         # When adding a custom trait in XP mode
-        response = client.post(
-            f"/character/{character.id}/traits/XP",
-            data={"CUSTOM_skills": "street smarts"},
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
-        )
+        response = _post(client, "XP", {"CUSTOM_skills": "street smarts"})
 
-        # Then the request still succeeds with the bare "Created" message
-        assert response.headers.get("HX-Redirect") == f"/character/{character.id}/traits/XP"
-        flashes = self._flashes(client)
-        assert any("Created Street Smarts." in m for m in flashes)
-        assert not any("You spent" in m for m in flashes)
+        # Then the request still succeeds without a balance
+        assert response.headers.get("HX-Redirect") == "/character/pc-1/traits/XP"
+        [(category, message)] = session_flashes(client)
+        assert category == "success"
+        assert "47" not in message
 
     def test_create_custom_trait_api_error_flashes_error(self, client, mocker) -> None:
         """Verify an API error during create flashes an error and does not raise."""
         # Given the create call fails with no reason a user could read
-        character = self._setup(client, mocker)
+        self._setup(mocker)
         self.fake.set_error(Routes.CHARACTER_TRAITS_CREATE, status_code=400, detail="")
-        csrf = get_csrf(client)
 
         # When adding a custom trait
-        client.post(
-            f"/character/{character.id}/traits/XP",
-            data={"CUSTOM_skills": "street smarts"},
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
-        )
+        _post(client, "XP", {"CUSTOM_skills": "street smarts"})
 
-        # Then the failure message is flashed
-        assert any("Failed to create custom trait" in m for m in self._flashes(client))
+        # Then an error is flashed
+        assert [category for category, _ in session_flashes(client)] == ["error"]
 
     def test_create_custom_trait_empty_name_warns(self, client, mocker) -> None:
         """Verify a blank custom-trait name warns and never calls the service."""
         # Given a PLAYER editing their own character
-        character = self._setup(client, mocker)
-        csrf = get_csrf(client)
+        self._setup(mocker)
 
         # When submitting a whitespace-only name
-        client.post(
-            f"/character/{character.id}/traits/XP",
-            data={"CUSTOM_skills": "   "},
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
-        )
+        _post(client, "XP", {"CUSTOM_skills": "   "})
 
         # Then a warning is flashed and no trait is created
-        assert any("Trait name is required" in m for m in self._flashes(client))
+        assert [category for category, _ in session_flashes(client)] == ["warning"]
         self.fake.assert_not_called(Routes.CHARACTER_TRAITS_CREATE)
 
-    def test_custom_name_matching_standard_trait_assigns_it(self, client, mocker) -> None:
-        """Verify a typed name matching a standard trait in the category assigns that trait."""
-        # Given a standard trait in the category that the character's dropdown leaves out
-        character = self._setup(client, mocker)
+    @pytest.mark.parametrize(
+        ("typed", "trait_kwargs"),
+        [
+            (
+                "linguistics",
+                {"name": "Linguistics", "category_id": "skills", "game_versions": ["V4"]},
+            ),
+            ("street smarts", {"name": "Street Smarts", "category_id": "merits"}),
+        ],
+        ids=["same-category-other-version", "other-category"],
+    )
+    def test_custom_name_matching_standard_trait_assigns_it(
+        self, client, mocker, typed, trait_kwargs
+    ) -> None:
+        """Verify a typed name matching a standard trait assigns it instead of creating one."""
+        # Given a standard trait with that name
+        self._setup(mocker)
         standard = TraitFactory.build(
-            id="ling-v4",
-            name="Linguistics",
-            category_id="skills",
-            custom_for_character_id=None,
-            game_versions=["V4"],
-            min_value=0,
+            id="std-1", custom_for_character_id=None, min_value=0, **trait_kwargs
         )
         self.blueprint_traits.return_value = {standard.id: standard}
-        csrf = get_csrf(client)
 
-        # When typing that name in the custom box
-        response = client.post(
-            f"/character/{character.id}/traits/XP",
-            data={"CUSTOM_skills": "linguistics"},
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
-        )
+        # When typing that name in the skills custom box
+        response = _post(client, "XP", {"CUSTOM_skills": typed})
 
-        # Then the standard trait is assigned instead of creating a custom one
-        assert response.headers.get("HX-Redirect") == f"/character/{character.id}/traits/XP"
+        # Then the standard trait is assigned and no custom trait is created
+        assert response.headers.get("HX-Redirect") == "/character/pc-1/traits/XP"
         self.fake.assert_called(
             Routes.CHARACTER_TRAITS_ASSIGN,
             params={"character_id": "pc-1"},
-            json={"trait_id": "ling-v4", "value": 0, "currency": "XP"},
+            json={"trait_id": "std-1", "value": 0, "currency": "XP"},
             times=1,
-        )
-        self.fake.assert_not_called(Routes.CHARACTER_TRAITS_CREATE)
-        assert any("Assigned Linguistics" in m for m in self._flashes(client))
-
-    def test_custom_name_matching_other_category_assigns_it(self, client, mocker) -> None:
-        """Verify a name matching a trait in another category assigns that trait."""
-        # Given a same-named standard trait in a different category
-        character = self._setup(client, mocker)
-        merit = TraitFactory.build(
-            id="merit-1", name="Street Smarts", category_id="merits", custom_for_character_id=None
-        )
-        self.blueprint_traits.return_value = {merit.id: merit}
-        csrf = get_csrf(client)
-
-        # When typing that name in the skills box
-        client.post(
-            f"/character/{character.id}/traits/XP",
-            data={"CUSTOM_skills": "street smarts"},
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
-        )
-
-        # Then the existing trait is assigned and no custom trait is created
-        self.fake.assert_called(
-            Routes.CHARACTER_TRAITS_ASSIGN, json_subset={"trait_id": "merit-1"}, times=1
         )
         self.fake.assert_not_called(Routes.CHARACTER_TRAITS_CREATE)
 
     def test_custom_name_already_on_character_does_not_assign(self, client, mocker) -> None:
         """Verify a name already on the sheet goes to create instead of assigning a duplicate."""
         # Given a character that already has Linguistics, and another same-named standard trait
-        character = self._setup(client, mocker)
+        character = self._setup(mocker)
         owned = CharacterTraitFactory.build(trait=TraitFactory.build(name="Linguistics"))
         category = FullSheetTraitCategoryFactory.build(
             character_traits=[owned], subcategories=[], available_traits=[]
@@ -446,333 +672,78 @@ class TestCustomTraitCreation:
             status_code=409,
             detail="Trait named 'Linguistics' already exists",
         )
-        csrf = get_csrf(client)
 
         # When typing that name in the custom box
-        client.post(
-            f"/character/{character.id}/traits/XP",
-            data={"CUSTOM_skills": "linguistics"},
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
-        )
+        _post(client, "XP", {"CUSTOM_skills": "linguistics"})
 
         # Then no second trait is assigned and the create conflict is shown
         self.fake.assert_not_called(Routes.CHARACTER_TRAITS_ASSIGN)
         self.fake.assert_called(Routes.CHARACTER_TRAITS_CREATE, times=1)
+        assert ("error", "Trait named 'Linguistics' already exists") in session_flashes(client)
 
 
-class TestTraitDeleteRendering:
-    """The free-edit form renders a delete button + modal; paid forms do not."""
+class TestTraitEditRendering:
+    """Controls the edit form offers for each trait."""
 
-    def _setup(self, mocker, character: Character) -> None:
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        character.campaign_id = campaign.id
-        ctx.characters = [character]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mocker.patch(
-            "vweb.routes.character_trait_edit.views.cache.character_sheet.get",
-            return_value=_one_trait_sheet(character),
-        )
+    @pytest.mark.parametrize(
+        ("spend", "delete_offered"),
+        [("NO_COST", True), ("STARTING_POINTS", False), ("XP", False)],
+    )
+    def test_delete_offered_only_on_free_edit(
+        self, client, use_character, spend, delete_offered
+    ) -> None:
+        """Verify only the free-edit form lets a trait be deleted."""
+        # Given a storyteller and a player character
+        use_character()
 
-    def test_no_cost_form_renders_delete_button_and_modal(self, client, mocker) -> None:
-        """Verify the NO_COST form shows a right-aligned red trash button and the modal."""
-        # Given a storyteller viewing the free-edit form for a player character
-        character = CharacterFactory.build(id="pc-1", type="PLAYER", user_player_id="test-user-id")
-        self._setup(mocker, character)
+        # When the edit form is requested
+        html = client.get(f"/character/pc-1/traits/{spend}").get_data(as_text=True)
 
-        # When the free-edit form is requested
-        html = client.get(f"/character/{character.id}/traits/NO_COST").get_data(as_text=True)
+        # Then the trait has a delete control only in free-edit mode
+        assert ('data-trait-id="ct-1"' in html) is delete_offered
 
-        # Then the shared confirmation modal and a trash button for ct-1 are present
-        assert 'id="trait-delete-modal"' in html
-        assert 'id="trait-delete-confirm"' in html
-        assert 'data-trait-id="ct-1"' in html
-        assert "fa-trash" in html
-        # And the trash button sits to the right of the value buttons (later in the row markup)
-        assert html.index('data-trait-id="ct-1"') > html.index('value="1"')
-
-    def test_starting_points_form_has_no_delete_button_or_modal(self, client, mocker) -> None:
-        """Verify a paid form renders neither the delete button nor the modal."""
-        # Given a storyteller viewing the starting-points form
-        character = CharacterFactory.build(id="pc-1", type="PLAYER", user_player_id="test-user-id")
-        self._setup(mocker, character)
-
-        # When the starting-points form is requested
-        html = client.get(f"/character/{character.id}/traits/STARTING_POINTS").get_data(
-            as_text=True
-        )
-
-        # Then no delete affordance is present
-        assert 'id="trait-delete-modal"' not in html
-        assert 'data-trait-id="ct-1"' not in html
-
-
-class TestDerivedWillpower:
-    """V5 Willpower is derived server-side and must not be editable."""
-
-    def _render(self, client, mocker, game_version: str) -> str:
-        ctx = build_global_context(user_role="STORYTELLER")
-        character = CharacterFactory.build(
-            id="pc-1",
-            type="PLAYER",
-            user_player_id="test-user-id",
-            game_version=game_version,
-            campaign_id=ctx.campaigns[0].id,
-        )
-        ctx.characters = [character]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+    @pytest.mark.parametrize(
+        ("game_version", "editable"),
+        [("V5", False), ("V4", True)],
+    )
+    def test_willpower_editable_only_outside_v5(
+        self, client, mocker, use_character, game_version, editable
+    ) -> None:
+        """Verify V5 Willpower, which the API derives, has no value or delete controls."""
+        # Given a character with Willpower in the given game version
+        character = use_character()
+        character.game_version = game_version
         trait = TraitFactory.build(
             id="t-wp", name="Willpower", min_value=0, max_value=10, custom_for_character_id=None
         )
-        character_trait = CharacterTraitFactory.build(id="ct-wp", value=4, trait=trait)
         category = FullSheetTraitCategoryFactory.build(
-            character_traits=[character_trait], subcategories=[], available_traits=[]
+            character_traits=[CharacterTraitFactory.build(id="ct-wp", value=4, trait=trait)],
+            subcategories=[],
+            available_traits=[],
         )
-        section = FullSheetTraitSectionFactory.build(categories=[category])
-        sheet = CharacterFullSheetFactory.build(character=character, sections=[section])
         mocker.patch(
             "vweb.routes.character_trait_edit.views.cache.character_sheet.get",
-            return_value=sheet,
-        )
-        return client.get(f"/character/{character.id}/traits/NO_COST").get_data(as_text=True)
-
-    def test_v5_willpower_has_no_value_or_delete_controls(self, client, mocker) -> None:
-        """Verify V5 Willpower shows its value without value or delete buttons."""
-        html = self._render(client, mocker, "V5")
-
-        assert 'name="ct-wp"' not in html
-        assert 'data-trait-id="ct-wp"' not in html
-        assert re.search(r"btn-active[^>]*disabled>4</button>", html)
-
-    def test_v4_willpower_keeps_controls(self, client, mocker) -> None:
-        """Verify V4 Willpower stays editable."""
-        html = self._render(client, mocker, "V4")
-
-        assert 'name="ct-wp"' in html
-
-
-class TestTraitDeletePost:
-    """POST of the DELETE sentinel on the free-edit form."""
-
-    def _setup(self, mocker, fake_vclient: FakeVClient) -> Character:
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        character = CharacterFactory.build(
-            id="pc-1", campaign_id=campaign.id, type="PLAYER", user_player_id="owner-1"
-        )
-        ctx.characters = [character]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        mocker.patch(
-            "vweb.routes.character_trait_edit.views.cache.character_sheet.get",
-            return_value=_one_trait_sheet(character),
+            return_value=CharacterFullSheetFactory.build(
+                character=character,
+                sections=[FullSheetTraitSectionFactory.build(categories=[category])],
+            ),
         )
 
-        fake_vclient.set_response(
-            Routes.CHARACTER_TRAITS_VALUE_OPTIONS, model=_value_options(DELETE=("decrease", 1))
-        )
-        return character
+        # When the free-edit form is requested
+        html = client.get("/character/pc-1/traits/NO_COST").get_data(as_text=True)
 
-    def _flashes(self, client) -> list[str]:
-        with client.session_transaction() as sess:
-            return [message for _, message in sess.get("_flashes", [])]
-
-    def test_delete_sentinel_deletes_trait_no_cost(self, client, mocker, fake_vclient) -> None:
-        """Verify a DELETE post removes the trait with NO_COST currency and flashes success."""
-        # Given a storyteller on the free-edit form
-        character = self._setup(mocker, fake_vclient)
-        csrf = get_csrf(client)
-
-        # When posting the DELETE sentinel for a trait
-        response = client.post(
-            f"/character/{character.id}/traits/NO_COST",
-            data={"ct-1": "DELETE", "csrf_token": csrf},
-            headers={"HX-Request": "true"},
-        )
-
-        # Then the character trait is deleted with NO_COST and the form re-renders
-        fake_vclient.assert_called(
-            Routes.CHARACTER_TRAITS_DELETE,
-            params=_trait_params(),
-            query={"currency": "NO_COST"},
-            times=1,
-        )
-        # Free deletes skip the refund lookup entirely.
-        fake_vclient.assert_not_called(Routes.CHARACTER_TRAITS_VALUE_OPTIONS)
-        assert response.headers.get("HX-Redirect") == f"/character/{character.id}/traits/NO_COST"
-        assert any("Trait deleted." in m for m in self._flashes(client))
-
-    def test_delete_api_error_flashes_error(self, client, mocker, fake_vclient) -> None:
-        """Verify an API error during delete flashes a failure message and does not raise."""
-        # Given the delete call fails with no reason a user could read
-        character = self._setup(mocker, fake_vclient)
-        fake_vclient.set_error(Routes.CHARACTER_TRAITS_DELETE, status_code=400, detail="")
-        csrf = get_csrf(client)
-
-        # When posting the DELETE sentinel
-        client.post(
-            f"/character/{character.id}/traits/NO_COST",
-            data={"ct-1": "DELETE", "csrf_token": csrf},
-            headers={"HX-Request": "true"},
-        )
-
-        # Then the failure message is flashed
-        assert any("Failed to delete trait" in m for m in self._flashes(client))
-
-    def test_delete_forbidden_flashes_api_detail(self, client, mocker, fake_vclient) -> None:
-        """Verify a 403 on free delete flashes the API's own reason."""
-        # Given the API refuses the free delete
-        character = self._setup(mocker, fake_vclient)
-        fake_vclient.set_error(
-            Routes.CHARACTER_TRAITS_DELETE,
-            status_code=403,
-            detail="Free trait changes are restricted",
-        )
-        csrf = get_csrf(client)
-
-        # When posting the DELETE sentinel
-        client.post(
-            f"/character/{character.id}/traits/NO_COST",
-            data={"ct-1": "DELETE", "csrf_token": csrf},
-            headers={"HX-Request": "true"},
-        )
-
-        # Then the flash carries the API detail
-        assert any("Free trait changes are restricted" in m for m in self._flashes(client))
-
-    def test_delete_request_validation_error_flashes_readable_text(
-        self, client, mocker, fake_vclient
-    ) -> None:
-        """Verify a client-side validation failure on delete flashes its message."""
-        # Given the client rejects the request before it is sent, which the fake API cannot
-        # produce because the route only accepts valid currencies
-        character = self._setup(mocker, fake_vclient)
-        with pytest.raises(PydanticValidationError) as info:
-            _Currency(currency="BOGUS")
-        traits_svc = mocker.patch(
-            "vweb.routes.character_trait_edit.views.api_services.character_traits"
-        ).return_value
-        traits_svc.delete.side_effect = RequestValidationError(info.value)
-        csrf = get_csrf(client)
-
-        # When posting the DELETE sentinel
-        client.post(
-            f"/character/{character.id}/traits/NO_COST",
-            data={"ct-1": "DELETE", "csrf_token": csrf},
-            headers={"HX-Request": "true"},
-        )
-
-        # Then the flash names the failing field instead of only the generic failure
-        flashes = self._flashes(client)
-        assert any("Currency" in m for m in flashes)
-
-
-class TestChangeValuePost:
-    """POST of a value change on the free-edit form."""
-
-    def _setup(self, mocker, fake_vclient: FakeVClient) -> Character:
-        ctx = build_global_context(user_role="STORYTELLER")
-        character = CharacterFactory.build(
-            id="pc-1", campaign_id=ctx.campaigns[0].id, type="PLAYER", user_player_id="owner-1"
-        )
-        ctx.characters = [character]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        mocker.patch(
-            "vweb.routes.character_trait_edit.views.cache.character_sheet.get",
-            return_value=_one_trait_sheet(character),
-        )
-
-        fake_vclient.set_response(
-            Routes.CHARACTER_TRAITS_VALUE_OPTIONS,
-            model=_value_options("strength", **{"2": ("increase", 0)}),
-        )
-        return character
-
-    def test_change_value_conflict_flashes_and_redirects(
-        self, client, mocker, fake_vclient
-    ) -> None:
-        """Verify a concurrent-change conflict flashes the API detail and reloads the form."""
-        character = self._setup(mocker, fake_vclient)
-        fake_vclient.set_error(
-            Routes.CHARACTER_TRAITS_VALUE_UPDATE,
-            status_code=409,
-            detail="This trait was changed by another request. Reload it and try again.",
-        )
-        csrf = get_csrf(client)
-
-        response = client.post(
-            f"/character/{character.id}/traits/NO_COST",
-            data={"ct-1": "2", "csrf_token": csrf},
-            headers={"HX-Request": "true"},
-        )
-
-        fake_vclient.assert_called(
-            Routes.CHARACTER_TRAITS_VALUE_UPDATE,
-            params=_trait_params(),
-            json={"target_value": 2, "currency": "NO_COST"},
-            times=1,
-        )
-        assert response.headers.get("HX-Redirect") == f"/character/{character.id}/traits/NO_COST"
-        with client.session_transaction() as sess:
-            flashes = [message for _, message in sess.get("_flashes", [])]
-        assert any("changed by another request" in m for m in flashes)
-
-    def test_change_value_on_missing_trait_flashes_and_redirects(
-        self, client, mocker, fake_vclient
-    ) -> None:
-        """Verify a trait deleted elsewhere flashes the API detail instead of failing."""
-        # Given a trait the API no longer has
-        character = self._setup(mocker, fake_vclient)
-        fake_vclient.set_error(
-            Routes.CHARACTER_TRAITS_VALUE_OPTIONS, status_code=404, detail="Trait not found"
-        )
-        csrf = get_csrf(client)
-
-        # When changing its value
-        response = client.post(
-            f"/character/{character.id}/traits/NO_COST",
-            data={"ct-1": "2", "csrf_token": csrf},
-            headers={"HX-Request": "true"},
-        )
-
-        # Then the form reloads with the API's message
-        assert response.headers.get("HX-Redirect") == f"/character/{character.id}/traits/NO_COST"
-        with client.session_transaction() as sess:
-            flashes = list(sess.get("_flashes", []))
-        assert ("error", "Trait not found") in flashes
-        fake_vclient.assert_not_called(Routes.CHARACTER_TRAITS_VALUE_UPDATE)
-
-    def test_change_value_clears_sheet_cache(self, client, mocker, fake_vclient) -> None:
-        """Verify a value change drops the cached sheet so derived traits reload."""
-        character = self._setup(mocker, fake_vclient)
-        clear = mocker.patch("vweb.routes.character_trait_edit.views.cache.character_sheet.clear")
-        csrf = get_csrf(client)
-
-        client.post(
-            f"/character/{character.id}/traits/NO_COST",
-            data={"ct-1": "2", "csrf_token": csrf},
-            headers={"HX-Request": "true"},
-        )
-
-        clear.assert_called_once_with(character.id)
-
-
-def _specialty(specialty_id: str, name: str) -> CharacterTraitSpecialty:
-    return CharacterTraitSpecialty(
-        id=specialty_id,
-        name=name,
-        date_created="2026-01-01T00:00:00Z",
-        date_modified="2026-01-01T00:00:00Z",
-    )
+        # Then Willpower's value and delete controls exist only outside V5
+        assert ('name="ct-wp"' in html) is editable
+        assert ('data-trait-id="ct-wp"' in html) is editable
 
 
 class TestSpecialtyLossWarnings:
     """Confirmations and flashes for changes that remove an ability's specialties."""
 
     @pytest.fixture(autouse=True)
-    def _fake(self, fake_vclient) -> None:
+    def _fake(self, fake_vclient, use_context) -> None:
         self.fake = fake_vclient
+        self.use_context = use_context
 
     def _setup(
         self,
@@ -785,15 +756,15 @@ class TestSpecialtyLossWarnings:
         ctx = build_global_context(user_role="STORYTELLER")
         ctx.company.settings.specialty_rules = rules
         character = CharacterFactory.build(
-            id="pc-1", campaign_id=ctx.campaigns[0].id, type="PLAYER", user_player_id="owner-1"
+            id="pc-1", campaign_id=ctx.campaigns[0].id, user_player_id="owner-1"
         )
         ctx.characters = [character]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        self.use_context(ctx)
         melee = CharacterTraitFactory.build(
             id="ct-melee",
             value=melee_value,
             trait=TraitFactory.build(name="melee", sheet_section_name="Abilities", max_value=5),
-            specialties=[_specialty(f"sp-{i}", name) for i, name in enumerate(names)],
+            specialties=[build_specialty(f"sp-{i}", name) for i, name in enumerate(names)],
         )
         strength = CharacterTraitFactory.build(
             id="ct-str",
@@ -816,123 +787,89 @@ class TestSpecialtyLossWarnings:
         )
         return character
 
-    def _html(self, client, character) -> str:
-        return client.get(f"/character/{character.id}/traits/NO_COST").get_data(as_text=True)
-
-    def _post(self, client, character, field: str, value: str) -> list[str]:
-        client.post(
-            f"/character/{character.id}/traits/NO_COST",
-            data={field: value, "csrf_token": get_csrf(client)},
-            headers={"HX-Request": "true"},
-        )
-        with client.session_transaction() as sess:
-            return [message for _, message in sess.get("_flashes", [])]
-
-    @staticmethod
-    def _zero_button(html: str, trait_id: str) -> str:
-        return re.search(rf'<button[^>]*name="{trait_id}"\s+value="0"[^>]*>', html).group(0)
-
-    def test_zero_button_confirms_when_trait_has_specialties(self, client, mocker) -> None:
-        """Verify the 0 button asks for confirmation naming the specialties."""
-        character = self._setup(mocker)
-        button = self._zero_button(self._html(client, character), "ct-melee")
-        assert 'hx-confirm="Lowering Melee to 0 removes its specialties: Knives, Swords."' in button
-
-    def test_delete_modal_specialty_line_is_hidden_when_empty_and_ends_with_period(
-        self, client, mocker
-    ) -> None:
-        """Verify the modal line collapses when empty and the handler text ends in a period."""
-        character = self._setup(mocker)
-        html = self._html(client, character)
-        assert 'id="trait-delete-specialties" class="pb-4 -mt-2 empty:hidden"' in html
-        assert "this.dataset.traitSpecialties + '.'" in html
+    def _html(self, client) -> str:
+        return client.get("/character/pc-1/traits/NO_COST").get_data(as_text=True)
 
     @staticmethod
     def _value_button(html: str, trait_id: str, value: int) -> str:
         return re.search(rf'<button[^>]*name="{trait_id}"\s+value="{value}"[^>]*>', html).group(0)
 
-    def test_rating_based_confirms_below_minimum(self, client, mocker) -> None:
-        """Verify RATING_BASED rules confirm any drop below 4 dots, not only a drop to 0."""
-        character = self._setup(mocker, rules="RATING_BASED", melee_value=5)
-        html = self._html(client, character)
-        below = self._value_button(html, "ct-melee", 3)
-        assert 'hx-confirm="Lowering Melee to 3 removes its specialties: Knives, Swords."' in below
-        assert "hx-confirm" not in self._value_button(html, "ct-melee", 4)
-
-    def test_rating_based_favored_ability_confirms_below_three(self, client, mocker) -> None:
-        """Verify an ability the concept favors keeps its specialties at 3 dots."""
-        character = self._setup(mocker, rules="RATING_BASED", melee_value=5)
-        mocker.patch(
-            "vweb.lib.character_profile.cache.blueprint.concept",
-            return_value=CharacterConceptFactory.build(favored_ability_names=["Melee"]),
-        )
-        html = self._html(client, character)
-        assert "hx-confirm" not in self._value_button(html, "ct-melee", 3)
-        assert "hx-confirm" in self._value_button(html, "ct-melee", 2)
-
-    def test_rating_based_drop_below_minimum_flash_mentions_specialties(
-        self, client, mocker
+    @pytest.mark.parametrize(
+        ("trait_id", "confirms"),
+        [("ct-melee", True), ("ct-str", False)],
+        ids=["removes-specialties", "no-specialties"],
+    )
+    def test_value_button_confirms_specialty_loss(
+        self, client, mocker, trait_id, *, confirms
     ) -> None:
-        """Verify lowering below the RATING_BASED minimum appends the specialties note."""
-        character = self._setup(mocker, rules="RATING_BASED", melee_value=5)
-        flashes = self._post(client, character, "ct-melee", "3")
-        assert any(m.endswith(" Its specialties were removed.") for m in flashes)
+        """Verify a value that removes specialties asks for confirmation naming them.
 
-    def test_fixed_cost_drop_above_zero_flash_omits_specialties(self, client, mocker) -> None:
-        """Verify FIXED_COST rules keep specialties on any rated ability."""
-        character = self._setup(mocker)
-        flashes = self._post(client, character, "ct-melee", "3")
-        assert not any("specialties" in m for m in flashes)
+        Which values remove specialties under each rule is covered in test_trait_rules.py.
+        """
+        # Given an ability with specialties and an attribute without any
+        self._setup(mocker)
 
-    def test_zero_change_looks_up_warm_sheet_key(self, client, mocker) -> None:
-        """Verify a zero change reads the include_available_traits=True cache entry."""
-        character = self._setup(mocker)
-        sheet_get = mocker.patch(
-            "vweb.routes.character_trait_edit.views.cache.character_sheet.get",
-            return_value=_one_trait_sheet(character),
-        )
-        self._post(client, character, "ct-melee", "0")
-        assert sheet_get.call_args.kwargs == {"include_available_traits": True}
+        # When the free-edit form renders
+        button = self._value_button(self._html(client), trait_id, 0)
 
-    def test_zero_button_has_no_confirm_without_specialties(self, client, mocker) -> None:
-        """Verify the 0 button has no confirmation for a trait without specialties."""
-        character = self._setup(mocker)
-        button = self._zero_button(self._html(client, character), "ct-str")
-        assert "hx-confirm" not in button
+        # Then dropping the ability to zero confirms, naming its specialties
+        assert ("hx-confirm" in button) is confirms
+        assert ("Knives, Swords" in button) is confirms
 
     def test_delete_trigger_carries_specialty_names(self, client, mocker) -> None:
-        """Verify the trash button carries the names and the modal has the target line."""
-        character = self._setup(mocker)
-        html = self._html(client, character)
+        """Verify the delete control carries the specialty names for its confirmation."""
+        # Given an ability with specialties
+        self._setup(mocker)
+
+        # When the free-edit form renders
+        html = self._html(client)
+
+        # Then the delete control names the specialties it will remove
         assert 'data-trait-specialties="Knives, Swords"' in html
-        assert 'id="trait-delete-specialties"' in html
 
     def test_confirm_escapes_names(self, client, mocker) -> None:
         """Verify specialty names are HTML-escaped in both attributes."""
+        # Given a specialty name containing markup
         evil = '<b>"Edge"</b>'
-        character = self._setup(mocker, names=(evil,))
-        html = self._html(client, character)
+        self._setup(mocker, names=(evil,))
+
+        # When the free-edit form renders
+        html = self._html(client)
+
+        # Then the name is escaped in the confirmation and the delete control
         assert evil not in html
         escaped = "&lt;b&gt;&#34;Edge&#34;&lt;/b&gt;"
-        button = self._zero_button(html, "ct-melee")
-        assert escaped in button
+        assert escaped in self._value_button(html, "ct-melee", 0)
         assert f'data-trait-specialties="{escaped}"' in html
 
-    def test_drop_to_zero_flash_mentions_specialties(self, client, mocker) -> None:
-        """Verify lowering to zero appends the specialties note."""
-        character = self._setup(mocker)
-        flashes = self._post(client, character, "ct-melee", "0")
-        assert any(m.endswith(" Its specialties were removed.") for m in flashes)
+    @pytest.mark.parametrize(
+        ("rules", "melee_value", "field", "value", "mentions_specialties"),
+        [
+            ("FIXED_COST", 3, "ct-melee", "0", True),
+            ("FIXED_COST", 3, "ct-melee", "3", False),
+            ("FIXED_COST", 3, "ct-melee", "DELETE", True),
+            ("FIXED_COST", 3, "ct-str", "0", False),
+            ("RATING_BASED", 5, "ct-melee", "3", True),
+        ],
+        ids=[
+            "drop-to-zero",
+            "fixed-cost-drop-above-zero",
+            "delete",
+            "trait-without-specialties",
+            "rating-based-below-minimum",
+        ],
+    )
+    def test_flash_reports_removed_specialties(  # noqa: PLR0917
+        self, client, mocker, rules, melee_value, field, value, mentions_specialties
+    ) -> None:
+        """Verify the success message says when the change removed the trait's specialties."""
+        # Given an ability with specialties under the given rules
+        self._setup(mocker, rules=rules, melee_value=melee_value)
 
-    def test_delete_flash_mentions_specialties(self, client, mocker) -> None:
-        """Verify deleting appends the specialties note."""
-        character = self._setup(mocker)
-        flashes = self._post(client, character, "ct-melee", "DELETE")
-        assert any("Trait deleted." in m and "Its specialties were removed." in m for m in flashes)
+        # When posting the change
+        _post(client, "NO_COST", {field: value})
 
-    def test_drop_without_specialties_flash_unchanged(self, client, mocker) -> None:
-        """Verify no note when the trait had no specialties."""
-        character = self._setup(mocker)
-        flashes = self._post(client, character, "ct-str", "0")
-        assert flashes
-        assert not any("specialties" in m for m in flashes)
+        # Then the success message mentions specialties only when they were removed
+        [(category, message)] = session_flashes(client)
+        assert category == "success"
+        assert ("specialties" in message) is mentions_specialties

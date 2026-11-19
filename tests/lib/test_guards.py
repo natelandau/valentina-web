@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from flask import g
@@ -25,13 +25,13 @@ from vweb.lib.guards import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from flask import Flask
 
 
 @pytest.fixture
-def guard_ctx(app: Flask) -> Callable[..., None]:
+def guard_ctx(app: Flask) -> Iterator[Callable[..., None]]:
     """Enter an app context and seed `g.requesting_user` and `g.global_context`.
 
     Returns a setup function so each test can specify the role and permission
@@ -42,10 +42,10 @@ def guard_ctx(app: Flask) -> Callable[..., None]:
         *,
         role: str = "PLAYER",
         user_id: str = "user-1",
-        permission_manage_campaign: str | None = "STORYTELLER",
-        permission_manage_npc: str | None = "STORYTELLER",
-        permission_grant_xp: str | None = "STORYTELLER",
-        permission_free_trait_changes: str | None = "STORYTELLER",
+        permission_manage_campaign: Any = "STORYTELLER",
+        permission_manage_npc: Any = "STORYTELLER",
+        permission_grant_xp: Any = "STORYTELLER",
+        permission_free_trait_changes: Any = "STORYTELLER",
     ) -> None:
         company = CompanyFactory.build()
         company.settings.permission_manage_campaign = permission_manage_campaign
@@ -66,387 +66,132 @@ def guard_ctx(app: Flask) -> Callable[..., None]:
         yield _setup
 
 
+_ROLES = ("ADMIN", "STORYTELLER", "PLAYER", "UNAPPROVED", "DEACTIVATED")
+
+
 def test_is_self_matches_requesting_user(guard_ctx) -> None:
-    """Verify is_self returns True only when the given id matches the requesting user."""
-    # Given a requesting user with a known id
+    """Verify is_self is True only for the requesting user's id, never for None."""
     guard_ctx(role="PLAYER", user_id="me")
 
-    # When / Then
     assert is_self("me") is True
     assert is_self("someone-else") is False
+    assert is_self(None) is False
 
 
-@pytest.mark.parametrize(
-    ("role", "expected"),
-    [("ADMIN", True), ("STORYTELLER", False), ("PLAYER", False), ("UNAPPROVED", False)],
-)
-def test_is_admin_role_matrix(guard_ctx, role, expected) -> None:
-    """Verify is_admin only returns True for the ADMIN role."""
-    # Given a user with the parametrized role
+@pytest.mark.parametrize("role", _ROLES)
+def test_role_guards(guard_ctx, role) -> None:
+    """Verify which roles count as admin, storyteller, and approved."""
     guard_ctx(role=role)
 
-    # When / Then
-    assert is_admin() is expected
+    assert is_admin() is (role == "ADMIN")
+    assert is_storyteller() is (role in {"ADMIN", "STORYTELLER"})
+    assert is_approved_user() is (role in {"ADMIN", "STORYTELLER", "PLAYER"})
 
 
-@pytest.mark.parametrize(
-    ("role", "expected"),
-    [
-        ("ADMIN", True),
-        ("STORYTELLER", True),
-        ("PLAYER", True),
-        ("UNAPPROVED", False),
-        ("DEACTIVATED", False),
-    ],
-)
-def test_is_approved_user_role_matrix(guard_ctx, role, expected) -> None:
-    """Verify is_approved_user passes usable roles and rejects UNAPPROVED and DEACTIVATED."""
-    # Given a user with the parametrized role
-    guard_ctx(role=role)
-
-    # When / Then
-    assert is_approved_user() is expected
-
-
-@pytest.mark.parametrize(
-    ("role", "expected"),
-    [
-        ("ADMIN", True),
-        ("STORYTELLER", True),
-        ("PLAYER", True),
-        ("UNAPPROVED", False),
-        ("DEACTIVATED", False),
-        (None, False),
-    ],
-)
-def test_is_active_role_matrix(role, expected) -> None:
+@pytest.mark.parametrize("role", [*_ROLES, None])
+def test_is_active_role(role) -> None:
     """Verify is_active_role passes usable membership roles and rejects the rest."""
-    # When / Then
-    assert is_active_role(role) is expected
-
-
-def test_is_approved_user_logged_out(app: Flask) -> None:
-    """Verify is_approved_user fails closed when no user is attached to g."""
-    # Given a request context with no requesting user
-    with app.test_request_context():
-        # When / Then
-        assert is_approved_user() is False
+    assert is_active_role(role) is (role in {"ADMIN", "STORYTELLER", "PLAYER"})
 
 
 @pytest.mark.parametrize(
-    ("role", "expected"),
-    [("ADMIN", True), ("STORYTELLER", True), ("PLAYER", False), ("UNAPPROVED", False)],
+    "guard",
+    [is_admin, is_storyteller, is_approved_user, lambda: is_self("user-1")],
+    ids=["is_admin", "is_storyteller", "is_approved_user", "is_self"],
 )
-def test_is_storyteller_role_matrix(guard_ctx, role, expected) -> None:
-    """Verify is_storyteller treats ADMIN and STORYTELLER as privileged."""
-    # Given a user with the parametrized role
-    guard_ctx(role=role)
-
-    # When / Then
-    assert is_storyteller() is expected
-
-
-@pytest.mark.parametrize("role", ["ADMIN", "STORYTELLER"])
-def test_can_manage_campaign_privileged_roles_bypass_setting(guard_ctx, role) -> None:
-    """Verify privileged roles bypass the restricted manage-campaign setting."""
-    # Given a privileged user and a restrictive company setting
-    guard_ctx(role=role, permission_manage_campaign="STORYTELLER")
-
-    # When / Then
-    assert can_manage_campaign() is True
-
-
-def test_can_manage_campaign_player_with_unrestricted_setting(guard_ctx) -> None:
-    """Verify players may manage campaigns when the company is UNRESTRICTED."""
-    # Given a player and an unrestricted company setting
-    guard_ctx(role="PLAYER", permission_manage_campaign="UNRESTRICTED")
-
-    # When / Then
-    assert can_manage_campaign() is True
-
-
-def test_can_manage_campaign_player_restricted(guard_ctx) -> None:
-    """Verify players may not manage campaigns when the setting is restrictive."""
-    # Given a player and a storyteller-only setting
-    guard_ctx(role="PLAYER", permission_manage_campaign="STORYTELLER")
-
-    # When / Then
-    assert can_manage_campaign() is False
-
-
-@pytest.mark.parametrize("role", ["ADMIN", "STORYTELLER"])
-def test_can_grant_experience_privileged_roles_to_anyone(guard_ctx, role) -> None:
-    """Verify privileged users may grant XP to any target user."""
-    # Given a privileged user
-    guard_ctx(role=role, user_id="me", permission_grant_xp="STORYTELLER")
-
-    # When / Then
-    assert can_grant_experience("someone-else") is True
-
-
-def test_can_grant_experience_unrestricted_setting(guard_ctx) -> None:
-    """Verify any user may grant XP when the company setting is UNRESTRICTED."""
-    # Given a player and UNRESTRICTED grant-xp setting
-    guard_ctx(role="PLAYER", user_id="me", permission_grant_xp="UNRESTRICTED")
-
-    # When / Then
-    assert can_grant_experience("someone-else") is True
-
-
-def test_can_grant_experience_player_setting_allows_self(guard_ctx) -> None:
-    """Verify players may grant XP to themselves when the setting is PLAYER."""
-    # Given a player and the self-grant setting
-    guard_ctx(role="PLAYER", user_id="me", permission_grant_xp="PLAYER")
-
-    # When / Then
-    assert can_grant_experience("me") is True
-
-
-def test_can_grant_experience_player_setting_denies_other(guard_ctx) -> None:
-    """Verify players may not grant XP to other users when the setting is PLAYER."""
-    # Given a player and the self-grant setting
-    guard_ctx(role="PLAYER", user_id="me", permission_grant_xp="PLAYER")
-
-    # When / Then
-    assert can_grant_experience("someone-else") is False
-
-
-@pytest.mark.parametrize("target", ["me", "someone-else"])
-def test_can_grant_experience_storyteller_setting_denies_player(guard_ctx, target) -> None:
-    """Verify players may not grant XP at all when the setting is STORYTELLER."""
-    # Given a player and the storyteller-only setting
-    guard_ctx(role="PLAYER", user_id="me", permission_grant_xp="STORYTELLER")
-
-    # When / Then
-    assert can_grant_experience(target) is False
-
-
-@pytest.mark.parametrize("role", ["ADMIN", "STORYTELLER"])
-def test_can_edit_traits_free_privileged(guard_ctx, role) -> None:
-    """Verify privileged roles always edit traits for free regardless of age."""
-    # Given a privileged user and an old character
-    guard_ctx(role=role, permission_free_trait_changes="STORYTELLER")
-    character = CharacterFactory.build(date_created=datetime.now(UTC) - timedelta(days=30))
-
-    # When / Then
-    assert can_edit_traits_free(character) is True
-
-
-def test_can_edit_traits_free_unrestricted_setting(guard_ctx) -> None:
-    """Verify any user edits traits for free when the setting is UNRESTRICTED."""
-    # Given a player and unrestricted setting
-    guard_ctx(role="PLAYER", permission_free_trait_changes="UNRESTRICTED")
-    character = CharacterFactory.build(
-        type="PLAYER", date_created=datetime.now(UTC) - timedelta(days=30)
-    )
-
-    # When / Then
-    assert can_edit_traits_free(character) is True
-
-
-def test_can_edit_traits_free_within_24h_fresh_character(guard_ctx) -> None:
-    """Verify WITHIN_24_HOURS allows free edits for a character under a day old."""
-    # Given a player and a freshly-created character
-    guard_ctx(role="PLAYER", permission_free_trait_changes="WITHIN_24_HOURS")
-    character = CharacterFactory.build(
-        type="PLAYER", date_created=datetime.now(UTC) - timedelta(hours=1)
-    )
-
-    # When / Then
-    assert can_edit_traits_free(character) is True
-
-
-def test_can_edit_traits_free_within_24h_old_character(guard_ctx) -> None:
-    """Verify WITHIN_24_HOURS denies free edits for a character older than a day."""
-    # Given a player and an old character
-    guard_ctx(role="PLAYER", permission_free_trait_changes="WITHIN_24_HOURS")
-    character = CharacterFactory.build(
-        type="PLAYER", date_created=datetime.now(UTC) - timedelta(hours=25)
-    )
-
-    # When / Then
-    assert can_edit_traits_free(character) is False
-
-
-def test_can_edit_traits_free_restricted_setting(guard_ctx) -> None:
-    """Verify a restrictive setting denies free trait edits for players."""
-    # Given a player and a storyteller-only setting
-    guard_ctx(role="PLAYER", permission_free_trait_changes="STORYTELLER")
-    character = CharacterFactory.build(type="PLAYER", date_created=datetime.now(UTC))
-
-    # When / Then
-    assert can_edit_traits_free(character) is False
-
-
-@pytest.mark.parametrize("character_type", ["NPC", "STORYTELLER"])
-def test_can_edit_traits_free_non_player_ignores_setting(guard_ctx, character_type) -> None:
-    """Verify the free-change setting does not apply to non-player characters."""
-    # Given a player, the strictest setting, and an old non-player character
-    guard_ctx(role="PLAYER", permission_free_trait_changes="STORYTELLER")
-    character = CharacterFactory.build(
-        type=character_type, date_created=datetime.now(UTC) - timedelta(days=2)
-    )
-
-    # When / Then
-    assert can_edit_traits_free(character) is True
-
-
-@pytest.mark.parametrize("role", ["ADMIN", "STORYTELLER"])
-def test_can_edit_character_privileged(guard_ctx, role) -> None:
-    """Verify privileged users may edit any character."""
-    # Given a privileged user and a character owned by someone else
-    guard_ctx(role=role, user_id="me")
-    character = CharacterFactory.build(user_player_id="someone-else")
-
-    # When / Then
-    assert can_edit_character(character) is True
-
-
-def test_can_edit_character_owner(guard_ctx) -> None:
-    """Verify players may edit their own characters."""
-    # Given a player and their own player character
-    guard_ctx(role="PLAYER", user_id="me")
-    character = CharacterFactory.build(user_player_id="me", type="PLAYER")
-
-    # When / Then
-    assert can_edit_character(character) is True
-
-
-def test_can_edit_character_non_owner_denied(guard_ctx) -> None:
-    """Verify players may not edit characters owned by other users."""
-    # Given a player and someone else's player character
-    guard_ctx(role="PLAYER", user_id="me")
-    character = CharacterFactory.build(user_player_id="someone-else", type="PLAYER")
-
-    # When / Then
-    assert can_edit_character(character) is False
-
-
-@pytest.mark.parametrize("role", ["ADMIN", "STORYTELLER"])
-def test_can_manage_npcs_privileged_roles_bypass_setting(guard_ctx, role) -> None:
-    """Verify privileged roles may manage NPCs even when the setting is restrictive."""
-    # Given a privileged user and a storyteller-only NPC setting
-    guard_ctx(role=role, permission_manage_npc="STORYTELLER")
-
-    # When / Then
-    assert can_manage_npcs() is True
-
-
-def test_can_manage_npcs_player_with_unrestricted_setting(guard_ctx) -> None:
-    """Verify players may manage NPCs when the company is UNRESTRICTED."""
-    # Given a player and an unrestricted NPC setting
-    guard_ctx(role="PLAYER", permission_manage_npc="UNRESTRICTED")
-
-    # When / Then
-    assert can_manage_npcs() is True
-
-
-def test_can_manage_npcs_player_restricted(guard_ctx) -> None:
-    """Verify players may not manage NPCs when the setting is storyteller-only."""
-    # Given a player and a storyteller-only NPC setting
-    guard_ctx(role="PLAYER", permission_manage_npc="STORYTELLER")
-
-    # When / Then
-    assert can_manage_npcs() is False
-
-
-@pytest.mark.parametrize("role", ["ADMIN", "STORYTELLER"])
-def test_can_edit_character_npc_privileged(guard_ctx, role) -> None:
-    """Verify privileged users may edit NPCs regardless of the restrictive setting."""
-    # Given a privileged user and an ownerless NPC under a restrictive setting
-    guard_ctx(role=role, user_id="me", permission_manage_npc="STORYTELLER")
-    character = CharacterFactory.build(user_player_id=None, type="NPC")
-
-    # When / Then
-    assert can_edit_character(character) is True
-
-
-def test_can_edit_character_npc_unrestricted_allows_player(guard_ctx) -> None:
-    """Verify any player may edit an NPC when the NPC setting is UNRESTRICTED."""
-    # Given a player and an NPC owned by someone else under an unrestricted setting
-    guard_ctx(role="PLAYER", user_id="me", permission_manage_npc="UNRESTRICTED")
-    character = CharacterFactory.build(user_player_id="someone-else", type="NPC")
-
-    # When / Then
-    assert can_edit_character(character) is True
-
-
-def test_can_edit_character_npc_restricted_denies_player(guard_ctx) -> None:
-    """Verify a player may not edit an NPC when the setting is storyteller-only."""
-    # Given a player and an NPC under a storyteller-only setting
-    guard_ctx(role="PLAYER", user_id="me", permission_manage_npc="STORYTELLER")
-    character = CharacterFactory.build(user_player_id="me", type="NPC")
-
-    # When / Then
-    assert can_edit_character(character) is False
-
-
-def test_can_edit_character_storyteller_type_denies_owning_player(guard_ctx) -> None:
-    """Verify a player may not edit a STORYTELLER-type character even when they own it."""
-    # Given a player who owns a STORYTELLER-type character (always privileged-only)
-    guard_ctx(role="PLAYER", user_id="me", permission_manage_npc="UNRESTRICTED")
-    character = CharacterFactory.build(user_player_id="me", type="STORYTELLER")
-
-    # When / Then
-    assert can_edit_character(character) is False
-
-
-@pytest.mark.parametrize("role", ["ADMIN", "STORYTELLER"])
-def test_can_edit_trackers_privileged(guard_ctx, role) -> None:
-    """Verify privileged users may edit trackers on any character."""
-    # Given a privileged user and a character owned by someone else
-    guard_ctx(role=role, user_id="me")
-    character = CharacterFactory.build(user_player_id="someone-else")
-
-    # When / Then
-    assert can_edit_trackers(character) is True
-
-
-def test_can_edit_trackers_owner(guard_ctx) -> None:
-    """Verify players may edit trackers on their own characters."""
-    # Given a player and their own player character
-    guard_ctx(role="PLAYER", user_id="me")
-    character = CharacterFactory.build(user_player_id="me", type="PLAYER")
-
-    # When / Then
-    assert can_edit_trackers(character) is True
-
-
-def test_can_edit_trackers_non_owner_denied(guard_ctx) -> None:
-    """Verify players may not edit trackers on characters owned by other users."""
-    # Given a player and someone else's player character
-    guard_ctx(role="PLAYER", user_id="me")
-    character = CharacterFactory.build(user_player_id="someone-else", type="PLAYER")
-
-    # When / Then
-    assert can_edit_trackers(character) is False
-
-
-def test_can_edit_trackers_npc_unrestricted_setting_still_denies_non_owner(guard_ctx) -> None:
-    """Verify the NPC setting does not open tracker edits to non-owning players."""
-    # Given a player, an unrestricted NPC setting, and an NPC owned by someone else
-    guard_ctx(role="PLAYER", user_id="me", permission_manage_npc="UNRESTRICTED")
-    character = CharacterFactory.build(user_player_id="someone-else", type="NPC")
-
-    # When / Then
-    assert can_edit_trackers(character) is False
-
-
-def test_can_edit_trackers_owner_of_storyteller_character(guard_ctx) -> None:
-    """Verify a player may edit trackers on a storyteller-type character they own."""
-    # Given a player who owns a STORYTELLER-type character
-    guard_ctx(role="PLAYER", user_id="me")
-    character = CharacterFactory.build(user_player_id="me", type="STORYTELLER")
-
-    # When / Then
-    assert can_edit_trackers(character) is True
-
-
-def test_can_edit_trackers_ownerless_npc_denies_player(guard_ctx) -> None:
-    """Verify a player may not edit trackers on an NPC that has no owner."""
-    # Given a player and an NPC with no owning player
-    guard_ctx(role="PLAYER", user_id="me")
-    character = CharacterFactory.build(user_player_id=None, type="NPC")
-
-    # When / Then
-    assert can_edit_trackers(character) is False
+def test_guards_fail_closed_when_logged_out(app: Flask, guard) -> None:
+    """Verify user guards deny when no user is attached to g."""
+    with app.test_request_context():
+        assert guard() is False
+
+
+@pytest.mark.parametrize(
+    ("guard", "setting_name"),
+    [
+        (can_manage_campaign, "permission_manage_campaign"),
+        (can_manage_npcs, "permission_manage_npc"),
+    ],
+)
+@pytest.mark.parametrize(
+    ("role", "setting", "expected"),
+    [
+        ("ADMIN", "STORYTELLER", True),
+        ("STORYTELLER", "STORYTELLER", True),
+        ("PLAYER", "UNRESTRICTED", True),
+        ("PLAYER", "STORYTELLER", False),
+    ],
+)
+def test_company_setting_guards(guard_ctx, guard, setting_name, role, setting, expected) -> None:
+    """Verify privileged roles bypass the setting and players need UNRESTRICTED."""
+    guard_ctx(role=role, **{setting_name: setting})
+
+    assert guard() is expected
+
+
+@pytest.mark.parametrize(
+    ("role", "setting", "target", "expected"),
+    [
+        ("ADMIN", "STORYTELLER", "someone-else", True),
+        ("STORYTELLER", "STORYTELLER", "someone-else", True),
+        ("PLAYER", "UNRESTRICTED", "someone-else", True),
+        ("PLAYER", "PLAYER", "me", True),
+        ("PLAYER", "PLAYER", "someone-else", False),
+        ("PLAYER", "STORYTELLER", "me", False),
+        ("PLAYER", "STORYTELLER", "someone-else", False),
+    ],
+)
+def test_can_grant_experience(guard_ctx, role, setting, target, expected) -> None:
+    """Verify who may grant experience to whom under each company setting."""
+    guard_ctx(role=role, user_id="me", permission_grant_xp=setting)
+
+    assert can_grant_experience(target) is expected
+
+
+@pytest.mark.parametrize(
+    ("role", "setting", "character_type", "age", "expected"),
+    [
+        ("ADMIN", "STORYTELLER", "PLAYER", timedelta(days=30), True),
+        ("STORYTELLER", "STORYTELLER", "PLAYER", timedelta(days=30), True),
+        ("PLAYER", "UNRESTRICTED", "PLAYER", timedelta(days=30), True),
+        ("PLAYER", "WITHIN_24_HOURS", "PLAYER", timedelta(hours=1), True),
+        ("PLAYER", "WITHIN_24_HOURS", "PLAYER", timedelta(hours=25), False),
+        ("PLAYER", "STORYTELLER", "PLAYER", timedelta(0), False),
+        ("PLAYER", "STORYTELLER", "NPC", timedelta(days=2), True),
+        ("PLAYER", "STORYTELLER", "STORYTELLER", timedelta(days=2), True),
+    ],
+)
+def test_can_edit_traits_free(guard_ctx, role, setting, character_type, age, expected) -> None:
+    """Verify free trait edits: privileged always, players per setting, non-player types always."""
+    guard_ctx(role=role, permission_free_trait_changes=setting)
+    character = CharacterFactory.build(type=character_type, date_created=datetime.now(UTC) - age)
+
+    assert can_edit_traits_free(character) is expected
+
+
+# Columns: role, NPC setting, character type, owner, can_edit_character, can_edit_trackers
+_EDIT_MATRIX = [
+    ("ADMIN", "STORYTELLER", "PLAYER", "someone-else", True, True),
+    ("STORYTELLER", "STORYTELLER", "PLAYER", "someone-else", True, True),
+    ("ADMIN", "STORYTELLER", "NPC", None, True, True),
+    ("STORYTELLER", "STORYTELLER", "NPC", None, True, True),
+    ("PLAYER", "STORYTELLER", "PLAYER", "me", True, True),
+    ("PLAYER", "STORYTELLER", "PLAYER", "someone-else", False, False),
+    ("PLAYER", "UNRESTRICTED", "NPC", "someone-else", True, False),
+    ("PLAYER", "STORYTELLER", "NPC", "me", False, True),
+    ("PLAYER", "STORYTELLER", "NPC", None, False, False),
+    ("PLAYER", "UNRESTRICTED", "STORYTELLER", "me", False, True),
+]
+
+
+@pytest.mark.parametrize(
+    ("role", "npc_setting", "character_type", "owner", "can_edit", "can_track"), _EDIT_MATRIX
+)
+def test_character_edit_guards(
+    guard_ctx, *, role, npc_setting, character_type, owner, can_edit, can_track
+) -> None:
+    """Verify character edits follow type and NPC setting, and tracker edits follow ownership."""
+    guard_ctx(role=role, user_id="me", permission_manage_npc=npc_setting)
+    character = CharacterFactory.build(user_player_id=owner, type=character_type)
+
+    assert can_edit_character(character) is can_edit
+    assert can_edit_trackers(character) is can_track

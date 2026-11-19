@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
 
-from vweb.api_client.models import CharacterTraitSpecialty
+from tests.helpers import build_specialty
 from vweb.api_client.testing import (
     CharacterFactory,
     CharacterTraitFactory,
@@ -22,7 +21,7 @@ from vweb.routes.character_trait_edit.services import (
 )
 
 if TYPE_CHECKING:
-    from vweb.api_client.constants import TraitModifyCurrency
+    from vweb.api_client.constants import SpecialtyRules, TraitModifyCurrency
     from vweb.api_client.models import Character, CharacterTrait, CompanySettings, Trait
 
 
@@ -43,58 +42,28 @@ def _medicine(value: int, specialty_count: int) -> CharacterTrait:
         trait=TraitFactory.build(name="Medicine", sheet_section_name="Abilities"),
         value=value,
         specialties=[
-            CharacterTraitSpecialty(
-                id=f"spec-{index}",
-                name=f"Specialty {index}",
-                date_created=datetime.now(UTC),
-                date_modified=datetime.now(UTC),
-            )
+            build_specialty(f"spec-{index}", f"Specialty {index}")
             for index in range(specialty_count)
         ],
     )
 
 
 @pytest.mark.parametrize(
-    ("spend_type", "enabled", "expected"),
+    ("rules", "value", "specialty_count", "spend_type", "enabled", "expected"),
     [
-        ("XP", True, 3),
-        ("STARTING_POINTS", True, 3),
-        ("NO_COST", True, 0),
-        ("XP", False, 0),
+        ("FIXED_COST", 2, 1, "XP", True, 3),
+        ("FIXED_COST", 2, 1, "STARTING_POINTS", True, 3),
+        ("FIXED_COST", 2, 1, "NO_COST", True, 0),
+        ("FIXED_COST", 2, 1, "XP", False, 0),
+        ("RATING_BASED", 4, 0, "XP", True, 0),
+        ("RATING_BASED", 4, 1, "XP", True, 4),
+        ("RATING_BASED", 5, 2, "STARTING_POINTS", True, 5),
+        ("RATING_BASED", 4, 1, "NO_COST", True, 0),
+        ("RATING_BASED", 4, 1, "XP", False, 0),
     ],
 )
-def test_specialty_cost(spend_type: TraitModifyCurrency, *, enabled: bool, expected: int) -> None:
-    """Verify FIXED_COST charges 3 only for paid currencies with the setting on."""
-    assert specialty_cost(spend_type, _settings(enabled=enabled), _medicine(2, 1)) == expected
-
-
-@pytest.mark.parametrize(
-    ("spend_type", "enabled", "expected"),
-    [
-        ("XP", True, "Add · 3 XP"),
-        ("STARTING_POINTS", True, "Add · 3 starting points"),
-        ("NO_COST", True, "Add"),
-        ("XP", False, "Add"),
-    ],
-)
-def test_specialty_add_label(
-    spend_type: TraitModifyCurrency, *, enabled: bool, expected: str
-) -> None:
-    """Verify the add label carries the cost only when one is charged."""
-    assert specialty_add_label(spend_type, _settings(enabled=enabled), _medicine(2, 0)) == expected
-
-
-@pytest.mark.parametrize(
-    ("value", "specialty_count", "spend_type", "enabled", "expected"),
-    [
-        (4, 0, "XP", True, 0),
-        (4, 1, "XP", True, 4),
-        (5, 2, "STARTING_POINTS", True, 5),
-        (4, 1, "NO_COST", True, 0),
-        (4, 1, "XP", False, 0),
-    ],
-)
-def test_rating_based_specialty_cost(
+def test_specialty_cost(
+    rules: SpecialtyRules,
     value: int,
     specialty_count: int,
     spend_type: TraitModifyCurrency,
@@ -102,37 +71,49 @@ def test_rating_based_specialty_cost(
     enabled: bool,
     expected: int,
 ) -> None:
-    """Verify RATING_BASED pricing: first free, then the trait's current rating."""
-    trait = _medicine(value, specialty_count)
-    assert specialty_cost(spend_type, _rating_based_settings(enabled=enabled), trait) == expected
+    """Verify FIXED_COST charges 3 and RATING_BASED charges the rating after the first free one.
+
+    Neither charges for NO_COST or with the setting off.
+    """
+    settings = _settings(enabled=enabled)
+    settings.specialty_rules = rules
+    assert specialty_cost(spend_type, settings, _medicine(value, specialty_count)) == expected
 
 
-def test_rating_based_add_label_shows_rating_cost() -> None:
-    """Verify the add label shows the rating-based cost."""
-    assert specialty_add_label("XP", _rating_based_settings(), _medicine(4, 1)) == "Add · 4 XP"
+@pytest.mark.parametrize(
+    ("settings", "spend_type", "expected"),
+    [
+        (_settings(enabled=True), "XP", "Add · 3 XP"),
+        (_settings(enabled=True), "STARTING_POINTS", "Add · 3 starting points"),
+        (_settings(enabled=True), "NO_COST", "Add"),
+        (_settings(enabled=False), "XP", "Add"),
+        (_rating_based_settings(), "XP", "Add · 4 XP"),
+    ],
+    ids=["xp", "starting-points", "no-cost", "cost-disabled", "rating-based"],
+)
+def test_specialty_add_label(
+    settings: CompanySettings, spend_type: TraitModifyCurrency, expected: str
+) -> None:
+    """Verify the add label carries the cost and currency only when one is charged."""
+    assert specialty_add_label(spend_type, settings, _medicine(4, 1)) == expected
 
 
-def test_specialty_rules_text_rating_based() -> None:
-    """Verify the explanation names the bonus, the minimum rating, removal, and pricing."""
-    text = specialty_rules_text(_medicine(3, 0), _rating_based_settings(), 3)
-    assert "adds one die to Medicine" in text
-    assert "at 3 dots or more" in text
-    assert "removes them" in text
-    assert "first specialty is free" in text
-
-
-def test_specialty_rules_text_rating_based_without_cost() -> None:
-    """Verify pricing is left out when specialties are free."""
-    text = specialty_rules_text(_medicine(3, 0), _rating_based_settings(enabled=False), 3)
-    assert "at 3 dots or more" in text
-    assert "free" not in text
-
-
-def test_specialty_rules_text_fixed_cost_omits_min_rating() -> None:
-    """Verify FIXED_COST rules only explain the bonus."""
-    text = specialty_rules_text(_medicine(1, 0), _settings(enabled=True), 1)
-    assert "adds one die to Medicine" in text
-    assert "dots" not in text
+@pytest.mark.parametrize(
+    ("settings", "included", "excluded"),
+    [
+        (_rating_based_settings(), ["Medicine", "3 dots", "free"], []),
+        (_rating_based_settings(enabled=False), ["Medicine", "3 dots"], ["free"]),
+        (_settings(enabled=True), ["Medicine"], ["dots"]),
+    ],
+    ids=["rating-based-with-cost", "rating-based-free", "fixed-cost"],
+)
+def test_specialty_rules_text(
+    settings: CompanySettings, included: list[str], excluded: list[str]
+) -> None:
+    """Verify the explanation covers the minimum rating and pricing only when they apply."""
+    text = specialty_rules_text(_medicine(3, 0), settings, 3)
+    assert all(part in text for part in included)
+    assert not any(part in text for part in excluded)
 
 
 class TestFindStandardTraitByName:

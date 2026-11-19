@@ -1,253 +1,187 @@
-"""Tests for the account-linking (connections) OAuth flow."""
+"""Tests for the account-linking (connections) OAuth flow.
 
-from unittest.mock import MagicMock
+A cancelled consent screen during linking is covered in test_auth_routes.py.
+"""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import pytest
+
+from tests.helpers import mock_oauth_provider, session_flashes
 from vweb.api_client.testing import Routes
+
+if TYPE_CHECKING:
+    from flask.testing import FlaskClient
+    from werkzeug.test import TestResponse
 
 
 class TestLinkIdentityView:
     """Tests for GET /auth/<provider>/link."""
 
-    def test_link_route_sets_flag_and_redirects_to_provider(self, client, mocker):
-        """Verify the link route sets link mode and starts the provider OAuth flow."""
-        # Given a mock OAuth github client
-        mock_github = MagicMock()
-        mock_github.authorize_redirect.return_value = MagicMock(status_code=302)
-        mocker.patch("vweb.routes.auth.views_identity.oauth", github=mock_github)
+    @pytest.mark.parametrize("provider", ["discord", "github", "google", "apple"])
+    def test_sets_link_mode_and_redirects_to_provider(
+        self, client: FlaskClient, mocker, provider: str
+    ) -> None:
+        """Verify the link route flags link mode and starts the provider OAuth flow."""
+        mock = mock_oauth_provider(mocker, provider, module="vweb.routes.auth.views_identity")
+        mock.authorize_redirect.return_value = "to-provider"
 
-        # When the link route is hit (client fixture is already logged in)
-        client.get("/auth/github/link")
+        client.get(f"/auth/{provider}/link")
 
-        # Then link mode is flagged and the OAuth redirect was issued
         with client.session_transaction() as sess:
             assert sess["oauth_link_mode"] is True
-        mock_github.authorize_redirect.assert_called_once()
+        mock.authorize_redirect.assert_called_once()
 
-    def test_link_route_rejects_anonymous_user(self, app, mocker):
-        """Verify the link route redirects anonymous visitors to the landing page."""
-        # Given a configured provider and a client with no session
-        mocker.patch("vweb.routes.auth.views_identity.oauth", github=MagicMock())
-        anonymous_client = app.test_client()
+    @pytest.mark.parametrize("missing", ["user_id", "company_id"])
+    def test_rejects_visitor_without_active_membership(
+        self, client: FlaskClient, mocker, missing: str
+    ) -> None:
+        """Verify linking needs a signed-in user and an active company."""
+        # Given a configured provider and a session missing the user or company
+        mock_github = mock_oauth_provider(
+            mocker, "github", module="vweb.routes.auth.views_identity"
+        )
+        with client.session_transaction() as sess:
+            sess.pop(missing)
 
         # When the link route is hit
-        response = anonymous_client.get("/auth/github/link")
+        response = client.get("/auth/github/link")
 
-        # Then redirected to index without setting link mode
-        assert response.status_code == 302
+        # Then redirected to index without starting the flow
         assert response.location == "/"
-        with anonymous_client.session_transaction() as sess:
+        mock_github.authorize_redirect.assert_not_called()
+        with client.session_transaction() as sess:
             assert "oauth_link_mode" not in sess
 
-    def test_link_route_unknown_provider_404s(self, client):
-        """Verify an unknown provider returns 404."""
-        # When linking an unknown provider
-        response = client.get("/auth/myspace/link")
+    @pytest.mark.parametrize(
+        "provider",
+        ["myspace", "discord"],
+        ids=["unknown-provider", "unconfigured-provider"],
+    )
+    def test_unavailable_provider_404s(self, client: FlaskClient, provider: str) -> None:
+        """Verify unknown providers and ones this deployment did not configure return 404."""
+        # The test app registers no real OAuth clients, so discord is unconfigured
+        assert client.get(f"/auth/{provider}/link").status_code == 404
 
-        # Then it 404s
-        assert response.status_code == 404
 
-    def test_link_route_unconfigured_provider_404s(self, client):
-        """Verify a known provider this deployment did not configure returns 404."""
-        # Given the test app registers no real OAuth clients (oauth.discord is absent)
-        # When the link route is hit for that provider
-        response = client.get("/auth/discord/link")
+def _arm_link_mode(client: FlaskClient) -> None:
+    """Flag the session as a link-mode OAuth flow."""
+    with client.session_transaction() as sess:
+        sess["oauth_link_mode"] = True
 
-        # Then it 404s instead of raising AttributeError on oauth.discord
-        assert response.status_code == 404
 
-    def test_link_route_apple_sets_flag_and_redirects(self, client, mocker):
-        """Verify linking Apple sets link mode and starts the OAuth flow."""
-        # Given a mock OAuth apple client
-        mock_apple = MagicMock()
-        mock_apple.authorize_redirect.return_value = MagicMock(status_code=302)
-        mocker.patch("vweb.routes.auth.views_identity.oauth", apple=mock_apple)
-
-        # When the Apple link route is hit
-        client.get("/auth/apple/link")
-
-        # Then link mode is flagged and the OAuth redirect was issued (form_post is
-        # set at registration, asserted in test_apple_oauth.py)
-        with client.session_transaction() as sess:
-            assert sess["oauth_link_mode"] is True
-        mock_apple.authorize_redirect.assert_called_once()
+def _github_link_callback(client: FlaskClient, mocker) -> TestResponse:
+    """Complete a link-mode GitHub callback that returns a valid token."""
+    _arm_link_mode(client)
+    mock_oauth_provider(mocker, "github", token={"access_token": "gh-cred"})
+    return client.get("/auth/github/callback")
 
 
 class TestLinkModeCallback:
     """Tests for OAuth callbacks in link mode."""
 
-    def _arm_link_mode(self, client) -> None:
-        """Flag the session as a link-mode OAuth flow."""
-        with client.session_transaction() as sess:
-            sess["oauth_link_mode"] = True
-
-    def _mock_github_oauth(self, mocker) -> MagicMock:
-        """Mock the GitHub OAuth client returning a valid token."""
-        mock_github = MagicMock()
-        mock_github.authorize_access_token.return_value = {"access_token": "gh-cred"}
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", github=mock_github)
-        return mock_github
-
-    def test_link_callback_links_identity_and_redirects_to_profile(
-        self, client, mocker, fake_vclient
-    ):
-        """Verify a link-mode callback attaches the identity and returns to the profile."""
-        # Given a link-mode session and a mock OAuth flow
-        self._arm_link_mode(client)
-        self._mock_github_oauth(mocker)
+    @pytest.mark.parametrize(
+        ("provider", "token", "credential"),
+        [
+            ("discord", {"access_token": "discord-cred"}, "discord-cred"),
+            ("github", {"access_token": "gh-cred"}, "gh-cred"),
+            (
+                "google",
+                {"access_token": "google-access", "id_token": "google-id-tok"},
+                "google-id-tok",
+            ),
+            ("apple", {"id_token": "apple-id-tok"}, "apple-id-tok"),
+        ],
+    )
+    def test_links_identity_with_provider_credential(
+        self,
+        client: FlaskClient,
+        mocker,
+        fake_vclient,
+        *,
+        provider: str,
+        token: dict,
+        credential: str,
+    ) -> None:
+        """Verify a link-mode callback links the verified credential and returns to the profile."""
+        # Given a link-mode session and a provider returning a token
+        _arm_link_mode(client)
+        mock_oauth_provider(mocker, provider, token=token)
         mock_cache_clear = mocker.patch(
             "vweb.routes.auth.views_identity.cache.global_context.clear"
         )
 
-        # When the callback is hit
-        response = client.get("/auth/github/callback")
+        # When the provider calls back (Apple as a form POST)
+        if provider == "apple":
+            response = client.post("/auth/apple/callback", data={"code": "abc"})
+        else:
+            response = client.get(f"/auth/{provider}/callback")
 
-        # Then the identity was linked for the active company and cache invalidated
+        # Then the identity is linked for the active company on behalf of the user
         (request,) = fake_vclient.assert_called(
             Routes.USERS_IDENTITY_LINK,
             params={"company_id": "test-company-id", "user_id": "test-user-id"},
-            json={"provider": "github", "token": "gh-cred"},
+            json={"provider": provider, "token": credential},
             times=1,
         )
         assert request.headers["on-behalf-of"] == "test-user-id"
+        # And the login flow never runs
+        fake_vclient.assert_not_called(Routes.USERS_LOOKUP)
+        fake_vclient.assert_not_called(Routes.IDENTITY_IDENTIFY)
+        # And the cached context refreshes and the user returns to their profile
         mock_cache_clear.assert_called_once_with("test-company-id", "test-user-id")
-        assert response.status_code == 302
         assert response.location == "/profile/test-user-id"
-
-        # Then link mode is cleared
         with client.session_transaction() as sess:
             assert "oauth_link_mode" not in sess
+        assert [category for category, _ in session_flashes(client)] == ["success"]
 
-    def test_link_callback_conflict_flashes_error(self, client, mocker, fake_vclient):
-        """Verify IDENTITY_ALREADY_LINKED is reported without breaking the session."""
-        # Given a link-mode session and a mock OAuth flow
-        self._arm_link_mode(client)
-        self._mock_github_oauth(mocker)
-
-        # Given the identity belongs to another user
-        fake_vclient.set_error(
-            Routes.USERS_IDENTITY_LINK, status_code=409, code="IDENTITY_ALREADY_LINKED"
-        )
+    @pytest.mark.parametrize(
+        ("status_code", "code"),
+        [
+            (409, "IDENTITY_ALREADY_LINKED"),
+            (422, "TOKEN_VERIFICATION_FAILED"),
+            (503, "PROVIDER_UNAVAILABLE"),
+            (503, None),
+            (404, None),
+        ],
+        ids=[
+            "already-linked",
+            "verification-failed",
+            "provider-unavailable",
+            "server-error",
+            "other-api-error",
+        ],
+    )
+    def test_link_failure_returns_to_profile_with_error(
+        self, client: FlaskClient, mocker, fake_vclient, status_code: int, code: str | None
+    ) -> None:
+        """Verify a failed link keeps the session user and cached context, and reports an error."""
+        # Given the API refuses the link
+        fake_vclient.set_error(Routes.USERS_IDENTITY_LINK, status_code=status_code, code=code)
         mock_cache_clear = mocker.patch(
             "vweb.routes.auth.views_identity.cache.global_context.clear"
         )
 
-        # When the callback is hit
-        response = client.get("/auth/github/callback")
+        # When the link-mode callback is hit
+        response = _github_link_callback(client, mocker)
 
-        # Then redirected back to the profile, the session user is unchanged, and the
-        # cached context is kept
-        assert response.status_code == 302
+        # Then the user returns to their profile, unchanged, with an error
         assert response.location == "/profile/test-user-id"
         with client.session_transaction() as sess:
             assert sess["user_id"] == "test-user-id"
-            assert "already linked to a different user" in str(sess["_flashes"])
+        assert [category for category, _ in session_flashes(client)] == ["error"]
         mock_cache_clear.assert_not_called()
 
-    def test_link_callback_verification_failure_flashes_error(self, client, mocker, fake_vclient):
-        """Verify TOKEN_VERIFICATION_FAILED during linking redirects to the profile."""
-        # Given a link-mode session and a mock OAuth flow
-        self._arm_link_mode(client)
-        self._mock_github_oauth(mocker)
-
-        # Given token verification fails
-        fake_vclient.set_error(
-            Routes.USERS_IDENTITY_LINK, status_code=422, code="TOKEN_VERIFICATION_FAILED"
-        )
-
-        # When the callback is hit
-        response = client.get("/auth/github/callback")
-
-        # Then redirected back to the profile with a verification error
-        assert response.status_code == 302
-        assert response.location == "/profile/test-user-id"
+    def test_link_without_session_user_returns_home(
+        self, client: FlaskClient, mocker, fake_vclient
+    ) -> None:
+        """Verify a link-mode callback after the session lost its user links nothing."""
         with client.session_transaction() as sess:
-            assert "Could not verify your Github login" in str(sess["_flashes"])
+            sess.pop("user_id")
 
-    def test_link_callback_cancelled_oauth_redirects_to_profile(self, client, mocker):
-        """Verify cancelling the provider consent screen returns to the profile."""
-        from authlib.integrations.base_client.errors import OAuthError
+        response = _github_link_callback(client, mocker)
 
-        # Given a link-mode session where the provider raises an OAuth error
-        self._arm_link_mode(client)
-        mock_github = MagicMock()
-        mock_github.authorize_access_token.side_effect = OAuthError(error="access_denied")
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", github=mock_github)
-
-        # When the callback is hit
-        response = client.get("/auth/github/callback")
-
-        # Then redirected to the profile with link mode cleared
-        assert response.status_code == 302
-        assert response.location == "/profile/test-user-id"
-        with client.session_transaction() as sess:
-            assert "oauth_link_mode" not in sess
-
-    def test_link_callback_does_not_run_login_flow(self, client, mocker, fake_vclient):
-        """Verify link mode skips lookup and identify entirely."""
-        # Given a link-mode session and a mock OAuth flow
-        self._arm_link_mode(client)
-        self._mock_github_oauth(mocker)
-
-        # When the callback is hit
-        client.get("/auth/github/callback")
-
-        # Then the identity was linked and the login lookup and identify never ran
-        fake_vclient.assert_called(Routes.USERS_IDENTITY_LINK, times=1)
-        fake_vclient.assert_not_called(Routes.USERS_LOOKUP)
-        fake_vclient.assert_not_called(Routes.IDENTITY_IDENTIFY)
-
-    def test_link_callback_apple_uses_id_token(self, client, mocker, fake_vclient):
-        """Verify the Apple link callback (a form POST) links with the OIDC id_token."""
-        # Given a link-mode session and an Apple OAuth flow returning an id_token
-        self._arm_link_mode(client)
-        mock_apple = MagicMock()
-        mock_apple.authorize_access_token.return_value = {
-            "id_token": "apple-id-tok",
-            "userinfo": {"sub": "a1", "email": "e@e.com"},
-        }
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", apple=mock_apple)
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.build_apple_client_secret", return_value="secret"
-        )
-        mocker.patch("vweb.routes.auth.views_identity.cache.global_context.clear")
-
-        # When the callback is POSTed
-        response = client.post("/auth/apple/callback", data={"code": "abc", "state": "xyz"})
-
-        # Then the identity was linked with the id_token and routed back to the profile
-        fake_vclient.assert_called(
-            Routes.USERS_IDENTITY_LINK,
-            params={"user_id": "test-user-id"},
-            json={"provider": "apple", "token": "apple-id-tok"},
-            times=1,
-        )
-        assert response.status_code == 302
-        assert response.location == "/profile/test-user-id"
-        with client.session_transaction() as sess:
-            assert "oauth_link_mode" not in sess
-
-    def test_link_callback_google_uses_id_token(self, client, mocker, fake_vclient):
-        """Verify the Google link callback links with the OIDC id_token, not the access token."""
-        # Given a link-mode session and a Google OAuth flow returning both token types
-        self._arm_link_mode(client)
-        mock_google = MagicMock()
-        mock_google.authorize_access_token.return_value = {
-            "access_token": "google-access-tok",
-            "id_token": "google-id-tok",
-            "userinfo": {"sub": "g1", "name": "u", "email": "e@e.com"},
-        }
-        mocker.patch("vweb.routes.auth.views_oauth.oauth", google=mock_google)
-        mocker.patch("vweb.routes.auth.views_identity.cache.global_context.clear")
-
-        # When the callback is hit
-        response = client.get("/auth/google/callback")
-
-        # Then the identity was linked with the id_token and routed back to the profile
-        fake_vclient.assert_called(
-            Routes.USERS_IDENTITY_LINK,
-            params={"user_id": "test-user-id"},
-            json={"provider": "google", "token": "google-id-tok"},
-            times=1,
-        )
-        assert response.status_code == 302
-        assert response.location == "/profile/test-user-id"
+        assert response.location == "/"
+        fake_vclient.assert_not_called(Routes.USERS_IDENTITY_LINK)

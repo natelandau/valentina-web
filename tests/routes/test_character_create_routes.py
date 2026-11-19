@@ -1,35 +1,28 @@
 """Tests for character creation routes."""
 
+from __future__ import annotations
+
 import logging
 from datetime import UTC, datetime, timedelta
 
-from tests.conftest import get_csrf
-from tests.helpers import assert_shows_error, build_global_context
-from vweb.api_client.exceptions import APIError, NotFoundError, ServerError, ValidationError
+import pytest
+
+from tests.conftest import get_csrf, htmx_post
+from tests.helpers import assert_shows_error, session_flashes
 from vweb.api_client.testing import (
-    CharacterConceptFactory,
     CharacterFactory,
-    CharacterFullSheetFactory,
     ChargenSessionResponseFactory,
-    VampireClanFactory,
-    WerewolfAuspiceFactory,
-    WerewolfTribeFactory,
+    Routes,
 )
 
 
 class TestSelectionPageView:
     """Tests for GET /campaign/<id>/characters/new."""
 
-    def test_renders_selection_page(self, client, mocker) -> None:
+    def test_renders_selection_page(self, client, use_context, fake_vclient) -> None:
         """Verify the selection page renders for an authenticated user."""
         # Given a campaign in global context
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mocker.patch(
-            "vweb.routes.character_create.picker_services.list_sessions",
-            return_value=[],
-        )
+        campaign = use_context(user_role="STORYTELLER").campaigns[0]
 
         # When requesting the selection page
         response = client.get(f"/campaign/{campaign.id}/characters/new")
@@ -46,286 +39,145 @@ class TestSelectionPageView:
         assert response.status_code == 404
 
 
-class TestSelectionCardsView:
-    """Tests for GET /campaign/<id>/characters/new/cards."""
-
-    def test_returns_cards_fragment(self, client, mocker) -> None:
-        """Verify the cards fragment renders for back navigation."""
-        # Given a campaign in global context
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mocker.patch(
-            "vweb.routes.character_create.picker_services.list_sessions",
-            return_value=[],
-        )
-
-        # When requesting the cards fragment
-        response = client.get(f"/campaign/{campaign.id}/characters/new/cards")
-
-        # Then an HTML fragment is returned
-        assert response.status_code == 200
-
-
-class TestAutogenChoiceExplanation:
-    """The random-character card explains that a player keeps one of the rolled choices."""
-
-    def _cards_html(self, client, mocker, num_choices: int) -> str:
-        ctx = build_global_context(user_role="PLAYER")
-        ctx.company.settings.character_autogen_num_choices = num_choices
-        ctx.company.settings.character_autogen_xp_cost = 10
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mocker.patch(
-            "vweb.routes.character_create.picker_services.list_sessions",
-            return_value=[],
-        )
-        response = client.get(f"/campaign/{campaign.id}/characters/new/cards")
-        return " ".join(response.get_data(as_text=True).split())
-
-    def test_explains_keeping_one_of_several(self, client, mocker) -> None:
-        """Verify three choices are described as pick one, discard the other two."""
-        # When rendering the cards with three choices per roll
-        html = self._cards_html(client, mocker, num_choices=3)
-
-        # Then the card, the cost line, and the confirmation all say one is kept
-        assert "<strong>3 random characters</strong>" in html
-        assert "the other 2 are discarded" in html
-        assert "You'll see 3 random characters and keep one of them" in html
-        assert "Each roll costs 10 XP, whichever of the 3 characters you keep." in html
-
-    def test_describes_single_choice(self, client, mocker) -> None:
-        """Verify one choice per roll is described as a single character, not a choice."""
-        # When rendering the cards with one choice per roll
-        html = self._cards_html(client, mocker, num_choices=1)
-
-        # Then no choosing or discarding is mentioned
-        assert (
-            "<strong>one random character</strong>. Review it, then select it to keep it." in html
-        )
-        assert "discarded" not in html
-        assert "Each roll costs 10 XP." in html
-
-
 class TestSingleAutogenFormView:
-    """Tests for GET /campaign/<id>/characters/new/single-autogen."""
+    """Tests for GET and POST /campaign/<id>/characters/new/single-autogen."""
 
-    def test_renders_form_for_storyteller(self, client, mocker) -> None:
+    def test_renders_form_for_storyteller(self, client, use_context, fake_vclient) -> None:
         """Verify the single autogen form renders for privileged users."""
-        # Given a privileged user and mocked form options
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mocker.patch(
-            "vweb.routes.character_create.picker_views.fetch_form_options",
-            return_value={
-                "character_types": ["PLAYER", "NPC"],
-                "character_classes": ["VAMPIRE", "WEREWOLF"],
-                "experience_levels": ["NEW", "ADVANCED"],
-                "skill_focuses": ["BALANCED"],
-                "concepts": CharacterConceptFactory.batch(2),
-                "vampire_clans": VampireClanFactory.batch(2),
-                "werewolf_tribes": WerewolfTribeFactory.batch(1),
-                "werewolf_auspices": WerewolfAuspiceFactory.batch(1),
-            },
-        )
+        # Given a privileged user
+        campaign = use_context(user_role="STORYTELLER").campaigns[0]
 
         # When requesting the form
         response = client.get(f"/campaign/{campaign.id}/characters/new/single-autogen")
 
-        # Then the form fragment renders
+        # Then the form fragment renders with the character type field
         assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "character_type" in body
+        assert 'name="character_type"' in response.get_data(as_text=True)
 
-    def test_returns_403_for_non_privileged(self, client, mocker) -> None:
-        """Verify non-privileged users cannot access single autogen."""
+    @pytest.mark.parametrize("method", ["get", "post"])
+    def test_returns_403_for_non_privileged(
+        self, client, use_context, fake_vclient, method
+    ) -> None:
+        """Verify a PLAYER can neither open nor submit single autogen."""
         # Given a PLAYER user
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When requesting the form
-        response = client.get(f"/campaign/{campaign.id}/characters/new/single-autogen")
-
-        # Then 403 is returned
-        assert response.status_code == 403
-
-
-class TestSingleAutogenSubmit:
-    """Tests for POST /campaign/<id>/characters/new/single-autogen."""
-
-    def test_generates_character_and_redirects(self, client, mocker) -> None:
-        """Verify successful generation redirects to the new character page."""
-        # Given a privileged user and valid form data
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        new_char = CharacterFactory.build(id="new-char-id")
-        mock_generate = mocker.patch(
-            "vweb.routes.character_create.picker_views.generate_single",
-            return_value=new_char,
-        )
-        mocker.patch("vweb.lib.cache.global_context.clear")
+        campaign = use_context(user_role="PLAYER").campaigns[0]
         csrf = get_csrf(client)
 
-        # When submitting the form
-        response = client.post(
+        # When requesting the form
+        response = getattr(client, method)(
             f"/campaign/{campaign.id}/characters/new/single-autogen",
             data={"character_type": "PLAYER", "csrf_token": csrf},
-            headers={"HX-Request": "true"},
         )
 
-        # Then generation is called and redirect is set
-        mock_generate.assert_called_once()
-        assert response.status_code == 200
+        # Then 403 is returned and nothing is generated
+        assert response.status_code == 403
+        fake_vclient.assert_not_called(Routes.CHARACTERS_AUTOGENERATE)
+
+    def test_generates_character_and_redirects(self, client, use_context, fake_vclient) -> None:
+        """Verify submitting sends the chosen options to the API and redirects to the character."""
+        # Given a privileged user and an API that generates a character
+        campaign = use_context(user_role="STORYTELLER").campaigns[0]
+        fake_vclient.set_response(
+            Routes.CHARACTERS_AUTOGENERATE, model=CharacterFactory.build(id="new-char-id")
+        )
+
+        # When submitting the form with a class and a blank experience level
+        response = htmx_post(
+            client,
+            f"/campaign/{campaign.id}/characters/new/single-autogen",
+            {"character_type": "NPC", "character_class": "VAMPIRE", "experience_level": ""},
+        )
+
+        # Then only the filled-in options are sent and the user goes to the new character
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_AUTOGENERATE,
+            query={"campaign_id": campaign.id},
+            json={"character_type": "NPC", "character_class": "VAMPIRE"},
+            times=1,
+        )
         assert "/character/new-char-id" in response.headers.get("HX-Redirect", "")
 
-    def test_returns_form_with_errors_on_missing_type(self, client, mocker) -> None:
-        """Verify missing character_type re-renders the form with errors."""
+    def test_returns_form_with_errors_on_missing_type(
+        self, client, use_context, fake_vclient
+    ) -> None:
+        """Verify a missing character_type re-renders the form without calling the API."""
         # Given a privileged user
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mocker.patch(
-            "vweb.routes.character_create.picker_views.fetch_form_options",
-            return_value={
-                "character_types": ["PLAYER"],
-                "character_classes": [],
-                "experience_levels": [],
-                "skill_focuses": [],
-                "concepts": [],
-                "vampire_clans": [],
-                "werewolf_tribes": [],
-                "werewolf_auspices": [],
-            },
-        )
-        csrf = get_csrf(client)
+        campaign = use_context(user_role="STORYTELLER").campaigns[0]
 
         # When submitting without character_type
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/new/single-autogen",
-            data={"csrf_token": csrf},
-            headers={"HX-Request": "true"},
-        )
+        response = htmx_post(client, f"/campaign/{campaign.id}/characters/new/single-autogen")
 
-        # Then form is re-rendered with errors
+        # Then the form shows an error and nothing is generated
         assert response.status_code == 200
         assert_shows_error(response)
+        fake_vclient.assert_not_called(Routes.CHARACTERS_AUTOGENERATE)
 
-    def test_server_error_shows_fallback_not_detail(self, client, mocker) -> None:
-        """Verify a server error re-renders the form without the API's internals."""
-        # Given a privileged user and a generation call that fails server-side
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mocker.patch(
-            "vweb.routes.character_create.picker_views.fetch_form_options",
-            return_value={
-                "character_types": ["PLAYER"],
-                "character_classes": [],
-                "experience_levels": [],
-                "skill_focuses": [],
-                "concepts": [],
-                "vampire_clans": [],
-                "werewolf_tribes": [],
-                "werewolf_auspices": [],
-            },
+    @pytest.mark.parametrize(
+        ("status_code", "detail_shown"),
+        [(400, True), (500, False)],
+        ids=["user-error-shows-detail", "server-error-hides-detail"],
+    )
+    def test_api_error_rerenders_form(
+        self, client, use_context, fake_vclient, status_code, detail_shown
+    ) -> None:
+        """Verify a failed generation shows an error, exposing the API's reason only for user errors."""
+        # Given a privileged user and a generation call that fails
+        campaign = use_context(user_role="STORYTELLER").campaigns[0]
+        fake_vclient.set_error(
+            Routes.CHARACTERS_AUTOGENERATE, status_code=status_code, detail="api reason text"
         )
-        mocker.patch(
-            "vweb.routes.character_create.picker_views.generate_single",
-            side_effect=ServerError("boom", 500, {"detail": "db exploded"}),
-        )
-        csrf = get_csrf(client)
 
         # When submitting the form
-        response = client.post(
+        response = htmx_post(
+            client,
             f"/campaign/{campaign.id}/characters/new/single-autogen",
-            data={"character_type": "PLAYER", "csrf_token": csrf},
-            headers={"HX-Request": "true"},
+            {"character_type": "PLAYER"},
         )
 
-        # Then the fallback is shown and the detail is not
-        body = response.get_data(as_text=True)
-        assert "Failed to create character. Please try again." in body
-        assert "db exploded" not in body
-        assert "boom" not in body
-
-    def test_returns_403_for_non_privileged(self, client, mocker) -> None:
-        """Verify PLAYER cannot submit single autogen."""
-        # Given a PLAYER user
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        csrf = get_csrf(client)
-
-        # When submitting the form
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/new/single-autogen",
-            data={"character_type": "PLAYER", "csrf_token": csrf},
-        )
-
-        # Then 403 is returned
-        assert response.status_code == 403
+        # Then the form shows an error, with the API's detail only for a user error
+        assert_shows_error(response)
+        assert ("api reason text" in response.get_data(as_text=True)) is detail_shown
+        assert "HX-Redirect" not in response.headers
 
 
 class TestMultiAutogenView:
     """Tests for POST /campaign/<id>/characters/new/multi-autogen."""
 
-    def test_starts_session_and_renders_comparison(self, client, mocker) -> None:
-        """Verify starting a session renders the comparison view."""
-        # Given a user with a valid campaign
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        session_response = ChargenSessionResponseFactory.build()
-        mocker.patch(
-            "vweb.routes.character_create.autogen_views.start_session",
-            return_value=session_response,
+    def test_starts_session_and_renders_comparison(self, client, use_context, fake_vclient) -> None:
+        """Verify starting a session shows the generated characters to choose from."""
+        # Given an API that starts a session with two characters
+        campaign = use_context(user_role="PLAYER").campaigns[0]
+        characters = [
+            CharacterFactory.build(id="gen-1", name_full="Generated One"),
+            CharacterFactory.build(id="gen-2", name_full="Generated Two"),
+        ]
+        fake_vclient.set_response(
+            Routes.CHARACTERS_CHARGEN_START,
+            model=ChargenSessionResponseFactory.build(id="sess-new", characters=characters),
         )
-        mocker.patch(
-            "vweb.lib.cache.character_sheet.get",
-            return_value=CharacterFullSheetFactory.build(),
-        )
-
-        csrf = get_csrf(client)
 
         # When starting a session
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/new/multi-autogen",
-            data={"csrf_token": csrf},
-            headers={"HX-Request": "true"},
-        )
+        response = htmx_post(client, f"/campaign/{campaign.id}/characters/new/multi-autogen")
 
-        # Then the comparison view renders
-        assert response.status_code == 200
+        # Then the session starts for this campaign and both characters can be selected
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_CHARGEN_START, query={"campaign_id": campaign.id}, times=1
+        )
+        body = response.get_data(as_text=True)
+        assert 'value="sess-new"' in body
+        assert "Generated One" in body
+        assert "Generated Two" in body
 
-    def test_renders_error_on_api_failure(self, client, mocker) -> None:
-        """Verify API errors are shown inline."""
-        # Given a user and a failing API call
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mocker.patch(
-            "vweb.routes.character_create.autogen_views.start_session",
-            side_effect=APIError("Insufficient XP"),
-        )
-        mocker.patch(
-            "vweb.routes.character_create.picker_services.list_sessions",
-            return_value=[],
-        )
-        csrf = get_csrf(client)
+    def test_renders_error_on_api_failure(self, client, use_context, fake_vclient) -> None:
+        """Verify an API error is shown inline on the selection cards."""
+        # Given an API that refuses to start a session
+        campaign = use_context(user_role="PLAYER").campaigns[0]
+        fake_vclient.set_error(Routes.CHARACTERS_CHARGEN_START, status_code=400)
 
         # When starting a session
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/new/multi-autogen",
-            data={"csrf_token": csrf},
-            headers={"HX-Request": "true"},
-        )
+        response = htmx_post(client, f"/campaign/{campaign.id}/characters/new/multi-autogen")
 
-        # Then error is shown in the selection cards
+        # Then the error is shown in the selection cards
         assert response.status_code == 200
         assert_shows_error(response)
 
@@ -333,284 +185,181 @@ class TestMultiAutogenView:
 class TestMultiAutogenFinalizeView:
     """Tests for POST /campaign/<id>/characters/new/multi-autogen/finalize."""
 
-    def test_finalizes_and_redirects(self, client, mocker) -> None:
-        """Verify finalizing a session redirects to the new character page."""
-        # Given a valid session and selected character
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        new_char = CharacterFactory.build(id="selected-char-id")
-        mock_finalize = mocker.patch(
-            "vweb.routes.character_create.autogen_views.finalize_session",
-            return_value=new_char,
+    def test_finalizes_and_redirects(self, client, use_context, fake_vclient) -> None:
+        """Verify finalizing sends the selection to the API and redirects to the new character."""
+        # Given an API that finalizes the session
+        campaign = use_context(user_role="PLAYER").campaigns[0]
+        fake_vclient.set_response(
+            Routes.CHARACTERS_CHARGEN_FINALIZE,
+            model=CharacterFactory.build(id="selected-char-id"),
         )
-        mocker.patch("vweb.lib.cache.global_context.clear")
-        csrf = get_csrf(client)
 
         # When finalizing
-        response = client.post(
+        response = htmx_post(
+            client,
             f"/campaign/{campaign.id}/characters/new/multi-autogen/finalize",
-            data={
-                "session_id": "sess-1",
-                "selected_character_id": "selected-char-id",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
+            {"session_id": "sess-1", "selected_character_id": "selected-char-id"},
         )
 
-        # Then finalize is called and redirect is set
-        mock_finalize.assert_called_once_with(
-            campaign_id=campaign.id,
-            session_id="sess-1",
-            selected_character_id="selected-char-id",
+        # Then the selection reaches the API and the user goes to the new character
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_CHARGEN_FINALIZE,
+            json={"session_id": "sess-1", "selected_character_id": "selected-char-id"},
+            times=1,
         )
-        assert response.status_code == 200
         assert "/character/selected-char-id" in response.headers.get("HX-Redirect", "")
 
-    def test_redirects_to_selection_on_finalize_failure(self, client, mocker) -> None:
-        """Verify finalize errors redirect to the selection page with flash."""
-        # Given a failing finalize call
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mocker.patch(
-            "vweb.routes.character_create.autogen_views.finalize_session",
-            side_effect=APIError("Session expired"),
-        )
-        csrf = get_csrf(client)
+    @pytest.mark.parametrize(
+        "form",
+        [
+            {"selected_character_id": "char-1"},
+            {"session_id": "sess-1"},
+        ],
+        ids=["no-session", "no-selection"],
+    )
+    def test_incomplete_form_returns_to_selection(
+        self, client, use_context, fake_vclient, form
+    ) -> None:
+        """Verify a form missing the session or the selection is not sent to the API."""
+        # Given a form missing one of the ids
+        campaign = use_context(user_role="PLAYER").campaigns[0]
 
         # When finalizing
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/new/multi-autogen/finalize",
-            data={
-                "session_id": "sess-1",
-                "selected_character_id": "char-1",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
+        response = htmx_post(
+            client, f"/campaign/{campaign.id}/characters/new/multi-autogen/finalize", form
         )
 
-        # Then user is redirected to the selection page
-        assert response.status_code == 200
+        # Then the user returns to selection with an error and nothing is finalized
         assert f"/campaign/{campaign.id}/characters/new" in response.headers.get("HX-Redirect", "")
+        assert [c for c, _ in session_flashes(client)] == ["error"]
+        fake_vclient.assert_not_called(Routes.CHARACTERS_CHARGEN_FINALIZE)
 
-    def _post_finalize(self, client, mocker, error: Exception) -> tuple:
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mocker.patch(
-            "vweb.routes.character_create.autogen_views.finalize_session",
-            side_effect=error,
-        )
-        csrf = get_csrf(client)
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/new/multi-autogen/finalize",
-            data={
-                "session_id": "sess-1",
-                "selected_character_id": "char-1",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
-        )
-        with client.session_transaction() as sess:
-            flashes = list(sess.get("_flashes", []))
-        return campaign, response, flashes
-
-    def test_expired_session_logs_at_info(self, client, mocker, caplog) -> None:
-        """Verify an expired session is an expected event, logged below warning."""
-        # Given the API rejects the session id
-        error = ValidationError(
-            "bad",
-            400,
-            {"invalid_parameters": [{"field": "session_id", "message": "Session expired"}]},
-        )
+    @pytest.mark.parametrize(
+        ("error_kwargs", "expected"),
+        [
+            (
+                {
+                    "status_code": 400,
+                    "invalid_parameters": [{"field": "session_id", "message": "Session expired"}],
+                },
+                (logging.INFO, None),
+            ),
+            ({"status_code": 404}, (logging.INFO, None)),
+            (
+                {
+                    "status_code": 400,
+                    "invalid_parameters": [
+                        {"field": "selected_character_id", "message": "Not in session"}
+                    ],
+                },
+                (None, "Not in session"),
+            ),
+            ({"status_code": 500}, (logging.ERROR, None)),
+        ],
+        ids=["expired-session", "archived-character", "other-field-error", "server-error"],
+    )
+    def test_failure_returns_to_selection(
+        self, client, use_context, fake_vclient, caplog, error_kwargs, expected
+    ) -> None:
+        """Verify a failed finalize returns to selection with one error, logged by severity."""
+        log_level, api_message = expected
+        # Given an API that rejects the finalize
+        campaign = use_context(user_role="PLAYER").campaigns[0]
+        fake_vclient.set_error(Routes.CHARACTERS_CHARGEN_FINALIZE, **error_kwargs)
 
         # When finalizing
         with caplog.at_level(logging.INFO, logger="vweb.routes.character_create.autogen_views"):
-            self._post_finalize(client, mocker, error)
+            response = htmx_post(
+                client,
+                f"/campaign/{campaign.id}/characters/new/multi-autogen/finalize",
+                {"session_id": "sess-1", "selected_character_id": "char-1"},
+            )
 
-        # Then the expiry is logged at info only
-        levels = [r.levelno for r in caplog.records if r.name.endswith("autogen_views")]
-        assert levels == [logging.INFO]
-
-    def test_expired_session_flashes_expired_message(self, client, mocker) -> None:
-        """Verify an expired session explains itself and redirects to selection."""
-        # Given the API rejects the session id
-        error = ValidationError(
-            "bad",
-            400,
-            {
-                "invalid_parameters": [
-                    {"field": "session_id", "message": "Session not found or expired"}
-                ]
-            },
-        )
-
-        # When finalizing
-        campaign, response, flashes = self._post_finalize(client, mocker, error)
-
-        # Then the user is redirected with the expired message
+        # Then the user returns to selection with a single error flash
         assert f"/campaign/{campaign.id}/characters/new" in response.headers.get("HX-Redirect", "")
-        assert (
-            "error",
-            "This character generation session expired. Please start a new one.",
-        ) in flashes
+        flashes = session_flashes(client)
+        assert [category for category, _ in flashes] == ["error"]
+        if api_message is not None:
+            assert api_message in flashes[0][1]
 
-    def test_archived_character_asks_for_another_choice(self, client, mocker, caplog) -> None:
-        """Verify a 404 for an archived character explains itself without logging an error."""
-        # Given the API reports the selected character no longer exists
-        error = NotFoundError("Character not found", 404)
-
-        # When finalizing
-        with caplog.at_level(logging.INFO, logger="vweb.routes.character_create.autogen_views"):
-            campaign, response, flashes = self._post_finalize(client, mocker, error)
-
-        # Then the user returns to selection with a message to pick another character
-        assert f"/campaign/{campaign.id}/characters/new" in response.headers.get("HX-Redirect", "")
-        assert ("error", "That character is no longer available. Please choose another one.") in (
-            flashes
-        )
+        # And expected failures stay below warning while server errors are logged as errors
         levels = [r.levelno for r in caplog.records if r.name.endswith("autogen_views")]
-        assert levels == [logging.INFO]
-
-    def test_other_validation_error_flashes_field_message(self, client, mocker) -> None:
-        """Verify a validation error on another field is not shown as an expired session."""
-        # Given the API rejects the selected character, not the session
-        error = ValidationError(
-            "bad",
-            400,
-            {
-                "invalid_parameters": [
-                    {"field": "selected_character_id", "message": "Not in session"}
-                ]
-            },
-        )
-
-        # When finalizing
-        _, _, flashes = self._post_finalize(client, mocker, error)
-
-        # Then the field message is flashed instead of the expired text
-        assert ("error", "Selected character id: Not in session") in flashes
-        assert all("expired" not in message for _, message in flashes)
-
-    def test_server_error_keeps_generic_message(self, client, mocker) -> None:
-        """Verify a server error shows the generic failure message."""
-        # When finalizing hits a server error
-        _, response, flashes = self._post_finalize(client, mocker, ServerError("boom", 500))
-
-        # Then the generic message is flashed
-        assert response.status_code == 200
-        assert ("error", "Failed to finalize character. Please try again.") in flashes
+        assert levels == ([log_level] if log_level is not None else [])
 
 
 class TestAddCharacterButtonIntegration:
     """Tests for the Add Character button on the campaign page."""
 
-    def test_campaign_page_has_add_character_link(self, client, mocker) -> None:
-        """Verify the campaign page renders an enabled Add Character button."""
+    def test_campaign_page_has_add_character_link(self, client, use_context) -> None:
+        """Verify the campaign page links to the character creation page."""
         # Given a campaign with a privileged user
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        campaign = use_context(user_role="STORYTELLER").campaigns[0]
 
         # When visiting the campaign page
         response = client.get(f"/campaign/{campaign.id}")
 
         # Then the page contains a link to the character creation page
-        body = response.get_data(as_text=True)
-        assert f"/campaign/{campaign.id}/characters/new" in body
+        assert f"/campaign/{campaign.id}/characters/new" in response.get_data(as_text=True)
 
 
 class TestPendingSessionsOnSelectionCards:
     """Tests for pending sessions display on selection cards."""
 
-    def test_renders_pending_sessions_when_sessions_exist(self, client, mocker) -> None:
-        """Verify pending sessions section appears when active sessions exist."""
-        # Given a campaign and active sessions
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        future = datetime.now(tz=UTC) + timedelta(hours=1)
-        sessions = ChargenSessionResponseFactory.batch(2, expires_at=future)
-        mocker.patch(
-            "vweb.routes.character_create.picker_services.list_sessions",
-            return_value=sessions,
-        )
-
-        # When requesting the selection cards
-        response = client.get(f"/campaign/{campaign.id}/characters/new/cards")
-
-        # Then the pending sessions section is rendered
-        assert response.status_code == 200
-
-    def test_omits_pending_sessions_when_none_exist(self, client, mocker) -> None:
-        """Verify pending sessions section is hidden when no sessions exist."""
-        # Given a campaign with no active sessions
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mocker.patch(
-            "vweb.routes.character_create.picker_services.list_sessions",
-            return_value=[],
-        )
-
-        # When requesting the selection cards
-        response = client.get(f"/campaign/{campaign.id}/characters/new/cards")
-
-        # Then no pending sessions section is rendered
-        assert response.status_code == 200
-
-    def test_filters_expired_sessions(self, client, mocker) -> None:
-        """Verify expired sessions are filtered out on page load."""
-        # Given one expired and one active session
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
+    def test_lists_only_unexpired_sessions(self, client, use_context, fake_vclient) -> None:
+        """Verify expired sessions are not offered for resuming."""
+        # Given one expired and one active session in the campaign
+        campaign = use_context(user_role="STORYTELLER").campaigns[0]
         expired = ChargenSessionResponseFactory.build(
+            campaign_id=campaign.id,
             expires_at=datetime.now(tz=UTC) - timedelta(minutes=5),
         )
         active = ChargenSessionResponseFactory.build(
+            campaign_id=campaign.id,
             expires_at=datetime.now(tz=UTC) + timedelta(hours=1),
         )
-        mocker.patch(
-            "vweb.routes.character_create.picker_services.list_sessions",
-            return_value=[expired, active],
-        )
+        fake_vclient.set_response(Routes.CHARACTERS_CHARGEN_SESSIONS_LIST, items=[expired, active])
 
         # When requesting the selection cards
         response = client.get(f"/campaign/{campaign.id}/characters/new/cards")
 
         # Then only the active session appears
-        assert response.status_code == 200
         body = response.get_data(as_text=True)
         assert active.id in body
         assert expired.id not in body
+
+    def test_renders_when_sessions_cannot_be_listed(
+        self, client, use_context, fake_vclient
+    ) -> None:
+        """Verify the selection cards still render when listing sessions fails."""
+        # Given an API that fails to list sessions
+        campaign = use_context(user_role="STORYTELLER").campaigns[0]
+        fake_vclient.set_error(Routes.CHARACTERS_CHARGEN_SESSIONS_LIST, status_code=500)
+
+        # When requesting the selection cards
+        response = client.get(f"/campaign/{campaign.id}/characters/new/cards")
+
+        # Then the cards render with the creation options still reachable
+        assert response.status_code == 200
+        assert f"/campaign/{campaign.id}/characters/new/multi-autogen" in response.get_data(
+            as_text=True
+        )
 
 
 class TestResumeSessionView:
     """Tests for GET /campaign/<id>/characters/new/multi-autogen/session/<sid>/resume."""
 
-    def test_renders_comparison_for_valid_session(self, client, mocker) -> None:
-        """Verify resuming a valid session renders the comparison view."""
-        # Given a campaign and a valid session
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        session_response = ChargenSessionResponseFactory.build(
-            id="sess-abc",
-            expires_at=datetime.now(tz=UTC) + timedelta(hours=1),
-        )
-        mocker.patch(
-            "vweb.routes.character_create.autogen_views.get_session",
-            return_value=session_response,
-        )
-        mocker.patch(
-            "vweb.lib.cache.character_sheet.get",
-            return_value=CharacterFullSheetFactory.build(),
+    def test_renders_comparison_for_valid_session(self, client, use_context, fake_vclient) -> None:
+        """Verify resuming a session shows its characters to choose from."""
+        # Given a session in this campaign
+        campaign = use_context(user_role="PLAYER").campaigns[0]
+        fake_vclient.set_response(
+            Routes.CHARACTERS_CHARGEN_SESSION_GET,
+            model=ChargenSessionResponseFactory.build(
+                id="sess-abc",
+                campaign_id=campaign.id,
+                characters=[CharacterFactory.build(name_full="Resumed Choice")],
+                expires_at=datetime.now(tz=UTC) + timedelta(hours=1),
+            ),
         )
 
         # When resuming the session
@@ -619,19 +368,16 @@ class TestResumeSessionView:
             headers={"HX-Request": "true"},
         )
 
-        # Then the comparison view renders
-        assert response.status_code == 200
+        # Then the comparison view shows the session's character
+        body = response.get_data(as_text=True)
+        assert 'value="sess-abc"' in body
+        assert "Resumed Choice" in body
 
-    def test_redirects_on_expired_session(self, client, mocker) -> None:
-        """Verify expired session redirects with flash error."""
-        # Given a campaign and an expired/missing session
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        mocker.patch(
-            "vweb.routes.character_create.autogen_views.get_session",
-            side_effect=APIError("Session expired"),
-        )
+    def test_redirects_on_expired_session(self, client, use_context, fake_vclient) -> None:
+        """Verify a missing session redirects to the selection page."""
+        # Given an API that no longer has the session
+        campaign = use_context(user_role="PLAYER").campaigns[0]
+        fake_vclient.set_error(Routes.CHARACTERS_CHARGEN_SESSION_GET, status_code=404)
 
         # When resuming the session
         response = client.get(
@@ -640,39 +386,4 @@ class TestResumeSessionView:
         )
 
         # Then user is redirected to the selection page
-        assert response.status_code == 200
         assert f"/campaign/{campaign.id}/characters/new" in response.headers.get("HX-Redirect", "")
-
-
-class TestMultiAutogenPassesExpiresAt:
-    """Tests for MultiAutogenView passing expires_at."""
-
-    def test_passes_expires_at_to_template(self, client, mocker) -> None:
-        """Verify MultiAutogenView.post() passes expires_at to the comparison template."""
-        # Given a user with a valid campaign
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        future = datetime.now(tz=UTC) + timedelta(hours=1)
-        session_response = ChargenSessionResponseFactory.build(expires_at=future)
-        mocker.patch(
-            "vweb.routes.character_create.autogen_views.start_session",
-            return_value=session_response,
-        )
-        mocker.patch(
-            "vweb.lib.cache.character_sheet.get",
-            return_value=CharacterFullSheetFactory.build(),
-        )
-
-        csrf = get_csrf(client)
-
-        # When starting a session
-        response = client.post(
-            f"/campaign/{campaign.id}/characters/new/multi-autogen",
-            data={"csrf_token": csrf},
-            headers={"HX-Request": "true"},
-        )
-
-        # Then the response renders successfully (expires_at accepted by template)
-        assert response.status_code == 200

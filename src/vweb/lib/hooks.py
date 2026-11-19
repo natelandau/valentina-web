@@ -32,7 +32,9 @@ def _redirect_for_request(url: str) -> Response | WerkzeugResponse:
     return redirect(url)
 
 
-_PUBLIC_PATH_PREFIXES = ("/auth/", "/static", "/robots.txt")
+# Public files the scanner filter would otherwise block by their suffix
+_PUBLIC_FILE_PATHS = frozenset({"/robots.txt"})
+_PUBLIC_PATH_PREFIXES = ("/auth/", "/static", *_PUBLIC_FILE_PATHS)
 _COMPANY_SELECTION_PATHS = ("/select-companies", "/select-company")
 
 _SCANNER_DOT_EXEMPTIONS = frozenset({".well-known"})
@@ -85,6 +87,9 @@ def _hook_block_scanner_probes() -> WerkzeugResponse | None:
     Catch dotfile access, CMS admin paths, non-Python script extensions, and
     regex-matched patterns before any session or template work runs.
     """
+    if request.path in _PUBLIC_FILE_PATHS:
+        return None
+
     path = request.path.lower()
 
     for segment in path.split("/"):

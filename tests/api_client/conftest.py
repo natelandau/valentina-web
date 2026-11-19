@@ -9,12 +9,11 @@ import respx.mocks
 from loguru import logger
 from polyfactory.factories.pydantic_factory import ModelFactory
 
-from tests.api_client.payloads import page, wire
+from tests.api_client.payloads import wire
 from vweb.api_client.models import CharacterTraitSpecialty, VampireAttributes
 from vweb.api_client.testing import (
     CharacterFactory,
     CharacterTraitFactory,
-    CompanyFactory,
     RollStatisticsFactory,
     TraitFactory,
     UserFactory,
@@ -131,16 +130,5 @@ def user_response_data() -> dict:
 
 
 @pytest.fixture
-def company_response_data() -> dict:
-    """Return company response data."""
-    return wire(
-        CompanyFactory.build(
-            id="507f1f77bcf86cd799439011", name="Test Company", email="test@example.com"
-        )
-    )
-
-
-@pytest.fixture
-def paginated_companies_response(company_response_data: dict) -> dict:
-    """Return a one-item paginated companies response."""
-    return page(company_response_data)
+def _mock_api() -> None:
+    """Skip the web app's API stubs, which client tests never reach."""

@@ -1,813 +1,388 @@
 """Tests for campaign blueprint routes."""
 
+from __future__ import annotations
+
 import re
 
 import pytest
-from werkzeug.test import TestResponse
 
-from tests.conftest import get_csrf
-from tests.helpers import assert_has_element, build_global_context
+from tests.conftest import get_csrf, htmx_post
+from tests.helpers import assert_has_element, assert_shows_error
 from vweb.api_client.testing import (
+    CampaignExperienceFactory,
     CampaignFactory,
-    CharacterFactory,
-    CompanyFactory,
     Routes,
     UserFactory,
 )
-from vweb.lib.cache.global_context import GlobalContext
+from vweb.lib.form_validation import CAMPAIGN_NAME_MIN_LENGTH, name_errors
+
+CAMPAIGN_WRITE_ROUTES = (
+    Routes.CAMPAIGNS_CREATE,
+    Routes.CAMPAIGNS_UPDATE,
+    Routes.CAMPAIGNS_DELETE,
+    Routes.USERS_EXPERIENCE_XP_ADD,
+    Routes.USERS_EXPERIENCE_CP_ADD,
+)
 
 
-class TestCampaignView:
+class TestCampaignDashboard:
     """Tests for GET /campaign/<campaign_id>."""
 
-    def test_renders_campaign_dashboard(self, client, mock_global_context) -> None:
-        """Verify the campaign dashboard renders for a valid campaign ID."""
-        # Given a valid campaign from the global context
+    def test_renders_campaign_and_wires_lazy_cards(self, client, mock_global_context) -> None:
+        """Verify the dashboard shows the campaign, loads its cards, and remembers the campaign."""
         campaign = mock_global_context.campaigns[0]
 
-        # When requesting the campaign page
         response = client.get(f"/campaign/{campaign.id}")
 
-        # Then the dashboard renders successfully
         assert response.status_code == 200
         body = response.get_data(as_text=True)
         assert campaign.name in body
-        # And the lazy-load placeholders for Recent Dicerolls and Statistics are wired
-        assert "/cards/dice-rolls?campaign_id=" + campaign.id in body
-        assert "/cards/statistics?campaign_id=" + campaign.id in body
-
-    def test_stores_campaign_in_session(self, client, mock_global_context) -> None:
-        """Verify the selected campaign ID is stored in the session."""
-        # Given a valid campaign
-        campaign = mock_global_context.campaigns[0]
-
-        # When visiting the campaign page
-        client.get(f"/campaign/{campaign.id}")
-
-        # Then the session stores the last campaign ID
+        # Dice rolls, statistics, and the player's and others' characters load lazily
+        assert f"/cards/dice-rolls?campaign_id={campaign.id}" in body
+        assert f"/cards/statistics?campaign_id={campaign.id}" in body
+        assert "bucket=mine" in body
+        assert "bucket=others" in body
         with client.session_transaction() as sess:
             assert sess["last_campaign_id"] == campaign.id
 
-    def test_returns_404_for_invalid_campaign(self, client) -> None:
-        """Verify 404 is returned for a non-existent campaign ID."""
-        # When requesting a campaign that doesn't exist
-        response = client.get("/campaign/nonexistent-id")
+    def test_navbar_lists_all_campaigns(self, client, use_context) -> None:
+        """Verify the navbar campaign switcher lists every campaign in the company."""
+        camp1 = CampaignFactory.build(name="Alpha Campaign")
+        camp2 = CampaignFactory.build(name="Beta Campaign")
+        use_context(user_role="PLAYER", campaigns=[camp1, camp2])
 
-        # Then a 404 is returned
-        assert response.status_code == 404
+        body = client.get(f"/campaign/{camp1.id}").get_data(as_text=True)
 
-    def test_separates_user_and_other_characters(self, client, mocker) -> None:
-        """Verify characters are split by ownership."""
-        # Given a campaign with characters from different users
-        campaign = CampaignFactory.build(name="Test Campaign")
-        company = CompanyFactory.build(name="Test Company")
-        user = UserFactory.build(
-            id="test-user-id",
-            name_first="Test",
-            name_last="User",
-            company_id="test-company-id",
-        )
-        my_char = CharacterFactory.build(
-            name_full="My Character",
-            user_player_id="test-user-id",
-            type="PLAYER",
-            campaign_id=campaign.id,
-        )
-        other_char = CharacterFactory.build(
-            name_full="Other Character",
-            user_player_id="other-user-id",
-            type="PLAYER",
-            campaign_id=campaign.id,
-        )
-        ctx = GlobalContext(
-            company=company,
-            users=[user],
-            campaigns=[campaign],
-            characters_by_campaign={campaign.id: [my_char, other_char]},
-            resources_modified_at="2026-01-01T00:00:00+00:00",
-        )
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        assert "Alpha Campaign" in body
+        assert "Beta Campaign" in body
 
-        # When visiting the campaign page
-        response = client.get(f"/campaign/{campaign.id}")
-        body = response.get_data(as_text=True)
+    @pytest.mark.parametrize(("role", "can_manage"), [("STORYTELLER", True), ("PLAYER", False)])
+    def test_manage_controls_only_for_managers(self, client, set_role, role, can_manage) -> None:
+        """Verify only managers get the create and edit campaign controls."""
+        campaign = set_role(role).campaigns[0]
 
-        # Then both characters appear
-        assert response.status_code == 200
-        assert "Your Characters" in body
-        # Autoescaping renders the apostrophe in the card title as &#39;
-        assert "Other Players&#39; Characters" in body
+        body = client.get(f"/campaign/{campaign.id}").get_data(as_text=True)
 
-    def test_empty_characters_shows_message(self, client, mock_global_context) -> None:
-        """Verify empty state messages when no characters exist."""
-        # Given a campaign with no characters
+        assert (f"/campaign/{campaign.id}/edit-form" in body) is can_manage
+        assert ("getElementById('campaign-create-modal').showModal()" in body) is can_manage
+
+    def test_summary_shows_start_month(self, client, mock_global_context) -> None:
+        """Verify the summary card shows the month and year the campaign started."""
         campaign = mock_global_context.campaigns[0]
 
-        # When requesting the campaign page
-        response = client.get(f"/campaign/{campaign.id}")
+        body = client.get(f"/campaign/{campaign.id}").get_data(as_text=True)
 
-        # Then the page renders successfully with no characters
-        assert response.status_code == 200
+        assert campaign.date_created.strftime("%b %Y") in body
 
-    def test_no_campaign_experience_shows_zeros(self, client, mocker) -> None:
-        """Verify campaign profile renders with zero values when user has no experience."""
-        # Given a user with no campaign experience
-        campaign = CampaignFactory.build(name="Test Campaign")
-        company = CompanyFactory.build(name="Test Company")
-        user = UserFactory.build(
-            id="test-user-id", company_id="test-company-id", campaign_experience=[]
+    @pytest.mark.parametrize(
+        ("num_books", "num_chapters", "shows_counts"), [(2, 5, True), (0, 0, False)]
+    )
+    def test_summary_shows_book_and_chapter_counts(
+        self, client, mock_global_context, num_books, num_chapters, shows_counts
+    ) -> None:
+        """Verify the summary card shows the campaign's book and chapter counts, if any."""
+        campaign = mock_global_context.campaigns[0]
+        campaign.num_books = num_books
+        campaign.num_chapters = num_chapters
+
+        body = client.get(f"/campaign/{campaign.id}").get_data(as_text=True)
+
+        assert bool(re.search(r"\d+ books", body)) is shows_counts
+        assert ("chapters" in body) is shows_counts
+        if shows_counts:
+            assert "2 books" in body
+            assert "5 chapters" in body
+
+
+class TestCampaignAccessControl:
+    """Tests that players cannot manage campaigns or grant experience."""
+
+    @pytest.mark.parametrize(
+        ("method", "path"),
+        [
+            ("post", "/campaign/create"),
+            ("get", "/campaign/{id}/edit-form"),
+            ("post", "/campaign/{id}/update"),
+            ("post", "/campaign/{id}/update/danger"),
+            ("delete", "/campaign/{id}"),
+            ("get", "/campaign/{id}/experience/form"),
+            ("post", "/campaign/{id}/experience"),
+        ],
+    )
+    def test_player_is_forbidden(self, client, set_role, fake_vclient, method, path) -> None:
+        """Verify a player gets 403 and nothing is written to the API."""
+        # Given a player in a company that restricts campaign management and experience grants
+        campaign = set_role("PLAYER").campaigns[0]
+
+        # When the player sends the request directly
+        response = getattr(client, method)(
+            path.format(id=campaign.id),
+            data={"name": "Test Name", "value": "3", "xp": "5"},
+            headers={"X-CSRFToken": get_csrf(client)},
         )
-        ctx = GlobalContext(
-            company=company,
-            users=[user],
-            campaigns=[campaign],
-            characters_by_campaign={campaign.id: []},
-            resources_modified_at="2026-01-01T00:00:00+00:00",
-        )
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
-        # When visiting the campaign page
-        response = client.get(f"/campaign/{campaign.id}")
-
-        # Then the experience card renders (with zero values since no campaign experience)
-        assert response.status_code == 200
-
-
-class TestCampaignEditFormView:
-    """Tests for GET /campaign/<campaign_id>/edit-form."""
-
-    def test_returns_prefilled_form(self, client, mocker) -> None:
-        """Verify the edit form returns with campaign data pre-filled."""
-        # Given a STORYTELLER user
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When requesting the edit form
-        response = client.get(f"/campaign/{campaign.id}/edit-form")
-
-        # Then the form renders with the campaign name pre-filled
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert campaign.name in body
-
-    def test_returns_403_for_player(self, client, mocker) -> None:
-        """Verify players cannot access the edit form."""
-        # Given a PLAYER user
-        ctx = build_global_context(user_role="PLAYER")
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When requesting the edit form
-        campaign = ctx.campaigns[0]
-        response = client.get(f"/campaign/{campaign.id}/edit-form")
-
-        # Then a 403 is returned
+        # Then it is refused before any write
         assert response.status_code == 403
+        for route in CAMPAIGN_WRITE_ROUTES:
+            fake_vclient.assert_not_called(route)
 
-    def test_returns_404_for_nonexistent_campaign(self, client, mocker) -> None:
-        """Verify 404 is returned for a non-existent campaign."""
-        # Given a STORYTELLER user (must be privileged to reach the 404 path)
-        ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+    @pytest.mark.parametrize(
+        ("method", "suffix"),
+        [("get", ""), ("get", "/edit-form"), ("post", "/update"), ("delete", "")],
+    )
+    @pytest.mark.usefixtures("storyteller")
+    def test_unknown_campaign_returns_404(self, client, method, suffix) -> None:
+        """Verify a campaign outside the company returns 404."""
+        response = getattr(client, method)(
+            f"/campaign/nonexistent-id{suffix}",
+            data={"name": "Test Name"},
+            headers={"X-CSRFToken": get_csrf(client)},
+        )
 
-        # When requesting the edit form for a nonexistent campaign
-        response = client.get("/campaign/nonexistent-id/edit-form")
-
-        # Then a 404 is returned
         assert response.status_code == 404
 
 
-class TestCampaignCreateView:
-    """Tests for POST /campaign/create."""
+class TestCampaignCreateAndUpdate:
+    """Tests for the campaign create and edit modal."""
 
-    def test_creates_campaign_and_redirects(self, client, mocker, fake_vclient) -> None:
-        """Verify successful creation returns HX-Redirect."""
-        # Given a STORYTELLER user and an API returning the new campaign
-        ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        new_campaign = CampaignFactory.build(name="New Campaign")
+    def test_edit_form_is_prefilled(self, client, storyteller) -> None:
+        """Verify the edit form opens with the campaign's current name."""
+        response = client.get(f"/campaign/{storyteller.id}/edit-form")
+
+        assert response.status_code == 200
+        assert storyteller.name in response.get_data(as_text=True)
+
+    def test_create_sends_campaign_and_redirects(self, client, storyteller, fake_vclient) -> None:
+        """Verify a created campaign reaches the API and the client is sent to it."""
+        new_campaign = CampaignFactory.build()
         fake_vclient.set_response(Routes.CAMPAIGNS_CREATE, model=new_campaign)
 
-        # When submitting a valid campaign creation form
-        csrf = get_csrf(client)
-        response = client.post(
+        response = htmx_post(
+            client,
             "/campaign/create",
-            data={"name": "New Campaign", "description": "A test campaign"},
-            headers={"X-CSRFToken": csrf, "HX-Request": "true"},
+            {"name": "Noir", "description": "A test campaign", "in_game_date": "1990-06-01"},
         )
 
-        # Then the response redirects to the new campaign
-        assert response.status_code == 200
-        assert f"/campaign/{new_campaign.id}" in response.headers.get("HX-Redirect", "")
+        assert response.headers.get("HX-Redirect") == f"/campaign/{new_campaign.id}"
         fake_vclient.assert_called(
             Routes.CAMPAIGNS_CREATE,
-            json={"name": "New Campaign", "description": "A test campaign"},
+            json={"name": "Noir", "description": "A test campaign", "in_game_date": "1990-06-01"},
             times=1,
         )
 
     @pytest.mark.parametrize(
-        ("name", "message"),
-        [("Ab", "Name must be at least 3 characters"), ("", "Name is required")],
+        ("form", "expected_body"),
+        [
+            (
+                {"name": "Updated Name", "description": "Updated desc"},
+                {"name": "Updated Name", "description": "Updated desc"},
+            ),
+            ({"name": "Good Name", "description": ""}, {"name": "Good Name", "description": ""}),
+            (
+                {"name": "Good Name", "description": "", "in_game_date": "2003-01-01"},
+                {"name": "Good Name", "description": "", "in_game_date": "2003-01-01"},
+            ),
+            (
+                {"name": "Good Name", "description": "", "in_game_date": ""},
+                {"name": "Good Name", "description": "", "in_game_date": None},
+            ),
+        ],
+        ids=["values", "cleared-description", "new-date", "blank-date-clears"],
     )
-    def test_invalid_name_rerenders_form(self, client, mocker, fake_vclient, name, message) -> None:
-        """Verify an invalid name shows a form error and sends nothing to the API."""
-        # Given a STORYTELLER user
-        ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When submitting the form with an invalid name
-        response = client.post(
-            "/campaign/create",
-            data={"name": name},
-            headers={"X-CSRFToken": get_csrf(client)},
-        )
-
-        # Then the form shows the error and the API is not called
-        assert response.status_code == 200
-        assert message in response.get_data(as_text=True)
-        fake_vclient.assert_not_called(Routes.CAMPAIGNS_CREATE)
-
-    def test_api_rejection_rerenders_form_with_its_reason(
-        self, client, mocker, fake_vclient
+    def test_update_sends_changes_and_redirects(
+        self, client, storyteller, fake_vclient, form, expected_body
     ) -> None:
-        """Verify a validation error from the API shows on the form instead of a server error."""
-        # Given a STORYTELLER user and an API that rejects the name
-        ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        fake_vclient.set_error(
-            Routes.CAMPAIGNS_CREATE,
-            status_code=400,
-            invalid_parameters=[{"field": "name", "message": "Name is already taken"}],
+        """Verify edits reach the API, a blank field clears it, and an absent date is untouched."""
+        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=storyteller)
+
+        response = htmx_post(client, f"/campaign/{storyteller.id}/update", form)
+
+        assert response.headers.get("HX-Redirect") == f"/campaign/{storyteller.id}"
+        fake_vclient.assert_called(
+            Routes.CAMPAIGNS_UPDATE,
+            params={"campaign_id": storyteller.id},
+            json=expected_body,
+            times=1,
         )
 
-        # When submitting the form
-        response = client.post(
-            "/campaign/create",
-            data={"name": "Taken Name"},
-            headers={"X-CSRFToken": get_csrf(client)},
-        )
+    @pytest.mark.parametrize("path", ["/campaign/create", "/campaign/{id}/update"])
+    @pytest.mark.parametrize("name", ["Ab", ""], ids=["too-short", "blank"])
+    def test_invalid_name_rerenders_form_without_calling_api(
+        self, client, storyteller, fake_vclient, path, name
+    ) -> None:
+        """Verify an invalid name shows a form error and nothing reaches the API."""
+        response = htmx_post(client, path.format(id=storyteller.id), {"name": name})
 
-        # Then the form shows the API's reason
         assert response.status_code == 200
-        assert "Name is already taken" in response.get_data(as_text=True)
+        expected = name_errors(name, min_length=CAMPAIGN_NAME_MIN_LENGTH)[0]
+        assert expected in response.get_data(as_text=True)
+        fake_vclient.assert_not_called(Routes.CAMPAIGNS_CREATE)
+        fake_vclient.assert_not_called(Routes.CAMPAIGNS_UPDATE)
 
-    def test_returns_403_for_player_role(self, client, mocker) -> None:
-        """Verify players cannot create campaigns."""
-        # Given a PLAYER user
-        ctx = build_global_context(user_role="PLAYER")
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When attempting to create a campaign
-        csrf = get_csrf(client)
-        response = client.post(
-            "/campaign/create",
-            data={"name": "Test"},
-            headers={"X-CSRFToken": csrf},
-        )
-
-        # Then a 403 is returned
-        assert response.status_code == 403
-
-
-class TestNavbarCampaignDropdown:
-    """Tests for campaign dropdown rendering in the navbar."""
-
-    def test_navbar_lists_all_campaigns(self, client, mocker) -> None:
-        """Verify the navbar dropdown lists all campaigns."""
-        # Given multiple campaigns
-        camp1 = CampaignFactory.build(name="Alpha Campaign")
-        camp2 = CampaignFactory.build(name="Beta Campaign")
-        company = CompanyFactory.build(name="Test Company")
-        user = UserFactory.build(id="test-user-id", company_id="test-company-id")
-        ctx = GlobalContext(
-            company=company,
-            users=[user],
-            campaigns=[camp1, camp2],
-            characters_by_campaign={camp1.id: [], camp2.id: []},
-            resources_modified_at="2026-01-01T00:00:00+00:00",
-        )
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When visiting a campaign page
-        response = client.get(f"/campaign/{camp1.id}")
-        body = response.get_data(as_text=True)
-
-        # Then both campaigns appear in the navbar
-        assert "Alpha Campaign" in body
-        assert "Beta Campaign" in body
-
-    def test_navbar_hides_add_button_for_players(self, client, mocker) -> None:
-        """Verify the Add New Campaign button is hidden for PLAYER role."""
-        # Given a PLAYER user
-        campaign = CampaignFactory.build(name="Test Campaign")
-        company = CompanyFactory.build(name="Test Company")
-        user = UserFactory.build(id="test-user-id", role="PLAYER", company_id="test-company-id")
-        ctx = GlobalContext(
-            company=company,
-            users=[user],
-            campaigns=[campaign],
-            characters_by_campaign={campaign.id: []},
-            resources_modified_at="2026-01-01T00:00:00+00:00",
-        )
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When visiting a campaign page
-        response = client.get(f"/campaign/{campaign.id}")
-        body = response.get_data(as_text=True)
-
-        # Then the add button is not present
-        assert "+ Create Campaign" not in body
-
-    def test_navbar_shows_add_button_for_storyteller(self, client, mocker) -> None:
-        """Verify the Add New Campaign button is visible for STORYTELLER role."""
-        # Given a STORYTELLER user
-        campaign = CampaignFactory.build(name="Test Campaign")
-        company = CompanyFactory.build(name="Test Company")
-        user = UserFactory.build(
-            id="test-user-id", role="STORYTELLER", company_id="test-company-id"
-        )
-        ctx = GlobalContext(
-            company=company,
-            users=[user],
-            campaigns=[campaign],
-            characters_by_campaign={campaign.id: []},
-            resources_modified_at="2026-01-01T00:00:00+00:00",
-        )
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When visiting a campaign page
-        response = client.get(f"/campaign/{campaign.id}")
-        body = response.get_data(as_text=True)
-
-        # Then the add button is present
-        assert "+ Create Campaign" in body
-
-
-class TestCampaignInGameDate:
-    """The campaign form sets the in-game date that character ages are measured on."""
-
-    @pytest.fixture(autouse=True)
-    def _storyteller(self, mocker) -> None:
-        self.ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=self.ctx)
-
-    def _post(self, client, url: str, data: dict[str, str]) -> TestResponse:
-        return client.post(
-            url, data=data, headers={"X-CSRFToken": get_csrf(client), "HX-Request": "true"}
-        )
-
-    def test_create_sends_in_game_date(self, client, fake_vclient) -> None:
-        """Verify a submitted in-game date reaches the create request."""
-        fake_vclient.set_response(Routes.CAMPAIGNS_CREATE, model=CampaignFactory.build())
-
-        self._post(client, "/campaign/create", {"name": "Noir", "in_game_date": "1990-06-01"})
-
-        fake_vclient.assert_called(
-            Routes.CAMPAIGNS_CREATE, json={"name": "Noir", "in_game_date": "1990-06-01"}, times=1
-        )
-
-    def test_update_sends_in_game_date(self, client, fake_vclient) -> None:
-        """Verify moving the in-game date forward reaches the update request."""
-        campaign = self.ctx.campaigns[0]
-        fake_vclient.set_response(Routes.CAMPAIGNS_GET, model=campaign)
-        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=campaign)
-
-        self._post(
-            client,
-            f"/campaign/{campaign.id}/update",
-            {"name": campaign.name, "in_game_date": "2003-01-01"},
-        )
-
-        fake_vclient.assert_called(
-            Routes.CAMPAIGNS_UPDATE, json_subset={"in_game_date": "2003-01-01"}, times=1
-        )
-
-    def test_update_blank_date_clears_it(self, client, fake_vclient) -> None:
-        """Verify blanking the in-game date sends null so the API clears it."""
-        campaign = self.ctx.campaigns[0]
-        fake_vclient.set_response(Routes.CAMPAIGNS_GET, model=campaign)
-        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=campaign)
-
-        self._post(
-            client, f"/campaign/{campaign.id}/update", {"name": campaign.name, "in_game_date": ""}
-        )
-
-        fake_vclient.assert_called(
-            Routes.CAMPAIGNS_UPDATE, json_subset={"in_game_date": None}, times=1
-        )
-
-    def test_rejects_invalid_in_game_date(self, client, fake_vclient) -> None:
-        """Verify an impossible date re-renders the form with an error and saves nothing."""
-        response = self._post(
+    def test_invalid_in_game_date_rerenders_form_without_calling_api(
+        self, client, storyteller, fake_vclient
+    ) -> None:
+        """Verify an impossible in-game date shows a form error and nothing is saved."""
+        response = htmx_post(
             client, "/campaign/create", {"name": "Noir", "in_game_date": "1990-02-31"}
         )
 
-        assert "In-game date must be a valid date." in response.get_data(as_text=True)
+        assert_shows_error(response)
         fake_vclient.assert_not_called(Routes.CAMPAIGNS_CREATE)
 
-
-class TestCampaignUpdateView:
-    """Tests for POST /campaign/<campaign_id>/update."""
-
-    def test_updates_campaign_and_redirects(self, client, mocker, fake_vclient) -> None:
-        """Verify successful update returns HX-Redirect."""
-        # Given a STORYTELLER user and an API returning the updated campaign
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=campaign)
-
-        # When submitting a valid update form
-        csrf = get_csrf(client)
-        response = client.post(
-            f"/campaign/{campaign.id}/update",
-            data={"name": "Updated Name", "description": "Updated desc"},
-            headers={"X-CSRFToken": csrf, "HX-Request": "true"},
-        )
-
-        # Then the response redirects to the campaign page
-        assert response.status_code == 200
-        assert f"/campaign/{campaign.id}" in response.headers.get("HX-Redirect", "")
-        fake_vclient.assert_called(
-            Routes.CAMPAIGNS_UPDATE,
-            params={"campaign_id": campaign.id},
-            json={"name": "Updated Name", "description": "Updated desc"},
-            times=1,
-        )
-
-    def test_short_name_rerenders_form(self, client, mocker, fake_vclient) -> None:
-        """Verify a name under 3 characters shows a form error and sends nothing."""
-        # Given a STORYTELLER user
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When submitting a short name
-        response = client.post(
-            f"/campaign/{campaign.id}/update",
-            data={"name": "Ab", "description": "Kept"},
-            headers={"X-CSRFToken": get_csrf(client)},
-        )
-
-        # Then the form shows the error and the API is not called
-        assert response.status_code == 200
-        assert "Name must be at least 3 characters" in response.get_data(as_text=True)
-        fake_vclient.assert_not_called(Routes.CAMPAIGNS_UPDATE)
-
-    def test_cleared_description_is_sent_to_the_api(self, client, mocker, fake_vclient) -> None:
-        """Verify clearing a saved description sends an empty string, which the API clears."""
-        # Given a STORYTELLER user and a campaign with a description
-        campaign = CampaignFactory.build(description="A saved description")
-        ctx = build_global_context(user_role="STORYTELLER", campaign=campaign)
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=campaign)
-
-        # When submitting the form with the description emptied
-        response = client.post(
-            f"/campaign/{campaign.id}/update",
-            data={"name": "Good Name", "description": ""},
-            headers={"X-CSRFToken": get_csrf(client), "HX-Request": "true"},
-        )
-
-        # Then the empty description reaches the API
-        assert response.status_code == 200
-        fake_vclient.assert_called(
-            Routes.CAMPAIGNS_UPDATE,
-            params={"campaign_id": campaign.id},
-            json={"name": "Good Name", "description": ""},
-            times=1,
-        )
-
+    @pytest.mark.parametrize(
+        ("path", "route"),
+        [
+            ("/campaign/create", Routes.CAMPAIGNS_CREATE),
+            ("/campaign/{id}/update", Routes.CAMPAIGNS_UPDATE),
+        ],
+        ids=["create", "update"],
+    )
     def test_api_rejection_rerenders_form_with_its_reason(
-        self, client, mocker, fake_vclient
+        self, client, storyteller, fake_vclient, path, route
     ) -> None:
-        """Verify a validation error from the API shows on the edit form."""
-        # Given a STORYTELLER user and an API that rejects the name
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+        """Verify a validation error from the API shows on the form instead of a server error."""
         fake_vclient.set_error(
-            Routes.CAMPAIGNS_UPDATE,
+            route,
             status_code=400,
             invalid_parameters=[{"field": "name", "message": "Name is already taken"}],
         )
 
-        # When submitting the form
-        response = client.post(
-            f"/campaign/{campaign.id}/update",
-            data={"name": "Taken Name", "description": "A saved description"},
-            headers={"X-CSRFToken": get_csrf(client)},
-        )
+        response = htmx_post(client, path.format(id=storyteller.id), {"name": "Taken Name"})
 
-        # Then the form shows the API's reason
         assert response.status_code == 200
         assert "Name is already taken" in response.get_data(as_text=True)
 
-    def test_returns_403_for_player(self, client, mocker) -> None:
-        """Verify players cannot update campaigns."""
-        # Given a PLAYER user
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
-        # When attempting to update a campaign
-        csrf = get_csrf(client)
-        response = client.post(
-            f"/campaign/{campaign.id}/update",
-            data={"name": "Test"},
-            headers={"X-CSRFToken": csrf},
-        )
-
-        # Then a 403 is returned
-        assert response.status_code == 403
-
-    def test_returns_404_for_nonexistent_campaign(self, client, mocker) -> None:
-        """Verify 404 is returned for a non-existent campaign."""
-        # Given a STORYTELLER user
-        ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When attempting to update a nonexistent campaign
-        csrf = get_csrf(client)
-        response = client.post(
-            "/campaign/nonexistent-id/update",
-            data={"name": "Test Name"},
-            headers={"X-CSRFToken": csrf},
-        )
-
-        # Then a 404 is returned
-        assert response.status_code == 404
-
-
-class TestCampaignUpdateDangerDesperationView:
+class TestCampaignUpdateDangerDesperation:
     """Tests for POST /campaign/<campaign_id>/update/<field>."""
 
-    def test_updates_danger_and_returns_badge(self, client, mocker, fake_vclient) -> None:
-        """Verify a storyteller can update danger and receive re-rendered badges."""
-        # Given a STORYTELLER user
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        updated_campaign = CampaignFactory.build(id=campaign.id, danger=3, desperation=0)
-        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=updated_campaign)
+    @pytest.mark.parametrize(("field", "value"), [("danger", 3), ("desperation", 4)])
+    def test_sends_value_and_returns_badges(
+        self, client, storyteller, fake_vclient, mocker, field, value
+    ) -> None:
+        """Verify the value reaches the API, the context is refreshed, and the badges re-render."""
+        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=storyteller)
+        clear_context = mocker.patch("vweb.lib.cache.global_context.clear")
 
-        # When posting a danger value update
-        csrf = get_csrf(client)
-        response = client.post(
-            f"/campaign/{campaign.id}/update/danger",
-            data={"value": "3"},
-            headers={"X-CSRFToken": csrf, "HX-Request": "true"},
+        response = htmx_post(
+            client, f"/campaign/{storyteller.id}/update/{field}", {"value": str(value)}
         )
 
-        # Then the badge partial is returned
         assert response.status_code == 200
         assert_has_element(response, id="danger-desperation-badges")
         fake_vclient.assert_called(
             Routes.CAMPAIGNS_UPDATE,
-            params={"campaign_id": campaign.id},
-            json={"danger": 3},
+            params={"campaign_id": storyteller.id},
+            json={field: value},
             times=1,
         )
-
-    def test_updates_desperation(self, client, mocker, fake_vclient) -> None:
-        """Verify a storyteller can update desperation."""
-        # Given a STORYTELLER user
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=campaign)
-
-        # When posting a desperation value update
-        csrf = get_csrf(client)
-        response = client.post(
-            f"/campaign/{campaign.id}/update/desperation",
-            data={"value": "4"},
-            headers={"X-CSRFToken": csrf, "HX-Request": "true"},
-        )
-
-        # Then the response succeeds
-        assert response.status_code == 200
-        fake_vclient.assert_called(
-            Routes.CAMPAIGNS_UPDATE,
-            params={"campaign_id": campaign.id},
-            json={"desperation": 4},
-            times=1,
-        )
-
-    def test_clears_global_context_cache(self, client, mocker, fake_vclient) -> None:
-        """Verify cache is cleared after a successful update."""
-        # Given a STORYTELLER user
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-        fake_vclient.set_response(Routes.CAMPAIGNS_UPDATE, model=campaign)
-        mock_clear = mocker.patch("vweb.lib.cache.global_context.clear")
-
-        # When posting a valid update
-        csrf = get_csrf(client)
-        client.post(
-            f"/campaign/{campaign.id}/update/danger",
-            data={"value": "2"},
-            headers={"X-CSRFToken": csrf, "HX-Request": "true"},
-        )
-
-        # Then the global context cache is cleared
-        mock_clear.assert_called_once()
-
-    def test_returns_403_for_player(self, client, mocker) -> None:
-        """Verify players cannot update danger/desperation."""
-        # Given a PLAYER user
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When attempting to update danger
-        csrf = get_csrf(client)
-        response = client.post(
-            f"/campaign/{campaign.id}/update/danger",
-            data={"value": "3"},
-            headers={"X-CSRFToken": csrf},
-        )
-
-        # Then a 403 is returned
-        assert response.status_code == 403
+        clear_context.assert_called_once()
 
     @pytest.mark.parametrize(
         ("field", "value"),
-        [
-            ("invalid_field", "3"),
-            ("danger", "abc"),
-            ("danger", "7"),
-            ("danger", "-1"),
-        ],
+        [("invalid_field", "3"), ("danger", "abc"), ("danger", "7"), ("danger", "-1")],
         ids=["invalid-field", "non-integer", "over-max", "under-min"],
     )
-    def test_returns_400_for_invalid_input(self, client, mocker, field, value) -> None:
-        """Verify invalid field names and out-of-range values return 400."""
-        # Given a STORYTELLER user
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+    def test_invalid_input_returns_400(
+        self, client, storyteller, fake_vclient, field, value
+    ) -> None:
+        """Verify invalid field names and out-of-range values return 400 and save nothing."""
+        response = htmx_post(client, f"/campaign/{storyteller.id}/update/{field}", {"value": value})
 
-        # When posting invalid input
-        csrf = get_csrf(client)
-        response = client.post(
-            f"/campaign/{campaign.id}/update/{field}",
-            data={"value": value},
-            headers={"X-CSRFToken": csrf},
-        )
-
-        # Then a 400 is returned
         assert response.status_code == 400
+        fake_vclient.assert_not_called(Routes.CAMPAIGNS_UPDATE)
 
 
-class TestCampaignDeleteView:
+class TestCampaignDelete:
     """Tests for DELETE /campaign/<campaign_id>."""
 
-    def test_deletes_campaign_and_redirects(self, client, mocker, fake_vclient) -> None:
-        """Verify successful delete returns HX-Redirect to home."""
-        # Given a STORYTELLER user
-        ctx = build_global_context(user_role="STORYTELLER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # Given the session has the campaign stored
+    def test_deletes_campaign_and_forgets_it(self, client, storyteller, fake_vclient) -> None:
+        """Verify the campaign is deleted, dropped from the session, and the client goes home."""
         with client.session_transaction() as sess:
-            sess["last_campaign_id"] = campaign.id
+            sess["last_campaign_id"] = storyteller.id
 
-        # When sending a delete request
-        csrf = get_csrf(client)
         response = client.delete(
-            f"/campaign/{campaign.id}",
-            headers={"X-CSRFToken": csrf, "HX-Request": "true"},
+            f"/campaign/{storyteller.id}", headers={"X-CSRFToken": get_csrf(client)}
         )
 
-        # Then the response redirects to home
-        assert response.status_code == 200
         assert response.headers.get("HX-Redirect") == "/"
         fake_vclient.assert_called(
-            Routes.CAMPAIGNS_DELETE, params={"campaign_id": campaign.id}, times=1
+            Routes.CAMPAIGNS_DELETE, params={"campaign_id": storyteller.id}, times=1
         )
-
-        # And the session no longer has the campaign ID
         with client.session_transaction() as sess:
             assert "last_campaign_id" not in sess
 
-    def test_returns_403_for_player(self, client, mocker) -> None:
-        """Verify players cannot delete campaigns."""
-        # Given a PLAYER user
-        ctx = build_global_context(user_role="PLAYER")
-        campaign = ctx.campaigns[0]
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
 
-        # When attempting to delete a campaign
-        csrf = get_csrf(client)
-        response = client.delete(
-            f"/campaign/{campaign.id}",
-            headers={"X-CSRFToken": csrf},
+class TestCampaignExperience:
+    """Tests for the campaign experience card and grant form."""
+
+    def test_card_shows_users_campaign_xp(self, client, use_context) -> None:
+        """Verify the experience card shows the user's XP in this campaign."""
+        # Given a user with XP in the campaign
+        campaign = CampaignFactory.build()
+        user = UserFactory.build(
+            id="test-user-id",
+            campaign_experience=[
+                CampaignExperienceFactory.build(campaign_id=campaign.id, xp_current=4321)
+            ],
+        )
+        use_context(user_role="PLAYER", campaign=campaign, user=user)
+
+        # When loading the experience card
+        response = client.get(f"/campaign/{campaign.id}/experience")
+
+        # Then the XP is shown
+        assert response.status_code == 200
+        assert b"4321" in response.data
+
+    def test_form_names_the_campaign(self, client, storyteller) -> None:
+        """Verify a storyteller gets the grant form for this campaign."""
+        response = client.get(f"/campaign/{storyteller.id}/experience/form")
+
+        assert response.status_code == 200
+        assert storyteller.name in response.get_data(as_text=True)
+
+    def test_grant_sends_xp_and_refreshes_card(self, client, storyteller, fake_vclient) -> None:
+        """Verify a grant reaches the API and the experience card reloads."""
+        response = htmx_post(
+            client, f"/campaign/{storyteller.id}/experience", {"xp": "5", "cool_points": "0"}
         )
 
-        # Then a 403 is returned
-        assert response.status_code == 403
+        assert response.status_code == 200
+        fake_vclient.assert_called(
+            Routes.USERS_EXPERIENCE_XP_ADD,
+            params={"user_id": "test-user-id"},
+            json_subset={"amount": 5, "campaign_id": storyteller.id},
+            times=1,
+        )
+        assert f'hx-get="/campaign/{storyteller.id}/experience"' in response.get_data(as_text=True)
 
-    def test_returns_404_for_nonexistent_campaign(self, client, mocker) -> None:
-        """Verify 404 is returned for a non-existent campaign."""
-        # Given a STORYTELLER user
-        ctx = build_global_context(user_role="STORYTELLER")
-        mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-        # When attempting to delete a nonexistent campaign
-        csrf = get_csrf(client)
-        response = client.delete(
-            "/campaign/nonexistent-id",
-            headers={"X-CSRFToken": csrf},
+    def test_invalid_grant_rerenders_form_without_calling_api(
+        self, client, storyteller, fake_vclient
+    ) -> None:
+        """Verify an invalid amount shows a form error and nothing is granted."""
+        response = htmx_post(
+            client, f"/campaign/{storyteller.id}/experience", {"xp": "-1", "cool_points": "0"}
         )
 
-        # Then a 404 is returned
-        assert response.status_code == 404
-
-
-class TestCampaignSummaryCard:
-    """Tests for the new top-of-page summary card on the campaign dashboard."""
-
-    def test_renders_campaign_name_and_eyebrow(self, client, mock_global_context) -> None:
-        """Verify the card shows the CAMPAIGN eyebrow and campaign name."""
-        # Given an authenticated user with a campaign
-        campaign = mock_global_context.campaigns[0]
-
-        # When loading the campaign dashboard
-        response = client.get(f"/campaign/{campaign.id}")
-        body = response.get_data(as_text=True)
-
-        # Then the eyebrow + title render inside the summary card
         assert response.status_code == 200
-        assert 'id="campaign-summary-card"' in body
-        # Eyebrow label
-        assert "Campaign" in body
-        # Title
-        assert campaign.name in body
+        assert_shows_error(response)
+        fake_vclient.assert_not_called(Routes.USERS_EXPERIENCE_XP_ADD)
 
-    def test_renders_start_date_pill(self, client, mock_global_context) -> None:
-        """Verify the summary card shows a Started MMM YYYY pill from date_created."""
-        campaign = mock_global_context.campaigns[0]
 
-        response = client.get(f"/campaign/{campaign.id}")
-        body = response.get_data(as_text=True)
+class TestCampaignNotesPage:
+    """Tests for the campaign notes page."""
 
-        expected = campaign.date_created.strftime("Started %b %Y")
-        assert expected in body
+    @pytest.mark.parametrize(("role", "editable"), [("STORYTELLER", "true"), ("PLAYER", "false")])
+    def test_loads_notes_table_editable_only_for_managers(
+        self, client, set_role, role, editable
+    ) -> None:
+        """Verify the page lazy-loads the notes table, editable only for managers."""
+        campaign = set_role(role).campaigns[0]
 
-    def test_hides_book_pill_when_no_books(self, client, mock_global_context) -> None:
-        """Verify the book count pill is omitted when there are no books."""
-        # Given a campaign with no books
-        campaign = mock_global_context.campaigns[0]
-        campaign.num_books = 0
-        campaign.num_chapters = 0
+        response = client.get(f"/campaign/{campaign.id}/notes")
 
-        # When loading the campaign dashboard
-        response = client.get(f"/campaign/{campaign.id}")
-        body = response.get_data(as_text=True)
-
-        # Then neither the book nor the chapter count pill renders
-        assert not re.search(r"\d+ books", body)
-        assert "chapters" not in body
-
-    def test_shows_book_count_pill(self, client, mock_global_context) -> None:
-        """Verify the summary card shows book and chapter counts from campaign facets."""
-        # Given a campaign with two books and five chapters
-        campaign = mock_global_context.campaigns[0]
-        campaign.num_books = 2
-        campaign.num_chapters = 5
-
-        # When loading the campaign dashboard
-        response = client.get(f"/campaign/{campaign.id}")
-        body = response.get_data(as_text=True)
-
-        # Then the pill renders both the book and chapter counts
         assert response.status_code == 200
-        assert "2 books" in body
-        assert "5 chapters" in body
-
-    def test_omits_page_header(self, client, mock_global_context) -> None:
-        """Verify the old shared PageHeader 'Campaign' before_text no longer renders."""
-        campaign = mock_global_context.campaigns[0]
-
-        response = client.get(f"/campaign/{campaign.id}")
-        body = response.get_data(as_text=True)
-
-        # The old PageHeader put the before_text in a text-3xl font-thin
-        # opacity-50 span. The new summary card uses a small uppercase
-        # eyebrow instead — the old class signature should not appear.
-        assert "text-3xl font-thin opacity-50" not in body
-
-    def test_danger_desperation_renders_vertical_in_card(self, client, mock_global_context) -> None:
-        """Verify the badges container stacks vertically at lg+ inside the summary card."""
-        campaign = mock_global_context.campaigns[0]
-
-        response = client.get(f"/campaign/{campaign.id}")
-        body = response.get_data(as_text=True)
-
-        # `lg:flex-col` is unique to the vertical prop branch — its presence
-        # proves the badges wrap horizontally on mobile and stack at lg+.
-        assert 'id="danger-desperation-badges"' in body
-        assert "lg:flex-col" in body
+        expected = f"/campaign/{campaign.id}/notes/items?editable={editable}"
+        assert expected in response.get_data(as_text=True)
