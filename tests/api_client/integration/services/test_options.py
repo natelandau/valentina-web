@@ -3,6 +3,7 @@
 import pytest
 import respx
 
+from tests.api_client.payloads import endpoint_url
 from vweb.api_client.endpoints import Endpoints
 
 
@@ -70,7 +71,7 @@ class TestOptionsServiceGetOptions:
         """Verify get_options returns the correct options."""
         # Given: A mocked options endpoint
         company_id = "company123"
-        route = respx.get(f"{base_url}{Endpoints.OPTIONS.format(company_id=company_id)}").respond(
+        route = respx.get(endpoint_url(base_url, Endpoints.OPTIONS, company_id=company_id)).respond(
             200, json=options_response_data
         )
 

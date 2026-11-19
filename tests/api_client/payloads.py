@@ -1,5 +1,8 @@
-"""Build API response payloads from model instances."""
+"""Build API response payloads and read back what the client sent."""
 
+import json
+
+import respx
 from pydantic import BaseModel
 
 
@@ -38,3 +41,41 @@ def page(
         "offset": offset,
         "total": len(models) if total is None else total,
     }
+
+
+def endpoint_url(base_url: str, endpoint: str, **ids: str) -> str:
+    """Return the full URL for an endpoint with its path ids filled in.
+
+    Args:
+        base_url: The API base URL.
+        endpoint: The endpoint pattern, such as ``Endpoints.USER``.
+        **ids: Values for the pattern's path parameters; unused ones are ignored.
+
+    Returns:
+        The absolute URL a mocked route should match.
+    """
+    return f"{base_url}{endpoint.format(**ids)}"
+
+
+def sent_json(route: respx.Route) -> dict | list:
+    """Return the JSON body of the last request a mocked route received.
+
+    Args:
+        route: The respx route the client called.
+
+    Returns:
+        The decoded request body.
+    """
+    return json.loads(route.calls.last.request.content)
+
+
+def sent_params(route: respx.Route) -> dict[str, str]:
+    """Return the query parameters of the last request a mocked route received.
+
+    Args:
+        route: The respx route the client called.
+
+    Returns:
+        The query parameters, one value per name.
+    """
+    return dict(route.calls.last.request.url.params)

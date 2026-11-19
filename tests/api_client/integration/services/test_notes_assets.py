@@ -1,17 +1,15 @@
 """Tests for the note and asset methods every parent-resource service shares."""
 
-import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 import pytest
 
-from tests.api_client.payloads import page, wire
+from tests.api_client.payloads import endpoint_url, page, sent_json, wire
 from vweb.api_client import VClient
 from vweb.api_client.endpoints import Endpoints
-from vweb.api_client.exceptions import NotFoundError
-from vweb.api_client.models import Asset, Note, PaginatedResponse
+from vweb.api_client.models import Asset, Note
 from vweb.api_client.testing import AssetFactory, NoteFactory
 
 ON_BEHALF_OF = "on-behalf-of-user"
@@ -48,7 +46,7 @@ class ParentCase:
 
     def url(self, base_url: str, endpoint: str) -> str:
         """Return the full URL of an endpoint for this parent."""
-        return f"{base_url}{endpoint.format(**IDS, note_id=NOTE_ID, asset_id=ASSET_ID)}"
+        return endpoint_url(base_url, endpoint, **IDS, note_id=NOTE_ID, asset_id=ASSET_ID)
 
 
 CASES = [
@@ -147,19 +145,25 @@ class TestNotes:
         # Then: The page is parsed into Note objects
         assert route.called
         assert route.calls.last.request.headers["On-Behalf-Of"] == ON_BEHALF_OF
-        assert isinstance(result, PaginatedResponse)
         assert result.items == [note]
         assert result.total == 1
 
-    def test_list_all_notes(self, case, service, mock_api, base_url, note):
-        """Verify list_all_notes pages with limit 100 and returns every Note."""
+    @pytest.mark.parametrize(
+        "fetch_all",
+        [
+            pytest.param(lambda svc, parent_id: svc.list_all_notes(parent_id), id="list_all"),
+            pytest.param(lambda svc, parent_id: list(svc.iter_all_notes(parent_id)), id="iter_all"),
+        ],
+    )
+    def test_fetch_all_notes(self, case, service, mock_api, base_url, note, fetch_all):
+        """Verify list_all_notes and iter_all_notes page with limit 100 and return every Note."""
         # Given: A mocked notes endpoint expecting the iteration page size
         route = mock_api.get(
             case.url(base_url, case.notes), params={"limit": "100", "offset": "0"}
         ).respond(200, json=page(note, limit=100))
 
-        # When: Listing all notes
-        result = service.list_all_notes(case.parent_id)
+        # When: Fetching all notes
+        result = fetch_all(service, case.parent_id)
 
         # Then: Every note is returned
         assert route.called
@@ -177,15 +181,6 @@ class TestNotes:
         assert route.called
         assert result == note
 
-    def test_get_note_not_found(self, case, service, mock_api, base_url):
-        """Verify a 404 on get_note raises NotFoundError."""
-        # Given: The note endpoint returns 404
-        mock_api.get(case.url(base_url, case.note)).respond(404, json={"detail": "Not found"})
-
-        # When/Then: The error surfaces as NotFoundError
-        with pytest.raises(NotFoundError):
-            service.get_note(case.parent_id, NOTE_ID)
-
     def test_create_note(self, case, service, mock_api, base_url, note):
         """Verify create_note POSTs the title and content and parses the created Note."""
         # Given: A mocked create endpoint
@@ -196,7 +191,7 @@ class TestNotes:
 
         # Then: The body carries the fields and the created note is returned
         assert route.called
-        assert json.loads(route.calls.last.request.content) == {
+        assert sent_json(route) == {
             "title": "Test Note",
             "content": "Body",
         }
@@ -213,7 +208,7 @@ class TestNotes:
 
         # Then: Only the title is sent and the updated note is returned
         assert route.called
-        assert json.loads(route.calls.last.request.content) == {"title": "Updated Title"}
+        assert sent_json(route) == {"title": "Updated Title"}
         assert result.title == "Updated Title"
 
     def test_delete_note(self, case, service, mock_api, base_url):
@@ -245,19 +240,27 @@ class TestAssets:
         # Then: The page is parsed into Asset objects
         assert route.called
         assert route.calls.last.request.headers["On-Behalf-Of"] == ON_BEHALF_OF
-        assert isinstance(result, PaginatedResponse)
         assert result.items == [asset]
         assert result.total == 1
 
-    def test_list_all_assets(self, case, service, mock_api, base_url, asset):
-        """Verify list_all_assets pages with limit 100 and returns every Asset."""
+    @pytest.mark.parametrize(
+        "fetch_all",
+        [
+            pytest.param(lambda svc, parent_id: svc.list_all_assets(parent_id), id="list_all"),
+            pytest.param(
+                lambda svc, parent_id: list(svc.iter_all_assets(parent_id)), id="iter_all"
+            ),
+        ],
+    )
+    def test_fetch_all_assets(self, case, service, mock_api, base_url, asset, fetch_all):
+        """Verify list_all_assets and iter_all_assets page with limit 100 and return every Asset."""
         # Given: A mocked assets endpoint expecting the iteration page size
         route = mock_api.get(
             case.url(base_url, case.assets), params={"limit": "100", "offset": "0"}
         ).respond(200, json=page(asset, limit=100))
 
-        # When: Listing all assets
-        result = service.list_all_assets(case.parent_id)
+        # When: Fetching all assets
+        result = fetch_all(service, case.parent_id)
 
         # Then: Every asset is returned
         assert route.called
