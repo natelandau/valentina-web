@@ -79,7 +79,7 @@ Authlib with Discord/GitHub/Google/Apple. Provider authorize/callback views live
 
 ### Scanner Block Hook (`lib/hooks.py`)
 
-`_hook_block_scanner_probes` runs before auth and 404s known scanner paths — also the **intentional-404 mechanism** for non-routes like `/sitemap.xml` that would otherwise get auth's 302 redirect. For publicly accessible paths (like `/robots.txt`), add to `_PUBLIC_PATH_PREFIXES` instead.
+`_hook_block_scanner_probes` runs before auth and 404s known scanner paths — also the **intentional-404 mechanism** for non-routes like `/sitemap.xml` that would otherwise get auth's 302 redirect. For a public path, add it to `_PUBLIC_PATH_PREFIXES`; for a public file whose suffix the scanner blocks (like `/robots.txt`), add it to `_PUBLIC_FILE_PATHS`.
 
 ## Templates (JinjaX)
 
@@ -141,13 +141,14 @@ Use `uv run duty test` for every check except iterating on a single test. Pick t
 - `scope=client` runs only `tests/api_client/`. Use it for a quick check while editing the client, then run `uv run duty test` before you commit.
 - Each scope is cached against only the files its tests read. A scope whose files did not change prints "already passed on tree ..." and exits 0. That is a pass, not a skipped check.
 - Extra pytest options after the scope (for example `uv run duty test scope=web -k book`) filter within that scope and turn off the cache, so the command always runs. Do not pass a file path to `duty test`: it adds to the scope's targets instead of narrowing them. Use bare `uv run pytest <path>` for that.
-- `pyproject.toml` sets a 10-second per-test timeout and `--exitfirst`. A timeout failure usually means an infinite loop or a real network call.
+- `duty test` runs in parallel (pytest-xdist) and fails a full `scope=all` run below the coverage floor (`COVERAGE_FLOOR` in `duties.py`).
+- `pyproject.toml` sets a 10-second per-test timeout, `--exitfirst`, and turns every warning into an error. A timeout failure usually means an infinite loop.
 
 ### Writing tests
 
-- Sync pytest. `_mock_api` (autouse in `conftest.py`) prevents real API calls. `--strict-markers`: register new markers in `pyproject.toml`.
+- Sync pytest. `_mock_api` (autouse in `conftest.py`) prevents real API calls, and `_block_network` fails any test that opens a network connection. `--strict-markers`: register new markers in `pyproject.toml`.
 - `conftest.py`'s `test_settings` fixture builds `Settings` and passes it to `create_app(settings_override=...)` — no env vars needed. **Always pass `_env_file=None`** when constructing `Settings()` directly or pydantic leaks real config from `.env.secret`.
-- **Model data:** use `vweb.api_client.testing` factories (`UserFactory`, `CampaignFactory`, `CharacterFactory`, …). `Factory.batch(n)` for multiples.
+- **Model data:** use `vweb.api_client.testing` factories (`UserFactory`, `CampaignFactory`, `CharacterFactory`, …). `Factory.batch(n)` for multiples. Factories default users to PLAYER, characters to type PLAYER, and company settings to storyteller-only permissions; set the field when a test depends on it.
 - **`fake_vclient` fixture** (`FakeVClient`) intercepts API client HTTP in memory. Use `set_response()` / `set_error()`; `add_route()` is a low-level escape hatch. Import `Routes` from `vweb.api_client.testing`:
 
     ```python
@@ -157,9 +158,9 @@ Use `uv run duty test` for every check except iterating on a single test. Pick t
     ```
 
 - **Assert on the wire, not on service mocks.** The fake records every request. `fake_vclient.assert_called(route, params=..., query=..., json=..., json_subset=..., times=...)` and `assert_not_called(route, ...)` check the route, path ids, query, and body; `requests_for(route)` returns the `RecordedRequest`s for custom checks.
-- **More fake responses:** `set_responses(route, [FakeError(status_code=404), FakeResponse(model=user)])` returns one step per call, and the last repeats. `set_error(..., invalid_parameters=[{"field": ..., "message": ...}])` fakes a 400 with field errors. `query={...}` on `set_response`/`set_error` narrows an override by query value. The override that pins the most `params` and `query` values wins; a tie goes to the latest. The fake never retries, so a faked 5xx is sent once.
+- **More fake responses:** `set_responses(route, [FakeError(status_code=404), FakeResponse(model=user)])` returns one step per call, and the last repeats. `set_connection_error(route)` (or a `FakeConnectionError` step) makes the client raise `APIConnectionError`. `set_response(route, items=..., total=n)` reports more pages than it returns. `set_error(..., invalid_parameters=[{"field": ..., "message": ...}])` fakes a 400 with field errors. `query={...}` on `set_response`/`set_error` narrows an override by query value. The override that pins the most `params` and `query` values wins; a tie goes to the latest. The fake never retries, so a faked 5xx is sent once.
 - **When to use which:** factories for data; `fake_vclient` for code that calls API services (`api_services.*()` or `<name>_service()`); `MagicMock()` only for service objects passed in as arguments, or handler and cache mocks.
-- Other shared fixtures: `mock_global_context` (factory-built `GlobalContext`), `get_csrf(client)`. Don't duplicate in test files.
+- Other shared fixtures and helpers: `mock_global_context` (the signed-in player's `GlobalContext`), `mock_context_load`, `use_context(...)` (serve another context, built with `build_global_context` arguments), and in `tests/routes/conftest.py` `set_role`, `storyteller`, `admin_context`, `set_owner`. In `tests/conftest.py`: `get_csrf(client)`, `htmx_post(...)`, `htmx_delete(...)`. In `tests/helpers.py`: `session_flashes(client)`, `mock_oauth_provider(...)`, `build_specialty(...)`. Don't duplicate in test files.
 - **OAuth tests:** patch `oauth`, `lookup_user_companies`, and `identify_in_companies` where used (`routes.auth.views_oauth` for login/callback, `views_identity` for link/unlink, `views` for company selection); pre-seed `user_id` via `client.session_transaction()`.
 
 ## Code Style

@@ -10,7 +10,7 @@ from flask import session
 from PIL import Image
 
 from vweb.api_client import constants
-from vweb.api_client.models import IdentityResolution
+from vweb.api_client.models import CharacterTraitSpecialty, IdentityResolution
 from vweb.api_client.testing import (
     CampaignFactory,
     CompanyFactory,
@@ -21,7 +21,7 @@ from vweb.api_client.validate_constants import CONSTANT_MAP
 from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
-    from flask.testing import TestResponse
+    from flask.testing import FlaskClient, TestResponse
     from pytest_mock import MockerFixture
 
     from vweb.api_client.models import (
@@ -33,21 +33,10 @@ if TYPE_CHECKING:
     )
 
 
-def assert_success(response: TestResponse) -> None:
-    """Assert the response has a 200 status code."""
-    assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-
-
 def assert_shows_error(response: TestResponse) -> None:
     """Assert the response body contains a daisyUI error alert."""
     body = response.get_data(as_text=True)
     assert "alert-error" in body, "Expected alert-error in response body"
-
-
-def assert_shows_success(response: TestResponse) -> None:
-    """Assert the response body contains a daisyUI success alert."""
-    body = response.get_data(as_text=True)
-    assert "alert-success" in body, "Expected alert-success in response body"
 
 
 def assert_redirects_to(response: TestResponse, path: str) -> None:
@@ -55,6 +44,12 @@ def assert_redirects_to(response: TestResponse, path: str) -> None:
     assert response.status_code == 302, f"Expected 302, got {response.status_code}"
     location = response.headers.get("Location", "")
     assert location == path, f"Expected redirect to {path}, got {location}"
+
+
+def session_flashes(client: FlaskClient) -> list[tuple[str, str]]:
+    """Return the (category, message) pairs flashed into the session and not yet shown."""
+    with client.session_transaction() as sess:
+        return [(category, message) for category, message in sess.get("_flashes", [])]
 
 
 def assert_has_element(
@@ -86,25 +81,6 @@ def assert_has_element(
         assert f'name="{name}"' in body, f'Expected element with name="{name}" in response body'
 
 
-def assert_has_hx_attr(
-    response: TestResponse,
-    attr: str,
-    value: str | None = None,
-) -> None:
-    """Assert the response body contains an HTMX attribute, optionally with a specific value.
-
-    Args:
-        response: The Flask test response.
-        attr: The HTMX attribute name (e.g., "hx-get", "hx-swap-oob").
-        value: Optional expected value for the attribute.
-    """
-    body = response.get_data(as_text=True)
-
-    expected = f'{attr}="{value}"' if value is not None else attr
-
-    assert expected in body, f"Expected {expected} in response body"
-
-
 def build_global_context(
     *,
     user_role: str,
@@ -117,8 +93,7 @@ def build_global_context(
 ) -> GlobalContext:
     """Build a GlobalContext with sensible defaults for testing.
 
-    Callers must pass `user_role` explicitly to avoid silent role mismatches
-    between test files that previously defaulted to different roles.
+    Callers must pass `user_role` explicitly so a test never gets a role it did not choose.
 
     Args:
         user_role: The role for the test user (e.g., "STORYTELLER", "PLAYER").
@@ -161,6 +136,7 @@ def build_global_context(
         users=[user],
         campaigns=campaigns,
         characters_by_campaign=characters_by_campaign,
+        characters=[c for chars in characters_by_campaign.values() for c in chars],
         resources_modified_at="2026-01-01T00:00:00+00:00",
         pending_user_count=pending_user_count,
     )
@@ -286,3 +262,49 @@ def make_image_bytes(width: int = 1, height: int = 1, image_format: str = "PNG")
     buffer = BytesIO()
     Image.new("1", (width, height)).save(buffer, format=image_format)
     return buffer.getvalue()
+
+
+def mock_oauth_provider(
+    mocker: MockerFixture,
+    provider: str,
+    *,
+    token: dict | None = None,
+    profile: dict | None = None,
+    module: str = "vweb.routes.auth.views_oauth",
+) -> MagicMock:
+    """Patch the OAuth client for `provider` in `module` and return its mock.
+
+    The mock's `authorize_access_token()` returns `token`, and `get().json()` returns
+    `profile`. Apple's client secret is stubbed too, since its callback builds one.
+
+    Args:
+        mocker: The pytest-mock fixture.
+        provider: The OAuth provider name, e.g. "discord".
+        token: The token the provider returns from the callback.
+        profile: The user profile the provider's API returns.
+        module: The module whose `oauth` registry to patch.
+
+    Returns:
+        MagicMock: The provider client mock.
+    """
+    mock = MagicMock()
+    if token is not None:
+        mock.authorize_access_token.return_value = token
+    if profile is not None:
+        mock.get.return_value.json.return_value = profile
+    mocker.patch(f"{module}.oauth", **{provider: mock})
+    if provider == "apple":
+        mocker.patch(
+            "vweb.routes.auth.views_oauth.build_apple_client_secret", return_value="secret"
+        )
+    return mock
+
+
+def build_specialty(specialty_id: str, name: str) -> CharacterTraitSpecialty:
+    """Build a character trait specialty with fixed timestamps."""
+    return CharacterTraitSpecialty(
+        id=specialty_id,
+        name=name,
+        date_created="2026-01-01T00:00:00Z",
+        date_modified="2026-01-01T00:00:00Z",
+    )

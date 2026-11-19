@@ -71,13 +71,12 @@
     version_provider           = "uv"
 
 [tool.coverage.report] # https://coverage.readthedocs.io/en/latest/config.html#report
-    exclude_lines = [
+    # exclude_also keeps coverage's default exclusions, including `pragma: no cover`
+    exclude_also = [
+        'class .*\bProtocol(\[.*\])?\):',
         'def __repr__',
-        'except [\w\s\._]+ as .*:',
-        'if TYPE_CHECKING',
-        'pragma: no cover',
-        'raise Abort',
-        'raise Exit',
+        'if TYPE_CHECKING:',
+        '@overload',
     ]
     fail_under = 0
     precision = 1
@@ -89,7 +88,6 @@
     branch       = true
     command_line = "--module pytest"
     data_file    = ".cache/coverage"
-    omit         = ["tests/*"]
     source       = ["src"]
 
 [tool.coverage.xml]
@@ -115,10 +113,6 @@
     cache_dir = ".cache/pytest"
     filterwarnings = [
         'error',
-        'ignore:.*Pydantic.*:UserWarning',
-        'ignore::DeprecationWarning:',
-        'ignore::pytest.PytestUnraisableExceptionWarning',
-        'ignore:unclosed.*:ResourceWarning',
     ]
     testpaths = ["tests"]
     timeout = 10
