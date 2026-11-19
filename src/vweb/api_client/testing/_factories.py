@@ -58,6 +58,7 @@ from vweb.api_client.models import (
     WerewolfTribe,
 )
 from vweb.api_client.models.character_autogen import ChargenSessionResponse
+from vweb.api_client.models.companies import CompanySettings
 from vweb.api_client.models.users import CampaignExperience
 
 
@@ -155,12 +156,15 @@ class CharacterFactory(_GeneratedFieldsFactory[Character]):
     __generated_fields__ = frozenset({"health"})
     # The API always sends health; the model default of None only covers older APIs.
     health = Use(_build_health)
+    # A random type changes who may edit the character, so tests choose it on purpose
+    type = "PLAYER"
 
 
 class CharacterDetailFactory(_GeneratedFieldsFactory[CharacterDetail]):
     __model__ = CharacterDetail
     __generated_fields__ = frozenset({"health"})
     health = Use(_build_health)
+    type = "PLAYER"
 
 
 class CharacterConceptFactory(ModelFactory[CharacterConcept]):
@@ -196,9 +200,28 @@ class ChargenSessionResponseFactory(ModelFactory[ChargenSessionResponse]):
     __use_defaults__ = True
 
 
+def _build_locked_company_settings() -> CompanySettings:
+    """Build settings that reserve every permission for storytellers.
+
+    Random permissions would let a player pass role checks through company settings.
+    """
+    return CompanySettings(
+        id="settings-1",
+        character_autogen_xp_cost=0,
+        character_autogen_num_choices=3,
+        character_autogen_starting_points=0,
+        permission_manage_campaign="STORYTELLER",
+        permission_manage_npc="STORYTELLER",
+        permission_grant_xp="STORYTELLER",
+        permission_free_trait_changes="STORYTELLER",
+        permission_recoup_xp="DENIED",
+    )
+
+
 class CompanyFactory(ModelFactory[Company]):
     __model__ = Company
     __use_defaults__ = True
+    settings = Use(_build_locked_company_settings)
 
 
 class CompanyPermissionsFactory(ModelFactory[CompanyPermissions]):
