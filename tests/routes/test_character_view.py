@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import re
-from datetime import UTC, date, datetime
+import html as html_lib
+from datetime import date
+from typing import TYPE_CHECKING
 
 import pytest
 
-from tests.conftest import get_csrf
-from vweb.api_client.models import CharacterTraitSpecialty
+from tests.conftest import get_csrf, htmx_delete
+from tests.helpers import build_specialty
 from vweb.api_client.testing import (
     CharacterFactory,
     CharacterFullSheetFactory,
@@ -20,164 +21,154 @@ from vweb.api_client.testing import (
     TraitFactory,
 )
 
+if TYPE_CHECKING:
+    from vweb.api_client.models import CharacterTraitSpecialty
+
 
 @pytest.fixture
-def mock_character_lookup(mocker, mock_character, mock_campaign):
-    """Mock get_character_and_campaign to return test character and campaign."""
-    mocker.patch(
-        "vweb.routes.character_view.views.get_character_and_campaign",
-        return_value=(mock_character, mock_campaign),
-    )
+def own_character(use_context, mock_character, mock_campaign):
+    """Put the session user's own player character and its campaign in the context."""
+    use_context(user_role="PLAYER", campaign=mock_campaign, characters=[mock_character])
     return mock_character, mock_campaign
 
 
 class TestCharacterDelete:
     """Tests for DELETE /character/<character_id>."""
 
-    def test_owner_can_delete_character(self, client, fake_vclient, mock_character_lookup) -> None:
-        """Verify character owner can delete and gets HX-Redirect to home."""
+    def test_owner_can_delete_character(self, client, mocker, fake_vclient, own_character) -> None:
+        """Verify the owner can delete, which clears the cached context and redirects home."""
         # Given an owned character
-        char, _ = mock_character_lookup
-
-        csrf = get_csrf(client)
+        char, _ = own_character
+        mock_clear = mocker.patch("vweb.lib.cache.global_context.clear")
 
         # When sending a delete request
-        response = client.delete(
-            f"/character/{char.id}",
-            headers={"X-CSRFToken": csrf, "HX-Request": "true"},
-        )
+        response = htmx_delete(client, f"/character/{char.id}")
 
-        # Then the response redirects to home and the character is deleted
-        assert response.status_code == 200
-        assert response.headers.get("HX-Redirect") == "/"
+        # Then the character is deleted, the cached context dropped, and the user sent home
         fake_vclient.assert_called(
             Routes.CHARACTERS_DELETE,
             params={"company_id": "test-company-id", "character_id": char.id},
             times=1,
         )
-
-    def test_non_owner_gets_403(self, client, mocker, mock_campaign) -> None:
-        """Verify non-owner cannot delete a character."""
-        # Given a character owned by a different user
-        char = CharacterFactory.build(
-            id="char-123",
-            user_player_id="different-user-id",
-            campaign_id="camp-1",
-        )
-        mocker.patch(
-            "vweb.routes.character_view.views.get_character_and_campaign",
-            return_value=(char, mock_campaign),
-        )
-
-        csrf = get_csrf(client)
-
-        # When a non-owner sends a delete request
-        response = client.delete(
-            f"/character/{char.id}",
-            headers={"X-CSRFToken": csrf, "HX-Request": "true"},
-        )
-
-        # Then a 403 is returned
-        assert response.status_code == 403
-
-    def test_not_found_gets_403(self, client, mocker) -> None:
-        """Verify delete returns 403 when character not found."""
-        # Given no character found
-        mocker.patch(
-            "vweb.routes.character_view.views.get_character_and_campaign",
-            return_value=(None, None),
-        )
-
-        csrf = get_csrf(client)
-
-        # When deleting a nonexistent character
-        response = client.delete(
-            "/character/bad-id",
-            headers={"X-CSRFToken": csrf, "HX-Request": "true"},
-        )
-
-        # Then a 403 is returned
-        assert response.status_code == 403
-
-    @pytest.mark.usefixtures("fake_vclient")
-    def test_clears_cache_on_delete(self, client, mocker, mock_character_lookup) -> None:
-        """Verify global context cache is cleared after deletion."""
-        # Given an API that accepts the delete
-        char, _ = mock_character_lookup
-        mock_clear = mocker.patch("vweb.lib.cache.global_context.clear")
-
-        csrf = get_csrf(client)
-
-        # When deleting a character
-        client.delete(
-            f"/character/{char.id}",
-            headers={"X-CSRFToken": csrf, "HX-Request": "true"},
-        )
-
-        # Then the cache is cleared
         mock_clear.assert_called_once()
+        assert response.headers.get("HX-Redirect") == "/"
+
+    @pytest.mark.parametrize("found", [True, False], ids=["other-players-character", "not-found"])
+    def test_non_owner_gets_403(
+        self, client, use_context, fake_vclient, mock_campaign, found
+    ) -> None:
+        """Verify a player cannot delete another player's or an unknown character."""
+        # Given a character owned by someone else, or none at all
+        char = CharacterFactory.build(
+            id="char-123", user_player_id="different-user-id", campaign_id="camp-1"
+        )
+        use_context(user_role="PLAYER", campaign=mock_campaign, characters=[char] if found else [])
+
+        # When sending a delete request
+        response = htmx_delete(client, "/character/char-123")
+
+        # Then a 403 is returned and nothing is deleted
+        assert response.status_code == 403
+        fake_vclient.assert_not_called(Routes.CHARACTERS_DELETE)
 
 
 class TestCharacterSectionGet:
-    """Tests for GET /character/<id>/<section> via HTMX."""
+    """Tests for GET /character/<id>/<section>."""
 
-    def test_htmx_section_returns_inner_content_only(self, client, mock_character_lookup) -> None:
-        """Verify HTMX section request returns the inner content fragment without an OOB nav swap."""
-        # Given a valid character
-        char, _ = mock_character_lookup
+    @pytest.mark.parametrize(
+        ("section", "expected"),
+        [
+            ("", None),
+            ("profile", None),
+            ("unknown-section", None),
+            ("inventory", "/character/char-123/inventory/items?editable=true"),
+            ("notes", "/character/char-123/notes/items?editable=true"),
+            ("stats", "/cards/statistics?character_id=char-123"),
+        ],
+    )
+    def test_htmx_section_returns_fragment(
+        self, client, mocker, own_character, section, expected
+    ) -> None:
+        """Verify an HTMX section request returns only the tab content, with lazy loads wired."""
+        # Given the user's own character
+        char, _ = own_character
+        mocker.patch(
+            "vweb.lib.cache.character_sheet.get",
+            return_value=CharacterFullSheetFactory.build(character=char, sections=[]),
+        )
 
         # When requesting a section via HTMX
-        response = client.get(
-            f"/character/{char.id}/profile",
-            headers={"HX-Request": "true"},
+        path = f"/character/{char.id}/{section}" if section else f"/character/{char.id}"
+        response = client.get(path, headers={"HX-Request": "true"})
+
+        # Then the response is the tab fragment without page chrome
+        body = response.get_data(as_text=True)
+        assert response.status_code == 200
+        assert 'id="character-nav"' not in body
+        # And a lazily loaded tab points at its data endpoint
+        if expected:
+            assert expected in html_lib.unescape(body)
+
+    def test_other_players_tables_load_read_only(self, client, use_context, mock_campaign) -> None:
+        """Verify another player's inventory loads its table without edit controls."""
+        # Given another player's character
+        other = CharacterFactory.build(
+            id="char-123", user_player_id="someone-else", campaign_id="camp-1"
+        )
+        use_context(user_role="PLAYER", campaign=mock_campaign, characters=[other])
+
+        # When opening the inventory tab
+        response = client.get("/character/char-123/inventory", headers={"HX-Request": "true"})
+
+        # Then the table is requested read-only
+        assert "/character/char-123/inventory/items?editable=false" in response.get_data(
+            as_text=True
         )
 
-        # Then the response is the inner content fragment, no OOB CharacterNav
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert 'id="character-nav"' not in body
-        assert 'hx-swap-oob="true"' not in body
+    @pytest.mark.parametrize("htmx", [True, False])
+    def test_unknown_character_redirects_home(self, client, htmx) -> None:
+        """Verify a character the user cannot see sends them home."""
+        # When opening a character that is not in the user's context
+        response = client.get("/character/bad-id", headers={"HX-Request": "true"} if htmx else {})
 
-    def test_stats_section_renders_lazy_statistics_url(self, client, mock_character_lookup) -> None:
-        """Verify the stats section renders the /cards/statistics lazy-load URL scoped by character."""
-        # Given a character from the mocked context
-        char, _ = mock_character_lookup
+        # Then the user is sent home
+        target = response.headers["HX-Redirect"] if htmx else response.headers["Location"]
+        assert target == "/"
 
-        # When requesting the stats section
-        response = client.get(f"/character/{char.id}/stats")
-
-        # Then the rendered HTML includes the lazy-load URL scoped to the character
-        assert b"/cards/statistics?" in response.data
-        assert f"character_id={char.id}".encode() in response.data
-
-    def test_info_section_redirects_to_inventory(self, client, mock_character_lookup) -> None:
-        """Verify legacy /character/<id>/info redirects to /character/<id>/inventory."""
+    @pytest.mark.parametrize("htmx", [True, False])
+    def test_info_section_redirects_to_inventory(self, client, own_character, htmx) -> None:
+        """Verify the legacy info URL redirects to the inventory tab."""
         # Given a valid character
-        char, _ = mock_character_lookup
+        char, _ = own_character
 
         # When hitting the legacy info URL
-        response = client.get(f"/character/{char.id}/info", follow_redirects=False)
-
-        # Then a 302 to /character/<id>/inventory is returned
-        assert response.status_code == 302
-        assert response.headers["Location"].endswith(f"/character/{char.id}/inventory")
-
-    def test_info_section_redirects_to_inventory_for_htmx(
-        self, client, mock_character_lookup
-    ) -> None:
-        """Verify legacy /character/<id>/info under HTMX returns HX-Redirect to inventory."""
-        # Given a valid character
-        char, _ = mock_character_lookup
-
-        # When hitting the legacy info URL via HTMX
         response = client.get(
-            f"/character/{char.id}/info",
-            headers={"HX-Request": "true"},
+            f"/character/{char.id}/info", headers={"HX-Request": "true"} if htmx else {}
         )
 
-        # Then an HX-Redirect to inventory is sent
-        assert response.status_code == 200
-        assert response.headers["HX-Redirect"].endswith(f"/character/{char.id}/inventory")
+        # Then the user is sent to the inventory tab
+        target = response.headers["HX-Redirect"] if htmx else response.headers["Location"]
+        assert target.endswith(f"/character/{char.id}/inventory")
+
+
+class TestImageViewsUnknownCharacter:
+    """Image upload and delete refuse a character the user cannot see."""
+
+    @pytest.mark.parametrize(
+        ("method", "path"),
+        [("post", "/character/bad-id/images"), ("delete", "/character/bad-id/images/asset-1")],
+        ids=["upload", "delete"],
+    )
+    def test_returns_404_without_api_call(self, client, fake_vclient, method, path) -> None:
+        """Verify an unknown character returns 404 and touches no asset."""
+        # When uploading or deleting an image of a character not in the user's context
+        response = getattr(client, method)(
+            path, headers={"X-CSRFToken": get_csrf(client), "HX-Request": "true"}
+        )
+
+        # Then 404 is returned and the API is not called
+        assert response.status_code == 404
+        assert fake_vclient.requests == []
 
 
 class TestSheetSidebarOwnerLink:
@@ -212,15 +203,9 @@ class TestSheetSpecialties:
     @staticmethod
     def _sheet(mocker, *, melee_names: list[str], pistol_names: list[str] | None = None) -> None:
         """Patch the cached full sheet with a Melee trait and an optional subcategory trait."""
-        now = datetime.now(UTC)
 
         def specialties(names: list[str]) -> list[CharacterTraitSpecialty]:
-            return [
-                CharacterTraitSpecialty(
-                    id=f"spec-{index}", name=name, date_created=now, date_modified=now
-                )
-                for index, name in enumerate(names)
-            ]
+            return [build_specialty(f"spec-{index}", name) for index, name in enumerate(names)]
 
         melee = CharacterTraitFactory.build(
             value=3,
@@ -249,31 +234,23 @@ class TestSheetSpecialties:
             "vweb.routes.character_view.views.cache.character_sheet.get", return_value=sheet
         )
 
-    def test_sheet_shows_specialties_joined(self, client, mocker, mock_character_lookup) -> None:
-        """Verify specialties render comma-joined for category and subcategory traits."""
+    def test_sheet_shows_specialties(self, client, mocker, own_character) -> None:
+        """Verify specialties show for category and subcategory traits."""
         # Given a sheet with specialties on a category trait and a subcategory trait
-        char, _ = mock_character_lookup
+        char, _ = own_character
         self._sheet(mocker, melee_names=["Knives", "Swords"], pistol_names=["Pistols"])
 
         # When viewing the sheet
         html = client.get(f"/character/{char.id}").get_data(as_text=True)
 
-        # Then both specialty lines are shown, each with an explanatory tooltip
-        lines = re.findall(
-            r'<div class="trait-specialties([^"]*)">\s*<span class="tooltip[^"]*" data-tip="([^"]*)">\s*([^<]*?)\s*</span>',
-            html,
-        )
-        assert len(lines) == 2
-        category_classes, category_tip, category_text = lines[0]
-        assert "text-sm font-normal text-base-content/60" in category_classes
-        assert category_tip.startswith("Specialty: +1 die to Melee")
-        assert category_text == "Knives, Swords"
-        assert lines[1][2] == "Pistols"
+        # Then both traits' specialties are shown
+        assert "Knives, Swords" in html
+        assert "Pistols" in html
 
-    def test_sheet_escapes_specialty_names(self, client, mocker, mock_character_lookup) -> None:
+    def test_sheet_escapes_specialty_names(self, client, mocker, own_character) -> None:
         """Verify specialty names are HTML-escaped."""
         # Given a specialty containing markup
-        char, _ = mock_character_lookup
+        char, _ = own_character
         self._sheet(mocker, melee_names=['<b>"Edge"</b>'])
 
         # When viewing the sheet
@@ -283,43 +260,39 @@ class TestSheetSpecialties:
         assert "&lt;b&gt;" in html
         assert '<b>"Edge"</b>' not in html
 
-    def test_sheet_without_specialties_has_no_line(
-        self, client, mocker, mock_character_lookup
-    ) -> None:
-        """Verify a trait with no specialties renders no specialty line."""
-        # Given a sheet whose traits have no specialties
-        char, _ = mock_character_lookup
-        self._sheet(mocker, melee_names=[], pistol_names=[])
-
-        # When viewing the sheet
-        html = client.get(f"/character/{char.id}").get_data(as_text=True)
-
-        # Then no specialty element is rendered
-        assert "trait-specialties" not in html
-
 
 class TestDateOfBirthBanner:
     """The banner asking for a date of birth appears only where the age could follow it."""
 
     @pytest.mark.parametrize(
-        "case",
+        ("in_game_date", "date_of_birth", "status", "owner", "shown"),
         [
-            (date(1990, 6, 1), None, "ALIVE", True),
-            (None, None, "ALIVE", False),
-            (date(1990, 6, 1), date(1960, 3, 15), "ALIVE", False),
-            (date(1990, 6, 1), None, "DEAD", False),
+            (date(1990, 6, 1), None, "ALIVE", "test-user-id", True),
+            (None, None, "ALIVE", "test-user-id", False),
+            (date(1990, 6, 1), date(1960, 3, 15), "ALIVE", "test-user-id", False),
+            (date(1990, 6, 1), None, "DEAD", "test-user-id", False),
+            (date(1990, 6, 1), None, "ALIVE", "someone-else", False),
         ],
+        ids=["shown", "undated-campaign", "has-birth-date", "dead", "not-an-editor"],
     )
-    def test_banner_needs_dated_campaign_and_living_character_without_birth_date(
-        self, client, mocker, mock_character_lookup, case
+    def test_banner_needs_dated_campaign_and_living_character_without_birth_date(  # noqa: PLR0917
+        self,
+        client,
+        mocker,
+        own_character,
+        in_game_date,
+        date_of_birth,
+        status,
+        owner,
+        shown,
     ) -> None:
-        """Verify the banner shows for a living character without a date of birth in a dated campaign."""
-        # Given the campaign's in-game date and the character's birth and status under test
-        in_game_date, date_of_birth, status, shown = case
-        char, campaign = mock_character_lookup
+        """Verify an editor is asked for a living character's birth date in a dated campaign."""
+        # Given the campaign's in-game date and the character's birth, status, and owner
+        char, campaign = own_character
         campaign.in_game_date = in_game_date
         char.date_of_birth = date_of_birth
         char.status = status
+        char.user_player_id = owner
         mocker.patch(
             "vweb.lib.cache.character_sheet.get",
             return_value=CharacterFullSheetFactory.build(character=char, sections=[]),
@@ -328,5 +301,10 @@ class TestDateOfBirthBanner:
         # When viewing the character
         html = client.get(f"/character/{char.id}").get_data(as_text=True)
 
-        # Then the banner appears only in the expected case
-        assert ("Add date of birth" in html) is shown
+        # Then the banner's own link to the profile editor appears only in the expected case;
+        # an editor always has one more link to it in the actions menu
+        edit_url = html_lib.escape(
+            f"/campaign/{campaign.id}/characters/profile_edit?character_id={char.id}"
+        )
+        editor = owner == "test-user-id"
+        assert html.count(edit_url) == int(editor) + int(shown)

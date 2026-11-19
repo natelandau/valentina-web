@@ -7,25 +7,12 @@ import logging
 import pytest
 
 from vweb.api_client.exceptions import ServerError, UnprocessableEntityError
-from vweb.api_client.models import UserLookupResult
-from vweb.api_client.testing import IdentityResolutionFactory, Routes
+from vweb.api_client.testing import IdentityResolutionFactory, Routes, UserLookupResultFactory
 from vweb.routes.auth.services import (
     build_companies_mapping,
     identify_in_companies,
     lookup_user_companies,
 )
-
-
-def _make_lookup_result(**kwargs) -> UserLookupResult:
-    """Build a UserLookupResult with sensible defaults."""
-    defaults = {
-        "company_id": "comp-1",
-        "company_name": "Test Company",
-        "user_id": "user-1",
-        "role": "PLAYER",
-    }
-    defaults.update(kwargs)
-    return UserLookupResult(**defaults)
 
 
 class TestLookupUserCompanies:
@@ -34,7 +21,7 @@ class TestLookupUserCompanies:
     def test_provider_id_lookup_succeeds(self, fake_vclient) -> None:
         """Verify lookup returns results when provider ID matches."""
         # Given a lookup endpoint that finds a user by discord ID
-        expected = [_make_lookup_result()]
+        expected = [UserLookupResultFactory.build()]
         fake_vclient.set_response(
             Routes.USERS_LOOKUP, items=expected, query={"discord_id": "discord-123"}
         )
@@ -56,7 +43,7 @@ class TestLookupUserCompanies:
     def test_email_fallback_when_provider_returns_empty(self, fake_vclient) -> None:
         """Verify lookup falls back to email when provider ID returns no results."""
         # Given a lookup endpoint where provider ID returns empty but email matches
-        email_results = [_make_lookup_result(user_id="user-via-email")]
+        email_results = [UserLookupResultFactory.build(user_id="user-via-email")]
         fake_vclient.set_response(Routes.USERS_LOOKUP, items=[], query={"github_id": "gh-999"})
         fake_vclient.set_response(
             Routes.USERS_LOOKUP, items=email_results, query={"email": "found@example.com"}
@@ -116,13 +103,13 @@ class TestBuildCompaniesMapping:
         """Verify mapping builds correct structure from lookup results."""
         # Given two lookup results
         results = [
-            _make_lookup_result(
+            UserLookupResultFactory.build(
                 company_id="c1",
                 company_name="Alpha Corp",
                 user_id="u1",
                 role="ADMIN",
             ),
-            _make_lookup_result(
+            UserLookupResultFactory.build(
                 company_id="c2",
                 company_name="Beta Inc",
                 user_id="u2",
@@ -189,7 +176,7 @@ class TestIdentifyInCompanies:
 
         # Then only the successful company is in the result and the failure is logged
         assert result == {"c2": resolution}
-        assert "identify failed for company c1" in caplog.text
+        assert any(r.levelno == logging.ERROR and "c1" in r.getMessage() for r in caplog.records)
 
     @pytest.mark.parametrize(
         ("exception_class", "status_code", "code"),

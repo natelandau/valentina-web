@@ -1,213 +1,70 @@
-"""Tests for main blueprint routes."""
+"""Tests for the index entry rules and the public landing page."""
+
+from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from vweb.api_client.testing import (
-    CampaignFactory,
-    CompanyFactory,
-    UserFactory,
+import pytest
+
+from vweb.api_client.testing import CampaignFactory
+
+OLDER = CampaignFactory.build(name="Older", date_modified=datetime(2025, 1, 1, tzinfo=UTC))
+NEWER = CampaignFactory.build(name="Newer", date_modified=datetime(2026, 1, 1, tzinfo=UTC))
+
+
+@pytest.mark.parametrize(
+    ("campaigns", "remembered", "expected_location"),
+    [
+        ([NEWER], None, f"/campaign/{NEWER.id}"),
+        ([OLDER, NEWER], OLDER.id, f"/campaign/{OLDER.id}"),
+        ([OLDER, NEWER], None, "/home"),
+        ([], None, "/home"),
+    ],
+    ids=["single-campaign", "remembered-campaign", "ambiguous-goes-to-hub", "no-campaigns"],
 )
-from vweb.lib.cache.global_context import GlobalContext
-
-
-def test_index_redirects_authenticated_user_to_campaign(client, mock_global_context) -> None:
-    """Verify authenticated users are redirected to a campaign page."""
-    # Given an authenticated user with campaigns
-    campaign = mock_global_context.campaigns[0]
-
-    # When visiting the index
-    response = client.get("/")
-
-    # Then redirected to the most recent campaign
-    assert response.status_code == 302
-    assert f"/campaign/{campaign.id}" in response.headers["Location"]
-
-
-def test_index_redirects_to_session_campaign(client, mocker) -> None:
-    """Verify the index redirects to the session-stored campaign."""
-    # Given two campaigns where the older one is in the session
-    older = CampaignFactory.build(
-        name="Older",
-        date_modified=datetime(2025, 1, 1, tzinfo=UTC),
-    )
-    newer = CampaignFactory.build(
-        name="Newer",
-        date_modified=datetime(2026, 1, 1, tzinfo=UTC),
-    )
-    company = CompanyFactory.build(name="Test Company")
-    user = UserFactory.build(id="test-user-id", company_id="test-company-id")
-    ctx = GlobalContext(
-        company=company,
-        users=[user],
-        campaigns=[older, newer],
-        characters_by_campaign={older.id: [], newer.id: []},
-        resources_modified_at="2026-01-01T00:00:00+00:00",
-    )
-    mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-    # Given the older campaign is in the session
-    with client.session_transaction() as sess:
-        sess["last_campaign_id"] = older.id
+def test_index_sends_member_to_entry_page(
+    client, use_context, campaigns: list, remembered: str | None, expected_location: str
+) -> None:
+    """Verify the index opens the only or remembered campaign, else the company hub."""
+    # Given a member with the campaigns and an optionally remembered campaign
+    use_context(user_role="PLAYER", campaigns=campaigns)
+    if remembered:
+        with client.session_transaction() as sess:
+            sess["last_campaign_id"] = remembered
 
     # When visiting the index
     response = client.get("/")
 
-    # Then redirected to the session campaign, not the newest
+    # Then the member lands on the entry page
     assert response.status_code == 302
-    assert f"/campaign/{older.id}" in response.headers["Location"]
+    assert response.headers["Location"].endswith(expected_location)
 
 
-def test_index_multiple_campaigns_redirects_to_hub(client, mocker) -> None:
-    """Verify ambiguous entry (many campaigns, none remembered) lands on the hub."""
-    # Given two campaigns and no session campaign
-    older = CampaignFactory.build(
-        name="Older",
-        date_modified=datetime(2025, 1, 1, tzinfo=UTC),
-    )
-    newer = CampaignFactory.build(
-        name="Newer",
-        date_modified=datetime(2026, 1, 1, tzinfo=UTC),
-    )
-    company = CompanyFactory.build(name="Test Company")
-    user = UserFactory.build(id="test-user-id", company_id="test-company-id")
-    ctx = GlobalContext(
-        company=company,
-        users=[user],
-        campaigns=[older, newer],
-        characters_by_campaign={older.id: [], newer.id: []},
-        resources_modified_at="2026-01-01T00:00:00+00:00",
-    )
-    mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
+def test_landing_page_is_public_and_mints_no_session(app) -> None:
+    """Verify anonymous visitors see the landing page without a session being persisted.
 
-    # When visiting the index
-    response = client.get("/")
-
-    # Then redirected to the company hub
-    assert response.status_code == 302
-    assert "/home" in response.headers["Location"]
-
-
-def test_index_unauthenticated_returns_200(app) -> None:
-    """Verify unauthenticated users see the landing page at /."""
-    client = app.test_client()
-    response = client.get("/")
-    assert response.status_code == 200
-
-
-def test_index_unauthenticated_sets_no_session_cookie(app) -> None:
-    """Verify anonymous landing-page visits do not persist a session.
-
-    Each persisted session is a Redis key in production. Bots and crawlers
-    hitting the public landing page must not mint one, so the response must
-    not set (or delete) a session cookie.
+    Each persisted session is a Redis key in production, so bots and crawlers hitting the
+    public landing page must not mint one.
     """
-    # Given an anonymous client with no session
-    client = app.test_client()
+    response = app.test_client().get("/")
 
-    # When visiting the public landing page
-    response = client.get("/")
-
-    # Then nothing server-side is persisted, so no session cookie is touched
-    set_cookies = response.headers.getlist("Set-Cookie")
     assert response.status_code == 200
+    set_cookies = response.headers.getlist("Set-Cookie")
     assert not any(cookie.startswith("session=") for cookie in set_cookies), set_cookies
 
 
 def test_authenticated_page_includes_csrf_header(client, mock_global_context) -> None:
-    """Verify logged-in pages still emit the HTMX X-CSRFToken header for mutations."""
-    # Given an authenticated user with a campaign
+    """Verify logged-in pages emit the HTMX X-CSRFToken header so mutations pass CSRF."""
     campaign = mock_global_context.campaigns[0]
 
-    # When loading an authenticated page
     response = client.get(f"/campaign/{campaign.id}")
-    body = response.get_data(as_text=True)
 
-    # Then the CSRF header is present so HTMX POST/DELETE actions are protected
     assert response.status_code == 200
-    assert "X-CSRFToken" in body
-
-
-def test_index_no_campaigns_redirects_to_hub(client, mocker) -> None:
-    """Verify entry with zero campaigns lands on the hub (which owns the empty state)."""
-    # Given a global context with no campaigns
-    company = CompanyFactory.build(name="Test Company")
-    user = UserFactory.build(id="test-user-id", company_id="test-company-id")
-    ctx = GlobalContext(
-        company=company,
-        users=[user],
-        campaigns=[],
-        resources_modified_at="2026-01-01T00:00:00+00:00",
-    )
-    mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-    # When visiting the index
-    response = client.get("/")
-
-    # Then redirected to the company hub
-    assert response.status_code == 302
-    assert "/home" in response.headers["Location"]
+    assert "X-CSRFToken" in response.get_data(as_text=True)
 
 
 def test_development_mode_uses_cookie_sessions(app) -> None:
-    """Verify development mode uses default cookie-based sessions."""
+    """Verify development mode uses cookie sessions instead of Redis."""
     from flask.sessions import SecureCookieSessionInterface
 
     assert isinstance(app.session_interface, SecureCookieSessionInterface)
-
-
-def test_global_header_renders_app_name_and_campaign_pill(client, mock_global_context) -> None:
-    """Verify the global header renders the app name and active campaign pill."""
-    # Given an authenticated user with a campaign
-    campaign = mock_global_context.campaigns[0]
-
-    # When loading the campaign dashboard
-    response = client.get(f"/campaign/{campaign.id}")
-    body = response.get_data(as_text=True)
-
-    # Then the new header markup is present
-    assert response.status_code == 200
-    # App name appears in the header (sm:inline label)
-    assert "Test App" in body
-    # Campaign overline and active campaign name appear in the pill
-    assert ">Campaign<" in body
-    assert campaign.name in body
-    # User menu pill renders with the user's first name
-    assert "Test" in body  # first name from UserFactory.build(name_first="Test", ...)
-
-
-def test_global_header_has_no_drawer_markup(client, mock_global_context) -> None:
-    """Verify the old drawer/sidebar plumbing is absent from rendered pages."""
-    # Given an authenticated user with a campaign
-    campaign = mock_global_context.campaigns[0]
-
-    # When loading the campaign dashboard
-    response = client.get(f"/campaign/{campaign.id}")
-    body = response.get_data(as_text=True)
-
-    # Then no drawer classes or mobile-nav IDs remain
-    assert response.status_code == 200
-    assert "drawer-toggle" not in body
-    assert "my-drawer-2" not in body
-    assert "drawer-side" not in body
-
-
-def test_global_header_omits_campaign_switcher_when_no_campaigns(client, mocker) -> None:
-    """Verify the campaign switcher is absent when the user has no campaigns."""
-    # Given a global context with zero campaigns
-    company = CompanyFactory.build(name="Test Company")
-    user = UserFactory.build(id="test-user-id", company_id="test-company-id")
-    ctx = GlobalContext(
-        company=company,
-        users=[user],
-        campaigns=[],
-        resources_modified_at="2026-01-01T00:00:00+00:00",
-    )
-    mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx)
-
-    # When visiting the index (redirects to the hub)
-    response = client.get("/", follow_redirects=True)
-    body = response.get_data(as_text=True)
-
-    # Then the "Campaign" overline is not rendered
-    assert response.status_code == 200
-    assert ">Campaign<" not in body

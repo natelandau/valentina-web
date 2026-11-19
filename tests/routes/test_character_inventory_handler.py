@@ -31,50 +31,26 @@ def handler(app, fake_vclient, mock_character, mock_global_context):
 class TestCharacterInventoryHandlerValidation:
     """Tests for CharacterInventoryHandler.validate()."""
 
-    def test_empty_name_returns_error(self) -> None:
-        """Verify validation rejects an empty name."""
+    @pytest.mark.parametrize(
+        ("form_data", "error_fields"),
+        [
+            ({"name": "", "type": "WEAPON"}, {"name"}),
+            ({"name": "Sword", "type": ""}, {"type"}),
+            ({"name": "   ", "type": "  \t  "}, {"name", "type"}),
+            ({"name": "Sword", "type": "WEAPON"}, set()),
+        ],
+        ids=["empty-name", "empty-type", "whitespace-only", "valid"],
+    )
+    def test_requires_name_and_type(self, form_data: dict, error_fields: set) -> None:
+        """Verify blank or whitespace-only name and type are rejected per field."""
         # Given a handler instance with no service dependency
         handler = CharacterInventoryHandler.__new__(CharacterInventoryHandler)
 
-        # When validating form data with an empty name
-        errors = handler.validate({"name": "", "type": "WEAPON"})
+        # When validating the form data
+        errors = handler.validate(form_data)
 
-        # Then a name error is returned
-        assert errors["name"] == "Name is required"
-
-    def test_empty_type_returns_error(self) -> None:
-        """Verify validation rejects an empty type."""
-        # Given a handler instance with no service dependency
-        handler = CharacterInventoryHandler.__new__(CharacterInventoryHandler)
-
-        # When validating form data with an empty type
-        errors = handler.validate({"name": "Sword", "type": ""})
-
-        # Then a type error is returned
-        assert errors["type"] == "Type is required"
-
-    def test_whitespace_only_fields_return_errors(self) -> None:
-        """Verify validation rejects whitespace-only fields."""
-        # Given a handler instance with no service dependency
-        handler = CharacterInventoryHandler.__new__(CharacterInventoryHandler)
-
-        # When validating form data with whitespace-only values
-        errors = handler.validate({"name": "   ", "type": "  \t  "})
-
-        # Then both errors are returned
-        assert errors["name"] == "Name is required"
-        assert errors["type"] == "Type is required"
-
-    def test_valid_data_returns_no_errors(self) -> None:
-        """Verify validation accepts valid form data."""
-        # Given a handler instance with no service dependency
-        handler = CharacterInventoryHandler.__new__(CharacterInventoryHandler)
-
-        # When validating valid form data
-        errors = handler.validate({"name": "Sword", "type": "WEAPON"})
-
-        # Then no errors are returned
-        assert errors == {}
+        # Then exactly the blank fields carry errors
+        assert set(errors) == error_fields
 
 
 class TestCharacterInventoryHandlerOperations:
@@ -91,31 +67,26 @@ class TestCharacterInventoryHandlerOperations:
             params={"company_id": "test-company-id", "character_id": "char-123"},
         )
 
-    def test_create_item_strips_whitespace_and_omits_empty_description(
-        self, handler, fake_vclient
+    @pytest.mark.parametrize(
+        ("description", "expected_json"),
+        [
+            ("", {"name": "Sword", "type": "WEAPON"}),
+            ("  Sharp blade  ", {"name": "Sword", "type": "WEAPON", "description": "Sharp blade"}),
+        ],
+        ids=["empty-description-omitted", "description-stripped"],
+    )
+    def test_create_item_sends_stripped_fields(
+        self, handler, fake_vclient, description: str, expected_json: dict
     ) -> None:
-        """Verify create_item strips name whitespace and omits empty description."""
-        # When creating an item with padded name and empty description
-        handler.create_item({"name": "  Sword  ", "type": "WEAPON", "description": ""})
+        """Verify create_item strips whitespace and omits an empty description."""
+        # When creating an item with a padded name
+        handler.create_item({"name": "  Sword  ", "type": "WEAPON", "description": description})
 
-        # Then the API receives a stripped name and no description
+        # Then the API receives stripped values and no empty description
         fake_vclient.assert_called(
             Routes.CHARACTERS_INVENTORY_CREATE,
             params={"character_id": "char-123"},
-            json={"name": "Sword", "type": "WEAPON"},
-            times=1,
-        )
-
-    def test_create_item_includes_description_when_provided(self, handler, fake_vclient) -> None:
-        """Verify create_item passes description when non-empty."""
-        # When creating an item with a description
-        handler.create_item({"name": "Sword", "type": "WEAPON", "description": "  Sharp blade  "})
-
-        # Then the API receives the stripped description
-        fake_vclient.assert_called(
-            Routes.CHARACTERS_INVENTORY_CREATE,
-            params={"character_id": "char-123"},
-            json={"name": "Sword", "type": "WEAPON", "description": "Sharp blade"},
+            json=expected_json,
             times=1,
         )
 

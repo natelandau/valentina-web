@@ -1,285 +1,155 @@
-"""Tests for QuickrollHandler service."""
+"""Tests for QuickrollHandler."""
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import pytest
 
 from tests.helpers import seed_session
 from vweb.api_client.testing import QuickrollFactory, Routes, TraitFactory
-from vweb.routes.profile.handlers import QuickrollDisplay, QuickrollHandler
+from vweb.routes.profile.handlers import QuickrollHandler
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from flask import Flask
 
 
 @pytest.fixture
-def mock_get_all_traits(mocker):
-    """Mock the blueprint traits cache for quickroll handler tests."""
-    return mocker.patch("vweb.lib.cache.blueprint.traits")
+def handler(app: Flask, fake_vclient) -> Iterator[QuickrollHandler]:
+    """Build a handler for user-1 inside a signed-in request, talking to the fake API."""
+    with app.test_request_context("/"):
+        seed_session()
+        yield QuickrollHandler("user-1")
 
 
-class TestListItems:
-    """Tests for QuickrollHandler.list_items()."""
+@pytest.mark.parametrize(
+    ("trait_ids", "expected_names"),
+    [
+        (["t1", "t2"], ("Strength", "Brawl")),
+        (["t1"], ("Strength", "-")),
+        ([], ("-", "-")),
+        (["unknown"], ("-", "-")),
+    ],
+    ids=["two-traits", "one-trait", "no-traits", "unknown-trait"],
+)
+def test_list_items_resolves_trait_names(
+    handler: QuickrollHandler,
+    fake_vclient,
+    mocker,
+    trait_ids: list[str],
+    expected_names: tuple[str, str],
+) -> None:
+    """Verify listed quickrolls show trait names, with a dash for a missing or unknown trait."""
+    # Given a quickroll and the blueprint traits
+    qr = QuickrollFactory.build(name="Attack", description="Quick attack", trait_ids=trait_ids)
+    fake_vclient.set_response(Routes.USERS_QUICKROLLS_LIST, items=[qr])
+    mocker.patch(
+        "vweb.lib.cache.blueprint.traits",
+        return_value={
+            "t1": TraitFactory.build(id="t1", name="Strength"),
+            "t2": TraitFactory.build(id="t2", name="Brawl"),
+        },
+    )
 
-    def test_two_traits_resolved(self, app, fake_vclient, mock_get_all_traits) -> None:
-        """Verify list_items resolves both trait names from the blueprint cache."""
-        with app.test_request_context("/"):
-            seed_session()
-            # Given a quickroll with two trait IDs
-            qr = QuickrollFactory.build(
-                id="qr-1", name="Attack", description="Quick attack", trait_ids=["t1", "t2"]
-            )
-            fake_vclient.set_response(Routes.USERS_QUICKROLLS_LIST, items=[qr])
+    # When listing the user's quickrolls
+    (item,) = handler.list_items()
 
-            trait1 = TraitFactory.build(id="t1", name="Strength")
-            trait2 = TraitFactory.build(id="t2", name="Brawl")
-            mock_get_all_traits.return_value = {"t1": trait1, "t2": trait2}
-
-            handler = QuickrollHandler("user-1")
-
-            # When listing items
-            result = handler.list_items()
-
-            # Then the user's quickrolls are fetched and one QuickrollDisplay is returned
-            fake_vclient.assert_called(Routes.USERS_QUICKROLLS_LIST, params={"user_id": "user-1"})
-            assert len(result) == 1
-            assert isinstance(result[0], QuickrollDisplay)
-            assert result[0].name == "Attack"
-            assert result[0].description == "Quick attack"
-            assert result[0].trait_one_name == "Strength"
-            assert result[0].trait_two_name == "Brawl"
-
-    def test_one_trait_resolved(self, app, fake_vclient, mock_get_all_traits) -> None:
-        """Verify list_items handles a quickroll with only one trait."""
-        with app.test_request_context("/"):
-            seed_session()
-            # Given a quickroll with one trait ID
-            qr = QuickrollFactory.build(id="qr-2", name="Dodge", trait_ids=["t1"])
-            fake_vclient.set_response(Routes.USERS_QUICKROLLS_LIST, items=[qr])
-
-            trait1 = TraitFactory.build(id="t1", name="Dexterity")
-            mock_get_all_traits.return_value = {"t1": trait1}
-
-            handler = QuickrollHandler("user-1")
-
-            # When listing items
-            result = handler.list_items()
-
-            # Then one trait name is resolved and the other defaults to dash
-            assert result[0].trait_one_name == "Dexterity"
-            assert result[0].trait_two_name == "-"
-
-    def test_zero_traits(self, app, fake_vclient, mock_get_all_traits) -> None:
-        """Verify list_items handles a quickroll with no traits."""
-        with app.test_request_context("/"):
-            seed_session()
-            # Given a quickroll with no trait IDs
-            qr = QuickrollFactory.build(id="qr-3", name="Empty", trait_ids=[])
-            fake_vclient.set_response(Routes.USERS_QUICKROLLS_LIST, items=[qr])
-            mock_get_all_traits.return_value = {}
-
-            handler = QuickrollHandler("user-1")
-
-            # When listing items
-            result = handler.list_items()
-
-            # Then both trait names default to dash
-            assert result[0].trait_one_name == "-"
-            assert result[0].trait_two_name == "-"
-
-    def test_unknown_trait_returns_dash(self, app, fake_vclient, mock_get_all_traits) -> None:
-        """Verify trait resolution falls back to dash when trait ID is not found."""
-        with app.test_request_context("/"):
-            seed_session()
-            # Given a quickroll with an unknown trait ID
-            qr = QuickrollFactory.build(id="qr-5", name="Broken", trait_ids=["bad-id"])
-            fake_vclient.set_response(Routes.USERS_QUICKROLLS_LIST, items=[qr])
-            mock_get_all_traits.return_value = {}
-
-            handler = QuickrollHandler("user-1")
-
-            # When listing items
-            result = handler.list_items()
-
-            # Then the trait name defaults to dash
-            assert result[0].trait_one_name == "-"
+    # Then the user's quickrolls are fetched and trait names resolved
+    fake_vclient.assert_called(Routes.USERS_QUICKROLLS_LIST, params={"user_id": "user-1"})
+    assert (item.name, item.description) == ("Attack", "Quick attack")
+    assert (item.trait_one_name, item.trait_two_name) == expected_names
 
 
-class TestCrudOperations:
-    """Tests for QuickrollHandler create, update, delete, and get_item."""
+@pytest.mark.parametrize(
+    ("form", "expected_json"),
+    [
+        (
+            {
+                "name": "  Attack Roll  ",
+                "description": "  Quick attack  ",
+                "trait_one_id": "t1",
+                "trait_two_id": "t2",
+            },
+            {"name": "Attack Roll", "description": "Quick attack", "trait_ids": ["t1", "t2"]},
+        ),
+        (
+            {"name": "Roll", "description": "", "trait_one_id": "t1", "trait_two_id": ""},
+            {"name": "Roll", "trait_ids": ["t1"]},
+        ),
+    ],
+    ids=["full-form-stripped", "blanks-omitted"],
+)
+def test_create_item_sends_cleaned_form(
+    handler: QuickrollHandler, fake_vclient, form: dict[str, str], expected_json: dict
+) -> None:
+    """Verify create strips values and leaves out a blank description and blank traits."""
+    handler.create_item(form)
 
-    def test_create_item_delegates_to_service(self, app, fake_vclient) -> None:
-        """Verify create_item sends the parsed form to the API."""
-        with app.test_request_context("/"):
-            seed_session()
-            handler = QuickrollHandler("user-1")
-
-            # When creating a quickroll
-            handler.create_item(
-                {
-                    "name": "  Attack Roll  ",
-                    "description": "  Quick attack  ",
-                    "trait_one_id": "t1",
-                    "trait_two_id": "t2",
-                }
-            )
-
-            # Then the API receives stripped values and the trait IDs list for the user
-            fake_vclient.assert_called(
-                Routes.USERS_QUICKROLLS_CREATE,
-                params={"user_id": "user-1"},
-                json={
-                    "name": "Attack Roll",
-                    "description": "Quick attack",
-                    "trait_ids": ["t1", "t2"],
-                },
-                times=1,
-            )
-
-    def test_create_item_omits_empty_description(self, app, fake_vclient) -> None:
-        """Verify create_item omits an empty description."""
-        with app.test_request_context("/"):
-            seed_session()
-            handler = QuickrollHandler("user-1")
-
-            # When creating with empty description
-            handler.create_item({"name": "Roll", "description": "", "trait_one_id": "t1"})
-
-            # Then no description is sent
-            fake_vclient.assert_called(
-                Routes.USERS_QUICKROLLS_CREATE,
-                json={"name": "Roll", "trait_ids": ["t1"]},
-                times=1,
-            )
-
-    def test_create_item_filters_empty_trait_ids(self, app, fake_vclient) -> None:
-        """Verify create_item excludes empty trait ID strings."""
-        with app.test_request_context("/"):
-            seed_session()
-            handler = QuickrollHandler("user-1")
-
-            # When creating with one empty trait ID
-            handler.create_item(
-                {
-                    "name": "Roll",
-                    "trait_one_id": "t1",
-                    "trait_two_id": "",
-                }
-            )
-
-            # Then only the non-empty trait ID is included
-            fake_vclient.assert_called(
-                Routes.USERS_QUICKROLLS_CREATE, json_subset={"trait_ids": ["t1"]}, times=1
-            )
-
-    def test_update_item_delegates_to_service(self, app, fake_vclient) -> None:
-        """Verify update_item sends the parsed form to the quickroll's API path."""
-        with app.test_request_context("/"):
-            seed_session()
-            handler = QuickrollHandler("user-1")
-
-            # When updating a quickroll
-            handler.update_item(
-                "qr-1",
-                {
-                    "name": "Updated",
-                    "description": "New desc",
-                    "trait_one_id": "t3",
-                    "trait_two_id": "t4",
-                },
-            )
-
-            # Then the API receives the updated data for that user's quickroll
-            fake_vclient.assert_called(
-                Routes.USERS_QUICKROLLS_UPDATE,
-                params={"user_id": "user-1", "quickroll_id": "qr-1"},
-                json_subset={"name": "Updated", "trait_ids": ["t3", "t4"]},
-                times=1,
-            )
-
-    def test_update_item_clears_empty_description(self, app, fake_vclient) -> None:
-        """Verify update_item sends an empty description, which the API stores as cleared."""
-        with app.test_request_context("/"):
-            seed_session()
-            handler = QuickrollHandler("user-1")
-
-            # When updating with a blank description
-            handler.update_item(
-                "qr-1", {"name": "Updated", "description": "   ", "trait_one_id": "t3"}
-            )
-
-            # Then the API receives an empty description
-            fake_vclient.assert_called(
-                Routes.USERS_QUICKROLLS_UPDATE,
-                params={"user_id": "user-1", "quickroll_id": "qr-1"},
-                json_subset={"description": ""},
-                times=1,
-            )
-
-    def test_delete_item_delegates_to_service(self, app, fake_vclient) -> None:
-        """Verify delete_item deletes the quickroll through the API."""
-        with app.test_request_context("/"):
-            seed_session()
-            handler = QuickrollHandler("user-1")
-
-            # When deleting a quickroll
-            handler.delete_item("qr-1")
-
-            # Then the API receives a delete for that user's quickroll
-            fake_vclient.assert_called(
-                Routes.USERS_QUICKROLLS_DELETE,
-                params={"user_id": "user-1", "quickroll_id": "qr-1"},
-                times=1,
-            )
-
-    def test_get_item_delegates_to_service(self, app, fake_vclient) -> None:
-        """Verify get_item fetches the quickroll through the API."""
-        with app.test_request_context("/"):
-            seed_session()
-            handler = QuickrollHandler("user-1")
-
-            # When getting a quickroll
-            handler.get_item("qr-1")
-
-            # Then the API receives a fetch for that user's quickroll
-            fake_vclient.assert_called(
-                Routes.USERS_QUICKROLLS_GET,
-                params={"user_id": "user-1", "quickroll_id": "qr-1"},
-                times=1,
-            )
+    fake_vclient.assert_called(
+        Routes.USERS_QUICKROLLS_CREATE,
+        params={"user_id": "user-1"},
+        json=expected_json,
+        times=1,
+    )
 
 
-class TestValidate:
-    """Tests for QuickrollHandler.validate()."""
+@pytest.mark.parametrize(
+    ("form", "expected_subset"),
+    [
+        (
+            {
+                "name": "Updated",
+                "description": "New desc",
+                "trait_one_id": "t3",
+                "trait_two_id": "t4",
+            },
+            {"name": "Updated", "description": "New desc", "trait_ids": ["t3", "t4"]},
+        ),
+        (
+            {"name": "Updated", "description": "   ", "trait_one_id": "t3"},
+            {"description": "", "trait_ids": ["t3"]},
+        ),
+    ],
+    ids=["full-form", "blank-description-clears"],
+)
+def test_update_item_sends_form(
+    handler: QuickrollHandler, fake_vclient, form: dict[str, str], expected_subset: dict
+) -> None:
+    """Verify update sends the form to the quickroll, with a blank description clearing it."""
+    handler.update_item("qr-1", form)
 
-    def test_missing_name_rejected(self) -> None:
-        """Verify validation rejects an empty name."""
-        # Given a handler instance
-        handler = QuickrollHandler.__new__(QuickrollHandler)
+    fake_vclient.assert_called(
+        Routes.USERS_QUICKROLLS_UPDATE,
+        params={"user_id": "user-1", "quickroll_id": "qr-1"},
+        json_subset=expected_subset,
+        times=1,
+    )
 
-        # When validating with empty name
-        errors = handler.validate({"name": "", "trait_one_id": "t1"})
 
-        # Then a name error is returned
-        assert errors["name"] == "Name is required"
+def test_get_item_fetches_users_quickroll(handler: QuickrollHandler, fake_vclient) -> None:
+    """Verify get_item fetches the quickroll from the user's quickrolls."""
+    handler.get_item("qr-1")
 
-    def test_whitespace_only_name_rejected(self) -> None:
-        """Verify validation rejects a whitespace-only name."""
-        handler = QuickrollHandler.__new__(QuickrollHandler)
+    fake_vclient.assert_called(
+        Routes.USERS_QUICKROLLS_GET,
+        params={"user_id": "user-1", "quickroll_id": "qr-1"},
+        times=1,
+    )
 
-        errors = handler.validate({"name": "   "})
 
-        assert errors["name"] == "Name is required"
-
-    def test_valid_data_accepted(self) -> None:
-        """Verify validation accepts valid form data."""
-        handler = QuickrollHandler.__new__(QuickrollHandler)
-
-        errors = handler.validate({"name": "Attack Roll", "trait_one_id": "trait-1"})
-
-        assert errors == {}
-
-    def test_no_traits_rejected(self) -> None:
-        """Verify validation rejects form data with no traits selected."""
-        handler = QuickrollHandler.__new__(QuickrollHandler)
-
-        errors = handler.validate({"name": "Attack Roll"})
-
-        assert errors["_general"] == "At least one trait is required"
+@pytest.mark.parametrize(
+    ("form", "error_keys"),
+    [
+        ({"name": "Attack Roll", "trait_one_id": "trait-1"}, set()),
+        ({"name": "", "trait_one_id": "t1"}, {"name"}),
+        ({"name": "   ", "trait_two_id": "t2"}, {"name"}),
+        ({"name": "Attack Roll"}, {"_general"}),
+        ({"name": "", "trait_one_id": " "}, {"name", "_general"}),
+    ],
+    ids=["valid", "empty-name", "blank-name", "no-traits", "nothing"],
+)
+def test_validate(handler: QuickrollHandler, form: dict[str, str], error_keys: set[str]) -> None:
+    """Verify a quickroll needs a name and at least one trait."""
+    assert set(handler.validate(form)) == error_keys

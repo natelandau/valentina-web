@@ -6,594 +6,357 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tests.conftest import get_csrf
-from vweb.api_client.exceptions import APIError, AuthorizationError, ConflictError, ServerError
-from vweb.api_client.testing import DictionaryTermFactory
+from tests.conftest import get_csrf, htmx_delete, htmx_post
+from vweb.api_client.testing import (
+    DictionaryTermFactory,
+    Routes,
+    TraitFactory,
+    TraitSubcategoryFactory,
+)
+from vweb.routes.dictionary.services import validate_term
 
 if TYPE_CHECKING:
     from flask.testing import FlaskClient
     from pytest_mock import MockerFixture
 
 
+VALID_FORM = {"term": "Auspex", "definition": "A discipline.", "link": "", "synonyms": "sight"}
+
+
 @pytest.fixture
 def mock_dict_cache(mocker: MockerFixture) -> dict:
-    """Patch dictionary cache functions used by the dictionary routes."""
-    mocks: dict = {}
-    mocks["terms"] = mocker.patch("vweb.lib.cache.dictionary.terms", autospec=True)
-    mocks["term"] = mocker.patch("vweb.lib.cache.dictionary.term", autospec=True)
-    mocks["search"] = mocker.patch("vweb.lib.cache.dictionary.search", autospec=True)
-    return mocks
+    """Patch the dictionary cache lookups the routes read terms from."""
+    return {
+        "terms": mocker.patch("vweb.lib.cache.dictionary.terms", autospec=True, return_value=[]),
+        "term": mocker.patch("vweb.lib.cache.dictionary.term", autospec=True),
+        "search": mocker.patch("vweb.lib.cache.dictionary.search", autospec=True),
+        "clear": mocker.patch("vweb.lib.cache.dictionary.clear", autospec=True),
+    }
 
 
-class TestDictionaryIndex:
-    """Tests for GET /dictionary."""
+class TestDictionaryBrowse:
+    """Tests for listing, searching, and viewing terms."""
 
-    def test_renders_dictionary_page(self, client: FlaskClient, mock_dict_cache: dict) -> None:
-        """Verify dictionary index renders with terms."""
-        # Given three dictionary terms
-        mock_dict_cache["terms"].return_value = DictionaryTermFactory.batch(3)
-
-        # When requesting the dictionary page
-        response = client.get("/dictionary")
-
-        # Then the page renders successfully
-        assert response.status_code == 200
-        assert b"Dictionary" in response.data
-
-    def test_renders_empty_state(self, client: FlaskClient, mock_dict_cache: dict) -> None:
-        """Verify dictionary index shows empty state when no terms exist."""
-        # Given no dictionary terms
-        mock_dict_cache["terms"].return_value = []
-
-        # When requesting the dictionary page
-        response = client.get("/dictionary")
-
-        # Then the page renders with the empty message
-        assert response.status_code == 200
-        assert b"No terms found" in response.data
-
-
-class TestDictionarySearch:
-    """Tests for GET /dictionary/search."""
-
-    def test_returns_filtered_term_list(self, client: FlaskClient, mock_dict_cache: dict) -> None:
-        """Verify search returns filtered results matching the query."""
-        # Given a search that matches one term
-        term = DictionaryTermFactory.build(term="Auspex")
-        mock_dict_cache["search"].return_value = [term]
-
-        # When searching for "aus"
-        response = client.get("/dictionary/search?search=aus")
-
-        # Then the matching term is returned
-        assert response.status_code == 200
-        assert b"Auspex" in response.data
-
-    def test_empty_search_returns_all(self, client: FlaskClient, mock_dict_cache: dict) -> None:
-        """Verify empty search query returns all terms."""
-        # Given three terms returned for empty search
+    def test_index_lists_terms(self, client: FlaskClient, mock_dict_cache: dict) -> None:
+        """Verify the dictionary page lists every term."""
         terms = DictionaryTermFactory.batch(3)
-        mock_dict_cache["search"].return_value = terms
+        mock_dict_cache["terms"].return_value = terms
 
-        # When searching with an empty string
-        response = client.get("/dictionary/search?search=")
+        response = client.get("/dictionary")
 
-        # Then all term names appear in the response
         assert response.status_code == 200
         for term in terms:
             assert term.term.encode() in response.data
 
+    @pytest.mark.parametrize(
+        ("query", "expected_search", "expected_synonyms"),
+        [
+            ("?search=aus", "aus", False),
+            ("?search=%20%20", "", False),
+            ("", "", False),
+            ("?search=heightened&include_synonyms=on", "heightened", True),
+        ],
+        ids=["query", "whitespace-only", "no-param", "with-synonyms"],
+    )
+    def test_search_lists_matching_terms(
+        self,
+        client: FlaskClient,
+        mock_dict_cache: dict,
+        query,
+        expected_search,
+        expected_synonyms,
+    ) -> None:
+        """Verify search sends the stripped query and synonym toggle, and lists the matches."""
+        matches = DictionaryTermFactory.batch(2)
+        mock_dict_cache["search"].return_value = matches
 
-class TestTermDetail:
-    """Tests for GET /dictionary/term/<term_id>."""
+        response = client.get(f"/dictionary/search{query}")
 
-    def test_direct_request_returns_full_page(
+        assert response.status_code == 200
+        mock_dict_cache["search"].assert_called_once_with(
+            expected_search, include_synonyms=expected_synonyms
+        )
+        for term in matches:
+            assert term.term.encode() in response.data
+
+    def test_direct_request_renders_term_within_full_list(
         self, client: FlaskClient, mock_dict_cache: dict
     ) -> None:
-        """Verify direct navigation returns a full page with back link."""
-        # Given a term
-        term = DictionaryTermFactory.build(id="t1", term="Auspex")
+        """Verify direct navigation to a term renders the whole dictionary with the term open."""
+        term = DictionaryTermFactory.build(id="t1", term="Auspex", source_type=None)
+        other = DictionaryTermFactory.build(term="Obfuscate")
         mock_dict_cache["term"].return_value = term
+        mock_dict_cache["terms"].return_value = [term, other]
 
-        # When requesting without HTMX header
         response = client.get("/dictionary/term/t1")
 
-        # Then a full page is returned with the term name and back link
         assert response.status_code == 200
         assert b"Auspex" in response.data
-        assert b"Back to Dictionary" in response.data
+        assert b"Obfuscate" in response.data
 
-    def test_unknown_term_returns_404(self, client: FlaskClient, mock_dict_cache: dict) -> None:
-        """Verify unknown term ID returns 404."""
-        # Given the term is not found
-        mock_dict_cache["term"].return_value = None
-
-        # When requesting an unknown term
-        response = client.get("/dictionary/term/bad")
-
-        # Then a 404 is returned
-        assert response.status_code == 404
-
-
-class TestDictionarySearchEdgeCases:
-    """Tests for dictionary search edge cases."""
-
-    def test_search_with_whitespace_only(self, client: FlaskClient, mock_dict_cache: dict) -> None:
-        """Verify whitespace-only search is stripped and returns all terms."""
-        # Given search returns all terms when called with empty string
-        terms = DictionaryTermFactory.batch(3)
-        mock_dict_cache["search"].return_value = terms
-
-        # When searching with whitespace-only query
-        response = client.get("/dictionary/search?search=%20%20")
-
-        # Then all terms are returned
-        assert response.status_code == 200
-        mock_dict_cache["search"].assert_called_once_with("", include_synonyms=False)
-        for term in terms:
-            assert term.term.encode() in response.data
-
-    def test_search_without_param(self, client: FlaskClient, mock_dict_cache: dict) -> None:
-        """Verify missing search param defaults to empty string and returns all terms."""
-        # Given search returns all terms
-        terms = DictionaryTermFactory.batch(3)
-        mock_dict_cache["search"].return_value = terms
-
-        # When searching without a search parameter
-        response = client.get("/dictionary/search")
-
-        # Then all terms are returned
-        assert response.status_code == 200
-        mock_dict_cache["search"].assert_called_once_with("", include_synonyms=False)
-        for term in terms:
-            assert term.term.encode() in response.data
-
-
-class TestDictionarySearchSynonymToggle:
-    """Tests for include_synonyms query param on search endpoint."""
-
-    def test_search_with_synonyms_on(self, client: FlaskClient, mock_dict_cache: dict) -> None:
-        """Verify search passes include_synonyms=True when checkbox is checked."""
-        # Given search returns results
-        term = DictionaryTermFactory.build(term="Auspex")
-        mock_dict_cache["search"].return_value = [term]
-
-        # When searching with include_synonyms=on
-        response = client.get("/dictionary/search?search=heightened&include_synonyms=on")
-
-        # Then search is called with include_synonyms=True
-        assert response.status_code == 200
-        mock_dict_cache["search"].assert_called_once_with("heightened", include_synonyms=True)
-
-    def test_search_without_synonyms_param(
-        self, client: FlaskClient, mock_dict_cache: dict
-    ) -> None:
-        """Verify search passes include_synonyms=False when checkbox param is absent."""
-        # Given search returns no results
-        mock_dict_cache["search"].return_value = []
-
-        # When searching without the include_synonyms param
-        response = client.get("/dictionary/search?search=heightened")
-
-        # Then search is called with include_synonyms=False
-        assert response.status_code == 200
-        mock_dict_cache["search"].assert_called_once_with("heightened", include_synonyms=False)
-
-
-class TestTermDetailLinkOnly:
-    """Tests for term detail with link-only terms."""
-
-    def test_link_only_term_detail_htmx(self, client: FlaskClient, mock_dict_cache: dict) -> None:
-        """Verify link-only term detail includes the external link URL."""
-        # Given a term with no definition but a link
-        term = DictionaryTermFactory.build(
-            id="link-term", term="Anarch", definition=None, link="https://example.com"
+    def test_link_only_term_shows_link(self, client: FlaskClient, mock_dict_cache: dict) -> None:
+        """Verify a term with only a link shows that link."""
+        mock_dict_cache["term"].return_value = DictionaryTermFactory.build(
+            id="t1", definition=None, link="https://example.com", source_type=None
         )
-        mock_dict_cache["term"].return_value = term
 
-        # When requesting via HTMX
-        response = client.get("/dictionary/term/link-term", headers={"HX-Request": "true"})
+        response = client.get("/dictionary/term/t1", headers={"HX-Request": "true"})
 
-        # Then the response contains the link URL
-        assert response.status_code == 200
         assert b"https://example.com" in response.data
 
+    @pytest.mark.parametrize(
+        ("source_type", "lookup", "source"),
+        [
+            (
+                "trait",
+                "trait",
+                TraitFactory.build(sheet_section_name="Zeta Section", category_name="Omega Group"),
+            ),
+            (
+                "trait_subcategory",
+                "subcategory",
+                TraitSubcategoryFactory.build(
+                    sheet_section_name="Zeta Section", category_name="Omega Group"
+                ),
+            ),
+        ],
+    )
+    def test_sourced_term_shows_where_it_lives_on_the_sheet(
+        self, client: FlaskClient, mock_dict_cache: dict, mocker, source_type, lookup, source
+    ) -> None:
+        """Verify a term generated from a trait or subcategory shows its sheet section and category."""
+        # Given a term generated from a blueprint trait or subcategory
+        mock_dict_cache["term"].return_value = DictionaryTermFactory.build(
+            id="t1", source_type=source_type, source_id="src-1"
+        )
+        fetch = mocker.patch(f"vweb.lib.cache.blueprint.{lookup}", return_value=source)
 
-class TestTermEmpty:
-    """Tests for GET /dictionary/term/empty."""
+        # When viewing the term
+        response = client.get("/dictionary/term/t1", headers={"HX-Request": "true"})
 
-    def test_returns_placeholder(self, client: FlaskClient, mock_dict_cache: dict) -> None:
-        """Verify the empty detail endpoint returns the placeholder fragment."""
-        # When requesting the empty detail endpoint
+        # Then the source is looked up and its place on the sheet is shown
+        fetch.assert_called_once_with("src-1")
+        body = response.get_data(as_text=True)
+        assert "Zeta Section" in body
+        assert "Omega Group" in body
+
+    @pytest.mark.parametrize(
+        ("source_type", "editable"), [(None, True), ("trait", False)], ids=["company", "sourced"]
+    )
+    def test_only_company_terms_offer_edit_and_delete(
+        self, client: FlaskClient, mock_dict_cache: dict, mocker, source_type, editable
+    ) -> None:
+        """Verify edit and delete controls appear only for terms the company wrote."""
+        mocker.patch("vweb.lib.cache.blueprint.trait", return_value=None)
+        mock_dict_cache["term"].return_value = DictionaryTermFactory.build(
+            id="t1", source_type=source_type, source_id="src-1"
+        )
+
+        body = client.get("/dictionary/term/t1", headers={"HX-Request": "true"}).get_data(
+            as_text=True
+        )
+
+        assert ("/dictionary/term/form/t1" in body) is editable
+        assert ('hx-delete="/dictionary/term/t1"' in body) is editable
+
+    def test_empty_detail_placeholder_renders(self, client: FlaskClient) -> None:
+        """Verify the empty detail panel endpoint responds."""
         response = client.get("/dictionary/term/empty", headers={"HX-Request": "true"})
 
-        # Then the placeholder is returned
         assert response.status_code == 200
-        assert b"Select a term" in response.data
 
-
-class TestDictionaryForm:
-    """Tests for GET /dictionary/term/form."""
-
-    def test_add_form_returns_empty_form(self, client: FlaskClient, mock_dict_cache: dict) -> None:
-        """Verify add form renders without pre-filled values."""
-        # Given no specific term
-        mock_dict_cache["terms"].return_value = []
-
-        # When requesting the add form via HTMX
-        response = client.get("/dictionary/term/form", headers={"HX-Request": "true"})
-
-        # Then the form renders with "Add Term" heading
-        assert response.status_code == 200
-        assert b"Add Term" in response.data
-
-    def test_edit_form_returns_prefilled(self, client: FlaskClient, mock_dict_cache: dict) -> None:
-        """Verify edit form is pre-filled with existing term data."""
-        # Given an existing term
-        term = DictionaryTermFactory.build(
-            id="t1", term="Auspex", definition="A discipline.", is_global=False
-        )
-        mock_dict_cache["term"].return_value = term
-
-        # When requesting the edit form via HTMX
-        response = client.get("/dictionary/term/form/t1", headers={"HX-Request": "true"})
-
-        # Then the form is pre-filled
-        assert response.status_code == 200
-        assert b"Edit Term" in response.data
-        assert b"Auspex" in response.data
-
-    def test_edit_form_unknown_term_returns_404(
-        self, client: FlaskClient, mock_dict_cache: dict
+    @pytest.mark.parametrize(
+        ("method", "path"),
+        [
+            ("get", "/dictionary/term/bad"),
+            ("get", "/dictionary/term/form/bad"),
+            ("post", "/dictionary/term/bad"),
+            ("delete", "/dictionary/term/bad"),
+        ],
+    )
+    def test_unknown_term_returns_404(
+        self, client: FlaskClient, mock_dict_cache: dict, fake_vclient, method, path
     ) -> None:
-        """Verify edit form for unknown term returns 404."""
-        # Given the term is not found
+        """Verify reading, editing, or deleting an unknown term returns 404 and changes nothing."""
         mock_dict_cache["term"].return_value = None
 
-        # When requesting the edit form
-        response = client.get("/dictionary/term/form/bad", headers={"HX-Request": "true"})
-
-        # Then 404 is returned
-        assert response.status_code == 404
-
-
-class TestDictionaryCreate:
-    """Tests for POST /dictionary/term."""
-
-    def test_creates_term_and_returns_detail(
-        self, client: FlaskClient, mock_dict_cache: dict, mocker: MockerFixture
-    ) -> None:
-        """Verify successful creation returns updated term list and detail."""
-        # Given the service creates successfully
-        created = DictionaryTermFactory.build(id="new-1", term="Auspex")
-        mock_create = mocker.patch(
-            "vweb.routes.dictionary.views.svc_create_term", return_value=created
-        )
-        mock_clear = mocker.patch("vweb.lib.cache.dictionary.clear")
-        mock_dict_cache["terms"].return_value = [created]
-
-        # When submitting the create form
-        csrf = get_csrf(client)
-        response = client.post(
-            "/dictionary/term",
-            data={
-                "term": "Auspex",
-                "definition": "A discipline.",
-                "link": "",
-                "synonyms": "",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
-        )
-
-        # Then creation succeeds with 200
-        assert response.status_code == 200
-        mock_create.assert_called_once()
-        mock_clear.assert_called_once()
-        assert b"Auspex" in response.data
-
-    def test_validation_errors_return_form(
-        self, client: FlaskClient, mock_dict_cache: dict, mocker: MockerFixture
-    ) -> None:
-        """Verify validation errors re-render the form with error messages."""
-        # Given validation will fail (term too short)
-        mock_dict_cache["terms"].return_value = []
-
-        # When submitting with a too-short term
-        csrf = get_csrf(client)
-        response = client.post(
-            "/dictionary/term",
-            data={"term": "ab", "definition": "", "link": "", "synonyms": "", "csrf_token": csrf},
-            headers={"HX-Request": "true"},
-        )
-
-        # Then the form is re-rendered with errors
-        assert response.status_code == 200
-        assert b"at least 3" in response.data
-
-    def test_api_error_returns_form_with_error(
-        self, client: FlaskClient, mock_dict_cache: dict, mocker: MockerFixture
-    ) -> None:
-        """Verify API errors re-render the form with a generic error message."""
-        # Given the API raises an error
-        mocker.patch(
-            "vweb.routes.dictionary.views.svc_create_term", side_effect=APIError("Server error")
-        )
-        mock_dict_cache["terms"].return_value = []
-
-        # When submitting valid data that triggers an API error
-        csrf = get_csrf(client)
-        response = client.post(
-            "/dictionary/term",
-            data={
-                "term": "Auspex",
-                "definition": "A discipline.",
-                "link": "",
-                "synonyms": "",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
-        )
-
-        # Then the form is re-rendered with an error message
-        assert response.status_code == 200
-        assert b"error" in response.data.lower()
-
-
-class TestDictionaryUpdate:
-    """Tests for POST /dictionary/term/<term_id>."""
-
-    def test_updates_term(
-        self, client: FlaskClient, mock_dict_cache: dict, mocker: MockerFixture
-    ) -> None:
-        """Verify successful update returns updated content."""
-        # Given an existing non-global term
-        term = DictionaryTermFactory.build(id="t1", term="Auspex")
-        updated = DictionaryTermFactory.build(id="t1", term="Auspex Updated")
-        mock_dict_cache["term"].return_value = term
-        mock_update = mocker.patch(
-            "vweb.routes.dictionary.views.svc_update_term", return_value=updated
-        )
-        mock_clear = mocker.patch("vweb.lib.cache.dictionary.clear")
-        mock_dict_cache["terms"].return_value = [updated]
-
-        # When submitting the update form
-        csrf = get_csrf(client)
-        response = client.post(
-            "/dictionary/term/t1",
-            data={
-                "term": "Auspex Updated",
-                "definition": "Updated definition.",
-                "link": "",
-                "synonyms": "",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
-        )
-
-        # Then update succeeds
-        assert response.status_code == 200
-        mock_update.assert_called_once()
-        mock_clear.assert_called_once()
-
-    def test_global_term_returns_403(
-        self, client: FlaskClient, mock_dict_cache: dict, mocker: MockerFixture
-    ) -> None:
-        """Verify updating a global term returns 403."""
-        # Given a global term
-        term = DictionaryTermFactory.build(id="t1", source_type="trait")
-        mock_dict_cache["term"].return_value = term
-
-        # When attempting to update
-        csrf = get_csrf(client)
-        response = client.post(
-            "/dictionary/term/t1",
-            data={
-                "term": "Changed",
-                "definition": "A discipline.",
-                "link": "",
-                "synonyms": "",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
-        )
-
-        # Then 403 is returned
-        assert response.status_code == 403
-
-    def test_validation_errors_return_form(
-        self, client: FlaskClient, mock_dict_cache: dict, mocker: MockerFixture
-    ) -> None:
-        """Verify validation errors re-render the form with the term pre-populated."""
-        # Given an existing non-global term
-        term = DictionaryTermFactory.build(id="t1", term="Auspex")
-        mock_dict_cache["term"].return_value = term
-
-        # When submitting with a too-short term name
-        csrf = get_csrf(client)
-        response = client.post(
-            "/dictionary/term/t1",
-            data={"term": "ab", "definition": "", "link": "", "synonyms": "", "csrf_token": csrf},
-            headers={"HX-Request": "true"},
-        )
-
-        # Then the form is re-rendered with errors
-        assert response.status_code == 200
-        assert b"at least 3" in response.data
-
-    def test_api_error_returns_form_with_error(
-        self, client: FlaskClient, mock_dict_cache: dict, mocker: MockerFixture
-    ) -> None:
-        """Verify API errors re-render the form with a generic error message."""
-        # Given an existing non-global term and the API raises an error
-        term = DictionaryTermFactory.build(id="t1", term="Auspex")
-        mock_dict_cache["term"].return_value = term
-        mocker.patch(
-            "vweb.routes.dictionary.views.svc_update_term", side_effect=APIError("Server error")
-        )
-
-        # When submitting valid data that triggers an API error
-        csrf = get_csrf(client)
-        response = client.post(
-            "/dictionary/term/t1",
-            data={
-                "term": "Auspex",
-                "definition": "A discipline.",
-                "link": "",
-                "synonyms": "",
-                "csrf_token": csrf,
-            },
-            headers={"HX-Request": "true"},
-        )
-
-        # Then the form is re-rendered with an error message
-        assert response.status_code == 200
-        assert b"error" in response.data.lower()
-
-
-class TestDictionaryApiRefusals:
-    """API refusals on dictionary changes tell the user what happened."""
-
-    def test_create_conflict_shows_api_message(
-        self, client: FlaskClient, mock_dict_cache: dict, mocker: MockerFixture
-    ) -> None:
-        """Verify a duplicate term shows the API's message."""
-        # Given the API refuses a duplicate term
-        mocker.patch(
-            "vweb.routes.dictionary.views.svc_create_term",
-            side_effect=ConflictError("Conflict", 409, {"detail": "Term already exists"}),
-        )
-        mock_dict_cache["terms"].return_value = []
-
-        # When creating the term
-        response = client.post(
-            "/dictionary/term",
-            data={
-                "term": "Auspex",
-                "definition": "A discipline.",
-                "link": "",
-                "synonyms": "",
-                "csrf_token": get_csrf(client),
-            },
-            headers={"HX-Request": "true"},
-        )
-
-        # Then the API's message is shown instead of the generic one
-        body = response.get_data(as_text=True)
-        assert "Term already exists" in body
-        assert "An error occurred" not in body
-
-    def test_update_server_error_hides_detail(
-        self, client: FlaskClient, mock_dict_cache: dict, mocker: MockerFixture
-    ) -> None:
-        """Verify a server error shows the generic message, not the API detail."""
-        # Given an update that fails server-side
-        mock_dict_cache["term"].return_value = DictionaryTermFactory.build(id="t1", term="Auspex")
-        mocker.patch(
-            "vweb.routes.dictionary.views.svc_update_term",
-            side_effect=ServerError("boom", 500, {"detail": "db exploded"}),
-        )
-
-        # When updating the term
-        response = client.post(
-            "/dictionary/term/t1",
-            data={
-                "term": "Auspex",
-                "definition": "A discipline.",
-                "link": "",
-                "synonyms": "",
-                "csrf_token": get_csrf(client),
-            },
-            headers={"HX-Request": "true"},
-        )
-
-        # Then only the generic message is shown
-        body = response.get_data(as_text=True)
-        assert "An error occurred. Please try again." in body
-        assert "db exploded" not in body
-
-    def test_delete_refusal_shows_api_message(
-        self, client: FlaskClient, mock_dict_cache: dict, mocker: MockerFixture
-    ) -> None:
-        """Verify a refused delete shows the API's message."""
-        # Given the API refuses the delete
-        mock_dict_cache["term"].return_value = DictionaryTermFactory.build(id="t1")
-        mocker.patch(
-            "vweb.routes.dictionary.views.svc_delete_term",
-            side_effect=AuthorizationError("Forbidden", 403, {"detail": "Not your term"}),
-        )
-
-        # When deleting
-        response = client.delete(
-            "/dictionary/term/t1",
+        response = getattr(client, method)(
+            path,
+            data={**VALID_FORM, "csrf_token": get_csrf(client)},
             headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)},
         )
 
-        # Then the API's message is shown
-        assert "Not your term" in response.get_data(as_text=True)
+        assert response.status_code == 404
+        fake_vclient.assert_not_called(Routes.DICTIONARY_UPDATE)
+        fake_vclient.assert_not_called(Routes.DICTIONARY_DELETE)
 
 
-class TestDictionaryDelete:
-    """Tests for DELETE /dictionary/term/<term_id>."""
+class TestDictionaryForm:
+    """Tests for the add and edit term form."""
 
-    def test_deletes_term(
-        self, client: FlaskClient, mock_dict_cache: dict, mocker: MockerFixture
+    def test_add_form_posts_to_create(self, client: FlaskClient) -> None:
+        """Verify the add form submits to the create endpoint."""
+        response = client.get("/dictionary/term/form", headers={"HX-Request": "true"})
+
+        assert 'hx-post="/dictionary/term"' in response.get_data(as_text=True)
+
+    @pytest.mark.parametrize("htmx", [True, False], ids=["fragment", "full-page"])
+    def test_edit_form_is_prefilled_and_posts_to_update(
+        self, client: FlaskClient, mock_dict_cache: dict, htmx
     ) -> None:
-        """Verify successful delete returns updated list and empty detail."""
-        # Given an existing non-global term
-        term = DictionaryTermFactory.build(id="t1")
-        mock_dict_cache["term"].return_value = term
-        mock_delete = mocker.patch("vweb.routes.dictionary.views.svc_delete_term")
-        mock_clear = mocker.patch("vweb.lib.cache.dictionary.clear")
-        mock_dict_cache["terms"].return_value = []
-
-        # When deleting via HTMX
-        csrf = get_csrf(client)
-        response = client.delete(
-            "/dictionary/term/t1",
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
+        """Verify the edit form, as a fragment or a full mobile page, edits the stored term."""
+        mock_dict_cache["term"].return_value = DictionaryTermFactory.build(
+            id="t1", term="Auspex", definition="A discipline.", source_type=None
         )
+        headers = {"HX-Request": "true"} if htmx else {}
 
-        # Then delete succeeds
+        response = client.get("/dictionary/term/form/t1", headers=headers)
+
+        body = response.get_data(as_text=True)
+        assert "Auspex" in body
+        assert 'hx-post="/dictionary/term/t1"' in body
+
+
+class TestDictionaryMutations:
+    """Tests for creating, updating, and deleting terms."""
+
+    def test_create_sends_term_and_refreshes_list(
+        self, client: FlaskClient, mock_dict_cache: dict, fake_vclient
+    ) -> None:
+        """Verify a new term reaches the API, the cache is cleared, and the term is shown."""
+        created = DictionaryTermFactory.build(id="new-1", term="Auspex", source_type=None)
+        fake_vclient.set_response(Routes.DICTIONARY_CREATE, model=created)
+        mock_dict_cache["terms"].return_value = [created]
+
+        response = htmx_post(client, "/dictionary/term", VALID_FORM)
+
         assert response.status_code == 200
-        mock_delete.assert_called_once_with("t1")
-        mock_clear.assert_called_once()
-        assert b"Select a term" in response.data
+        fake_vclient.assert_called(
+            Routes.DICTIONARY_CREATE,
+            json={"term": "Auspex", "definition": "A discipline.", "synonyms": ["sight"]},
+            times=1,
+        )
+        mock_dict_cache["clear"].assert_called_once()
+        assert b"Auspex" in response.data
 
-    def test_global_term_returns_403(
-        self, client: FlaskClient, mock_dict_cache: dict, mocker: MockerFixture
+    def test_update_sends_term_and_clears_cache(
+        self, client: FlaskClient, mock_dict_cache: dict, fake_vclient
     ) -> None:
-        """Verify deleting a global term returns 403."""
-        # Given a global term
-        term = DictionaryTermFactory.build(id="t1", source_type="trait")
+        """Verify an edited term reaches the API and the cache is cleared."""
+        term = DictionaryTermFactory.build(id="t1", source_type=None)
         mock_dict_cache["term"].return_value = term
+        fake_vclient.set_response(Routes.DICTIONARY_UPDATE, model=term)
 
-        # When attempting to delete
-        csrf = get_csrf(client)
-        response = client.delete(
-            "/dictionary/term/t1",
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
+        response = htmx_post(client, "/dictionary/term/t1", VALID_FORM)
+
+        assert response.status_code == 200
+        fake_vclient.assert_called(
+            Routes.DICTIONARY_UPDATE,
+            params={"term_id": "t1"},
+            json_subset={"term": "Auspex", "definition": "A discipline."},
+            times=1,
+        )
+        mock_dict_cache["clear"].assert_called_once()
+
+    def test_delete_sends_delete_and_clears_cache(
+        self, client: FlaskClient, mock_dict_cache: dict, fake_vclient
+    ) -> None:
+        """Verify a deleted term is removed through the API and the cache is cleared."""
+        mock_dict_cache["term"].return_value = DictionaryTermFactory.build(
+            id="t1", source_type=None
         )
 
-        # Then 403 is returned
+        response = htmx_delete(client, "/dictionary/term/t1")
+
+        assert response.status_code == 200
+        fake_vclient.assert_called(Routes.DICTIONARY_DELETE, params={"term_id": "t1"}, times=1)
+        mock_dict_cache["clear"].assert_called_once()
+
+    @pytest.mark.parametrize("path", ["/dictionary/term", "/dictionary/term/t1"])
+    def test_invalid_form_rerenders_without_calling_api(
+        self, client: FlaskClient, mock_dict_cache: dict, fake_vclient, path
+    ) -> None:
+        """Verify an invalid term shows its error and nothing reaches the API."""
+        mock_dict_cache["term"].return_value = DictionaryTermFactory.build(
+            id="t1", source_type=None
+        )
+        form = {**VALID_FORM, "term": "ab"}
+
+        response = htmx_post(client, path, form)
+
+        assert response.status_code == 200
+        assert validate_term(form)["term"] in response.get_data(as_text=True)
+        fake_vclient.assert_not_called(Routes.DICTIONARY_CREATE)
+        fake_vclient.assert_not_called(Routes.DICTIONARY_UPDATE)
+
+    @pytest.mark.parametrize(
+        ("method", "route"),
+        [("post", Routes.DICTIONARY_UPDATE), ("delete", Routes.DICTIONARY_DELETE)],
+        ids=["update", "delete"],
+    )
+    def test_sourced_term_cannot_be_changed(
+        self, client: FlaskClient, mock_dict_cache: dict, fake_vclient, method, route
+    ) -> None:
+        """Verify a term generated from the blueprint cannot be edited or deleted."""
+        mock_dict_cache["term"].return_value = DictionaryTermFactory.build(
+            id="t1", source_type="trait"
+        )
+
+        response = getattr(client, method)(
+            "/dictionary/term/t1",
+            data={**VALID_FORM, "csrf_token": get_csrf(client)},
+            headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)},
+        )
+
         assert response.status_code == 403
+        fake_vclient.assert_not_called(route)
 
+    @pytest.fixture
+    def editable_term(self, mock_dict_cache: dict) -> None:
+        """Serve a company term that may be changed."""
+        mock_dict_cache["term"].return_value = DictionaryTermFactory.build(
+            id="t1", source_type=None
+        )
 
-class TestGlobalTermRendering:
-    """Tests for global term display behavior."""
-
-    def test_company_term_detail_has_edit_delete(
-        self, client: FlaskClient, mock_dict_cache: dict
+    @pytest.mark.usefixtures("editable_term")
+    @pytest.mark.parametrize(
+        ("method", "path", "route", "status_code", "detail"),
+        [
+            ("post", "/dictionary/term", Routes.DICTIONARY_CREATE, 409, "Term exists"),
+            ("delete", "/dictionary/term/t1", Routes.DICTIONARY_DELETE, 403, "Not yours"),
+        ],
+        ids=["create-conflict", "delete-refused"],
+    )
+    def test_fixable_refusal_shows_reason(  # noqa: PLR0917
+        self, client: FlaskClient, fake_vclient, method, path, route, status_code, detail
     ) -> None:
-        """Verify company term detail includes edit and delete buttons."""
-        # Given a company-scoped term
-        term = DictionaryTermFactory.build(id="t1", term="Auspex")
-        mock_dict_cache["term"].return_value = term
+        """Verify a refusal the user can act on shows the API's reason."""
+        # Given an API that refuses the change
+        fake_vclient.set_error(route, status_code=status_code, detail=detail)
 
-        # When requesting the detail via HTMX
-        response = client.get("/dictionary/term/t1", headers={"HX-Request": "true"})
+        # When sending the change
+        if method == "post":
+            response = htmx_post(client, path, VALID_FORM)
+        else:
+            response = htmx_delete(client, path)
 
-        # Then edit/delete buttons are present
+        # Then an error is shown with the API's reason
         assert response.status_code == 200
-        assert b"Edit" in response.data
-        assert b"Delete" in response.data
+        body = response.get_data(as_text=True)
+        assert 'role="alert"' in body
+        assert detail in body
+
+    @pytest.mark.usefixtures("editable_term")
+    def test_server_error_hides_detail(self, client: FlaskClient, fake_vclient) -> None:
+        """Verify a server error shows an error without the API's detail."""
+        # Given an API that fails the update
+        fake_vclient.set_error(Routes.DICTIONARY_UPDATE, status_code=500, detail="db exploded")
+
+        # When sending the change
+        response = htmx_post(client, "/dictionary/term/t1", VALID_FORM)
+
+        # Then an error is shown without the server's detail
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert 'role="alert"' in body
+        assert "db exploded" not in body

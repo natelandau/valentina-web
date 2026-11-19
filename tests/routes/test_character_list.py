@@ -87,5 +87,30 @@ class TestPresentTypeOptions:
         # When building type options
         options = present_type_options(characters)
 
-        # Then PLAYER and NPC appear in display order with their labels
-        assert options == [("PLAYER", "Player Character"), ("NPC", "NPC")]
+        # Then PLAYER and NPC appear in display order
+        assert [value for value, _ in options] == ["PLAYER", "NPC"]
+
+
+class TestCharacterListView:
+    """Tests for GET /campaign/<id>/characters."""
+
+    def test_renders_and_remembers_campaign(self, client, use_context) -> None:
+        """Verify the page renders and becomes the user's last-visited campaign."""
+        # Given a campaign in the global context
+        campaign = use_context(user_role="PLAYER").campaigns[0]
+
+        # When opening the campaign's character list
+        response = client.get(f"/campaign/{campaign.id}/characters")
+
+        # Then the page renders and the campaign is remembered in the session
+        assert response.status_code == 200
+        with client.session_transaction() as sess:
+            assert sess["last_campaign_id"] == campaign.id
+
+    def test_unknown_campaign_returns_404(self, client) -> None:
+        """Verify an unknown campaign returns 404."""
+        # When opening a campaign that does not exist
+        response = client.get("/campaign/nonexistent/characters")
+
+        # Then 404 is returned
+        assert response.status_code == 404

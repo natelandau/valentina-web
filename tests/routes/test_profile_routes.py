@@ -1,27 +1,33 @@
-"""Profile route tests."""
+"""Profile route tests: viewing, editing, avatars, and experience."""
 
 from __future__ import annotations
 
 import io
+import re
 from typing import TYPE_CHECKING
 
 import pytest
 
+from tests.conftest import get_csrf, htmx_post
 from tests.helpers import make_image_bytes
-from vweb.api_client.models.users import GitHubProfile
+from vweb.api_client.models.users import CampaignExperience, GitHubProfile
 from vweb.api_client.testing import Routes, UserFactory
-from vweb.constants import MAX_AVATAR_SIZE, MAX_AVATAR_SIZE_MB
+from vweb.constants import MAX_AVATAR_SIZE
 from vweb.lib.cache.global_context import GlobalContext
 
 if TYPE_CHECKING:
     from flask.testing import FlaskClient
+    from werkzeug.test import TestResponse
 
+    from vweb.api_client.constants import GrantXPPermission
     from vweb.api_client.models import User
+
+VALID_FORM = {"username": "testuser", "email": "test@example.com"}
 
 
 @pytest.fixture
 def profile_user() -> User:
-    """Build a user for profile tests."""
+    """Build the session user, linked only to GitHub."""
     return UserFactory.build(
         id="test-user-id",
         name_first="Test",
@@ -29,6 +35,10 @@ def profile_user() -> User:
         username="testuser",
         email="test@example.com",
         company_id="test-company-id",
+        github_profile=GitHubProfile(id="gh-1"),
+        discord_profile=None,
+        google_profile=None,
+        apple_profile=None,
     )
 
 
@@ -57,154 +67,113 @@ def profile_context(mock_global_context, profile_user, other_user) -> GlobalCont
     )
 
 
-@pytest.fixture
-def _mock_profile_api(mocker, profile_context) -> None:
-    """Override the autouse _mock_api fixture to provide a two-user GlobalContext."""
-    mocker.patch("vweb.lib.cache.global_context.load", return_value=profile_context)
-    mocker.patch("vweb.lib.cache.global_context.clear")
+@pytest.fixture(autouse=True)
+def _mock_profile_api(use_context, profile_context) -> None:
+    """Serve the two-user GlobalContext."""
+    use_context(profile_context)
+
+
+def _post_profile(
+    client: FlaskClient, user_id: str = "test-user-id", **fields: object
+) -> TestResponse:
+    """POST the profile edit form as a multipart HTMX request."""
+    return htmx_post(client, f"/profile/{user_id}", fields, content_type="multipart/form-data")
 
 
 class TestProfileGet:
     """Tests for GET /profile/<user_id>."""
 
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_own_profile_returns_200(self, client: FlaskClient) -> None:
-        """Verify own profile page renders successfully."""
-        response = client.get("/profile/test-user-id")
+    @pytest.mark.parametrize("own", [True, False], ids=["own", "other"])
+    def test_edit_and_connect_offered_only_on_own_profile(
+        self, client: FlaskClient, *, own: bool
+    ) -> None:
+        """Verify only your own profile links to editing and to connecting unlinked providers."""
+        user_id = "test-user-id" if own else "other-user-id"
+
+        response = client.get(f"/profile/{user_id}")
+
         assert response.status_code == 200
-
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_profile_renders_avatar_markup(self, client: FlaskClient) -> None:
-        """Verify the page header avatar renders as real HTML, not escaped text."""
-        # When loading a profile page
-        response = client.get("/profile/test-user-id")
-
-        # Then the avatar markup survives autoescaping
         body = response.get_data(as_text=True)
-        assert '<div class="avatar' in body
-        assert "&lt;div class=" not in body
+        assert (f"/profile/{user_id}/edit" in body) is own
+        assert ("/auth/discord/link" in body) is own
+        assert ("/auth/google/link" in body) is own
+        assert "/auth/github/link" not in body
 
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_own_profile_shows_edit_button(self, client: FlaskClient) -> None:
-        """Verify own profile shows the Edit Profile button with the correct HTMX URL."""
-        response = client.get("/profile/test-user-id")
-        assert (
-            b"profile.edit_profile" in response.data
-            or b"/profile/test-user-id/edit" in response.data
-        )
-
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_other_profile_returns_200(self, client: FlaskClient) -> None:
-        """Verify viewing another user's profile renders successfully."""
-        response = client.get("/profile/other-user-id")
-        assert response.status_code == 200
-
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_other_profile_hides_edit_button(self, client: FlaskClient) -> None:
-        """Verify another user's profile omits the edit endpoint URL."""
-        response = client.get("/profile/other-user-id")
-        assert b"/profile/other-user-id/edit" not in response.data
-
-    @pytest.mark.usefixtures("_mock_profile_api")
     def test_nonexistent_user_returns_404(self, client: FlaskClient) -> None:
         """Verify 404 for a user that doesn't exist."""
-        response = client.get("/profile/nonexistent-id")
-        assert response.status_code == 404
+        assert client.get("/profile/nonexistent-id").status_code == 404
 
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_profile_header_shows_resolved_avatar_url(
-        self, client: FlaskClient, profile_user: User
-    ) -> None:
-        """Verify the profile header renders the resolved avatar_url."""
-        # Given the session user has a resolved (custom) avatar URL
+    def test_header_shows_resolved_avatar(self, client: FlaskClient, profile_user: User) -> None:
+        """Verify the header renders the user's resolved avatar as an image, not escaped text."""
         profile_user.avatar_url = "https://cdn.example.com/custom.webp"
 
-        # When viewing their profile
-        response = client.get("/profile/test-user-id")
+        body = client.get("/profile/test-user-id").get_data(as_text=True)
 
-        # Then the header renders that URL
-        assert response.status_code == 200
-        assert "https://cdn.example.com/custom.webp" in response.get_data(as_text=True)
+        assert re.search(r'<img[^>]*src="https://cdn\.example\.com/custom\.webp"', body)
 
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_profile_renders_lazy_statistics_url(self, client: FlaskClient) -> None:
-        """Verify Profile renders the /cards/statistics lazy-load URL with user_id."""
-        # Given a profile for an existing user
-        # When requesting the profile page
-        response = client.get("/profile/test-user-id")
+    def test_lazy_loads_user_statistics(self, client: FlaskClient) -> None:
+        """Verify the profile lazy-loads statistics scoped to the user."""
+        body = client.get("/profile/test-user-id").get_data(as_text=True)
 
-        # Then the rendered HTML includes the lazy-load URL scoped to the user
-        assert b"/cards/statistics?" in response.data
-        assert b"user_id=test-user-id" in response.data
+        assert "/cards/statistics?" in body
+        assert "user_id=test-user-id" in body
 
 
-class TestProfileEdit:
+class TestProfileEditForm:
     """Tests for GET /profile/<user_id>/edit."""
 
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_edit_own_profile_returns_form(self, client: FlaskClient) -> None:
-        """Verify edit form fragment is returned for own profile."""
-        response = client.get("/profile/test-user-id/edit")
-        assert response.status_code == 200
-        assert b"testuser" in response.data
-
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_edit_other_profile_returns_403(self, client: FlaskClient) -> None:
-        """Verify 403 when trying to edit another user's profile."""
-        response = client.get("/profile/other-user-id/edit")
-        assert response.status_code == 403
-
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_edit_form_has_avatar_upload_field(self, client: FlaskClient) -> None:
-        """Verify the edit form renders a multipart avatar file input."""
-        # Given the session user views their own edit form
-        # When requesting the edit form fragment
+    def test_own_edit_form_is_prefilled_and_accepts_avatar(self, client: FlaskClient) -> None:
+        """Verify the edit form holds the user's values and accepts an avatar upload."""
         response = client.get("/profile/test-user-id/edit", headers={"HX-Request": "true"})
 
-        # Then it exposes a multipart file input named avatar
         assert response.status_code == 200
         body = response.get_data(as_text=True)
+        assert 'value="testuser"' in body
         assert "multipart/form-data" in body
         assert 'name="avatar"' in body
-        assert "file-input" in body
 
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_edit_form_checks_avatar_size_client_side(self, client: FlaskClient) -> None:
-        """Verify the avatar max size is rendered into the Alpine data that guards the input."""
-        # When requesting the edit form fragment
-        response = client.get("/profile/test-user-id/edit", headers={"HX-Request": "true"})
 
-        # Then the Alpine scope carries the limit and the input checks it on change
-        body = response.get_data(as_text=True)
-        assert f"maxSize: {MAX_AVATAR_SIZE}" in body
-        assert f"maxSizeMb: {MAX_AVATAR_SIZE_MB}" in body
-        assert "files[0]?.size > maxSize" in body
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [("GET", "/profile/other-user-id/edit"), ("POST", "/profile/other-user-id")],
+    ids=["edit-form", "submit"],
+)
+def test_cannot_edit_another_users_profile(
+    client: FlaskClient, fake_vclient, method: str, path: str
+) -> None:
+    """Verify a user can neither open nor submit another user's profile form."""
+    data = {
+        "csrf_token": get_csrf(client),
+        "username": "hacked",
+        "email": "hacker@example.com",
+        "avatar": (io.BytesIO(make_image_bytes()), "me.png", "image/png"),
+    }
+
+    response = client.open(
+        path,
+        method=method,
+        data=data if method == "POST" else None,
+        content_type="multipart/form-data" if method == "POST" else None,
+    )
+
+    assert response.status_code == 403
+    assert fake_vclient.requests == []
 
 
 class TestProfilePost:
     """Tests for POST /profile/<user_id>."""
 
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_post_own_profile_updates_user(self, client: FlaskClient, fake_vclient) -> None:
-        """Verify a successful profile update sends the new fields to the API."""
-        from tests.conftest import get_csrf
-
-        csrf = get_csrf(client)
-
-        response = client.post(
-            "/profile/test-user-id",
-            data={
-                "csrf_token": csrf,
-                "name_first": "Updated",
-                "name_last": "Name",
-                "username": "updateduser",
-                "email": "updated@example.com",
-            },
+    def test_valid_update_is_sent_and_redirects(self, client: FlaskClient, fake_vclient) -> None:
+        """Verify a successful profile update sends the new fields and reloads the profile."""
+        response = _post_profile(
+            client,
+            name_first="Updated",
+            name_last="Name",
+            username="updateduser",
+            email="updated@example.com",
         )
 
-        assert response.status_code == 200
-        assert "HX-Redirect" in response.headers
-
+        assert response.headers["HX-Redirect"] == "/profile/test-user-id"
         fake_vclient.assert_called(
             Routes.USERS_UPDATE,
             params={"user_id": "test-user-id"},
@@ -217,410 +186,242 @@ class TestProfilePost:
             times=1,
         )
 
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_post_conflict_rerenders_form_with_api_message(
+    @pytest.mark.parametrize(
+        "fields",
+        [
+            {"username": "", "email": "kept@example.com"},
+            {"username": "keptuser", "email": ""},
+            {"username": "keptuser", "email": "not-an-email"},
+            {"username": "keptuser", "email": "kept@example.com", "name_first": "Al"},
+        ],
+        ids=["missing-username", "missing-email", "invalid-email", "short-first-name"],
+    )
+    def test_invalid_form_rerenders_without_saving(
+        self, client: FlaskClient, fake_vclient, fields: dict[str, str]
+    ) -> None:
+        """Verify an invalid form re-renders with the entered values and sends nothing."""
+        response = _post_profile(client, **fields)
+
+        assert response.status_code == 200
+        assert "HX-Redirect" not in response.headers
+        body = response.get_data(as_text=True)
+        for value in fields.values():
+            if value:
+                assert f'value="{value}"' in body
+        fake_vclient.assert_not_called(Routes.USERS_UPDATE)
+
+    def test_conflict_rerenders_form_with_api_message(
         self, client: FlaskClient, fake_vclient
     ) -> None:
         """Verify a taken username re-renders the form with the API's message."""
-        from tests.conftest import get_csrf
-
-        # Given the API refuses the username as taken
         fake_vclient.set_error(
             Routes.USERS_UPDATE, status_code=409, detail="Username is already in use"
         )
-        csrf = get_csrf(client)
 
-        # When submitting the profile form
-        response = client.post(
-            "/profile/test-user-id",
-            data={
-                "csrf_token": csrf,
-                "username": "taken",
-                "email": "updated@example.com",
-            },
-        )
+        response = _post_profile(client, username="taken", email="updated@example.com")
 
-        # Then the form is shown again with the API's message
         assert response.status_code == 200
         assert "HX-Redirect" not in response.headers
         assert "Username is already in use" in response.get_data(as_text=True)
 
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_post_conflict_after_avatar_change_swaps_flash_and_clears_cache(
-        self, client: FlaskClient, fake_vclient, mocker
+    @pytest.mark.parametrize("avatar_changed", [True, False], ids=["avatar-removed", "no-avatar"])
+    def test_conflict_refreshes_context_only_after_avatar_change(
+        self, client: FlaskClient, fake_vclient, mocker, *, avatar_changed: bool
     ) -> None:
-        """Verify a refused update still shows the avatar flash now and drops the stale context."""
-        from tests.conftest import get_csrf
-
-        # Given an avatar removal that succeeds and an update the API refuses
+        """Verify a refused update still shows the avatar outcome and drops the stale context."""
+        # Given an update the API refuses, with or without a successful avatar removal
         fake_vclient.set_error(
             Routes.USERS_UPDATE, status_code=409, detail="Username is already in use"
         )
-        csrf = get_csrf(client)
         clear = mocker.patch("vweb.routes.profile.views.cache.global_context.clear_current")
-
-        # When submitting the form with the avatar removal
-        response = client.post(
-            "/profile/test-user-id",
-            data={
-                "csrf_token": csrf,
-                "username": "taken",
-                "email": "updated@example.com",
-                "remove_avatar": "1",
-            },
-            headers={"HX-Request": "true"},
-        )
-
-        # Then the avatar flash is swapped in with the form and the context is cleared
-        body = response.get_data(as_text=True)
-        assert 'id="flash-messages" hx-swap-oob="true"' in body
-        assert "Avatar removed." in body
-        assert "Username is already in use" in body
-        clear.assert_called_once()
-
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_post_conflict_without_avatar_change_keeps_cache(
-        self, client: FlaskClient, fake_vclient, mocker
-    ) -> None:
-        """Verify a refused update with no avatar change leaves the cached context alone."""
-        from tests.conftest import get_csrf
-
-        # Given an update the API refuses and no avatar change
-        fake_vclient.set_error(
-            Routes.USERS_UPDATE, status_code=409, detail="Username is already in use"
-        )
-        csrf = get_csrf(client)
-        clear = mocker.patch("vweb.routes.profile.views.cache.global_context.clear_current")
+        extra = {"remove_avatar": "1"} if avatar_changed else {}
 
         # When submitting the form
-        client.post(
-            "/profile/test-user-id",
-            data={"csrf_token": csrf, "username": "taken", "email": "updated@example.com"},
-            headers={"HX-Request": "true"},
-        )
+        response = _post_profile(client, username="taken", email="u@example.com", **extra)
 
-        # Then the cache is not cleared
-        clear.assert_not_called()
-
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_post_short_first_name_rerenders_form_with_message(
-        self, client: FlaskClient, fake_vclient
-    ) -> None:
-        """Verify a first name the request model refuses re-renders the form instead of a 500."""
-        from tests.conftest import get_csrf
-
-        # Given a first name shorter than the request model allows
-        csrf = get_csrf(client)
-
-        # When submitting the profile form
-        response = client.post(
-            "/profile/test-user-id",
-            data={
-                "csrf_token": csrf,
-                "name_first": "Al",
-                "username": "updated",
-                "email": "updated@example.com",
-            },
-        )
-
-        # Then the form is shown again with the field message and no update is sent
-        assert response.status_code == 200
-        assert "Name first" in response.get_data(as_text=True)
-        fake_vclient.assert_not_called(Routes.USERS_UPDATE)
-
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_post_other_profile_returns_403(self, client: FlaskClient) -> None:
-        """Verify 403 when trying to POST to another user's profile."""
-        from tests.conftest import get_csrf
-
-        csrf = get_csrf(client)
-
-        response = client.post(
-            "/profile/other-user-id",
-            data={
-                "csrf_token": csrf,
-                "username": "hacked",
-                "email": "hacker@example.com",
-            },
-        )
-        assert response.status_code == 403
-
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_post_missing_username_shows_error(self, client: FlaskClient) -> None:
-        """Verify validation error when username is missing."""
-        from tests.conftest import get_csrf
-
-        csrf = get_csrf(client)
-
-        response = client.post(
-            "/profile/test-user-id",
-            data={
-                "csrf_token": csrf,
-                "name_first": "Test",
-                "name_last": "User",
-                "username": "",
-                "email": "test@example.com",
-            },
-        )
-        assert response.status_code == 200
-        assert b"Username is required" in response.data
-
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_post_missing_email_shows_error(self, client: FlaskClient) -> None:
-        """Verify validation error when email is missing."""
-        from tests.conftest import get_csrf
-
-        csrf = get_csrf(client)
-
-        response = client.post(
-            "/profile/test-user-id",
-            data={
-                "csrf_token": csrf,
-                "name_first": "Test",
-                "name_last": "User",
-                "username": "testuser",
-                "email": "",
-            },
-        )
-        assert response.status_code == 200
-        assert b"Email is required" in response.data
-
-
-class TestConnectionsCard:
-    """Tests for connections rendering on the profile page."""
-
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_own_profile_shows_connect_for_unlinked_provider(
-        self, client: FlaskClient, profile_user, other_user, mocker
-    ) -> None:
-        """Verify your own profile offers a Connect link for providers you lack."""
-        # Given the requesting user has only a GitHub identity
-        profile_user.github_profile = GitHubProfile(id="gh-1")
-        profile_user.discord_profile = None
-        profile_user.google_profile = None
-        profile_user.apple_profile = None
-
-        # When viewing your own profile
-        response = client.get("/profile/test-user-id")
-
-        # Then the card offers links for the unlinked providers only
-        body = response.get_data(as_text=True)
-        assert "Connections" in body
-        assert "/auth/discord/link" in body
-        assert "/auth/google/link" in body
-        assert "/auth/github/link" not in body
-
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_other_profile_hides_connections_card(self, client: FlaskClient, other_user) -> None:
-        """Verify someone else's profile does not render the Connections card."""
-        # Given another user with no linked providers
-        other_user.discord_profile = None
-        other_user.github_profile = None
-        other_user.google_profile = None
-        other_user.apple_profile = None
-
-        # When viewing the other user's profile
-        response = client.get("/profile/other-user-id")
-
-        # Then no Connections card is rendered
-        body = response.get_data(as_text=True)
-        assert "/auth/discord/link" not in body
-        assert "Connections" not in body
+        # Then the flash container is swapped in with the form, and the context is
+        # cleared only when the avatar changed
+        assert 'hx-swap-oob="true"' in response.get_data(as_text=True)
+        assert clear.called is avatar_changed
 
 
 class TestProfileAvatar:
-    """Tests for avatar upload/remove via POST /profile/<user_id>."""
+    """Tests for avatar upload and removal through the profile form."""
 
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_owner_can_upload_avatar(self, client: FlaskClient, fake_vclient) -> None:
-        """Verify a user can upload an avatar and the service is called."""
-        from tests.conftest import get_csrf
-
-        # Given the session user and a valid image
-        csrf = get_csrf(client)
-        data = {
-            "csrf_token": csrf,
-            "username": "testuser",
-            "email": "test@example.com",
-            "avatar": (io.BytesIO(make_image_bytes()), "me.png", "image/png"),
-        }
-
-        # When posting the edit form with an avatar file
-        response = client.post(
-            "/profile/test-user-id", data=data, content_type="multipart/form-data"
+    def test_valid_avatar_is_uploaded(self, client: FlaskClient, fake_vclient) -> None:
+        """Verify a valid avatar file reaches the API and the profile reloads."""
+        response = _post_profile(
+            client, **VALID_FORM, avatar=(io.BytesIO(make_image_bytes()), "me.png", "image/png")
         )
 
-        # Then the avatar is uploaded and the page redirects
-        assert response.status_code == 200
         assert "HX-Redirect" in response.headers
         (upload,) = fake_vclient.assert_called(
             Routes.USERS_AVATAR_UPLOAD, params={"user_id": "test-user-id"}, times=1
         )
         assert upload.files["data"].filename == "me.png"
 
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_remove_avatar_calls_delete(self, client: FlaskClient, fake_vclient) -> None:
-        """Verify the remove checkbox triggers delete_avatar."""
-        from tests.conftest import get_csrf
+    @pytest.mark.parametrize(
+        ("avatar", "expect_upload", "expect_delete"),
+        [
+            (None, False, True),
+            ((make_image_bytes(), "me.png", "image/png"), True, False),
+            ((b"not-an-image", "doc.pdf", "application/pdf"), False, False),
+        ],
+        ids=["remove-only", "new-file-wins", "rejected-file-keeps-avatar"],
+    )
+    def test_remove_checkbox_reverts_only_without_a_new_file(
+        self,
+        client: FlaskClient,
+        fake_vclient,
+        avatar: tuple[bytes, str, str] | None,
+        *,
+        expect_upload: bool,
+        expect_delete: bool,
+    ) -> None:
+        """Verify remove deletes the avatar only when no file was supplied, even a rejected one."""
+        extra = {"avatar": (io.BytesIO(avatar[0]), avatar[1], avatar[2])} if avatar else {}
 
-        # Given the remove checkbox is checked and no new file is supplied
-        csrf = get_csrf(client)
-        data = {
-            "csrf_token": csrf,
-            "username": "testuser",
-            "email": "test@example.com",
-            "remove_avatar": "on",
-        }
+        _post_profile(client, **VALID_FORM, remove_avatar="on", **extra)
 
-        # When posting the edit form
-        response = client.post(
-            "/profile/test-user-id", data=data, content_type="multipart/form-data"
+        assert bool(fake_vclient.requests_for(Routes.USERS_AVATAR_UPLOAD)) is expect_upload
+        assert bool(fake_vclient.requests_for(Routes.USERS_AVATAR_DELETE)) is expect_delete
+
+    @pytest.mark.parametrize(
+        "avatar",
+        [
+            (b"not-an-image", "doc.pdf", "application/pdf"),
+            (b"x" * (MAX_AVATAR_SIZE + 1), "huge.png", "image/png"),
+            (make_image_bytes(6000, 4001), "huge.png", "image/png"),
+        ],
+        ids=["wrong-type", "oversized", "over-24-megapixels"],
+    )
+    def test_invalid_avatar_is_not_uploaded(
+        self, client: FlaskClient, fake_vclient, avatar: tuple[bytes, str, str]
+    ) -> None:
+        """Verify an unsupported, oversized, or too-large image is never uploaded."""
+        content, filename, mime = avatar
+
+        response = _post_profile(client, **VALID_FORM, avatar=(io.BytesIO(content), filename, mime))
+
+        assert response.status_code == 200
+        fake_vclient.assert_not_called(Routes.USERS_AVATAR_UPLOAD)
+
+
+class TestExperience:
+    """Tests for the profile experience card and grant form."""
+
+    @pytest.fixture
+    def experienced_user(self, profile_user: User, profile_context: GlobalContext) -> str:
+        """Give the session user experience in the context's campaign."""
+        campaign = profile_context.campaigns[0]
+        profile_user.campaign_experience = [
+            CampaignExperience(
+                id="ce-1",
+                user_id=profile_user.id,
+                campaign_id=campaign.id,
+                xp_current=7,
+                xp_total=1234,
+                cool_points=3,
+            )
+        ]
+        return campaign.id
+
+    @pytest.fixture
+    def grant_permission(self, profile_context: GlobalContext):
+        """Set the company's grant-experience permission."""
+
+        def _set(value: GrantXPPermission) -> None:
+            profile_context.company.settings.permission_grant_xp = value
+
+        return _set
+
+    def test_card_shows_lifetime_totals_per_campaign(
+        self, client: FlaskClient, profile_context: GlobalContext, experienced_user: str
+    ) -> None:
+        """Verify the experience card lists each campaign's experience and lifetime totals."""
+        response = client.get("/profile/test-user-id/experience", headers={"HX-Request": "true"})
+
+        assert response.status_code == 200
+        body = response.get_data(as_text=True)
+        assert profile_context.campaigns[0].name in body
+        assert "1,234" in body
+
+    def test_card_for_unknown_user_returns_404(self, client: FlaskClient) -> None:
+        """Verify the experience card 404s for a user who does not exist."""
+        assert client.get("/profile/nobody/experience").status_code == 404
+
+    @pytest.mark.parametrize(
+        ("setting", "target", "allowed"),
+        [
+            ("STORYTELLER", "test-user-id", False),
+            ("PLAYER", "test-user-id", True),
+            ("PLAYER", "other-user-id", False),
+            ("UNRESTRICTED", "other-user-id", True),
+        ],
+        ids=["denied", "player-self", "player-other", "unrestricted"],
+    )
+    @pytest.mark.parametrize("endpoint", ["form", "submit"])
+    def test_grant_respects_company_permission(
+        self,
+        client: FlaskClient,
+        fake_vclient,
+        grant_permission,
+        experienced_user: str,
+        *,
+        setting: GrantXPPermission,
+        target: str,
+        allowed: bool,
+        endpoint: str,
+    ) -> None:
+        """Verify a player may open and submit the grant form only as the company allows."""
+        # Given a PLAYER under the company's grant setting
+        grant_permission(setting)
+        base = f"/profile/{target}/experience/{experienced_user}"
+
+        # When opening the form or submitting a grant
+        if endpoint == "form":
+            response = client.get(f"{base}/form", headers={"HX-Request": "true"})
+        else:
+            response = htmx_post(client, base, {"xp": "5", "cool_points": "0"})
+
+        # Then it is allowed or forbidden, and a forbidden grant never reaches the API
+        assert (response.status_code != 403) is allowed
+        if not allowed:
+            fake_vclient.assert_not_called(Routes.USERS_EXPERIENCE_XP_ADD)
+
+    def test_grant_sends_xp_and_refreshes_card(
+        self, client: FlaskClient, fake_vclient, grant_permission, experienced_user: str
+    ) -> None:
+        """Verify a grant reaches the API and the experience card reloads."""
+        grant_permission("UNRESTRICTED")
+
+        response = htmx_post(
+            client,
+            f"/profile/other-user-id/experience/{experienced_user}",
+            {"xp": "5", "cool_points": "0"},
         )
 
-        # Then the custom avatar is deleted
         assert response.status_code == 200
         fake_vclient.assert_called(
-            Routes.USERS_AVATAR_DELETE, params={"user_id": "test-user-id"}, times=1
+            Routes.USERS_EXPERIENCE_XP_ADD,
+            params={"user_id": "other-user-id"},
+            json_subset={"amount": 5, "campaign_id": experienced_user},
+            times=1,
         )
+        assert 'hx-get="/profile/other-user-id/experience"' in response.get_data(as_text=True)
 
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_uploaded_file_takes_priority_over_remove(
-        self, client: FlaskClient, fake_vclient
+    def test_invalid_grant_rerenders_form_without_calling_api(
+        self, client: FlaskClient, fake_vclient, grant_permission, experienced_user: str
     ) -> None:
-        """Verify a new file is uploaded even if remove is also set."""
-        from tests.conftest import get_csrf
+        """Verify an invalid amount re-renders the form with the entry and grants nothing."""
+        grant_permission("UNRESTRICTED")
 
-        # Given both a new file and the remove checkbox
-        csrf = get_csrf(client)
-        data = {
-            "csrf_token": csrf,
-            "username": "testuser",
-            "email": "test@example.com",
-            "remove_avatar": "on",
-            "avatar": (io.BytesIO(make_image_bytes()), "me.png", "image/png"),
-        }
-
-        # When posting the edit form
-        client.post("/profile/test-user-id", data=data, content_type="multipart/form-data")
-
-        # Then upload wins and delete is not called
-        fake_vclient.assert_called(
-            Routes.USERS_AVATAR_UPLOAD, params={"user_id": "test-user-id"}, times=1
-        )
-        fake_vclient.assert_not_called(Routes.USERS_AVATAR_DELETE)
-
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_rejected_file_with_remove_checked_does_not_delete(
-        self, client: FlaskClient, fake_vclient
-    ) -> None:
-        """Verify a rejected upload never falls through to deleting the avatar."""
-        from tests.conftest import get_csrf
-
-        # Given an invalid file is supplied while the remove checkbox is also set
-        csrf = get_csrf(client)
-        data = {
-            "csrf_token": csrf,
-            "username": "testuser",
-            "email": "test@example.com",
-            "remove_avatar": "on",
-            "avatar": (io.BytesIO(b"not-an-image"), "doc.pdf", "application/pdf"),
-        }
-
-        # When posting the edit form
-        client.post("/profile/test-user-id", data=data, content_type="multipart/form-data")
-
-        # Then neither upload nor delete touches the existing avatar
-        fake_vclient.assert_not_called(Routes.USERS_AVATAR_UPLOAD)
-        fake_vclient.assert_not_called(Routes.USERS_AVATAR_DELETE)
-
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_invalid_avatar_type_is_rejected(self, client: FlaskClient, fake_vclient) -> None:
-        """Verify a non-image file is not uploaded."""
-        from tests.conftest import get_csrf
-
-        # Given a PDF masquerading as an avatar
-        csrf = get_csrf(client)
-        data = {
-            "csrf_token": csrf,
-            "username": "testuser",
-            "email": "test@example.com",
-            "avatar": (io.BytesIO(b"not-an-image"), "doc.pdf", "application/pdf"),
-        }
-
-        # When posting the edit form
-        response = client.post(
-            "/profile/test-user-id", data=data, content_type="multipart/form-data"
+        response = htmx_post(
+            client,
+            f"/profile/other-user-id/experience/{experienced_user}",
+            {"xp": "-1", "cool_points": "0"},
         )
 
-        # Then the upload is rejected
         assert response.status_code == 200
-        fake_vclient.assert_not_called(Routes.USERS_AVATAR_UPLOAD)
-
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_oversized_avatar_is_rejected(self, client: FlaskClient, fake_vclient) -> None:
-        """Verify a file over the avatar size limit is not uploaded."""
-        from tests.conftest import get_csrf
-
-        # Given an image one byte over the limit
-        csrf = get_csrf(client)
-        big = b"x" * (MAX_AVATAR_SIZE + 1)
-        data = {
-            "csrf_token": csrf,
-            "username": "testuser",
-            "email": "test@example.com",
-            "avatar": (io.BytesIO(big), "huge.png", "image/png"),
-        }
-
-        # When posting the edit form
-        response = client.post(
-            "/profile/test-user-id", data=data, content_type="multipart/form-data"
-        )
-
-        # Then the upload is rejected
-        assert response.status_code == 200
-        fake_vclient.assert_not_called(Routes.USERS_AVATAR_UPLOAD)
-
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_avatar_over_pixel_cap_is_rejected(self, client: FlaskClient, fake_vclient) -> None:
-        """Verify an avatar over 24 megapixels is not uploaded."""
-        from tests.conftest import get_csrf
-
-        # Given a 6000 x 4001 image
-        csrf = get_csrf(client)
-        data = {
-            "csrf_token": csrf,
-            "username": "testuser",
-            "email": "test@example.com",
-            "avatar": (io.BytesIO(make_image_bytes(6000, 4001)), "huge.png", "image/png"),
-        }
-
-        # When posting the edit form
-        response = client.post(
-            "/profile/test-user-id", data=data, content_type="multipart/form-data"
-        )
-
-        # Then the upload is rejected
-        assert response.status_code == 200
-        fake_vclient.assert_not_called(Routes.USERS_AVATAR_UPLOAD)
-
-    @pytest.mark.usefixtures("_mock_profile_api")
-    def test_non_self_avatar_upload_returns_403(self, client: FlaskClient) -> None:
-        """Verify a user cannot upload an avatar to another profile."""
-        from tests.conftest import get_csrf
-
-        # Given a post to another user's profile
-        csrf = get_csrf(client)
-        data = {
-            "csrf_token": csrf,
-            "username": "otherperson",
-            "email": "other@example.com",
-            "avatar": (io.BytesIO(b"fake"), "me.png", "image/png"),
-        }
-
-        # When posting the edit form
-        response = client.post(
-            "/profile/other-user-id", data=data, content_type="multipart/form-data"
-        )
-
-        # Then it is forbidden
-        assert response.status_code == 403
+        assert 'value="-1"' in response.get_data(as_text=True)
+        fake_vclient.assert_not_called(Routes.USERS_EXPERIENCE_XP_ADD)

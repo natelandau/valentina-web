@@ -1,111 +1,110 @@
-"""Tests for profile quickrolls CRUD table routes."""
+"""Tests for the profile quickrolls CRUD table routes.
+
+What the handler sends for each form is covered in test_quickroll_handler.py.
+"""
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from typing import TYPE_CHECKING
 
 import pytest
 
 from tests.conftest import get_csrf
+from vweb.api_client.testing import QuickrollFactory, Routes, TraitFactory
+
+if TYPE_CHECKING:
+    from flask.testing import FlaskClient
+
+OWN_TABLE = "/profile/test-user-id/quickrolls"
+OTHER_TABLE = "/profile/other-user-id/quickrolls"
 
 
-@pytest.fixture
-def mock_quickroll_handler(mocker):
-    """Mock the CRUD handler for quickrolls."""
-    from vweb.routes.profile.handlers import QuickrollDisplay
-
-    items = [
-        QuickrollDisplay(
-            id="qr-1",
-            name="Attack",
-            description="Basic attack",
-            trait_one_name="Strength",
-            trait_two_name="Brawl",
-        ),
-    ]
-
-    handler = MagicMock()
-    handler.list_items.return_value = items
-    handler.get_item.return_value = MagicMock(
-        id="qr-1", name="Attack", description="Basic attack", trait_ids=["t1", "t2"]
-    )
-    handler.create_item.return_value = None
-    handler.update_item.return_value = None
-    handler.delete_item.return_value = None
-    handler.validate.return_value = {}
-
+@pytest.fixture(autouse=True)
+def _traits(mocker) -> None:
+    """Serve the blueprint traits quickrolls reference."""
     mocker.patch(
-        "vweb.routes.profile.views_quickrolls.QuickrollsTableView._build_handler",
-        return_value=handler,
+        "vweb.lib.cache.blueprint.traits",
+        return_value={"t1": TraitFactory.build(id="t1", name="Strength")},
     )
-    return handler
 
 
-class TestQuickrollsCrud:
-    """Tests for quickrolls CRUD operations."""
+def _hx_headers(client: FlaskClient) -> dict[str, str]:
+    """Build the headers HTMX sends for a mutation."""
+    return {"HX-Request": "true", "X-CSRFToken": get_csrf(client)}
 
-    def test_get_table_returns_200(self, client, mock_quickroll_handler) -> None:
-        """Verify GET returns the quickrolls table."""
-        response = client.get(
-            "/profile/test-user-id/quickrolls",
-            headers={"HX-Request": "true"},
-        )
-        assert response.status_code == 200
-        assert b"Attack" in response.data
 
-    def test_create_returns_refetch(self, client, mock_quickroll_handler) -> None:
-        """Verify POST creates item and returns refetch snippet."""
-        response = client.post(
-            "/profile/test-user-id/quickrolls",
-            data={"name": "New Roll", "trait_one_id": "t1"},
-            headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)},
-        )
-        assert response.status_code == 200
-        mock_quickroll_handler.create_item.assert_called_once()
+@pytest.mark.parametrize("table", [OWN_TABLE, OTHER_TABLE], ids=["own", "other-player"])
+def test_anyone_can_list_quickrolls(client: FlaskClient, fake_vclient, table: str) -> None:
+    """Verify a profile's quickrolls are readable by any member, with trait names resolved."""
+    # Given a user with one quickroll
+    fake_vclient.set_response(
+        Routes.USERS_QUICKROLLS_LIST,
+        items=[QuickrollFactory.build(id="qr-1", name="Attack", trait_ids=["t1"])],
+    )
 
-    def test_delete_returns_refetch(self, client, mock_quickroll_handler) -> None:
-        """Verify DELETE removes item and returns refetch snippet."""
-        response = client.delete(
-            "/profile/test-user-id/quickrolls/qr-1",
-            headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)},
-        )
-        assert response.status_code == 200
-        mock_quickroll_handler.delete_item.assert_called_once()
+    # When listing the table
+    response = client.get(table, headers={"HX-Request": "true"})
 
-    def test_non_owner_post_returns_403(self, client, mock_quickroll_handler) -> None:
-        """Verify a non-owner cannot create a quickroll on someone else's profile."""
-        # Given a request targeting a different user's quickroll table
-        # When POSTing to create
-        response = client.post(
-            "/profile/other-user-id/quickrolls",
-            data={"name": "Sneaky", "trait_one_id": "t1"},
-            headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)},
-        )
+    # Then the profile owner's quickrolls are shown
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "Attack" in body
+    assert "Strength" in body
+    owner_id = table.split("/")[2]
+    fake_vclient.assert_called(Routes.USERS_QUICKROLLS_LIST, params={"user_id": owner_id})
 
-        # Then the server rejects with 403 and the handler is never called
-        assert response.status_code == 403
-        mock_quickroll_handler.create_item.assert_not_called()
 
-    def test_non_owner_delete_returns_403(self, client, mock_quickroll_handler) -> None:
-        """Verify a non-owner cannot delete a quickroll from someone else's profile."""
-        # Given a DELETE targeting a different user's quickroll
-        # When issuing the delete
-        response = client.delete(
-            "/profile/other-user-id/quickrolls/qr-1",
-            headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)},
-        )
+def test_owner_can_create_quickroll(client: FlaskClient, fake_vclient) -> None:
+    """Verify the owner's new quickroll is sent to the API."""
+    response = client.post(
+        OWN_TABLE, data={"name": "New Roll", "trait_one_id": "t1"}, headers=_hx_headers(client)
+    )
 
-        # Then the server rejects and the handler is never called
-        assert response.status_code == 403
-        mock_quickroll_handler.delete_item.assert_not_called()
+    assert response.status_code == 200
+    fake_vclient.assert_called(
+        Routes.USERS_QUICKROLLS_CREATE,
+        params={"user_id": "test-user-id"},
+        json_subset={"name": "New Roll", "trait_ids": ["t1"]},
+        times=1,
+    )
 
-    def test_non_owner_form_get_returns_403(self, client, mock_quickroll_handler) -> None:
-        """Verify a non-owner cannot open the add/edit form on someone else's profile."""
-        # Given a GET on the add form for another user
-        response = client.get(
-            "/profile/other-user-id/quickrolls/form",
-            headers={"HX-Request": "true"},
-        )
 
-        # Then the form is blocked
-        assert response.status_code == 403
+def test_owner_can_delete_quickroll(client: FlaskClient, fake_vclient) -> None:
+    """Verify the owner's delete reaches the API."""
+    response = client.delete(f"{OWN_TABLE}/qr-1", headers=_hx_headers(client))
+
+    assert response.status_code == 200
+    fake_vclient.assert_called(
+        Routes.USERS_QUICKROLLS_DELETE,
+        params={"user_id": "test-user-id", "quickroll_id": "qr-1"},
+        times=1,
+    )
+
+
+def test_invalid_quickroll_is_not_sent(client: FlaskClient, fake_vclient) -> None:
+    """Verify a quickroll without a name or traits re-renders the form and is not created."""
+    response = client.post(OWN_TABLE, data={"name": ""}, headers=_hx_headers(client))
+
+    assert response.status_code == 200
+    fake_vclient.assert_not_called(Routes.USERS_QUICKROLLS_CREATE)
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "data"),
+    [
+        ("POST", OTHER_TABLE, {"name": "Sneaky", "trait_one_id": "t1"}),
+        ("POST", f"{OTHER_TABLE}/qr-1", {"name": "Sneaky", "trait_one_id": "t1"}),
+        ("DELETE", f"{OTHER_TABLE}/qr-1", None),
+        ("GET", f"{OTHER_TABLE}/form", None),
+        ("GET", f"{OTHER_TABLE}/form/qr-1", None),
+    ],
+    ids=["create", "update", "delete", "add-form", "edit-form"],
+)
+def test_non_owner_cannot_change_quickrolls(
+    client: FlaskClient, fake_vclient, method: str, path: str, data: dict | None
+) -> None:
+    """Verify only the profile owner may open quickroll forms or write quickrolls."""
+    response = client.open(path, method=method, data=data, headers=_hx_headers(client))
+
+    assert response.status_code == 403
+    assert fake_vclient.requests == []

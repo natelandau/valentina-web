@@ -16,43 +16,64 @@ from vweb.routes.character_view.services import (
 ACTIONS = ("set", "add_stain", "remove_stain")
 
 
-def test_parse_accepts_set_with_current() -> None:
-    """Verify a set request carries its integer current."""
-    result = parse_tracker_request({"action": "set", "current": "3"}, allowed_actions=ACTIONS)
-
-    assert result == TrackerRequest(action="set", current=3)
-
-
-def test_parse_accepts_stain_action_without_current() -> None:
-    """Verify a stain action needs no current."""
-    result = parse_tracker_request({"action": "add_stain"}, allowed_actions=ACTIONS)
-
-    assert result == TrackerRequest(action="add_stain", current=None)
+@pytest.mark.parametrize(
+    ("form", "expected"),
+    [
+        ({"action": "set", "current": "3"}, TrackerRequest(action="set", current=3)),
+        ({"action": "add_stain"}, TrackerRequest(action="add_stain", current=None)),
+    ],
+    ids=["set-with-current", "stain-without-current"],
+)
+def test_parse_accepts_valid_forms(form, expected) -> None:
+    """Verify a set carries its integer current and other actions need none."""
+    assert parse_tracker_request(form, allowed_actions=ACTIONS) == expected
 
 
 @pytest.mark.parametrize(
-    "form",
+    ("form", "allowed"),
     [
-        {"action": "set", "current": "abc"},
-        {"action": "set", "current": "-1"},
-        {"action": "set"},
-        {"action": "explode"},
-        {},
-        {"action": "damage"},
-        {"action": "heal"},
-        {"action": "spend"},
+        ({"action": "set", "current": "abc"}, ACTIONS),
+        ({"action": "set", "current": "-1"}, ACTIONS),
+        ({"action": "set"}, ACTIONS),
+        ({"action": "explode"}, ACTIONS),
+        ({}, ACTIONS),
+        ({"action": "damage"}, ACTIONS),
+        ({"action": "set", "current": "1"}, ("damage", "heal")),
     ],
 )
-def test_parse_rejects_invalid_forms(form) -> None:
-    """Verify malformed requests raise ValueError."""
+def test_parse_rejects_invalid_forms(form, allowed) -> None:
+    """Verify malformed requests and actions the endpoint does not allow raise ValueError."""
     with pytest.raises(ValueError):  # noqa: PT011
-        parse_tracker_request(form, allowed_actions=ACTIONS)
+        parse_tracker_request(form, allowed_actions=allowed)
 
 
-def test_parse_rejects_action_outside_allowed() -> None:
-    """Verify an action the endpoint does not allow is rejected."""
-    with pytest.raises(ValueError):  # noqa: PT011
-        parse_tracker_request({"action": "set", "current": "1"}, allowed_actions=("damage", "heal"))
+@pytest.mark.parametrize(
+    ("request_", "route", "json"),
+    [
+        (
+            TrackerRequest(action="set", current=3),
+            Routes.CHARACTER_TRAITS_TRACKER_SET,
+            {"current": 3},
+        ),
+        (
+            TrackerRequest(action="add_stain", current=None),
+            Routes.CHARACTER_TRAITS_TRACKER_ACTION,
+            {"action": "add_stain", "amount": 1},
+        ),
+    ],
+    ids=["set", "action"],
+)
+def test_update_trait_tracker_sends_request(app, fake_vclient, request_, route, json) -> None:
+    """Verify a set replaces the counter and other actions apply one step."""
+    # When updating the tracker
+    with app.test_request_context():
+        seed_session()
+        update_trait_tracker("char-1", "ct-1", request_)
+
+    # Then the matching endpoint receives the request
+    fake_vclient.assert_called(
+        route, params={"character_id": "char-1", "character_trait_id": "ct-1"}, json=json, times=1
+    )
 
 
 def test_update_trait_tracker_set_returns_stored_tracker(app, fake_vclient) -> None:
@@ -83,5 +104,11 @@ def test_update_health_sends_action_with_amount_one(app, fake_vclient) -> None:
         seed_session()
         result = update_health("char-1", TrackerRequest(action="damage", current=None))
 
-    # Then the stored damage comes back
+    # Then one point of damage is sent and the stored health comes back
+    fake_vclient.assert_called(
+        Routes.CHARACTERS_HEALTH_ACTION,
+        params={"character_id": "char-1"},
+        json={"action": "damage", "amount": 1},
+        times=1,
+    )
     assert result.damage == 1

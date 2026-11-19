@@ -1,280 +1,154 @@
-"""Tests for multi-company auth flows (select-companies, select-company)."""
+"""Tests for routing a login by its memberships, and for the company selection pages."""
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from typing import TYPE_CHECKING
+
+import pytest
 
 from tests.conftest import get_csrf
-from tests.helpers import identify_resolving
-from vweb.api_client.models import UserLookupResult
-from vweb.api_client.testing import CompanyFactory, Routes, UserFactory
+from tests.helpers import (
+    assert_redirects_to,
+    identify_resolving,
+    mock_oauth_provider,
+    session_flashes,
+)
+from vweb.api_client.exceptions import UnprocessableEntityError
+from vweb.api_client.models import IdentityResolution
+from vweb.api_client.testing import CompanyFactory, Routes, UserFactory, UserLookupResultFactory
+
+if TYPE_CHECKING:
+    from flask.testing import FlaskClient
+
+PENDING_OAUTH = {
+    "provider": "discord",
+    "token": "cred-1",
+    "username": "testuser",
+    "email": "test@example.com",
+}
 
 
-def _make_lookup_result(**kwargs) -> UserLookupResult:
-    """Build a UserLookupResult with sensible defaults."""
-    defaults = {
-        "company_id": "comp-1",
-        "company_name": "Test Company",
-        "user_id": "user-1",
-        "role": "PLAYER",
-    }
-    defaults.update(kwargs)
-    return UserLookupResult(**defaults)
+def _mock_discord_oauth(mocker) -> None:
+    """Set up a Discord OAuth flow that returns a token and a profile."""
+    mock_oauth_provider(
+        mocker,
+        "discord",
+        token={"access_token": "fake"},
+        profile={"id": "disc-1", "username": "testuser", "email": "test@example.com"},
+    )
 
 
-def _mock_discord_oauth(mocker, discord_data=None) -> dict:
-    """Set up mock Discord OAuth flow returning the given user data."""
-    if discord_data is None:
-        discord_data = {"id": "disc-1", "username": "testuser", "email": "test@example.com"}
-    mock_discord = MagicMock()
-    mock_discord.authorize_access_token.return_value = {"access_token": "fake"}
-    mock_resp = MagicMock()
-    mock_resp.json.return_value = discord_data
-    mock_discord.get.return_value = mock_resp
-    mocker.patch("vweb.routes.auth.views_oauth.oauth", discord=mock_discord)
-    return discord_data
+@pytest.mark.parametrize(
+    ("roles", "expected_location", "expected_user", "expected_companies"),
+    [
+        (["PLAYER"], "/", "u1", ["c1"]),
+        (["UNAPPROVED"], "/pending-approval", "u1", ["c1"]),
+        (["PLAYER", "DEACTIVATED"], "/", "u1", ["c1"]),
+        (["PLAYER", "ADMIN"], "/select-company", None, ["c1", "c2"]),
+        (["UNAPPROVED", "UNAPPROVED"], "/pending-approval", "u1", ["c1", "c2"]),
+    ],
+    ids=[
+        "single-approved",
+        "single-unapproved",
+        "deactivated-dropped",
+        "multiple-approved-pick",
+        "all-unapproved",
+    ],
+)
+def test_login_routes_by_verified_memberships(
+    client: FlaskClient,
+    mocker,
+    roles: list[str],
+    expected_location: str,
+    expected_user: str | None,
+    expected_companies: list[str],
+) -> None:
+    """Verify the callback signs in, sends to pending approval, or asks which company to use."""
+    # Given a visitor with a verified membership per role, in companies c1, c2, ...
+    with client.session_transaction() as sess:
+        sess.clear()
+    _mock_discord_oauth(mocker)
+    results = [
+        UserLookupResultFactory.build(company_id=f"c{i}", user_id=f"u{i}", role=role)
+        for i, role in enumerate(roles, start=1)
+    ]
+    mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=results)
+    mocker.patch(
+        "vweb.routes.auth.views_oauth.identify_in_companies",
+        return_value=identify_resolving(results),
+    )
+
+    # When the callback is hit
+    response = client.get("/auth/discord/callback")
+
+    # Then the visitor lands where the memberships dictate with a long-lived session
+    assert_redirects_to(response, expected_location)
+    with client.session_transaction() as sess:
+        assert sess.get("user_id") == expected_user
+        assert list(sess["companies"]) == expected_companies
+        assert sess.permanent is True
 
 
-class TestNewUserRedirectsToSelectCompanies:
-    """Tests for new user being redirected to company selection."""
+def test_login_refused_when_every_membership_deactivated(client: FlaskClient, mocker) -> None:
+    """Verify a user deactivated in every matched company gets no session."""
+    # Given a single deactivated membership
+    with client.session_transaction() as sess:
+        sess.clear()
+    _mock_discord_oauth(mocker)
+    result = UserLookupResultFactory.build(company_id="c1", user_id="u1", role="DEACTIVATED")
+    mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=[result])
+    mocker.patch(
+        "vweb.routes.auth.views_oauth.identify_in_companies",
+        return_value=identify_resolving([result]),
+    )
 
-    def test_new_user_redirects_to_select_companies(self, client, mocker):
-        """Verify new user with no lookup results is sent to /select-companies."""
-        # Given a mock Discord OAuth flow
-        _mock_discord_oauth(mocker)
+    # When the callback is hit
+    response = client.get("/auth/discord/callback")
 
-        # Given no lookup results (completely new user)
-        mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=[])
-
-        # When the callback is hit
-        response = client.get("/auth/discord/callback")
-
-        # Then redirect to /select-companies with pending_oauth in session
-        assert response.status_code == 302
-        assert response.location == "/select-companies"
-        with client.session_transaction() as sess:
-            assert "pending_oauth" in sess
-            assert sess["pending_oauth"]["provider"] == "discord"
-
-
-class TestSingleApprovedUser:
-    """Tests for single approved user login."""
-
-    def test_single_approved_redirects_to_index(self, client, mocker):
-        """Verify single approved user is logged in and sent to index."""
-        # Given a mock Discord OAuth flow
-        _mock_discord_oauth(mocker)
-
-        # Given a single approved lookup result
-        result = _make_lookup_result(company_id="c1", user_id="u1", role="PLAYER")
-        mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=[result])
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving([result]),
-        )
-
-        # When the callback is hit
-        response = client.get("/auth/discord/callback")
-
-        # Then session is set and redirects to /
-        assert response.status_code == 302
-        assert response.location == "/"
-        with client.session_transaction() as sess:
-            assert sess["user_id"] == "u1"
-            assert sess["company_id"] == "c1"
-            assert "c1" in sess["companies"]
-
-
-class TestSingleUnapprovedUser:
-    """Tests for single unapproved user login."""
-
-    def test_single_unapproved_redirects_to_pending(self, client, mocker):
-        """Verify single unapproved user is sent to /pending-approval."""
-        # Given a mock Discord OAuth flow
-        _mock_discord_oauth(mocker)
-
-        # Given a single unapproved lookup result
-        result = _make_lookup_result(company_id="c1", user_id="u1", role="UNAPPROVED")
-        mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=[result])
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving([result]),
-        )
-
-        # When the callback is hit
-        response = client.get("/auth/discord/callback")
-
-        # Then redirect to /pending-approval
-        assert response.status_code == 302
-        assert response.location == "/pending-approval"
-        with client.session_transaction() as sess:
-            assert sess["user_id"] == "u1"
-
-
-class TestDeactivatedMemberships:
-    """Tests for logins that match DEACTIVATED memberships."""
-
-    def test_only_deactivated_memberships_refuse_login(self, client, mocker):
-        """Verify a user deactivated in every matched company gets no session."""
-        # Given a mock Discord OAuth flow
-        _mock_discord_oauth(mocker)
-
-        # Given a single deactivated lookup result
-        result = _make_lookup_result(company_id="c1", user_id="u1", role="DEACTIVATED")
-        mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=[result])
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving([result]),
-        )
-
-        # When the callback is hit
-        response = client.get("/auth/discord/callback")
-
-        # Then the user lands on the index, unbound to the deactivated membership
-        assert response.status_code == 302
-        assert response.location == "/"
-        with client.session_transaction() as sess:
-            assert sess.get("user_id") != "u1"
-            assert "c1" not in sess.get("companies", {})
-            assert any("deactivated" in message for _, message in sess["_flashes"])
-
-    def test_deactivated_membership_is_left_out_of_the_session(self, client, mocker):
-        """Verify an active membership logs in and the deactivated one is dropped."""
-        # Given a mock Discord OAuth flow
-        _mock_discord_oauth(mocker)
-
-        # Given one active and one deactivated lookup result
-        results = [
-            _make_lookup_result(company_id="c1", user_id="u1", role="PLAYER"),
-            _make_lookup_result(company_id="c2", user_id="u2", role="DEACTIVATED"),
-        ]
-        mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=results)
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving(results),
-        )
-
-        # When the callback is hit
-        response = client.get("/auth/discord/callback")
-
-        # Then the user logs straight into the active company
-        assert response.status_code == 302
-        assert response.location == "/"
-        with client.session_transaction() as sess:
-            assert sess["company_id"] == "c1"
-            assert list(sess["companies"]) == ["c1"]
-
-
-class TestMultipleCompaniesWithApproved:
-    """Tests for users with multiple companies, at least one approved."""
-
-    def test_multiple_with_approved_redirects_to_select_company(self, client, mocker):
-        """Verify multi-company user with approved roles is sent to /select-company."""
-        # Given a mock Discord OAuth flow
-        _mock_discord_oauth(mocker)
-
-        # Given multiple lookup results with at least one approved
-        results = [
-            _make_lookup_result(company_id="c1", user_id="u1", role="PLAYER"),
-            _make_lookup_result(
-                company_id="c2",
-                company_name="Other Co",
-                user_id="u2",
-                role="ADMIN",
-            ),
-        ]
-        mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=results)
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving(results),
-        )
-
-        # When the callback is hit
-        response = client.get("/auth/discord/callback")
-
-        # Then redirect to /select-company
-        assert response.status_code == 302
-        assert response.location == "/select-company"
-        with client.session_transaction() as sess:
-            assert len(sess["companies"]) == 2
-
-
-class TestMultipleCompaniesAllUnapproved:
-    """Tests for users with multiple companies, all unapproved."""
-
-    def test_multiple_all_unapproved_redirects_to_pending(self, client, mocker):
-        """Verify multi-company user with all UNAPPROVED roles is sent to /pending-approval."""
-        # Given a mock Discord OAuth flow
-        _mock_discord_oauth(mocker)
-
-        # Given multiple lookup results all UNAPPROVED
-        results = [
-            _make_lookup_result(company_id="c1", user_id="u1", role="UNAPPROVED"),
-            _make_lookup_result(company_id="c2", user_id="u2", role="UNAPPROVED"),
-        ]
-        mocker.patch("vweb.routes.auth.views_oauth.lookup_user_companies", return_value=results)
-        mocker.patch(
-            "vweb.routes.auth.views_oauth.identify_in_companies",
-            return_value=identify_resolving(results),
-        )
-
-        # When the callback is hit
-        response = client.get("/auth/discord/callback")
-
-        # Then redirect to /pending-approval
-        assert response.status_code == 302
-        assert response.location == "/pending-approval"
+    # Then the user lands on the index, unbound to the deactivated membership
+    assert response.location == "/"
+    with client.session_transaction() as sess:
+        assert "user_id" not in sess
+        assert "companies" not in sess
+    assert [category for category, _ in session_flashes(client)] == ["error"]
 
 
 class TestSelectCompaniesView:
-    """Tests for GET/POST /select-companies."""
+    """Tests for GET/POST /select-companies, where a new user joins companies."""
 
-    def test_get_shows_companies(self, client, fake_vclient):
-        """Verify GET /select-companies renders available companies."""
-        # Given available companies from the API
-        fake_vclient.set_response(Routes.COMPANIES_LIST, items=CompanyFactory.batch(2))
+    def test_get_lists_companies(self, client: FlaskClient, fake_vclient) -> None:
+        """Verify the page lists every company the user can join."""
+        companies = [CompanyFactory.build(name="Alpha Co"), CompanyFactory.build(name="Beta Co")]
+        fake_vclient.set_response(Routes.COMPANIES_LIST, items=companies)
 
-        # When the page is requested
         response = client.get("/select-companies")
 
-        # Then it renders successfully
         assert response.status_code == 200
         body = response.get_data(as_text=True)
-        assert "Join a Company" in body
+        assert "Alpha Co" in body
+        assert "Beta Co" in body
 
-    def test_post_registers_user_redirects_to_pending(self, client, mocker, fake_vclient):
-        """Verify POST /select-companies resolves identities and redirects to pending."""
-        from vweb.api_client.models import IdentityResolution
-
-        # Given pending OAuth data in session (new shape: verified credential)
+    def test_post_registers_user_and_sends_to_pending(
+        self, client: FlaskClient, mocker, fake_vclient
+    ) -> None:
+        """Verify registration verifies the stored credential and signs the new user in."""
+        # Given a pending login and an identify that creates an UNAPPROVED user
         with client.session_transaction() as sess:
-            sess["pending_oauth"] = {
-                "provider": "discord",
-                "token": "cred-1",
-                "username": "testuser",
-                "email": "test@example.com",
-            }
-
-        # Given identify resolves to a newly created UNAPPROVED user
+            sess["pending_oauth"] = PENDING_OAUTH
         new_user = UserFactory.build(id="new-u", role="UNAPPROVED")
         mock_identify = mocker.patch(
             "vweb.routes.auth.views.identify_in_companies",
             return_value={"comp-1": IdentityResolution(resolution="created", user=new_user)},
         )
-
-        # Given the API lists the company for the name lookup
         fake_vclient.set_response(
             Routes.COMPANIES_LIST,
             items=[CompanyFactory.build(id="comp-1", name="Test Company")],
         )
 
-        # Given a CSRF token
-        csrf_token = get_csrf(client)
-
         # When submitting company selections
         response = client.post(
             "/select-companies",
-            data={"company_ids": ["comp-1"], "csrf_token": csrf_token},
+            data={"company_ids": ["comp-1"], "csrf_token": get_csrf(client)},
         )
 
         # Then identify ran with the stored credential and hints
@@ -285,9 +159,7 @@ class TestSelectCompaniesView:
             username="testuser",
             email="test@example.com",
         )
-
-        # Then redirected to pending approval with session set
-        assert response.status_code == 302
+        # And the new user is signed in and sent to pending approval
         assert response.location == "/pending-approval"
         with client.session_transaction() as sess:
             assert sess["user_id"] == "new-u"
@@ -295,87 +167,81 @@ class TestSelectCompaniesView:
             assert sess["companies"]["comp-1"]["company_name"] == "Test Company"
             assert "pending_oauth" not in sess
 
-    def test_post_without_pending_oauth_redirects_to_index(self, client, mocker):
-        """Verify POST /select-companies without session data redirects to index."""
-        # Given no pending_oauth in session
+    @pytest.mark.parametrize(
+        "pending",
+        [None, {"provider": "discord", "data": {}}],
+        ids=["missing", "without-credential"],
+    )
+    def test_post_without_usable_pending_login_returns_home(
+        self, client: FlaskClient, pending: dict | None
+    ) -> None:
+        """Verify registering without a stored credential is treated as an expired session."""
         with client.session_transaction() as sess:
             sess.pop("pending_oauth", None)
+            if pending is not None:
+                sess["pending_oauth"] = pending
 
-        csrf_token = get_csrf(client)
-
-        # When submitting company selections
         response = client.post(
             "/select-companies",
-            data={"company_ids": ["comp-1"], "csrf_token": csrf_token},
+            data={"company_ids": ["comp-1"], "csrf_token": get_csrf(client)},
         )
 
-        # Then redirected to index
-        assert response.status_code == 302
-        assert response.location == "/"
-
-    def test_post_identify_failure_flashes_and_redirects_to_index(self, client, mocker):
-        """Verify a token verification failure during registration aborts to index."""
-        from vweb.api_client.exceptions import UnprocessableEntityError
-
-        # Given pending OAuth data in session
-        with client.session_transaction() as sess:
-            sess["pending_oauth"] = {
-                "provider": "discord",
-                "token": "bad-cred",
-                "username": "u",
-                "email": "e@e.com",
-            }
-
-        # Given identify rejects the token
-        mocker.patch(
-            "vweb.routes.auth.views.identify_in_companies",
-            side_effect=UnprocessableEntityError("bad", 422, {"code": "TOKEN_VERIFICATION_FAILED"}),
-        )
-
-        csrf_token = get_csrf(client)
-
-        # When submitting company selections
-        response = client.post(
-            "/select-companies",
-            data={"company_ids": ["comp-1"], "csrf_token": csrf_token},
-        )
-
-        # Then redirected to index with the pending payload cleared
-        assert response.status_code == 302
         assert response.location == "/"
         with client.session_transaction() as sess:
             assert "pending_oauth" not in sess
 
-    def test_post_without_selections_redirects_back(self, client, mocker):
-        """Verify POST /select-companies without selections redirects back."""
-        # Given pending OAuth data in session
-        with client.session_transaction() as sess:
-            sess["pending_oauth"] = {
-                "provider": "discord",
-                "token": "cred-1",
-                "username": "u",
-                "email": "e@e.com",
-            }
-
+    @pytest.mark.parametrize(
+        "identify",
+        [
+            {
+                "side_effect": UnprocessableEntityError(
+                    "bad", 422, {"code": "TOKEN_VERIFICATION_FAILED"}
+                )
+            },
+            {"return_value": {}},
+        ],
+        ids=["token-rejected", "no-company-resolved"],
+    )
+    def test_post_failed_registration_returns_home(
+        self, client: FlaskClient, mocker, identify: dict
+    ) -> None:
+        """Verify a registration the API does not complete aborts with an error and no session."""
+        # Given a signed-out visitor with a pending login the API will not register
         csrf_token = get_csrf(client)
+        with client.session_transaction() as sess:
+            for key in ("user_id", "company_id", "companies"):
+                sess.pop(key)
+            sess["pending_oauth"] = PENDING_OAUTH
+        mocker.patch("vweb.routes.auth.views.identify_in_companies", **identify)
 
-        # When submitting with no company selections
+        # When submitting company selections
         response = client.post(
             "/select-companies",
-            data={"csrf_token": csrf_token},
+            data={"company_ids": ["comp-1"], "csrf_token": csrf_token},
         )
 
-        # Then redirected back to select-companies
-        assert response.status_code == 302
+        # Then the visitor is sent home with an error and the pending payload cleared
+        assert response.location == "/"
+        with client.session_transaction() as sess:
+            assert "pending_oauth" not in sess
+            assert "user_id" not in sess
+        assert [category for category, _ in session_flashes(client)] == ["error"]
+
+    def test_post_without_selections_redirects_back(self, client: FlaskClient) -> None:
+        """Verify submitting no companies returns to the selection page."""
+        with client.session_transaction() as sess:
+            sess["pending_oauth"] = PENDING_OAUTH
+
+        response = client.post("/select-companies", data={"csrf_token": get_csrf(client)})
+
         assert response.location == "/select-companies"
 
 
 class TestSelectCompanyView:
-    """Tests for GET/POST /select-company."""
+    """Tests for GET/POST /select-company, where a member switches the active company."""
 
-    def test_get_shows_approved_companies(self, client):
-        """Verify GET /select-company renders approved companies only."""
-        # Given a session with multiple companies, one unapproved
+    def test_get_lists_only_approved_companies(self, client: FlaskClient) -> None:
+        """Verify the picker offers approved companies only."""
         with client.session_transaction() as sess:
             sess["companies"] = {
                 "c1": {"user_id": "u1", "company_name": "Alpha", "role": "PLAYER"},
@@ -383,107 +249,55 @@ class TestSelectCompanyView:
                 "c3": {"user_id": "u3", "company_name": "Gamma", "role": "ADMIN"},
             }
 
-        # When the page is requested
         response = client.get("/select-company")
 
-        # Then it renders only approved companies
         assert response.status_code == 200
         body = response.get_data(as_text=True)
         assert "Alpha" in body
         assert "Gamma" in body
-        # Unapproved company should not appear
         assert "Beta" not in body
 
-    def test_post_switches_session(self, client):
-        """Verify POST /select-company switches active company and redirects to index."""
-        # Given a CSRF token (must be fetched before changing user_id, since
-        # get_csrf triggers hooks that validate user_id against mock context)
-        csrf_token = get_csrf(client)
-
-        # Given a session with multiple approved companies
+    def test_post_switches_company_and_forgets_campaign(self, client: FlaskClient) -> None:
+        """Verify switching companies swaps the session user and drops the remembered campaign."""
+        # Given two approved memberships and a remembered campaign
         with client.session_transaction() as sess:
-            sess["companies"] = {
-                "c1": {"user_id": "u1", "company_name": "Alpha", "role": "PLAYER"},
-                "c2": {"user_id": "u2", "company_name": "Beta", "role": "ADMIN"},
+            sess["companies"]["second-co"] = {
+                "user_id": "second-user-id",
+                "company_name": "Second Company",
+                "role": "PLAYER",
             }
-            sess["company_id"] = "c1"
-            sess["user_id"] = "u1"
+            sess["last_campaign_id"] = "stale-campaign-id"
 
-        # When switching to company c2
+        # When switching to the second company
         response = client.post(
             "/select-company",
-            data={"company_id": "c2", "csrf_token": csrf_token},
+            data={"company_id": "second-co", "csrf_token": get_csrf(client)},
         )
 
-        # Then session is updated and redirected to index
-        assert response.status_code == 302
+        # Then the session acts as the second membership and entry rules re-evaluate
         assert response.location == "/"
         with client.session_transaction() as sess:
-            assert sess["company_id"] == "c2"
-            assert sess["user_id"] == "u2"
+            assert sess["company_id"] == "second-co"
+            assert sess["user_id"] == "second-user-id"
+            assert "last_campaign_id" not in sess
 
-    def test_post_invalid_company_id_shows_error(self, client):
-        """Verify POST /select-company with invalid company_id redirects back."""
-        csrf_token = get_csrf(client)
-
-        # Given a session with companies
-        with client.session_transaction() as sess:
-            sess["companies"] = {
-                "c1": {"user_id": "u1", "company_name": "Alpha", "role": "PLAYER"},
-            }
-
-        # When switching to a non-existent company
-        response = client.post(
-            "/select-company",
-            data={"company_id": "invalid", "csrf_token": csrf_token},
-        )
-
-        # Then redirected back to select-company
-        assert response.status_code == 302
-        assert response.location == "/select-company"
-
-    def test_post_unapproved_company_rejected(self, client):
-        """Verify POST /select-company rejects switching to unapproved company."""
-        csrf_token = get_csrf(client)
-
-        # Given a session with an unapproved company
-        with client.session_transaction() as sess:
-            sess["companies"] = {
-                "c1": {"user_id": "u1", "company_name": "Alpha", "role": "UNAPPROVED"},
-            }
-
-        # When trying to switch to the unapproved company
-        response = client.post(
-            "/select-company",
-            data={"company_id": "c1", "csrf_token": csrf_token},
-        )
-
-        # Then redirected back to select-company
-        assert response.status_code == 302
-        assert response.location == "/select-company"
-
-
-def test_select_company_clears_remembered_campaign(client, mock_global_context) -> None:
-    """Verify switching company drops last_campaign_id so entry rules re-evaluate."""
-    # Given a session with two approved companies and a remembered campaign
-    with client.session_transaction() as sess:
-        sess["companies"]["second-co"] = {
-            "user_id": "second-user-id",
-            "company_name": "Second Company",
-            "role": "PLAYER",
-        }
-        sess["last_campaign_id"] = "stale-campaign-id"
-    csrf_token = get_csrf(client)
-
-    # When switching to the second company
-    response = client.post(
-        "/select-company",
-        data={"company_id": "second-co", "csrf_token": csrf_token},
+    @pytest.mark.parametrize(
+        ("company_id", "role"),
+        [("invalid", "PLAYER"), ("c1", "UNAPPROVED")],
+        ids=["unknown-company", "unapproved-membership"],
     )
+    def test_post_rejects_company_user_cannot_enter(
+        self, client: FlaskClient, company_id: str, role: str
+    ) -> None:
+        """Verify switching to an unknown or unapproved company is refused."""
+        csrf_token = get_csrf(client)
+        with client.session_transaction() as sess:
+            sess["companies"] = {"c1": {"user_id": "u1", "company_name": "Alpha", "role": role}}
 
-    # Then the remembered campaign is forgotten and the user lands on entry rules
-    assert response.status_code == 302
-    assert response.headers["Location"] == "/"
-    with client.session_transaction() as sess:
-        assert "last_campaign_id" not in sess
-        assert sess["company_id"] == "second-co"
+        response = client.post(
+            "/select-company", data={"company_id": company_id, "csrf_token": csrf_token}
+        )
+
+        assert response.location == "/select-company"
+        with client.session_transaction() as sess:
+            assert sess["company_id"] == "test-company-id"

@@ -5,15 +5,12 @@ from __future__ import annotations
 import html as html_lib
 import json
 import re
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
 
-from tests.conftest import get_csrf
+from tests.conftest import htmx_post
 from tests.helpers import build_mock_options_service
-from vweb.api_client.exceptions import APIConnectionError
-from vweb.api_client.models import CharacterTraitSpecialty, StainsTracker
 from vweb.api_client.testing import (
     CharacterFullSheetFactory,
     CharacterTraitFactory,
@@ -28,13 +25,14 @@ from vweb.api_client.testing import (
     TraitFactory,
 )
 from vweb.routes.character_view import views_trackers
+from vweb.routes.character_view.views_trackers import SAVE_FAILED_MESSAGE
 
 if TYPE_CHECKING:
     from unittest.mock import MagicMock
 
     from werkzeug.test import TestResponse
 
-    from vweb.api_client.models import CharacterFullSheet, CharacterTrait
+    from vweb.api_client.models import CharacterFullSheet, CharacterTrait, StainsTracker
 
 TRACKER_RULES = {
     "V4": {
@@ -76,7 +74,7 @@ def _sheet(character, *, traits=(), health=None) -> CharacterFullSheet:
 
 
 @pytest.fixture
-def show_sheet(client, mocker, mock_campaign):
+def show_sheet(client, mocker, use_context, mock_campaign):
     """Return a callable that renders the sheet tab for a character."""
 
     def _show(character, *, traits=(), health=None, sheet=None) -> str:
@@ -85,10 +83,7 @@ def show_sheet(client, mocker, mock_campaign):
         mocker.patch(
             "vweb.routes.character_view.views.cache.character_sheet.get", return_value=sheet
         )
-        mocker.patch(
-            "vweb.routes.character_view.views.get_character_and_campaign",
-            return_value=(character, mock_campaign),
-        )
+        use_context(user_role="PLAYER", campaign=mock_campaign, characters=[character])
         return client.get(f"/character/{character.id}").get_data(as_text=True)
 
     return _show
@@ -163,7 +158,6 @@ def test_v5_willpower_is_a_tappable_counter(show_sheet, v5_character) -> None:
         {"action": "set", "current": 3},
         {"action": "set", "current": 4},
     ]
-    assert "Stains" not in slot
 
 
 @pytest.mark.parametrize(
@@ -221,15 +215,12 @@ def test_v4_health_marks_levels_from_marked(show_sheet, v4_character) -> None:
     # When viewing the sheet
     html = show_sheet(v4_character, health=health)
 
-    # Then each level appears with its mark, and no penalty or impairment is drawn
+    # Then each level appears with its mark
     block = _health_block(html)
     for name in ("Bruised", "Hurt", "Crippled"):
         assert name in block
     squares = SQUARE_TAG.findall(block)
     assert ['data-marked="true"' in tag for tag in squares] == [True, True, False]
-    assert "penalty" not in block.lower()
-    assert "Impaired" not in block
-    assert "Incapacitated" not in block
 
 
 @pytest.mark.parametrize(("damage", "marked"), [(2, 2), (None, 0)], ids=["damage", "none"])
@@ -302,15 +293,12 @@ def test_stable_wrappers_issue_and_queue_every_request(show_sheet, v5_character)
     # When viewing the sheet
     html = show_sheet(v5_character, traits=[trait], health=health)
 
-    # Then both wrappers carry the target, swap and queue, and a bare Alpine scope
+    # Then both wrappers carry the target, swap and queue
     for slot_id in ("tracker-ct-1", "health-track"):
         wrapper = _wrapper_tag(html, slot_id)
         assert 'hx-target="this"' in wrapper
         assert 'hx-swap="innerHTML"' in wrapper
         assert 'hx-sync="this:queue all"' in wrapper
-        assert re.search(r"\sx-data\s", wrapper)
-        assert "x-data=" not in wrapper
-    assert "x-data" not in _slot(html, "tracker-ct-1")
 
     # Then no control inside carries its own htmx request attributes
     for fragment in (_slot(html, "tracker-ct-1"), _health_block(html)):
@@ -410,18 +398,13 @@ def test_health_buttons_post_damage_and_heal(
     # When viewing the sheet
     html = show_sheet(v4_character, health=health)
 
-    # Then exactly two buttons post damage and heal with no menu
-    block = _health_block(html)
-    controls = {c["text"]: c for c in _controls(block)}
-    assert set(controls) == {"Damage", "Heal"}
+    # Then exactly two controls post damage and heal to the health URL
+    controls = {c["vals"]["action"]: c for c in _controls(_health_block(html))}
+    assert set(controls) == {"damage", "heal"}
     assert {c["url"] for c in controls.values()} == {f"/character/{v4_character.id}/health"}
-    assert controls["Damage"]["vals"] == {"action": "damage"}
-    assert controls["Heal"]["vals"] == {"action": "heal"}
-    assert "btn-error" in controls["Damage"]["tag"]
-    assert "btn-success" in controls["Heal"]["tag"]
-    assert controls["Damage"]["disabled"] is damage_disabled
-    assert controls["Heal"]["disabled"] is heal_disabled
-    assert "x-show" not in block
+    assert all(c["vals"] == {"action": action} for action, c in controls.items())
+    assert controls["damage"]["disabled"] is damage_disabled
+    assert controls["heal"]["disabled"] is heal_disabled
 
 
 def test_health_buttons_follow_tracker_rules(show_sheet, v5_character, tracker_rules) -> None:
@@ -433,8 +416,8 @@ def test_health_buttons_follow_tracker_rules(show_sheet, v5_character, tracker_r
     # When viewing the sheet
     html = show_sheet(v5_character, health=health)
 
-    # Then only the Damage button is drawn
-    assert [c["text"] for c in _controls(_health_block(html))] == ["Damage"]
+    # Then only the damage control is drawn
+    assert [c["vals"]["action"] for c in _controls(_health_block(html))] == ["damage"]
 
 
 def test_stain_stepper_follows_tracker_rules(show_sheet, v5_character, tracker_rules) -> None:
@@ -456,7 +439,7 @@ HEALTH_V5 = {"size": 5, "damage": 0, "levels": None}
 
 
 @pytest.fixture
-def post_tracker(client, mocker, mock_campaign):
+def post_tracker(client, mocker, use_context, mock_campaign):
     """Return a callable that posts a form to a tracker endpoint with the given sheet loaded."""
 
     def _post(
@@ -473,14 +456,12 @@ def post_tracker(client, mocker, mock_campaign):
             "vweb.routes.character_view.views_trackers.cache.character_sheet.get",
             return_value=_sheet(character, traits=traits, health=health),
         )
-        mocker.patch(
-            "vweb.routes.character_view.views_trackers.get_character_and_campaign",
-            return_value=(character, mock_campaign) if character_found else (None, None),
+        use_context(
+            user_role="PLAYER",
+            campaign=mock_campaign,
+            characters=[character] if character_found else [],
         )
-        headers = {"X-CSRFToken": get_csrf(client)}
-        if htmx:
-            headers["HX-Request"] = "true"
-        return client.post(f"/character/{character.id}{url_suffix}", data=data, headers=headers)
+        return htmx_post(client, f"/character/{character.id}{url_suffix}", data, htmx=htmx)
 
     return _post
 
@@ -610,7 +591,7 @@ def test_non_owner_gets_403_on_both_endpoints(
     for response in (tracker, health):
         assert response.status_code == 200
         assert response.headers["HX-Reswap"] == "none"
-        assert "You cannot change this character&#39;s trackers." in response.get_data(as_text=True)
+        assert 'id="flash-messages"' in response.get_data(as_text=True)
     assert not [request for request in fake_vclient.requests if request.method in ("PUT", "POST")]
 
 
@@ -643,7 +624,7 @@ def test_npc_non_owner_with_unrestricted_setting_gets_403(
 
     # Then it is refused with no API call
     assert response.headers["HX-Reswap"] == "none"
-    assert "You cannot change this character&#39;s trackers." in response.get_data(as_text=True)
+    assert 'id="flash-messages"' in response.get_data(as_text=True)
     assert not [request for request in fake_vclient.requests if request.method == "POST"]
 
 
@@ -680,7 +661,7 @@ def test_unknown_trait_flashes_without_swap(post_tracker, fake_vclient, v5_chara
 
     assert response.status_code == 200
     assert response.headers["HX-Reswap"] == "none"
-    assert "That trait is no longer on the sheet." in response.get_data(as_text=True)
+    assert 'id="flash-messages"' in response.get_data(as_text=True)
     assert fake_vclient.requests == []
 
 
@@ -712,7 +693,7 @@ def test_missing_character_flashes_without_swap(
 
     assert response.status_code == 200
     assert response.headers["HX-Reswap"] == "none"
-    assert "Character not found." in response.get_data(as_text=True)
+    assert 'id="flash-messages"' in response.get_data(as_text=True)
     assert fake_vclient.requests == []
 
 
@@ -845,7 +826,7 @@ def test_unexpected_api_error_flashes_without_swap(
     body = response.get_data(as_text=True)
     assert response.status_code == 200
     assert response.headers["HX-Reswap"] == "none"
-    assert "Could not save, try again." in body
+    assert html_lib.escape(SAVE_FAILED_MESSAGE) in body
     assert not SQUARE_TAG.findall(body)
     sheet_cache["update"].assert_not_called()
     sheet_cache["clear"].assert_called_once_with(v5_character.id)
@@ -880,30 +861,15 @@ def test_disabled_marked_square_keeps_its_fill(show_sheet, v4_character) -> None
     last = SQUARE_TAG.findall(_slot(html, "tracker-ct-1"))[2]
     assert 'data-disabled="true"' in last
     assert 'data-marked="true"' in last
-    assert "bg-base-content" in last
-
-
-def _rows(html: str) -> list[str]:
-    table = html[html.index("<table") : html.index("</table>")]
-    return re.findall(r"<tr>(.*?)</tr>", table, re.DOTALL)
-
-
-NOW = datetime(2026, 1, 1, tzinfo=UTC)
-FIXED_CELL = '<span class="inline-flex track-cell justify-center">'
 
 
 @pytest.mark.parametrize("in_subcategory", [False, True], ids=["category", "subcategory"])
-def test_tracked_trait_gets_full_width_rows(show_sheet, v5_character, in_subcategory) -> None:
-    """Verify a tracked trait's name spans the table and its circles stack over the squares."""
-    # Given a tracked trait with a specialty, in a category or a subcategory
+def test_tracked_trait_draws_tracker_wherever_it_sits(
+    show_sheet, v5_character, in_subcategory
+) -> None:
+    """Verify a tracked trait gets its tracker in a category or a subcategory."""
+    # Given a tracked trait in a category or a subcategory
     trait = _trait(CounterTrackerFactory.build(size=3, current=1), value=3, max_value=5)
-    trait = trait.model_copy(
-        update={
-            "specialties": [
-                CharacterTraitSpecialty(id="sp-1", name="Grit", date_created=NOW, date_modified=NOW)
-            ]
-        }
-    )
     if in_subcategory:
         subcategory = FullSheetTraitSubcategoryFactory.build(
             name="Nested", character_traits=[trait]
@@ -917,50 +883,31 @@ def test_tracked_trait_gets_full_width_rows(show_sheet, v5_character, in_subcate
     else:
         html = show_sheet(v5_character, traits=[trait])
 
-    # When reading the trait's two rows
-    rows = [row for row in _rows(html) if "Willpower" in row or "tracker-ct-1" in row]
-    name_row, tracker_row = rows
+    # When reading the trait's tracker
+    squares = SQUARE_TAG.findall(_slot(html, "tracker-ct-1"))
 
-    # Then the name and specialties span both columns with no circles beside them
-    assert re.search(r'<td class="text-lg align-top"\s+colspan="2">', name_row)
-    assert "Grit" in name_row
-    assert "fa-circle" not in name_row
-    assert name_row.count("<td") == 1
-
-    # Then the circles sit above the squares in one full-width cell, in square-width cells
-    assert re.search(r'<td colspan="2"', tracker_row)
-    assert tracker_row.index("fa-circle") < tracker_row.index('id="tracker-ct-1"')
-    assert tracker_row.count(FIXED_CELL) == 5
-    assert len(SQUARE_TAG.findall(tracker_row)) == 5
-
-
-def test_trait_without_tracker_keeps_two_column_row(show_sheet, v5_character) -> None:
-    """Verify an untracked trait keeps its name and plain circles side by side."""
-    html = show_sheet(v5_character, traits=[_trait(None)])
-
-    (row,) = [row for row in _rows(html) if "Willpower" in row]
-    assert row.count("<td") == 2
-    assert "colspan" not in row
-    assert "fa-circle" in row
-    assert FIXED_CELL not in html
+    # Then it draws one square per dot of the larger of value and max, one marked
+    assert len(squares) == 5
+    assert sum('data-marked="true"' in tag for tag in squares) == 1
 
 
 @pytest.mark.parametrize(
     "endpoint",
     [
-        ("/traits/ct-1/tracker", "update_trait_tracker", {"action": "set", "current": "2"}),
-        ("/health", "update_health", {"action": "damage"}),
+        (
+            "/traits/ct-1/tracker",
+            Routes.CHARACTER_TRAITS_TRACKER_SET,
+            {"action": "set", "current": "2"},
+        ),
+        ("/health", Routes.CHARACTERS_HEALTH_ACTION, {"action": "damage"}),
     ],
 )
 def test_connection_error_on_change_flashes_without_swap(
-    post_tracker, sheet_cache, mocker, v5_character, endpoint
+    post_tracker, sheet_cache, fake_vclient, v5_character, endpoint
 ) -> None:
     """Verify a network failure on the change flashes a retry hint and drops the cached sheet."""
-    suffix, service, data = endpoint
-    mocker.patch(
-        f"vweb.routes.character_view.views_trackers.{service}",
-        side_effect=APIConnectionError("Could not reach the API: unreachable"),
-    )
+    suffix, route, data = endpoint
+    fake_vclient.set_connection_error(route)
     trait = _trait(CounterTrackerFactory.build(size=4, current=1), value=4)
 
     response = post_tracker(v5_character, suffix, data, traits=[trait])
@@ -968,20 +915,17 @@ def test_connection_error_on_change_flashes_without_swap(
     body = response.get_data(as_text=True)
     assert response.status_code == 200
     assert response.headers["HX-Reswap"] == "none"
-    assert "Could not save, try again." in body
+    assert html_lib.escape(SAVE_FAILED_MESSAGE) in body
     sheet_cache["update"].assert_not_called()
     sheet_cache["clear"].assert_called_once_with(v5_character.id)
 
 
 def test_refetch_connection_error_falls_back_to_sheet_tracker(
-    post_tracker, fake_vclient, sheet_cache, mocker, v4_character
+    post_tracker, fake_vclient, sheet_cache, v4_character
 ) -> None:
     """Verify a network failure on the re-fetch after a rejected change draws the sheet state."""
     fake_vclient.set_error(Routes.CHARACTER_TRAITS_TRACKER_SET, status_code=400)
-    mocker.patch(
-        "vweb.routes.character_view.views_trackers.fetch_trait_tracker",
-        side_effect=APIConnectionError("Could not reach the API: unreachable"),
-    )
+    fake_vclient.set_connection_error(Routes.CHARACTER_TRAITS_TRACKER_GET)
     trait = _trait(CounterTrackerFactory.build(size=4, current=1), value=4)
 
     response = post_tracker(

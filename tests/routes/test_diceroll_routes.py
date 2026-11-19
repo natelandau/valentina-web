@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import BaseModel, Field
 from pydantic import ValidationError as PydanticValidationError
 
-from tests.conftest import get_csrf, make_dice_roll_result
-from vweb.api_client.exceptions import RequestValidationError, ValidationError
+from tests.conftest import get_csrf, htmx_post, make_dice_roll_result
+from vweb.api_client.exceptions import RequestValidationError
 from vweb.api_client.testing import (
     CampaignFactory,
     CharacterFactory,
@@ -19,533 +20,202 @@ from vweb.api_client.testing import (
     Routes,
     TraitFactory,
 )
-from vweb.routes.diceroll.services import RollContext
 
 if TYPE_CHECKING:
     from flask.testing import FlaskClient
 
+ROLL_RESULT = "3 successes"
+TRAIT_FORM = {"trait_one_id": "trait-str", "difficulty": "6", "num_desperation_dice": "0"}
+QUICKROLL_FORM = {"quickroll_id": "qr-1", "difficulty": "6", "num_desperation_dice": "0"}
+CUSTOM_FORM = {"dice_size": "10", "num_dice": "5", "difficulty": "6"}
 
-@pytest.fixture
-def mock_character():
-    """Build a factory character for dice roll tests."""
-    return CharacterFactory.build(
-        id="char-1",
-        name_full="Elena Vasquez",
-        campaign_id="camp-1",
-        user_player_id="test-user-id",
+
+@pytest.fixture(autouse=True)
+def _roll_env(use_context, fake_vclient) -> None:
+    """Serve a player's character with Strength 3, Brawl 2, one quickroll, and a roll result."""
+    campaign = CampaignFactory.build(id="camp-1", desperation=2)
+    character = CharacterFactory.build(
+        id="char-1", campaign_id="camp-1", user_player_id="test-user-id"
     )
+    use_context(user_role="PLAYER", campaign=campaign, characters=[character])
 
-
-@pytest.fixture
-def mock_campaign():
-    """Build a factory campaign with desperation."""
-    return CampaignFactory.build(id="camp-1", name="Test Campaign", desperation=2)
-
-
-@pytest.fixture
-def mock_roll_context():
-    """Build a minimal RollContext."""
-    return RollContext(
-        character_traits=[
-            CharacterTraitFactory.build(value=3, trait=TraitFactory.build(name="Strength")),
-            CharacterTraitFactory.build(value=2, trait=TraitFactory.build(name="Brawl")),
+    fake_vclient.set_response(
+        Routes.CHARACTER_TRAITS_LIST,
+        items=[
+            CharacterTraitFactory.build(value=3, trait=TraitFactory.build(id="trait-str")),
+            CharacterTraitFactory.build(value=2, trait=TraitFactory.build(id="trait-brawl")),
         ],
-        quickrolls=[QuickrollFactory.build(id="qr-1", name="Punch", trait_ids=[])],
-        campaign_desperation=2,
-        quickroll_pools={"qr-1": 0},
     )
-
-
-@pytest.fixture
-def mock_diceroll_deps(mocker, mock_character, mock_campaign, mock_roll_context):
-    """Mock all dice roll route dependencies."""
-    mocker.patch(
-        "vweb.routes.diceroll.views.get_character_and_campaign",
-        return_value=(mock_character, mock_campaign),
+    fake_vclient.set_response(
+        Routes.USERS_QUICKROLLS_LIST,
+        items=[QuickrollFactory.build(id="qr-1", trait_ids=["trait-str"])],
     )
-    mocker.patch(
-        "vweb.routes.diceroll.views.get_roll_context",
-        return_value=mock_roll_context,
+    roll = DicerollFactory.build(
+        num_dice=5, dice_size=10, dice_modifier=0, result=make_dice_roll_result()
     )
-    mocker.patch(
-        "vweb.routes.diceroll.views.get_character_traits",
-        return_value=mock_roll_context.character_traits,
-    )
-    return mock_character, mock_campaign, mock_roll_context
+    fake_vclient.set_response(Routes.DICEROLLS_CREATE, model=roll)
+    fake_vclient.set_response(Routes.DICEROLLS_QUICKROLL, model=roll)
 
 
 class TestDiceRollContentView:
     """Tests for GET /roll/<character_id>."""
 
-    def test_returns_modal_content(self, client: FlaskClient, mock_diceroll_deps) -> None:
-        """Verify GET with HX-Request returns the bare fragment, not the full page."""
-        # Given a valid character
-        char, _, _ = mock_diceroll_deps
+    @pytest.mark.parametrize(("htmx", "full_page"), [(True, False), (False, True)])
+    def test_returns_fragment_for_htmx_and_page_otherwise(
+        self, client: FlaskClient, htmx, full_page
+    ) -> None:
+        """Verify the modal gets a bare fragment, direct navigation a full page, varying on HX."""
+        headers = {"HX-Request": "true"} if htmx else {}
 
-        # When requesting the roll modal content
-        response = client.get(
-            f"/roll/{char.id}",
-            headers={"HX-Request": "true"},
-        )
+        response = client.get("/roll/char-1", headers=headers)
 
-        # Then a fragment (no PageLayout chrome) is returned
         assert response.status_code == 200
         body = response.get_data(as_text=True)
-        assert f"/roll/{char.id}/custom" in body
-        assert "<!DOCTYPE html>" not in body
+        assert "/roll/char-1/custom" in body
+        assert ("<!DOCTYPE html>" in body) is full_page
         assert "HX-Request" in (response.headers.get("Vary") or "")
 
-    def test_modal_has_modifier_input_on_traits_and_quickroll_only(
-        self, client: FlaskClient, mock_diceroll_deps
+    def test_modifier_is_posted_by_traits_and_quickroll_forms_only(
+        self, client: FlaskClient
     ) -> None:
-        """Verify the modifier field is posted by the traits and quickroll forms only."""
-        # Given a character with one quickroll
-        char, _, _ = mock_diceroll_deps
+        """Verify the traits and quickroll forms carry a modifier field and the custom form does not."""
+        body = client.get("/roll/char-1", headers={"HX-Request": "true"}).get_data(as_text=True)
 
-        # When requesting the roll modal content
-        body = client.get(f"/roll/{char.id}", headers={"HX-Request": "true"}).get_data(as_text=True)
-
-        # Then the traits and quickroll forms each carry it, and the custom form does not
         assert body.count('name="dice_modifier"') == 2
-        custom_form = body.split(f"/roll/{char.id}/custom")[1].split("</form>")[0]
+        custom_form = body.split("/roll/char-1/custom")[1].split("</form>")[0]
         assert "dice_modifier" not in custom_form
 
-        # And the quickroll pools JSON is attribute-escaped, not raw, inside x-data
-        assert "quickrollPools: {&#34;qr-1&#34;: 0}" in body
+    def test_quickroll_pools_are_attribute_escaped(self, client: FlaskClient) -> None:
+        """Verify the quickroll pools JSON inside x-data is escaped, so it cannot break out."""
+        body = client.get("/roll/char-1", headers={"HX-Request": "true"}).get_data(as_text=True)
+
+        assert "&#34;qr-1&#34;: 3" in body
         assert '"qr-1":' not in body
-        assert ":disabled=traitsBlocked" in body
-        assert ":disabled=quickrollBlocked" in body
 
-        # And each modifier form cancels its own request when the pool is invalid
-        assert "traitsInvalid ? $event.preventDefault()" in body
-        assert "quickrollInvalid ? $event.preventDefault()" in body
-
-    def test_returns_full_page_on_direct_navigation(
-        self, client: FlaskClient, mock_diceroll_deps
+    @pytest.mark.parametrize(
+        ("referer", "expected_back"),
+        [
+            ("http://localhost/campaigns/camp-1", "http://localhost/campaigns/camp-1"),
+            (None, "/character/char-1"),
+            ("http://evil.example.com/phish", "/character/char-1"),
+            ("http://localhost/roll/other-char-id", "/character/char-1"),
+            ("http://localhost/roll/char-1", "/character/char-1"),
+            ("javascript:alert(1)", "/character/char-1"),
+        ],
+        ids=["same-origin", "missing", "cross-origin", "other-roll-page", "self", "javascript"],
+    )
+    def test_back_link_honors_only_safe_referrers(
+        self, client: FlaskClient, referer, expected_back
     ) -> None:
-        """Verify GET without HX-Request returns the full page wrapped in PageLayout."""
-        # Given a valid character
-        char, _, _ = mock_diceroll_deps
+        """Verify Back returns to a same-origin non-roll referrer, else the character page."""
+        headers = {"Referer": referer} if referer else {}
 
-        # When navigating directly (no HX-Request header)
-        response = client.get(f"/roll/{char.id}")
+        body = client.get("/roll/char-1", headers=headers).get_data(as_text=True)
 
-        # Then a full HTML document is returned with the form content embedded
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "<!DOCTYPE html>" in body
-        assert f"/roll/{char.id}/custom" in body
+        assert f'href="{expected_back}"' in body
+        if referer and referer != expected_back:
+            assert referer not in body
 
-    def test_back_link_uses_same_origin_referrer(
-        self, client: FlaskClient, mock_diceroll_deps
+    @pytest.mark.parametrize(
+        ("method", "path"),
+        [
+            ("get", "/roll/unknown"),
+            ("post", "/roll/unknown/custom"),
+            ("post", "/roll/unknown/traits"),
+            ("post", "/roll/unknown/quickroll"),
+        ],
+    )
+    def test_unknown_character_returns_404(
+        self, client: FlaskClient, fake_vclient, method, path
     ) -> None:
-        """Verify the back link points at the same-origin referrer the user came from."""
-        # Given a valid character and a referer pointing at the campaign page
-        char, _, _ = mock_diceroll_deps
-
-        # When navigating to the roll page from the campaign page
-        response = client.get(
-            f"/roll/{char.id}",
-            headers={"Referer": "http://localhost/campaigns/camp-1"},
+        """Verify rolling for a character outside the company returns 404 and rolls nothing."""
+        response = getattr(client, method)(
+            path,
+            data={**CUSTOM_FORM, **TRAIT_FORM, **QUICKROLL_FORM},
+            headers={"HX-Request": "true", "X-CSRFToken": get_csrf(client)},
         )
 
-        # Then the back link reflects that origin page
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert 'href="http://localhost/campaigns/camp-1"' in body
-
-    def test_back_link_falls_back_when_referrer_missing(
-        self, client: FlaskClient, mock_diceroll_deps
-    ) -> None:
-        """Verify the back link falls back to the character page without a referrer."""
-        # Given a valid character and no Referer header
-        char, _, _ = mock_diceroll_deps
-
-        # When navigating directly (no Referer)
-        response = client.get(f"/roll/{char.id}")
-
-        # Then the back link points at the character page
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert f'href="/character/{char.id}"' in body
-
-    def test_back_link_rejects_cross_origin_referrer(
-        self, client: FlaskClient, mock_diceroll_deps
-    ) -> None:
-        """Verify a cross-origin referrer is ignored to prevent open-redirect-style links."""
-        # Given a valid character and an off-site referer
-        char, _, _ = mock_diceroll_deps
-
-        # When navigating with a cross-origin Referer
-        response = client.get(
-            f"/roll/{char.id}",
-            headers={"Referer": "http://evil.example.com/phish"},
-        )
-
-        # Then the back link falls back to the character page, not the off-site URL
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "evil.example.com" not in body
-        assert f'href="/character/{char.id}"' in body
-
-    def test_back_link_rejects_any_roll_page_referrer(
-        self, client: FlaskClient, mock_diceroll_deps
-    ) -> None:
-        """Verify referrers from any /roll/* page fall back (no ping-pong between roll pages)."""
-        # Given a valid character
-        char, _, _ = mock_diceroll_deps
-
-        # When the referrer is another character's roll page
-        response = client.get(
-            f"/roll/{char.id}",
-            headers={"Referer": "http://localhost/roll/other-char-id"},
-        )
-
-        # Then the back link falls back to the character page, not the other roll page
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "/roll/other-char-id" not in body
-        assert f'href="/character/{char.id}"' in body
-
-    def test_back_link_rejects_self_referrer(self, client: FlaskClient, mock_diceroll_deps) -> None:
-        """Verify a referrer pointing at the roll page itself doesn't loop the user back."""
-        # Given a valid character and a referer pointing at the roll page
-        char, _, _ = mock_diceroll_deps
-
-        # When the referrer is the roll page itself (e.g. after a refresh)
-        response = client.get(
-            f"/roll/{char.id}",
-            headers={"Referer": f"http://localhost/roll/{char.id}"},
-        )
-
-        # Then the back link falls back to the character page
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert f'href="/character/{char.id}"' in body
-
-    def test_back_link_rejects_javascript_scheme(
-        self, client: FlaskClient, mock_diceroll_deps
-    ) -> None:
-        """Verify a javascript: referrer cannot reach the rendered Back link."""
-        # Given a valid character and a hostile Referer header
-        char, _, _ = mock_diceroll_deps
-
-        # When the referrer uses a dangerous URL scheme
-        response = client.get(
-            f"/roll/{char.id}",
-            headers={"Referer": "javascript:alert(1)"},
-        )
-
-        # Then the dangerous scheme is dropped and Back falls back to the character page
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "javascript:" not in body
-        assert f'href="/character/{char.id}"' in body
-
-    def test_returns_404_when_character_not_found(self, client: FlaskClient, mocker) -> None:
-        """Verify 404 when character doesn't exist."""
-        # Given no character found
-        mocker.patch(
-            "vweb.routes.diceroll.views.get_character_and_campaign",
-            return_value=(None, None),
-        )
-
-        # When requesting the roll modal
-        response = client.get(
-            "/roll/nonexistent",
-            headers={"HX-Request": "true"},
-        )
-
-        # Then 404 is returned
         assert response.status_code == 404
+        fake_vclient.assert_not_called(Routes.DICEROLLS_CREATE)
+        fake_vclient.assert_not_called(Routes.DICEROLLS_QUICKROLL)
 
 
-class TestDiceRollCustomView:
-    """Tests for POST /roll/<character_id>/custom."""
+class TestDiceRollSubmit:
+    """Tests for the custom, traits, and quickroll submit routes."""
 
-    def test_returns_results_on_success(self, client, mock_diceroll_deps, mocker) -> None:
-        """Verify custom roll returns results fragment."""
-        # Given a successful roll
-        mock_roll = DicerollFactory.build(result=make_dice_roll_result())
-        mocker.patch(
-            "vweb.routes.diceroll.views.perform_custom_roll",
-            return_value=mock_roll,
+    def test_custom_roll_sends_form_and_shows_result(
+        self, client: FlaskClient, fake_vclient
+    ) -> None:
+        """Verify a custom roll sends the form values and shows the API's result."""
+        response = htmx_post(client, "/roll/char-1/custom", {**CUSTOM_FORM, "comment": "  ambush "})
+
+        assert ROLL_RESULT in response.get_data(as_text=True)
+        fake_vclient.assert_called(
+            Routes.DICEROLLS_CREATE,
+            json_subset={
+                "dice_size": 10,
+                "num_dice": 5,
+                "difficulty": 6,
+                "comment": "ambush",
+                "character_id": "char-1",
+                "campaign_id": "camp-1",
+            },
+            times=1,
         )
-        csrf = get_csrf(client)
 
-        # When submitting a custom roll
-        response = client.post(
-            "/roll/char-1/custom",
-            data={"dice_size": "10", "num_dice": "5", "difficulty": "6"},
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
+    def test_trait_roll_computes_pool_from_stored_traits(
+        self, client: FlaskClient, fake_vclient
+    ) -> None:
+        """Verify a trait roll's pool comes from the character's stored trait values."""
+        response = htmx_post(
+            client, "/roll/char-1/traits", {**TRAIT_FORM, "trait_two_id": "trait-brawl"}
         )
 
-        # Then results are returned
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "3 successes" in body
+        assert ROLL_RESULT in response.get_data(as_text=True)
+        fake_vclient.assert_called(
+            Routes.DICEROLLS_CREATE,
+            json_subset={"num_dice": 5, "trait_ids": ["trait-str", "trait-brawl"]},
+            times=1,
+        )
+
+    def test_quickroll_sends_template_and_shows_result(
+        self, client: FlaskClient, fake_vclient
+    ) -> None:
+        """Verify a quickroll sends the chosen template and shows the API's result."""
+        response = htmx_post(client, "/roll/char-1/quickroll", QUICKROLL_FORM)
+
+        assert ROLL_RESULT in response.get_data(as_text=True)
+        fake_vclient.assert_called(
+            Routes.DICEROLLS_QUICKROLL,
+            json_subset={"quickroll_id": "qr-1", "character_id": "char-1"},
+            times=1,
+        )
 
     @pytest.mark.parametrize(
         ("modifier", "expected"), [(1, "5d10 +1"), (-2, "5d10 -2"), (0, "5d10")]
     )
-    def test_results_show_pool_line_with_modifier(
-        self, client, mock_diceroll_deps, mocker, modifier: int, expected: str
+    def test_result_shows_pool_with_signed_modifier(
+        self, client: FlaskClient, fake_vclient, modifier, expected
     ) -> None:
-        """Verify the results show the pool with its signed modifier, none when zero."""
-        # Given a roll with a dice modifier
-        mock_roll = DicerollFactory.build(
-            num_dice=5, dice_size=10, dice_modifier=modifier, result=make_dice_roll_result()
-        )
-        mocker.patch("vweb.routes.diceroll.views.perform_custom_roll", return_value=mock_roll)
-        csrf = get_csrf(client)
-
-        # When submitting a custom roll
-        response = client.post(
-            "/roll/char-1/custom",
-            data={"dice_size": "10", "num_dice": "5", "difficulty": "6"},
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
-        )
-
-        # Then the pool line shows the notation
-        body = response.get_data(as_text=True)
-        assert f'data-testid="dice-pool">{expected}</p>' in body
-
-    def test_returns_error_on_invalid_input(self, client, mock_diceroll_deps) -> None:
-        """Verify custom roll returns error for non-numeric input."""
-        csrf = get_csrf(client)
-
-        # When submitting with bad values
-        response = client.post(
-            "/roll/char-1/custom",
-            data={"dice_size": "abc", "num_dice": "5", "difficulty": "6"},
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
-        )
-
-        # Then an error is shown
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "Invalid input" in body
-
-    def test_returns_error_on_api_failure(self, client, mock_diceroll_deps, mocker) -> None:
-        """Verify custom roll handles API errors gracefully."""
-        from vweb.api_client.exceptions import APIError
-
-        mocker.patch(
-            "vweb.routes.diceroll.views.perform_custom_roll",
-            side_effect=APIError("Server error", status_code=500),
-        )
-        csrf = get_csrf(client)
-
-        # When an API error occurs
-        response = client.post(
-            "/roll/char-1/custom",
-            data={"dice_size": "10", "num_dice": "5", "difficulty": "6"},
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
-        )
-
-        # Then an error message is shown
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "Roll failed" in body
-
-
-class TestDiceRollTraitsView:
-    """Tests for POST /roll/<character_id>/traits."""
-
-    def test_returns_results_on_success(self, client, mock_diceroll_deps, mocker) -> None:
-        """Verify trait roll returns results fragment."""
-        mock_roll = DicerollFactory.build(result=make_dice_roll_result())
-        mocker.patch(
-            "vweb.routes.diceroll.views.perform_trait_roll",
-            return_value=mock_roll,
-        )
-        csrf = get_csrf(client)
-
-        # When submitting a trait roll
-        response = client.post(
-            "/roll/char-1/traits",
-            data={
-                "trait_one_id": "trait-str",
-                "difficulty": "6",
-                "num_desperation_dice": "0",
-            },
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
-        )
-
-        # Then results are returned
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "3 successes" in body
-
-    def test_returns_error_without_trait(self, client, mock_diceroll_deps) -> None:
-        """Verify trait roll requires at least one trait."""
-        csrf = get_csrf(client)
-
-        # When submitting without a trait selection
-        response = client.post(
-            "/roll/char-1/traits",
-            data={"difficulty": "6"},
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
-        )
-
-        # Then an error is shown
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "trait must be selected" in body
-
-
-class TestDiceRollQuickrollView:
-    """Tests for POST /roll/<character_id>/quickroll."""
-
-    def test_returns_results_on_success(self, client, mock_diceroll_deps, mocker) -> None:
-        """Verify quickroll returns results fragment."""
-        mock_roll = DicerollFactory.build(result=make_dice_roll_result())
-        mocker.patch(
-            "vweb.routes.diceroll.views.perform_quickroll",
-            return_value=mock_roll,
-        )
-        csrf = get_csrf(client)
-
-        # When submitting a quickroll
-        response = client.post(
-            "/roll/char-1/quickroll",
-            data={"quickroll_id": "qr-123", "difficulty": "6", "num_desperation_dice": "0"},
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
-        )
-
-        # Then results are returned
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "3 successes" in body
-
-    def test_returns_error_without_quickroll_id(self, client, mock_diceroll_deps) -> None:
-        """Verify quickroll requires a selection."""
-        csrf = get_csrf(client)
-
-        # When submitting without a quickroll selection
-        response = client.post(
-            "/roll/char-1/quickroll",
-            data={"difficulty": "6"},
-            headers={"HX-Request": "true", "X-CSRFToken": csrf},
-        )
-
-        # Then an error is shown
-        assert response.status_code == 200
-        body = response.get_data(as_text=True)
-        assert "select a quickroll" in body
-
-
-class _Roll(BaseModel):
-    num_dice: int = Field(le=100)
-
-
-def _post(client, path: str, data: dict[str, str]) -> str:
-    csrf = get_csrf(client)
-    response = client.post(path, data=data, headers={"HX-Request": "true", "X-CSRFToken": csrf})
-    assert response.status_code == 200
-    return response.get_data(as_text=True)
-
-
-class TestDiceRollApiErrors:
-    """API refusals show their reason, and server errors show a generic message."""
-
-    def test_custom_roll_shows_field_message(self, client, mock_diceroll_deps, mocker) -> None:
-        """Verify a 400 with invalid parameters renders the labeled field message."""
-        # Given the API rejects num_dice
-        detail = "Input should be less than or equal to 100"
-        mocker.patch(
-            "vweb.routes.diceroll.views.perform_custom_roll",
-            side_effect=ValidationError(
-                "Bad input",
-                400,
-                {
-                    "detail": "Bad input",
-                    "invalid_parameters": [{"field": "num_dice", "message": detail}],
-                },
+        """Verify the result shows the pool with its signed modifier, and none when zero."""
+        fake_vclient.set_response(
+            Routes.DICEROLLS_CREATE,
+            model=DicerollFactory.build(
+                num_dice=5, dice_size=10, dice_modifier=modifier, result=make_dice_roll_result()
             ),
         )
 
-        # When submitting a custom roll
-        body = _post(
-            client, "/roll/char-1/custom", {"dice_size": "10", "num_dice": "5", "difficulty": "6"}
-        )
+        body = htmx_post(client, "/roll/char-1/custom", CUSTOM_FORM).get_data(as_text=True)
 
-        # Then the field message is shown
-        assert f"Num dice: {detail}" in body
-
-    def test_trait_roll_shows_authorization_detail(
-        self, client, mock_diceroll_deps, fake_vclient
-    ) -> None:
-        """Verify a 403 renders the API's detail."""
-        # Given the API refuses the roll
-        char_trait = mock_diceroll_deps[2].character_traits[0]
-        fake_vclient.set_error(
-            Routes.DICEROLLS_CREATE,
-            status_code=403,
-            detail="Only storytellers can roll for this character.",
-        )
-
-        # When submitting a trait roll
-        body = _post(
-            client,
-            "/roll/char-1/traits",
-            {"trait_one_id": char_trait.trait.id, "difficulty": "6", "num_desperation_dice": "0"},
-        )
-
-        # Then the detail is shown
-        assert "Only storytellers can roll for this character." in body
-
-    def test_quickroll_hides_server_error_detail(
-        self, client, mock_diceroll_deps, fake_vclient
-    ) -> None:
-        """Verify a 500 renders the generic message without its detail."""
-        # Given the API fails
-        fake_vclient.set_error(Routes.DICEROLLS_QUICKROLL, status_code=500, detail="internal boom")
-
-        # When submitting a quickroll
-        body = _post(
-            client,
-            "/roll/char-1/quickroll",
-            {"quickroll_id": "qr-1", "difficulty": "6", "num_desperation_dice": "0"},
-        )
-
-        # Then only the generic message is shown
-        assert "Roll failed - please try again." in body
-        assert "internal boom" not in body
-
-    def test_quickroll_client_validation_error_never_renders_none(
-        self, client, mock_diceroll_deps, mocker
-    ) -> None:
-        """Verify a client-side validation error shows its message, not None."""
-        # Given the client rejects the request before sending it
-        with pytest.raises(PydanticValidationError) as info:
-            _Roll(num_dice=500)
-        mocker.patch(
-            "vweb.routes.diceroll.views.perform_quickroll",
-            side_effect=RequestValidationError(info.value),
-        )
-
-        # When submitting a quickroll
-        body = _post(
-            client,
-            "/roll/char-1/quickroll",
-            {"quickroll_id": "qr-1", "difficulty": "6", "num_desperation_dice": "0"},
-        )
-
-        # Then no "None" leaks into the page text
-        assert "None" not in body
-        assert "Num dice" in body
-
-
-class TestDiceModifierForm:
-    """The views parse dice_modifier and pass it to the services."""
+        assert f'data-testid="dice-pool">{expected}</p>' in body
 
     @pytest.mark.parametrize(
-        ("path", "target", "base"),
+        "roll",
         [
-            ("/roll/char-1/traits", "perform_trait_roll", {"trait_one_id": "trait-str"}),
-            ("/roll/char-1/quickroll", "perform_quickroll", {"quickroll_id": "qr-1"}),
+            ("/roll/char-1/traits", Routes.DICEROLLS_CREATE, TRAIT_FORM),
+            ("/roll/char-1/quickroll", Routes.DICEROLLS_QUICKROLL, QUICKROLL_FORM),
         ],
+        ids=["traits", "quickroll"],
     )
     @pytest.mark.parametrize(
         ("field", "expected"),
@@ -555,34 +225,136 @@ class TestDiceModifierForm:
             ({"dice_modifier": ""}, 0),
             ({"dice_modifier": "-3"}, -3),
         ],
+        ids=["positive", "absent", "blank", "negative"],
     )
-    def test_modifier_is_passed(
-        self, client, mock_diceroll_deps, mocker, *, path, target, base, field, expected
+    def test_modifier_reaches_api(
+        self, client: FlaskClient, fake_vclient, roll, field, expected
     ) -> None:
-        """Verify the parsed modifier, defaulting to 0, reaches the service."""
-        mock = mocker.patch(
-            f"vweb.routes.diceroll.views.{target}",
-            return_value=DicerollFactory.build(result=make_dice_roll_result()),
-        )
+        """Verify the parsed modifier, defaulting to 0, reaches the API."""
+        path, route, form = roll
+        htmx_post(client, path, {**form, **field})
 
-        _post(client, path, {**base, "difficulty": "6", **field})
-
-        assert mock.call_args.kwargs["dice_modifier"] == expected
+        fake_vclient.assert_called(route, json_subset={"dice_modifier": expected}, times=1)
 
     @pytest.mark.parametrize(
-        ("path", "target", "base"),
+        ("path", "form"),
         [
-            ("/roll/char-1/traits", "perform_trait_roll", {"trait_one_id": "trait-str"}),
-            ("/roll/char-1/quickroll", "perform_quickroll", {"quickroll_id": "qr-1"}),
+            ("/roll/char-1/custom", {**CUSTOM_FORM, "dice_size": "abc"}),
+            ("/roll/char-1/custom", {**CUSTOM_FORM, "num_dice": "five"}),
+            ("/roll/char-1/traits", {"difficulty": "6"}),
+            ("/roll/char-1/traits", {**TRAIT_FORM, "difficulty": "hard"}),
+            ("/roll/char-1/traits", {**TRAIT_FORM, "dice_modifier": "abc"}),
+            ("/roll/char-1/traits", {**TRAIT_FORM, "trait_one_id": "trait-missing"}),
+            ("/roll/char-1/quickroll", {"difficulty": "6"}),
+            ("/roll/char-1/quickroll", {**QUICKROLL_FORM, "dice_modifier": "abc"}),
+        ],
+        ids=[
+            "custom-non-integer-size",
+            "custom-non-integer-dice",
+            "traits-no-trait",
+            "traits-non-integer-difficulty",
+            "traits-non-integer-modifier",
+            "traits-unknown-trait",
+            "quickroll-none-selected",
+            "quickroll-non-integer-modifier",
         ],
     )
-    def test_non_integer_modifier_is_invalid_input(
-        self, client, mock_diceroll_deps, mocker, path, target, base
+    def test_invalid_input_shows_error_without_rolling(
+        self, client: FlaskClient, fake_vclient, path, form
     ) -> None:
-        """Verify a non-numeric modifier renders the existing invalid input error."""
-        mock = mocker.patch(f"vweb.routes.diceroll.views.{target}")
+        """Verify invalid input returns the results panel without a roll."""
+        response = htmx_post(client, path, form)
 
-        body = _post(client, path, {**base, "difficulty": "6", "dice_modifier": "abc"})
+        assert response.status_code == 200
+        assert ROLL_RESULT not in response.get_data(as_text=True)
+        fake_vclient.assert_not_called(Routes.DICEROLLS_CREATE)
+        fake_vclient.assert_not_called(Routes.DICEROLLS_QUICKROLL)
 
-        assert "Invalid input" in body
-        mock.assert_not_called()
+    def test_unsupported_dice_size_returns_400(self, client: FlaskClient, fake_vclient) -> None:
+        """Verify a die size outside the supported set is refused."""
+        response = htmx_post(client, "/roll/char-1/custom", {**CUSTOM_FORM, "dice_size": "7"})
+
+        assert response.status_code == 400
+        fake_vclient.assert_not_called(Routes.DICEROLLS_CREATE)
+
+    def test_dice_size_disabled_by_api_options_is_refused(
+        self, client: FlaskClient, fake_vclient, mocker
+    ) -> None:
+        """Verify a supported die size the API's options do not offer is not rolled."""
+        # Given API options that offer only d10s
+        options = MagicMock()
+        options.gameplay.dice_size = [10]
+        mocker.patch("vweb.lib.cache.options.get", return_value=options)
+
+        # When rolling d6s
+        response = htmx_post(client, "/roll/char-1/custom", {**CUSTOM_FORM, "dice_size": "6"})
+
+        # Then nothing is rolled
+        assert ROLL_RESULT not in response.get_data(as_text=True)
+        fake_vclient.assert_not_called(Routes.DICEROLLS_CREATE)
+
+
+class _Roll(BaseModel):
+    num_dice: int = Field(le=100)
+
+
+class TestDiceRollApiErrors:
+    """API refusals show their reason, and server errors hide their detail."""
+
+    @pytest.mark.parametrize(
+        ("path", "form", "error", "shown"),
+        [
+            (
+                "/roll/char-1/custom",
+                CUSTOM_FORM,
+                {
+                    "status_code": 400,
+                    "invalid_parameters": [{"field": "num_dice", "message": "Too many dice"}],
+                },
+                "Num dice: Too many dice",
+            ),
+            (
+                "/roll/char-1/traits",
+                TRAIT_FORM,
+                {"status_code": 403, "detail": "Only storytellers can roll for this character."},
+                "Only storytellers can roll for this character.",
+            ),
+        ],
+        ids=["custom-field-error", "traits-refused"],
+    )
+    def test_fixable_refusal_shows_reason(
+        self, client: FlaskClient, fake_vclient, path, form, error, shown
+    ) -> None:
+        """Verify a refusal the user can fix shows the API's reason instead of a result."""
+        fake_vclient.set_error(Routes.DICEROLLS_CREATE, **error)
+
+        body = htmx_post(client, path, form).get_data(as_text=True)
+
+        assert ROLL_RESULT not in body
+        assert shown in body
+
+    def test_server_error_hides_detail(self, client: FlaskClient, fake_vclient) -> None:
+        """Verify a server error hides its detail instead of showing a result."""
+        fake_vclient.set_error(Routes.DICEROLLS_QUICKROLL, status_code=500, detail="internal boom")
+
+        body = htmx_post(client, "/roll/char-1/quickroll", QUICKROLL_FORM).get_data(as_text=True)
+
+        assert ROLL_RESULT not in body
+        assert "internal boom" not in body
+
+    def test_client_validation_error_never_renders_none(self, client: FlaskClient, mocker) -> None:
+        """Verify a request the client rejects before sending shows its message, not None."""
+        # Given the client rejects the request before sending it
+        with pytest.raises(PydanticValidationError) as info:
+            _Roll(num_dice=500)
+        mocker.patch(
+            "vweb.routes.diceroll.views.perform_quickroll",
+            side_effect=RequestValidationError(info.value),
+        )
+
+        # When submitting a quickroll
+        body = htmx_post(client, "/roll/char-1/quickroll", QUICKROLL_FORM).get_data(as_text=True)
+
+        # Then the field message shows and no "None" leaks into the page text
+        assert "None" not in body
+        assert "Num dice" in body

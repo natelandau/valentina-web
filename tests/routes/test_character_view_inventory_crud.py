@@ -2,140 +2,111 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 
-from tests.conftest import get_csrf
+from tests.conftest import htmx_post
 from vweb.api_client.testing import (
-    CampaignFactory,
-    CharacterFactory,
     InventoryItemFactory,
+    Routes,
 )
 
-
-@pytest.fixture
-def _mock_character(mock_global_context) -> None:
-    """Add a character to global context for CRUD tests."""
-    char = CharacterFactory.build(
-        id="char-123",
-        campaign_id="camp-456",
-        name="Test Character",
-        user_player_id="test-user-id",
-    )
-    mock_global_context.characters = [char]
-    campaign = CampaignFactory.build(id="camp-456")
-    mock_global_context.campaigns = [campaign]
+TABLE_URL = "/character/char-123/inventory/items"
+FORM_URL = "/character/char-123/inventory/items/form"
 
 
 @pytest.fixture
-def mock_inventory_handler(mocker, _mock_character):
-    """Mock the CRUD handler for character inventory."""
-    items = [
-        InventoryItemFactory.build(id="inv-1", name="Sword", type="WEAPON", description="Sharp"),
-        InventoryItemFactory.build(id="inv-2", name="Apple", type="EQUIPMENT", description="Tasty"),
-        InventoryItemFactory.build(
-            id="inv-3", name="Shield", type="CONSUMABLE", description="Sturdy"
-        ),
-    ]
-
-    handler = MagicMock()
-    handler.list_items.return_value = items
-    handler.get_item.return_value = items[0]
-    handler.create_item.return_value = None
-    handler.update_item.return_value = None
-    handler.delete_item.return_value = None
-    handler.validate.return_value = {}
-
-    mocker.patch(
-        "vweb.routes.character_view.views_inventory.CharacterInventoryTableView._build_handler",
-        return_value=handler,
+def inventory(fake_vclient):
+    """Serve three inventory items from the API."""
+    fake_vclient.set_response(
+        Routes.CHARACTERS_INVENTORY_LIST,
+        items=[
+            InventoryItemFactory.build(id="inv-1", name="Sword", type="WEAPON"),
+            InventoryItemFactory.build(id="inv-2", name="Apple", type="EQUIPMENT"),
+            InventoryItemFactory.build(id="inv-3", name="Shield", type="CONSUMABLE"),
+        ],
     )
-    return handler
 
 
 class TestCharacterInventoryGet:
     """Tests for GET requests to character inventory CRUD."""
 
-    def test_get_table_returns_200(self, client, mock_inventory_handler) -> None:
-        """Verify GET returns the inventory table HTML."""
-        response = client.get(
-            "/character/char-123/inventory/items",
-            headers={"HX-Request": "true"},
-        )
-        assert response.status_code == 200
-        assert b"Sword" in response.data
+    @pytest.mark.parametrize(
+        ("sort", "expected"),
+        [
+            ("", ["Apple", "Shield", "Sword"]),
+            ("-name", ["Sword", "Shield", "Apple"]),
+            ("description", ["Apple", "Shield", "Sword"]),
+        ],
+        ids=["default-first-sortable", "descending", "non-sortable-falls-back"],
+    )
+    def test_lists_items_in_sort_order(
+        self, client, set_owner, inventory, sort: str, expected: list[str]
+    ) -> None:
+        """Verify the table lists the API's items in the requested sort order."""
+        # Given the user's own character
+        set_owner("test-user-id")
 
-    def test_default_sort_is_first_sortable_field(self, client, mock_inventory_handler) -> None:
-        """Verify table defaults to sorting by first sortable column ascending."""
-        response = client.get(
-            "/character/char-123/inventory/items",
-            headers={"HX-Request": "true"},
-        )
+        # When requesting the table
+        response = client.get(f"{TABLE_URL}?sort={sort}", headers={"HX-Request": "true"})
+
+        # Then items appear in the expected order
         body = response.get_data(as_text=True)
-        assert body.index("Apple") < body.index("Shield") < body.index("Sword")
+        positions = [body.index(name) for name in expected]
+        assert positions == sorted(positions)
 
-    def test_sort_descending(self, client, mock_inventory_handler) -> None:
-        """Verify descending sort reverses item order."""
-        response = client.get(
-            "/character/char-123/inventory/items?sort=-name",
-            headers={"HX-Request": "true"},
-        )
+    @pytest.mark.parametrize(
+        ("owner_id", "editable", "controls_shown"),
+        [
+            ("test-user-id", "true", True),
+            ("test-user-id", "false", False),
+            ("other-user-id", "true", False),
+        ],
+        ids=["owner", "owner-read-only-view", "other-player"],
+    )
+    def test_edit_controls_follow_permission(
+        self, client, set_owner, inventory, owner_id, editable, controls_shown
+    ) -> None:
+        """Verify edit controls show only for an editor, and the query flag never grants them."""
+        # Given a character owned by the given user
+        set_owner(owner_id)
+
+        # When requesting the table
+        response = client.get(f"{TABLE_URL}?editable={editable}", headers={"HX-Request": "true"})
+
+        # Then the items show, with edit controls only when the user may edit
         body = response.get_data(as_text=True)
-        assert body.index("Sword") < body.index("Shield") < body.index("Apple")
-
-    def test_nonsortable_field_falls_back(self, client, mock_inventory_handler) -> None:
-        """Verify sorting by a non-sortable field falls back to default."""
-        response = client.get(
-            "/character/char-123/inventory/items?sort=description",
-            headers={"HX-Request": "true"},
-        )
-        body = response.get_data(as_text=True)
-        assert body.index("Apple") < body.index("Shield") < body.index("Sword")
-
-
-class TestCharacterInventoryEditable:
-    """Tests for inventory editable behavior."""
-
-    def test_hides_buttons_when_not_editable(self, client, mock_inventory_handler) -> None:
-        """Verify table with editable=false hides Add/Edit/Delete."""
-        response = client.get(
-            "/character/char-123/inventory/items?editable=false",
-            headers={"HX-Request": "true"},
-        )
-        body = response.get_data(as_text=True)
-        assert "Add Item" not in body
-        assert "Edit" not in body
-        assert "Delete" not in body
-
-    def test_shows_buttons_when_editable(self, client, mock_inventory_handler) -> None:
-        """Verify table with editable=true shows Add/Edit/Delete."""
-        response = client.get(
-            "/character/char-123/inventory/items?editable=true",
-            headers={"HX-Request": "true"},
-        )
-        body = response.get_data(as_text=True)
-        assert "Add Item" in body
-        assert "Edit" in body
-        assert "Delete" in body
+        assert "Sword" in body
+        assert (FORM_URL in body) is controls_shown
 
 
 class TestCharacterInventoryPost:
     """Tests for POST requests to character inventory CRUD."""
 
-    def test_post_denied_when_handler_blocks_mutation(self, client, mock_inventory_handler) -> None:
-        """Verify a create POST is 403 when the handler disallows mutation."""
-        # Given a handler that blocks mutation
-        mock_inventory_handler.can_mutate.return_value = False
-        csrf = get_csrf(client)
+    def test_owner_creates_item(self, client, set_owner, fake_vclient) -> None:
+        """Verify the owner's new item is sent to the API."""
+        # Given the user's own character
+        set_owner("test-user-id")
+
+        # When creating an item
+        response = htmx_post(client, TABLE_URL, {"name": "Sword", "type": "WEAPON"})
+
+        # Then the item is created on the character
+        assert response.status_code == 200
+        fake_vclient.assert_called(
+            Routes.CHARACTERS_INVENTORY_CREATE,
+            params={"character_id": "char-123"},
+            json={"name": "Sword", "type": "WEAPON"},
+            times=1,
+        )
+
+    def test_other_player_cannot_create(self, client, set_owner, fake_vclient) -> None:
+        """Verify a create POST on another player's character is 403."""
+        # Given another player's character
+        set_owner("other-user-id")
 
         # When attempting to create an item
-        response = client.post(
-            "/character/char-123/inventory/items",
-            data={"name": "Sword", "type": "WEAPON", "csrf_token": csrf},
-            headers={"HX-Request": "true"},
-        )
+        response = htmx_post(client, TABLE_URL, {"name": "Sword", "type": "WEAPON"})
 
         # Then the request is forbidden and no create occurs
         assert response.status_code == 403
-        mock_inventory_handler.create_item.assert_not_called()
+        fake_vclient.assert_not_called(Routes.CHARACTERS_INVENTORY_CREATE)

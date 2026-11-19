@@ -1,8 +1,14 @@
 """Tests for the account-unlinking (connections) flow."""
 
-from werkzeug.test import TestResponse
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import pytest
 
 from tests.conftest import get_csrf
+from vweb.api_client.exceptions import AuthorizationError
+from vweb.api_client.models.users import DiscordProfile
 from vweb.api_client.testing import (
     AppleProfileFactory,
     GitHubProfileFactory,
@@ -12,19 +18,29 @@ from vweb.api_client.testing import (
 )
 from vweb.lib.catalog import catalog
 
+if TYPE_CHECKING:
+    from flask import Flask
+    from flask.testing import FlaskClient
+    from werkzeug.test import TestResponse
+
+    from vweb.lib.cache.global_context import GlobalContext
+
+CONNECTIONS_CARD = b'id="connections-card"'
+
+
+def _post_unlink(client: FlaskClient, provider: str = "github") -> TestResponse:
+    """POST the unlink route with a valid CSRF header, as HTMX would."""
+    return client.post(f"/auth/{provider}/unlink", headers={"X-CSRFToken": get_csrf(client)})
+
 
 class TestUnlinkIdentityView:
     """Tests for POST /auth/<provider>/unlink."""
 
-    def _post_unlink(self, client, provider: str = "github") -> TestResponse:
-        """POST the unlink route with a valid CSRF header, as HTMX would."""
-        return client.post(
-            f"/auth/{provider}/unlink",
-            headers={"X-CSRFToken": get_csrf(client)},
-        )
-
-    def test_unlink_disconnects_identity_and_returns_card(self, client, mocker, fake_vclient):
-        """Verify unlinking removes the provider, clears cache, and swaps the card in."""
+    @pytest.mark.parametrize("provider", ["discord", "github", "google", "apple"])
+    def test_unlink_disconnects_identity_and_returns_card(
+        self, client: FlaskClient, mocker, fake_vclient, provider: str
+    ) -> None:
+        """Verify unlinking removes the provider, refreshes the cache, and swaps the card in."""
         # Given an unlink endpoint that succeeds
         fake_vclient.set_response(
             Routes.USERS_IDENTITY_UNLINK, model=UserFactory.build(id="test-user-id")
@@ -34,72 +50,79 @@ class TestUnlinkIdentityView:
         )
 
         # When the unlink route is hit
-        response = self._post_unlink(client)
+        response = _post_unlink(client, provider)
 
-        # Then the identity was unlinked, cache invalidated, and the card returned
+        # Then the identity was unlinked on behalf of the user and the card returned
         (request,) = fake_vclient.assert_called(
             Routes.USERS_IDENTITY_UNLINK,
             params={
                 "company_id": "test-company-id",
                 "user_id": "test-user-id",
-                "provider": "github",
+                "provider": provider,
             },
             times=1,
         )
         assert request.headers["on-behalf-of"] == "test-user-id"
         mock_cache_clear.assert_called_once_with("test-company-id", "test-user-id")
         assert response.status_code == 200
-        assert b'id="connections-card"' in response.data
+        assert CONNECTIONS_CARD in response.data
 
-    def test_unlink_last_identity_conflict_returns_card_without_clearing_cache(
-        self, client, mocker, fake_vclient
-    ):
-        """Verify LAST_IDENTITY is reported and the card returns unchanged."""
-        # Given the provider is the user's only sign-in method
-        fake_vclient.set_error(Routes.USERS_IDENTITY_UNLINK, status_code=409, code="LAST_IDENTITY")
+    @pytest.mark.parametrize(
+        ("status_code", "code"),
+        [(409, "LAST_IDENTITY"), (404, "IDENTITY_NOT_LINKED"), (403, None), (500, None)],
+        ids=["last-identity", "not-linked", "forbidden", "server-error"],
+    )
+    def test_unlink_failure_returns_unchanged_card(
+        self, client: FlaskClient, mocker, fake_vclient, status_code: int, code: str | None
+    ) -> None:
+        """Verify a refused unlink returns the current card with a message and keeps the cache."""
+        # Given the API refuses the unlink
+        fake_vclient.set_error(Routes.USERS_IDENTITY_UNLINK, status_code=status_code, code=code)
         mock_cache_clear = mocker.patch(
             "vweb.routes.auth.views_identity.cache.global_context.clear"
         )
 
         # When the unlink route is hit
-        response = self._post_unlink(client)
+        response = _post_unlink(client)
 
-        # Then the card comes back and the cache is left untouched
+        # Then the card comes back alongside the flash container, and the cache is untouched
         assert response.status_code == 200
-        assert b'id="connections-card"' in response.data
-        assert b"only sign-in method" in response.data
+        assert CONNECTIONS_CARD in response.data
+        assert b'id="flash-messages"' in response.data
         mock_cache_clear.assert_not_called()
 
-    def test_unlink_not_found_returns_card(self, client, fake_vclient):
-        """Verify unlinking a provider that is not connected returns the card."""
-        # Given the provider has no linked identity
-        fake_vclient.set_error(
-            Routes.USERS_IDENTITY_UNLINK, status_code=404, code="IDENTITY_NOT_LINKED"
-        )
+    def test_failure_when_user_cannot_load_context_returns_403(
+        self, client: FlaskClient, mock_context_load, fake_vclient
+    ) -> None:
+        """Verify a refused unlink for a user the API no longer serves returns 403."""
+        # Given the unlink fails and the API refuses the user's context
+        csrf = get_csrf(client)
+        fake_vclient.set_error(Routes.USERS_IDENTITY_UNLINK, status_code=409, code="LAST_IDENTITY")
+        mock_context_load.side_effect = AuthorizationError("deactivated", status_code=403)
 
         # When the unlink route is hit
-        response = self._post_unlink(client)
+        response = client.post("/auth/github/unlink", headers={"X-CSRFToken": csrf})
 
-        # Then the card is returned without error
-        assert response.status_code == 200
-        assert b'id="connections-card"' in response.data
-        assert b"is not connected to your account" in response.data
+        # Then the request is refused
+        assert response.status_code == 403
 
-    def test_unlink_authorization_error_returns_card(self, client, fake_vclient):
-        """Verify a denied unlink returns the card rather than crashing."""
-        # Given the acting user is not permitted to unlink
-        fake_vclient.set_error(Routes.USERS_IDENTITY_UNLINK, status_code=403)
+    def test_failure_when_user_missing_from_context_returns_404(
+        self, client: FlaskClient, fake_vclient, mock_global_context: GlobalContext
+    ) -> None:
+        """Verify a refused unlink for a user absent from the company context returns 404."""
+        # Given the unlink fails and the context no longer lists the user
+        csrf = get_csrf(client)
+        fake_vclient.set_error(Routes.USERS_IDENTITY_UNLINK, status_code=409, code="LAST_IDENTITY")
+        mock_global_context.users = []
 
         # When the unlink route is hit
-        response = self._post_unlink(client)
+        response = client.post("/auth/github/unlink", headers={"X-CSRFToken": csrf})
 
-        # Then the card is returned
-        assert response.status_code == 200
-        assert b'id="connections-card"' in response.data
-        assert b"not allowed to change these connections" in response.data
+        # Then the request 404s
+        assert response.status_code == 404
 
-    def test_unlink_rejects_logged_out_user(self, client):
-        """Verify an unlink request without an active session redirects to the landing page."""
+    def test_unlink_rejects_logged_out_user(self, client: FlaskClient, fake_vclient) -> None:
+        """Verify an unlink without an active session tells HTMX to go to the landing page."""
         # Given a valid CSRF token but a session with no logged-in user
         csrf = get_csrf(client)
         with client.session_transaction() as sess:
@@ -109,103 +132,57 @@ class TestUnlinkIdentityView:
         # When the unlink route is hit
         response = client.post("/auth/github/unlink", headers={"X-CSRFToken": csrf})
 
-        # Then HTMX is told to redirect to index
+        # Then HTMX is told to redirect to index and nothing reaches the API
         assert response.status_code == 200
         assert response.headers["HX-Redirect"] == "/"
+        fake_vclient.assert_not_called(Routes.USERS_IDENTITY_UNLINK)
 
-    def test_unlink_unknown_provider_404s(self, client):
+    def test_unlink_unknown_provider_404s(self, client: FlaskClient) -> None:
         """Verify an unknown provider returns 404."""
-        # When unlinking an unknown provider
-        response = self._post_unlink(client, provider="myspace")
-
-        # Then it 404s
-        assert response.status_code == 404
-
-    def test_unlink_apple_disconnects_identity_and_returns_card(self, client, mocker, fake_vclient):
-        """Verify Apple can be disconnected like the other providers."""
-        # Given an unlink endpoint that succeeds
-        fake_vclient.set_response(
-            Routes.USERS_IDENTITY_UNLINK, model=UserFactory.build(id="test-user-id")
-        )
-        mocker.patch("vweb.routes.auth.views_identity.cache.global_context.clear")
-
-        # When the Apple unlink route is hit
-        response = self._post_unlink(client, provider="apple")
-
-        # Then the Apple identity was unlinked and the card returned
-        fake_vclient.assert_called(
-            Routes.USERS_IDENTITY_UNLINK,
-            params={"user_id": "test-user-id", "provider": "apple"},
-            times=1,
-        )
-        assert response.status_code == 200
-        assert b'id="connections-card"' in response.data
+        assert _post_unlink(client, provider="myspace").status_code == 404
 
 
 class TestConnectionsCardRendering:
-    """Tests for the Disconnect button visibility in the connections card."""
+    """The connections card offers unlinking only while another sign-in method remains."""
 
-    def _render_card(self, app, user) -> str:
-        """Render the connections card for a user within an app request context."""
+    @pytest.mark.parametrize(
+        ("linked", "expected_unlinkable"),
+        [
+            (["github", "google"], ["github", "google"]),
+            (["github", "apple"], ["github", "apple"]),
+            (["github"], []),
+        ],
+        ids=["two-providers", "apple-is-a-provider", "single-provider"],
+    )
+    def test_unlink_offered_only_with_another_sign_in_method(
+        self, app: Flask, linked: list[str], expected_unlinkable: list[str]
+    ) -> None:
+        """Verify each linked provider can be removed unless it is the only sign-in method."""
+        # Given a user linked to the listed providers
+        profiles = {
+            "discord": DiscordProfile(id="discord-1", username="someone"),
+            "github": GitHubProfileFactory.build(),
+            "google": GoogleProfileFactory.build(),
+            "apple": AppleProfileFactory.build(),
+        }
+        user = UserFactory.build(
+            id="test-user-id",
+            discord_profile=profiles["discord"] if "discord" in linked else None,
+            github_profile=profiles["github"] if "github" in linked else None,
+            google_profile=profiles["google"] if "google" in linked else None,
+            apple_profile=profiles["apple"] if "apple" in linked else None,
+        )
+
+        # When the card is rendered
         with app.test_request_context():
-            return catalog.render("profile.components.ConnectionsCard", user=user)
+            html = catalog.render("profile.components.ConnectionsCard", user=user)
 
-    def test_disconnect_button_shown_when_multiple_providers_linked(self, app):
-        """Verify a Disconnect button renders for each provider when more than one is linked."""
-        # Given a user linked to two providers
-        user = UserFactory.build(
-            id="test-user-id",
-            github_profile=GitHubProfileFactory.build(),
-            google_profile=GoogleProfileFactory.build(),
-            discord_profile=None,
-        )
+        # Then exactly the expected providers offer an unlink action
+        unlinkable = [name for name in profiles if f"/auth/{name}/unlink" in html]
+        assert unlinkable == expected_unlinkable
 
-        # When the card is rendered
-        html = self._render_card(app, user)
-
-        # Then both linked providers expose an unlink action
-        assert "Disconnect" in html
-        assert "/auth/github/unlink" in html
-        assert "/auth/google/unlink" in html
-
-    def test_disconnect_button_hidden_when_single_provider_linked(self, app):
-        """Verify no Disconnect button renders when only one provider is linked."""
-        # Given a user linked to a single provider
-        user = UserFactory.build(
-            id="test-user-id",
-            github_profile=GitHubProfileFactory.build(),
-            google_profile=None,
-            discord_profile=None,
-        )
-
-        # When the card is rendered
-        html = self._render_card(app, user)
-
-        # Then the last sign-in method cannot be removed
-        assert "Disconnect" not in html
-        assert "/unlink" not in html
-
-    def test_apple_is_a_first_class_connection_row(self, app):
-        """Verify Apple renders as its own connection with a disconnect action."""
-        # Given a user linked to GitHub plus Apple
-        user = UserFactory.build(
-            id="test-user-id",
-            github_profile=GitHubProfileFactory.build(),
-            google_profile=None,
-            discord_profile=None,
-            apple_profile=AppleProfileFactory.build(),
-        )
-
-        # When the card is rendered
-        html = self._render_card(app, user)
-
-        # Then both providers, including Apple, expose an unlink action
-        assert "/auth/github/unlink" in html
-        assert "/auth/apple/unlink" in html
-
-    def test_apple_row_shows_connect_when_not_linked(self, app):
-        """Verify Apple offers a Connect action when no Apple identity is linked."""
-        # Given a user with other providers linked but no Apple identity
+    def test_unlinked_apple_offers_connect(self, app: Flask) -> None:
+        """Verify Apple offers a connect action when no Apple identity is linked."""
         user = UserFactory.build(
             id="test-user-id",
             github_profile=GitHubProfileFactory.build(),
@@ -214,8 +191,7 @@ class TestConnectionsCardRendering:
             apple_profile=None,
         )
 
-        # When the card is rendered
-        html = self._render_card(app, user)
+        with app.test_request_context():
+            html = catalog.render("profile.components.ConnectionsCard", user=user)
 
-        # Then Apple can be connected from the web
         assert "/auth/apple/link" in html
