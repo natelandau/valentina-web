@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from scripts.worktree import (
+    DEV_REDIS_URL,
     ENV_FILE,
     KEY_PORT,
     KEY_REDIS_URL,
@@ -35,7 +36,6 @@ if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
 MAIN = MainSettings(redis_url="redis://:redispassword@127.0.0.1:6380/0", port=8089)
-FIX_LINE = "VWEB_REDIS__URL=redis://:redispassword@127.0.0.1:6380/0"
 
 
 def _write_env(directory: Path, text: str) -> None:
@@ -63,32 +63,22 @@ def repo(tmp_path: Path, mocker: MockerFixture) -> tuple[Path, list[Path], Magic
     return main, worktrees, git, redis
 
 
-def test_create_refuses_a_sixth_worktree_before_git_runs(
-    repo: tuple[Path, list[Path], MagicMock, MagicMock],
+@pytest.mark.parametrize("main_on_api_redis", [False, True], ids=["sixth-worktree", "api-redis"])
+def test_create_refuses_before_git_runs(
+    repo: tuple[Path, list[Path], MagicMock, MagicMock], *, main_on_api_redis: bool
 ) -> None:
-    """Verify a sixth worktree is refused before `git worktree add`, so nothing is left behind."""
-    # Given five worktrees holding every slot
-    main, _, git, _ = repo
+    """Verify create stops before `git worktree add` when slots run out or main is unsafe.
 
-    # When creating another
+    Five worktrees already hold every slot, so the sixth is always refused; pointing main at the
+    API's Redis must be refused too.
+    """
+    main, _, git, _ = repo
+    if main_on_api_redis:
+        _write_env(main, f"{KEY_REDIS_URL}=redis://127.0.0.1:6379/0\n")
+
     with pytest.raises(SystemExit):
         create(main, "wt6")
 
-    # Then git was never asked to add it
-    git.assert_not_called()
-
-
-def test_create_refuses_when_main_is_not_on_dev_redis(
-    repo: tuple[Path, list[Path], MagicMock, MagicMock],
-) -> None:
-    """Verify an unconfigured main checkout stops create before git runs."""
-    # Given main pointing at the API's Redis
-    main, _, git, _ = repo
-    _write_env(main, f"{KEY_REDIS_URL}=redis://127.0.0.1:6379/0\n")
-
-    # When / Then
-    with pytest.raises(SystemExit):
-        create(main, "wt6")
     git.assert_not_called()
 
 
@@ -179,19 +169,6 @@ def test_add_local_files_links_local_instructions_to_mains_target(tmp_path: Path
     assert linked.readlink() == shared.resolve()
 
 
-def test_rewrite_env_rewrites_exported_keys(tmp_path: Path) -> None:
-    """Verify an `export`-prefixed duplicate is rewritten too, since dotenv honors it."""
-    # Given an env file with a plain and an exported port
-    env_file = tmp_path / ENV_FILE
-    env_file.write_text("VWEB_PORT=1\nexport VWEB_PORT=2\n", encoding="utf-8")
-
-    # When rewriting the port
-    rewrite_env(env_file, {KEY_PORT: "8091"})
-
-    # Then the file resolves to the new value
-    assert read_env(env_file)[KEY_PORT] == "8091"
-
-
 @pytest.mark.parametrize(
     ("url", "expected"),
     [
@@ -213,15 +190,8 @@ def test_targets_api_redis_matches_local_port_6379(url: str | None, *, expected:
 
 def test_redis_db_exits_on_a_non_numeric_database() -> None:
     """Verify a malformed URL exits with a message instead of a traceback."""
-    # Given / When / Then
     with pytest.raises(SystemExit):
         redis_db("redis://127.0.0.1:6380/abc")
-
-
-def test_dev_redis_error_rejects_a_non_numeric_port() -> None:
-    """Verify a malformed port is refused rather than crashing the guard."""
-    # Given / When / Then
-    assert dev_redis_error("redis://127.0.0.1:port/0") is not None
 
 
 def test_rewrite_env_replaces_and_appends_keys(tmp_path: Path) -> None:
@@ -245,59 +215,58 @@ def test_rewrite_env_replaces_and_appends_keys(tmp_path: Path) -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("VWEB_PORT=1\nVWEB_PORT=2\n", id="every-duplicate"),
+        pytest.param("VWEB_PORT=1\nexport VWEB_PORT=2\n", id="exported-duplicate"),
+    ],
+)
+def test_rewrite_env_resolves_to_the_new_value(tmp_path: Path, text: str) -> None:
+    """Verify every live copy of a key is rewritten, since dotenv honors the last one."""
+    env_file = tmp_path / ENV_FILE
+    env_file.write_text(text, encoding="utf-8")
+
+    rewrite_env(env_file, {KEY_PORT: "8091"})
+
+    assert read_env(env_file)[KEY_PORT] == "8091"
+
+
 def test_rewrite_env_keeps_comments(tmp_path: Path) -> None:
     """Verify a commented-out copy of a key is left alone."""
-    # Given an env file with a commented and a live port
     env_file = tmp_path / ENV_FILE
     env_file.write_text("# VWEB_PORT=1\nVWEB_PORT=8089\n", encoding="utf-8")
 
-    # When rewriting the port
     rewrite_env(env_file, {KEY_PORT: "8091"})
 
-    # Then only the live line changes
     assert env_file.read_text(encoding="utf-8") == "# VWEB_PORT=1\nVWEB_PORT=8091\n"
-
-
-def test_rewrite_env_replaces_every_duplicate_key(tmp_path: Path) -> None:
-    """Verify a key set twice is rewritten everywhere so the last occurrence cannot win."""
-    # Given an env file that sets the port twice
-    env_file = tmp_path / ENV_FILE
-    env_file.write_text("VWEB_PORT=1\nVWEB_PORT=2\n", encoding="utf-8")
-
-    # When rewriting the port
-    rewrite_env(env_file, {KEY_PORT: "8091"})
-
-    # Then the file resolves to the new value
-    assert read_env(env_file)[KEY_PORT] == "8091"
 
 
 def test_read_env_treats_blank_values_as_unset(tmp_path: Path) -> None:
     """Verify a blank value falls back like a missing key."""
-    # Given an env file with a blank port
     env_file = tmp_path / ENV_FILE
     env_file.write_text("VWEB_PORT=\n", encoding="utf-8")
 
-    # When / Then the blank key is absent
     assert KEY_PORT not in read_env(env_file)
 
 
-def test_main_settings_load_defaults_when_env_is_missing(tmp_path: Path) -> None:
-    """Verify a checkout without an env file has no Redis URL and the default port."""
-    # Given / When / Then
-    assert MainSettings.load(tmp_path) == MainSettings(redis_url=None, port=8089)
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        pytest.param(None, MainSettings(redis_url=None, port=8089), id="no-env-file"),
+        pytest.param(
+            "VWEB_REDIS__URL=redis://127.0.0.1:6380/0\nVWEB_PORT=9000\n",
+            MainSettings(redis_url="redis://127.0.0.1:6380/0", port=9000),
+            id="from-env-file",
+        ),
+    ],
+)
+def test_main_settings_load(tmp_path: Path, text: str | None, expected: MainSettings) -> None:
+    """Verify main's Redis URL and port come from its env file, with defaults when absent."""
+    if text is not None:
+        (tmp_path / ENV_FILE).write_text(text, encoding="utf-8")
 
-
-def test_main_settings_load_reads_the_env_file(tmp_path: Path) -> None:
-    """Verify main's Redis URL and port come from its env file."""
-    # Given a main checkout with both keys set
-    (tmp_path / ENV_FILE).write_text(
-        "VWEB_REDIS__URL=redis://127.0.0.1:6380/0\nVWEB_PORT=9000\n", encoding="utf-8"
-    )
-
-    # When / Then
-    assert MainSettings.load(tmp_path) == MainSettings(
-        redis_url="redis://127.0.0.1:6380/0", port=9000
-    )
+    assert MainSettings.load(tmp_path) == expected
 
 
 def test_port_for_adds_the_slot_to_mains_port() -> None:
@@ -327,32 +296,26 @@ def test_with_redis_db_keeps_credentials() -> None:
 
 
 @pytest.mark.parametrize(
-    "url",
-    ["redis://:redispassword@127.0.0.1:6380/0", "redis://:pw@localhost:6380/2"],
-)
-def test_dev_redis_error_accepts_the_dev_container(url: str) -> None:
-    """Verify a URL on the local dev container passes the guard."""
-    # Given / When / Then
-    assert dev_redis_error(url) is None
-
-
-@pytest.mark.parametrize(
-    "url",
+    ("url", "accepted"),
     [
-        None,
-        "redis://127.0.0.1:6379/0",
-        "redis://:pw@redis.example.com:6380/0",
-        "redis://127.0.0.1/0",
+        ("redis://:redispassword@127.0.0.1:6380/0", True),
+        ("redis://:pw@localhost:6380/2", True),
+        (None, False),
+        ("redis://127.0.0.1:6379/0", False),
+        ("redis://:pw@redis.example.com:6380/0", False),
+        ("redis://127.0.0.1/0", False),
+        ("redis://127.0.0.1:port/0", False),
     ],
 )
-def test_dev_redis_error_rejects_anything_else(url: str | None) -> None:
-    """Verify a missing URL, the API's Redis, or a remote host is refused with the fix."""
-    # Given / When
+def test_dev_redis_error(url: str | None, *, accepted: bool) -> None:
+    """Verify only the local dev container passes, and anything else is refused with the fix."""
     message = dev_redis_error(url)
 
-    # Then the message names the line to add
-    assert message is not None
-    assert FIX_LINE in message
+    if accepted:
+        assert message is None
+    else:
+        assert message is not None
+        assert f"{KEY_REDIS_URL}={DEV_REDIS_URL}" in message
 
 
 def test_dev_redis_error_never_echoes_the_url() -> None:
@@ -365,61 +328,52 @@ def test_dev_redis_error_never_echoes_the_url() -> None:
     assert "hunter2" not in message
 
 
-def test_slot_of_ignores_an_env_that_mirrors_main() -> None:
-    """Verify a freshly copied env file has no slot yet."""
-    # Given / When / Then
-    assert slot_of({KEY_REDIS_URL: str(MAIN.redis_url)}, MAIN) is None
-    assert slot_of({}, MAIN) is None
+@pytest.mark.parametrize(
+    ("env", "expected"),
+    [
+        pytest.param({KEY_REDIS_URL: str(MAIN.redis_url)}, None, id="mirrors-main"),
+        pytest.param({}, None, id="empty"),
+        pytest.param({KEY_REDIS_URL: "redis://:pw@127.0.0.1:6380/5"}, 5, id="assigned"),
+    ],
+)
+def test_slot_of(env: dict[str, str], expected: int | None) -> None:
+    """Verify a provisioned env file claims its Redis database as its slot; a fresh copy has none."""
+    assert slot_of(env, MAIN) == expected
 
 
-def test_slot_of_reads_an_assigned_slot() -> None:
-    """Verify a provisioned env file claims its Redis database as its slot."""
-    # Given / When / Then
-    assert slot_of({KEY_REDIS_URL: "redis://:pw@127.0.0.1:6380/5"}, MAIN) == 5
+@pytest.mark.parametrize(
+    ("taken", "main", "expected"),
+    [
+        pytest.param({1, 2}, MAIN, [3, 4, 5], id="stops-at-five"),
+        pytest.param({1, 2, 3, 4, 5}, MAIN, [], id="all-taken"),
+        pytest.param(
+            set(),
+            MainSettings(redis_url="redis://:pw@127.0.0.1:6380/2", port=8089),
+            [1, 3, 4, 5],
+            id="skips-mains-database",
+        ),
+    ],
+)
+def test_free_slots(taken: set[int], main: MainSettings, expected: list[int]) -> None:
+    """Verify only slots 1 to 5 not held by a worktree or main's own database are offered."""
+    assert free_slots(taken, main) == expected
 
 
-def test_free_slots_stops_at_max_worktrees() -> None:
-    """Verify only slots 1 to 5 are offered."""
-    # Given / When / Then
-    assert free_slots({1, 2}, MAIN) == [3, 4, 5]
-
-
-def test_free_slots_is_empty_when_all_five_are_taken() -> None:
-    """Verify a sixth worktree finds no slot."""
-    # Given / When / Then
-    assert free_slots({1, 2, 3, 4, 5}, MAIN) == []
-
-
-def test_free_slots_skips_mains_database() -> None:
-    """Verify main's own Redis database is never handed to a worktree."""
-    # Given main on database 2
-    main = MainSettings(redis_url="redis://:pw@127.0.0.1:6380/2", port=8089)
-
-    # When / Then
-    assert free_slots(set(), main) == [1, 3, 4, 5]
-
-
-def test_choose_slot_keeps_a_free_current_slot() -> None:
-    """Verify re-provisioning keeps the slot a worktree already holds."""
-    # Given / When / Then
-    assert choose_slot(current=4, taken={1, 2}, main=MAIN) == 4
-
-
-def test_choose_slot_takes_the_lowest_free_slot() -> None:
-    """Verify a new or conflicting worktree gets the lowest slot nobody holds."""
-    # Given / When / Then
-    assert choose_slot(current=None, taken={1, 2}, main=MAIN) == 3
-    assert choose_slot(current=2, taken={1, 2}, main=MAIN) == 3
-
-
-def test_choose_slot_replaces_a_slot_above_the_cap() -> None:
-    """Verify a slot outside 1 to 5 is not kept."""
-    # Given / When / Then
-    assert choose_slot(current=9, taken=set(), main=MAIN) == 1
+@pytest.mark.parametrize(
+    ("current", "taken", "expected"),
+    [
+        pytest.param(4, {1, 2}, 4, id="keeps-free-current"),
+        pytest.param(None, {1, 2}, 3, id="lowest-free"),
+        pytest.param(2, {1, 2}, 3, id="conflicting-current"),
+        pytest.param(9, set(), 1, id="above-cap"),
+    ],
+)
+def test_choose_slot(current: int | None, taken: set[int], expected: int) -> None:
+    """Verify a worktree keeps a valid free slot, else takes the lowest free one."""
+    assert choose_slot(current=current, taken=taken, main=MAIN) == expected
 
 
 def test_choose_slot_exits_when_every_slot_is_taken() -> None:
     """Verify running out of slots exits instead of sharing one."""
-    # Given / When / Then
     with pytest.raises(SystemExit):
         choose_slot(current=None, taken={1, 2, 3, 4, 5}, main=MAIN)

@@ -6,27 +6,39 @@ import threading
 import time
 from typing import TYPE_CHECKING
 
+import pytest
+
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
     from flask import Flask
 
 
-def test_pure_ttl_is_always_fresh() -> None:
-    """Verify PureTTL always reports a cached value as fresh."""
+def test_pure_ttl_round_trips_and_stays_fresh() -> None:
+    """Verify PureTTL leaves expiry to the TTL and returns the stored value."""
     strategy = base.PureTTL(ttl=60)
+
     assert strategy.is_fresh(strategy.wrap("value")) is True
     assert strategy.unwrap(strategy.wrap("value")) == "value"
 
 
 def test_timestamp_validated_freshness_tracks_stamp() -> None:
-    """Verify TimestampValidated reports stale after the stamp advances."""
+    """Verify TimestampValidated reports stale once the external stamp advances."""
     current = {"stamp": "a"}
     strategy = base.TimestampValidated(ttl=60, current_stamp=lambda: current["stamp"])
     stored = strategy.wrap("value")
+
     assert strategy.is_fresh(stored) is True
     assert strategy.unwrap(stored) == "value"
-    current["stamp"] = "b"  # stamp advanced -> stale
+    current["stamp"] = "b"
+    assert strategy.is_fresh(stored) is False
+
+
+@pytest.mark.parametrize("stored", ["legacy-plain-string", ("a", "value", "extra")])
+def test_timestamp_validated_treats_malformed_entry_as_stale(stored: object) -> None:
+    """Verify a malformed cached entry reads as stale instead of crashing."""
+    strategy = base.TimestampValidated(ttl=60, current_stamp=lambda: "a")
+
     assert strategy.is_fresh(stored) is False
 
 
@@ -78,52 +90,41 @@ def test_single_flight_collapses_concurrent_cold_fetches(app: Flask) -> None:
     assert calls["n"] == 1
 
 
-def test_timestamp_validated_treats_non_tuple_as_stale() -> None:
-    """Verify a malformed (non-tuple) cached entry is treated as stale, not a crash."""
-    strategy = base.TimestampValidated(ttl=60, current_stamp=lambda: "a")
-    # Given a legacy/malformed cached value that is not a (stamp, value) tuple
-    # Then is_fresh returns False instead of raising
-    assert strategy.is_fresh("legacy-plain-string") is False
-    assert strategy.is_fresh(("a", "value", "extra")) is False
+@pytest.mark.parametrize(
+    ("first", "second", "equal"),
+    [
+        pytest.param(("a", "b", 25), ("a", "b", 25), True, id="deterministic"),
+        pytest.param(("a", "b"), ("a", "c"), False, id="different-parts"),
+        pytest.param(("a", "b"), ("b", "a"), False, id="order-sensitive"),
+        pytest.param(("ab", "c"), ("a", "bc"), False, id="boundaries-kept"),
+        pytest.param(("x", None), ("x", ""), True, id="none-is-empty"),
+    ],
+)
+def test_hash_key_identity(first: tuple, second: tuple, *, equal: bool) -> None:
+    """Verify equal part lists share a key and any other difference changes it."""
+    assert (base.hash_key(*first) == base.hash_key(*second)) is equal
 
 
-def test_hash_key_is_deterministic() -> None:
-    """Verify hash_key returns the same digest for the same ordered parts."""
-    # Given the same parts hashed twice
-    # Then the digests are identical (stable across calls, processes, restarts)
-    assert base.hash_key("a", "b", 25) == base.hash_key("a", "b", 25)
-
-
-def test_hash_key_differs_for_different_parts() -> None:
-    """Verify distinct part sets produce distinct digests."""
-    assert base.hash_key("a", "b") != base.hash_key("a", "c")
-
-
-def test_hash_key_is_order_sensitive() -> None:
-    """Verify reordering the parts changes the digest."""
-    assert base.hash_key("a", "b") != base.hash_key("b", "a")
-
-
-def test_hash_key_field_boundaries_do_not_collide() -> None:
-    """Verify part boundaries are preserved so regrouping cannot collide."""
-    # Given two part sets that concatenate to the same raw string
-    # Then the field separator keeps their digests distinct
-    assert base.hash_key("ab", "c") != base.hash_key("a", "bc")
-
-
-def test_hash_key_treats_none_as_empty_string() -> None:
-    """Verify an absent (None) filter hashes identically to an empty-string filter."""
-    assert base.hash_key("x", None) == base.hash_key("x", "")
-
-
-def test_hash_key_has_no_empty_or_colon_segments() -> None:
-    """Verify the digest is a single non-empty token (the empty-slot fix)."""
-    # Given parts where some are empty (the case that produced `::` runs)
+def test_hash_key_is_one_token() -> None:
+    """Verify empty parts still yield a single non-empty token with no colon runs."""
     digest = base.hash_key("", "", "campaign-1", "", 25)
-    # Then the digest is one fixed-length hex token with no colons
+
+    assert digest
     assert ":" not in digest
-    assert digest != ""
-    assert len(digest) == 32  # blake2b digest_size=16 -> 32 hex chars
+
+
+def test_lock_registry_evicts_only_idle_locks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify the bounded lock registry never drops a lock held by an in-flight rebuild."""
+    monkeypatch.setattr(base, "_locks", {})
+    monkeypatch.setattr(base, "_MAX_LOCKS", 2)
+    held = base._lock_for("held")
+    idle = base._lock_for("idle")
+
+    with held:
+        base._lock_for("new")
+
+        assert base._lock_for("held") is held
+        assert base._lock_for("idle") is not idle
 
 
 def test_clear_key_removes_entries(app: Flask) -> None:

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tests.helpers import make_cache_store_mock
+from tests.helpers import assert_redirects_to, make_cache_store_mock
 from vweb.api_client import (
     campaigns_service,
     characters_service,
@@ -25,36 +25,26 @@ from vweb.api_client.testing import (
     Routes,
     UserFactory,
 )
-from vweb.lib.cache.global_context import (
-    GlobalContext,
-    _fetch_global_data,
-    clear,
-    load,
-)
+from vweb.lib.cache.global_context import GlobalContext, clear, load
 
 if TYPE_CHECKING:
     import httpx2
 
+CO = "test-company-id"
+ME = "test-user-id"
+
 
 @pytest.fixture
 def _fake_vclient_data(fake_vclient) -> None:
-    """Set up FakeVClient with known data for _fetch_global_data tests."""
+    """Serve one company, user, campaign, and character from the fake API."""
     company = CompanyFactory.build(
-        id="test-company-id",
-        name="Test Company",
-        resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
+        id=CO, name="Test Company", resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
     )
     fake_vclient.set_response(Routes.COMPANIES_GET, model=company)
-
-    user = UserFactory.build(id="test-user-id", username="test-user", company_id="test-company-id")
-    fake_vclient.set_response(Routes.USERS_LIST, items=[user])
+    fake_vclient.set_response(Routes.USERS_LIST, items=[UserFactory.build(id=ME, company_id=CO)])
     fake_vclient.set_response(Routes.USERS_UNAPPROVED_LIST, items=[])
-
-    campaign = CampaignFactory.build(id="camp-1", name="Campaign 1")
-    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[campaign])
-
-    character = CharacterFactory.build(name="Char 1")
-    fake_vclient.set_response(Routes.CHARACTERS_LIST, items=[character])
+    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[CampaignFactory.build(id="camp-1")])
+    fake_vclient.set_response(Routes.CHARACTERS_LIST, items=[CharacterFactory.build(name="Char 1")])
 
 
 @pytest.fixture
@@ -63,263 +53,154 @@ def mock_cache_store(mocker) -> dict:
     return make_cache_store_mock(mocker, "vweb.lib.cache.global_context.cache")
 
 
-@pytest.mark.usefixtures("_fake_vclient_data")
-def test_fetch_global_data_returns_global_context(app) -> None:
-    """Verify _fetch_global_data returns a populated GlobalContext."""
+def _serve(fake_vclient, *, campaigns: list, characters=None, users=None) -> None:
+    fake_vclient.set_response(Routes.COMPANIES_GET, model=CompanyFactory.build(id=CO))
+    fake_vclient.set_response(Routes.USERS_LIST, items=users or [UserFactory.build(id=ME)])
+    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=campaigns)
+    if characters is not None:
+        fake_vclient.set_response(Routes.CHARACTERS_LIST, items=characters)
+
+
+@pytest.mark.usefixtures("_fake_vclient_data", "mock_cache_store")
+def test_load_matches_sequential_fetches(app, fake_vclient) -> None:
+    """Verify a cold load builds the same context as calling each service in turn."""
     with app.app_context():
-        result = _fetch_global_data("test-company-id", "test-user-id")
+        company = companies_service().get(CO)
+        users = users_service(on_behalf_of=ME, company_id=CO).list_all()
+        campaigns = campaigns_service(on_behalf_of=ME, company_id=CO).list_all()
+        characters = characters_service(on_behalf_of=ME, company_id=CO).list_all()
+        fake_vclient.clear_requests()
 
-    assert isinstance(result, GlobalContext)
-    assert result.company.name == "Test Company"
+        result = load(CO, ME)
 
-
-@pytest.mark.usefixtures("_fake_vclient_data")
-def test_fetch_global_data_returns_timestamp(app) -> None:
-    """Verify _fetch_global_data stores the company's resources_modified_at as ISO string."""
-    with app.app_context():
-        result = _fetch_global_data("test-company-id", "test-user-id")
-
+    assert result.company == company
+    assert result.users == users
+    assert result.campaigns == campaigns
+    assert result.characters == characters
+    assert result.characters_by_campaign == {characters[0].campaign_id: characters}
     assert result.resources_modified_at == "2026-01-01T00:00:00+00:00"
-
-
-def test_fetch_global_data_admin_populates_pending_user_count(app, fake_vclient) -> None:
-    """Verify pending_user_count reflects the unapproved-users total when user is ADMIN."""
-    # Given an ADMIN requesting user and two pending users on the company
-    company = CompanyFactory.build(id="test-company-id")
-    admin = UserFactory.build(id="admin-id", role="ADMIN", company_id="test-company-id")
-    pending = UserFactory.batch(2, role="UNAPPROVED", company_id="test-company-id")
-
-    fake_vclient.set_response(Routes.COMPANIES_GET, model=company)
-    fake_vclient.set_response(Routes.USERS_LIST, items=[admin])
-    fake_vclient.set_response(Routes.USERS_UNAPPROVED_LIST, items=pending)
-    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[])
-
-    # When fetching global data
-    with app.app_context():
-        result = _fetch_global_data("test-company-id", "admin-id")
-
-    # Then pending_user_count matches the unapproved-users total
-    assert result.pending_user_count == 2
-
-
-def test_fetch_global_data_non_admin_skips_pending_user_count(app, fake_vclient) -> None:
-    """Verify pending_user_count stays 0 for non-admins (no unapproved-users call)."""
-    # Given a PLAYER requesting user
-    company = CompanyFactory.build(id="test-company-id")
-    player = UserFactory.build(id="player-id", role="PLAYER", company_id="test-company-id")
-
-    fake_vclient.set_response(Routes.COMPANIES_GET, model=company)
-    fake_vclient.set_response(Routes.USERS_LIST, items=[player])
-    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[])
-
-    # When fetching global data
-    with app.app_context():
-        result = _fetch_global_data("test-company-id", "player-id")
-
-    # Then pending_user_count is 0 and the unapproved endpoint was never called
     assert result.pending_user_count == 0
-    fake_vclient.assert_not_called(Routes.USERS_UNAPPROVED_LIST)
-
-
-@pytest.mark.usefixtures("mock_cache_store")
-def test_load_global_context_returns_cached_on_same_timestamp(
-    app, mocker, mock_global_context, fake_vclient
-) -> None:
-    """Verify load returns cached data when company timestamp hasn't changed."""
-    # Given a company whose timestamp stays the same
-    mock_company = CompanyFactory.build(
-        resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
-    )
-    fake_vclient.set_response(Routes.COMPANIES_GET, model=mock_company)
-
-    mock_fetch = mocker.patch(
-        "vweb.lib.cache.global_context._fetch_global_data",
-        return_value=mock_global_context,
-    )
-
-    # When load is called twice
-    with app.app_context():
-        clear("test-company-id", "test-user-id")
-        first = load("test-company-id", "test-user-id")
-        second = load("test-company-id", "test-user-id")
-
-    # Then _fetch_global_data is called only once
-    assert first is second
-    mock_fetch.assert_called_once()
-    fake_vclient.assert_called(
-        Routes.COMPANIES_GET, params={"company_id": "test-company-id"}, times=1
-    )
-
-
-def test_load_global_context_refetches_on_new_timestamp(
-    app, mocker, mock_global_context, mock_cache_store, fake_vclient
-) -> None:
-    """Verify load re-fetches data when company timestamp changes."""
-    # Given a company whose timestamp changes between calls
-    mock_company_v1 = CompanyFactory.build(
-        resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
-    )
-    mock_company_v2 = CompanyFactory.build(
-        resources_modified_at=datetime(2026, 1, 2, 0, 0, tzinfo=UTC),
-    )
-    fake_vclient.set_responses(
-        Routes.COMPANIES_GET,
-        [FakeResponse(model=mock_company_v1), FakeResponse(model=mock_company_v2)],
-    )
-
-    # Given _fetch_global_data returns different GlobalContexts
-    ctx_v2 = GlobalContext(
-        company=CompanyFactory.build(),
-        users=[UserFactory.build()],
-        campaigns=[],
-        resources_modified_at="2026-01-02T00:00:00+00:00",
-    )
-    mock_fetch = mocker.patch(
-        "vweb.lib.cache.global_context._fetch_global_data",
-        side_effect=[mock_global_context, ctx_v2],
-    )
-
-    # When load is called, timestamp expires, then called again
-    with app.app_context():
-        clear("test-company-id", "test-user-id")
-        first = load("test-company-id", "test-user-id")
-        mock_cache_store.pop("global_timestamp:test-company-id", None)
-        second = load("test-company-id", "test-user-id")
-
-    # Then _fetch_global_data is called twice (data was refreshed)
-    assert first is not second
-    assert mock_fetch.call_count == 2
-    fake_vclient.assert_called(Routes.COMPANIES_GET, times=2)
-
-
-@pytest.mark.usefixtures("mock_cache_store")
-def test_clear_global_context_cache_deletes_only_global_keys(
-    app, mocker, mock_global_context, mock_cache_store, fake_vclient
-) -> None:
-    """Verify clear deletes only global context keys."""
-    # Given a company with a stable timestamp
-    mock_company = CompanyFactory.build(
-        resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
-    )
-    fake_vclient.set_response(Routes.COMPANIES_GET, model=mock_company)
-
-    mock_fetch = mocker.patch(
-        "vweb.lib.cache.global_context._fetch_global_data",
-        return_value=mock_global_context,
-    )
-
-    with app.app_context():
-        # Given global context is loaded and an unrelated key exists
-        load("test-company-id", "test-user-id")
-        mock_cache_store["bp_all_traits"] = {"some": "data"}
-
-        # When clear is called
-        clear("test-company-id", "test-user-id")
-
-        # Then global context requires a re-fetch
-        load("test-company-id", "test-user-id")
-        assert mock_fetch.call_count == 2
-
-        # And unrelated cache keys are preserved
-        assert "bp_all_traits" in mock_cache_store
-
-
-def test_before_request_sets_g_global_context(client, mocker, mock_global_context) -> None:
-    """Verify the before_request hook populates g.global_context for normal requests."""
-    # Given a mocked load that returns a real GlobalContext
-    mocker.patch(
-        "vweb.lib.cache.global_context.load",
-        return_value=mock_global_context,
-    )
-
-    # When a normal page request is made
-    with client.session_transaction() as sess:
-        sess["user_id"] = "test-user-id"
-    response = client.get("/", follow_redirects=True)
-
-    # Then the request succeeds (hook ran without error)
-    assert response.status_code == 200
-
-
-def test_before_request_skips_static(app, mocker) -> None:
-    """Verify the before_request hook does not call load for static paths."""
-    # Given a mocked load
-    mock_load = mocker.patch("vweb.lib.cache.global_context.load")
-
-    # When a static file request is made
-    with app.test_request_context("/static/css/style.css"):
-        from flask import session
-
-        session["user_id"] = "test-user-id"
-        for func in app.before_request_funcs.get(None, []):
-            func()
-
-    # Then load was never called
-    mock_load.assert_not_called()
-
-
-def test_before_request_skips_without_user_id(app, mocker) -> None:
-    """Verify the before_request hook skips when no user_id is in session."""
-    # Given a mocked load
-    mock_load = mocker.patch("vweb.lib.cache.global_context.load")
-
-    # When a request is made without user_id in session
-    with app.test_request_context("/"):
-        for func in app.before_request_funcs.get(None, []):
-            if func.__name__ == "inject_global_context":
-                func()
-
-    # Then load was never called
-    mock_load.assert_not_called()
-
-
-def test_fetch_global_data_returns_all_characters_unfiltered(app, fake_vclient) -> None:
-    """Verify _fetch_global_data returns all characters, not just the requesting user's."""
-    # Given a company, users, and campaigns are set up
-    company = CompanyFactory.build(
-        id="test-company-id",
-        name="Test Company",
-        resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
-    )
-    fake_vclient.set_response(Routes.COMPANIES_GET, model=company)
-    user = UserFactory.build(id="test-user-id", username="test-user", company_id="test-company-id")
-    fake_vclient.set_response(Routes.USERS_LIST, items=[user])
-    campaign = CampaignFactory.build(id="camp-1", name="Campaign 1")
-    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[campaign])
-
-    # Given characters belonging to different users
-    my_char = CharacterFactory.build(name="My Char", user_player_id="test-user-id")
-    other_char = CharacterFactory.build(name="Other Char", user_player_id="other-user-id")
-    fake_vclient.set_response(
-        Routes.CHARACTERS_LIST,
-        items=[my_char, other_char],
-    )
-
-    # When fetching global data
-    with app.app_context():
-        result = _fetch_global_data("test-company-id", "test-user-id")
-
-    # Then both characters are returned
-    assert len(result.characters) == 2
-    char_names = {c.name for c in result.characters}
-    assert "My Char" in char_names
-    assert "Other Char" in char_names
-
-
-@pytest.mark.usefixtures("_fake_vclient_data")
-def test_fetch_global_data_does_not_fetch_books_or_chapters(app, fake_vclient) -> None:
-    """Verify _fetch_global_data does not eagerly fan out to books and chapters."""
-    # When fetching global data
-    with app.app_context():
-        result = _fetch_global_data("test-company-id", "test-user-id")
-
-    # Then characters are still populated but no book/chapter fetch occurred
-    assert len(result.characters) == 1
+    # The company fetched for the timestamp is reused, not requested twice
+    fake_vclient.assert_called(Routes.COMPANIES_GET, params={"company_id": CO}, times=1)
     fake_vclient.assert_not_called(Routes.BOOKS_LIST)
     fake_vclient.assert_not_called(Routes.CHAPTERS_LIST)
 
 
-def test_hook_retries_on_user_not_found(app, mocker) -> None:
+@pytest.mark.usefixtures("mock_cache_store")
+@pytest.mark.parametrize(("role", "expected"), [("ADMIN", 2), ("PLAYER", 0)])
+def test_pending_user_count_only_for_admins(app, fake_vclient, role: str, expected: int) -> None:
+    """Verify admins see the pending-user count and others never request it."""
+    _serve(fake_vclient, campaigns=[], users=[UserFactory.build(id=ME, role=role)])
+    fake_vclient.set_response(
+        Routes.USERS_UNAPPROVED_LIST, items=UserFactory.batch(2, role="UNAPPROVED")
+    )
+
+    with app.app_context():
+        result = load(CO, ME)
+
+    assert result.pending_user_count == expected
+    fake_vclient.assert_called(Routes.USERS_UNAPPROVED_LIST, times=1 if expected else 0)
+
+
+@pytest.mark.usefixtures("mock_cache_store")
+def test_load_keeps_every_character_the_api_returns(app, fake_vclient) -> None:
+    """Verify the context holds other players' characters too, so routes must filter them."""
+    mine = CharacterFactory.build(name="My Char", user_player_id=ME)
+    theirs = CharacterFactory.build(name="Other Char", user_player_id="other-user-id")
+    _serve(fake_vclient, campaigns=[CampaignFactory.build()], characters=[mine, theirs])
+
+    with app.app_context():
+        result = load(CO, ME)
+
+    assert {c.name for c in result.characters} == {"My Char", "Other Char"}
+
+
+@pytest.mark.usefixtures("mock_cache_store")
+@pytest.mark.parametrize("characters_fail", [False, True])
+def test_company_without_campaigns_has_no_characters(
+    app, fake_vclient, *, characters_fail: bool
+) -> None:
+    """Verify characters are dropped, and a character error ignored, when there are no campaigns."""
+    _serve(fake_vclient, campaigns=[], characters=[CharacterFactory.build()])
+    if characters_fail:
+        fake_vclient.set_error(Routes.CHARACTERS_LIST, status_code=403)
+
+    with app.app_context():
+        result = load(CO, ME)
+
+    assert result.characters == []
+    assert result.characters_by_campaign == {}
+
+
+@pytest.mark.usefixtures("mock_cache_store")
+def test_character_error_raises_when_campaigns_exist(app, fake_vclient) -> None:
+    """Verify a failed character list still fails when campaigns need those characters."""
+    _serve(fake_vclient, campaigns=[CampaignFactory.build()])
+    fake_vclient.set_error(Routes.CHARACTERS_LIST, status_code=403)
+
+    with app.app_context(), pytest.raises(AuthorizationError):
+        load(CO, ME)
+
+
+@pytest.mark.usefixtures("_fake_vclient_data")
+def test_load_serves_cache_until_cleared(app, fake_vclient, mock_cache_store) -> None:
+    """Verify a warm context is reused, and clear forces a rebuild without touching other keys."""
+    with app.app_context():
+        first = load(CO, ME)
+        second = load(CO, ME)
+        mock_cache_store["bp_all_traits"] = {"some": "data"}
+
+        clear(CO, ME)
+        load(CO, ME)
+
+    assert first is second
+    fake_vclient.assert_called(Routes.USERS_LIST, times=2)
+    assert "bp_all_traits" in mock_cache_store
+
+
+@pytest.mark.usefixtures("_fake_vclient_data")
+@pytest.mark.parametrize(("changed", "rebuilds"), [(False, 1), (True, 2)])
+def test_load_rebuilds_only_when_company_stamp_changes(
+    app, fake_vclient, mock_cache_store, *, changed: bool, rebuilds: int
+) -> None:
+    """Verify an expired timestamp rebuilds the context only when the company has changed."""
+    stamps = [datetime(2026, 1, 1, tzinfo=UTC), datetime(2026, 1, 2 if changed else 1, tzinfo=UTC)]
+    fake_vclient.set_responses(
+        Routes.COMPANIES_GET,
+        [FakeResponse(model=CompanyFactory.build(id=CO, resources_modified_at=s)) for s in stamps],
+    )
+
+    with app.app_context():
+        load(CO, ME)
+        # Simulate the short timestamp TTL expiring
+        mock_cache_store.pop(f"global_timestamp:{CO}")
+        load(CO, ME)
+
+    fake_vclient.assert_called(Routes.COMPANIES_GET, times=2)
+    fake_vclient.assert_called(Routes.USERS_LIST, times=rebuilds)
+
+
+@pytest.mark.parametrize(
+    ("path", "session_user"),
+    [("/static/css/style.css", "test-user-id"), ("/", None)],
+    ids=["static-path", "logged-out"],
+)
+def test_hook_skips_context_load(
+    app, mock_context_load, path: str, session_user: str | None
+) -> None:
+    """Verify static files and logged-out requests never load the global context."""
+    client = app.test_client()
+    if session_user:
+        with client.session_transaction() as sess:
+            sess["user_id"] = session_user
+            sess["company_id"] = CO
+
+    client.get(path)
+
+    mock_context_load.assert_not_called()
+
+
+def test_hook_retries_on_user_not_found(app, mock_context_load) -> None:
     """Verify the hook refreshes the cache and retries when the user is not in the context."""
     # Given a first context without the user, and a second context with the user
     ctx_without_user = GlobalContext(
@@ -335,11 +216,7 @@ def test_hook_retries_on_user_not_found(app, mocker) -> None:
         campaigns=[],
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )
-    mock_load = mocker.patch(
-        "vweb.lib.cache.global_context.load",
-        side_effect=[ctx_without_user, ctx_with_user],
-    )
-    mocker.patch("vweb.lib.cache.global_context.clear")
+    mock_context_load.side_effect = [ctx_without_user, ctx_with_user]
 
     # When a request is made with a session user_id
     client = app.test_client()
@@ -359,10 +236,10 @@ def test_hook_retries_on_user_not_found(app, mocker) -> None:
     # (zero campaigns now route to the company hub instead of rendering inline)
     assert response.status_code == 302
     assert "/home" in response.headers["Location"]
-    assert mock_load.call_count == 2
+    assert mock_context_load.call_count == 2
 
 
-def test_hook_redirects_when_user_not_found_after_retry(app, mocker) -> None:
+def test_hook_redirects_when_user_not_found_after_retry(app, use_context) -> None:
     """Verify the hook clears session and redirects when user is not found even after retry."""
     # Given a context that never contains the user
     ctx_no_user = GlobalContext(
@@ -371,8 +248,7 @@ def test_hook_redirects_when_user_not_found_after_retry(app, mocker) -> None:
         campaigns=[],
         resources_modified_at="2026-01-01T00:00:00+00:00",
     )
-    mocker.patch("vweb.lib.cache.global_context.load", return_value=ctx_no_user)
-    mocker.patch("vweb.lib.cache.global_context.clear")
+    use_context(ctx_no_user)
 
     # When a request is made to a protected route
     client = app.test_client()
@@ -389,75 +265,11 @@ def test_hook_redirects_when_user_not_found_after_retry(app, mocker) -> None:
     response = client.get("/character/some-id")
 
     # Then the user is redirected to the landing page
-    assert response.status_code == 302
-    assert response.location == "/"
+    assert_redirects_to(response, "/")
 
     # And the session is cleared
     with client.session_transaction() as sess:
         assert "user_id" not in sess
-
-
-@pytest.mark.usefixtures("mock_cache_store")
-def test_load_global_context_fetches_company_once_on_cold_cache(
-    app, mocker, mock_global_context, fake_vclient
-) -> None:
-    """Verify a cold load fetches the company once, not twice (timestamp + fetch)."""
-    # Given a company service and a real _fetch_global_data that reuses the company
-    mock_company = CompanyFactory.build(
-        resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
-    )
-    fake_vclient.set_response(Routes.COMPANIES_GET, model=mock_company)
-
-    # Given _fetch_global_data is patched so we isolate the company-fetch behavior
-    mocker.patch(
-        "vweb.lib.cache.global_context._fetch_global_data",
-        return_value=mock_global_context,
-    )
-
-    # When load runs against a cold cache
-    with app.app_context():
-        clear("test-company-id", "test-user-id")
-        load("test-company-id", "test-user-id")
-
-    # Then the company is fetched exactly once (reused for the timestamp and fetch)
-    fake_vclient.assert_called(
-        Routes.COMPANIES_GET, params={"company_id": "test-company-id"}, times=1
-    )
-
-
-@pytest.mark.usefixtures("mock_cache_store")
-def test_load_global_context_passes_company_to_fetch(
-    app, mocker, mock_global_context, fake_vclient
-) -> None:
-    """Verify the cold-path company is handed to _fetch_global_data to avoid a refetch."""
-    # Given a known company returned for the timestamp lookup
-    mock_company = CompanyFactory.build(
-        resources_modified_at=datetime(2026, 1, 1, 0, 0, tzinfo=UTC),
-    )
-    fake_vclient.set_response(Routes.COMPANIES_GET, model=mock_company)
-
-    mock_fetch = mocker.patch(
-        "vweb.lib.cache.global_context._fetch_global_data",
-        return_value=mock_global_context,
-    )
-
-    # When load runs against a cold cache
-    with app.app_context():
-        clear("test-company-id", "test-user-id")
-        load("test-company-id", "test-user-id")
-
-    # Then the pre-fetched company is forwarded so _fetch_global_data skips its own get
-    assert mock_fetch.call_args.kwargs["company"] == mock_company
-
-
-def test_single_flight_lock_registry_stable_per_key() -> None:
-    """Verify the single-flight lock registry returns the same lock per key and distinct locks per key."""
-    from vweb.lib.cache.base import _lock_for
-
-    # Given two distinct context keys
-    # Then the same key yields the same lock, and distinct keys yield distinct locks
-    assert _lock_for("global_ctx:a:b") is _lock_for("global_ctx:a:b")
-    assert _lock_for("global_ctx:a:b") is not _lock_for("global_ctx:c:d")
 
 
 def test_load_global_context_single_flight_collapses_concurrent_rebuilds(
@@ -531,10 +343,9 @@ def test_load_global_context_single_flight_collapses_concurrent_rebuilds(
     assert results["b"] == built_context
 
 
-def test_hook_clears_legacy_session_without_company(app, mocker) -> None:
+def test_hook_clears_legacy_session_without_company(app, mock_context_load) -> None:
     """Verify a legacy session lacking company_id is cleared and redirected to login."""
     # Given an authenticated session with no company scope (pre-multi-company shape)
-    mock_load = mocker.patch("vweb.lib.cache.global_context.load")
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["user_id"] = "test-user-id"
@@ -546,37 +357,11 @@ def test_hook_clears_legacy_session_without_company(app, mocker) -> None:
     assert response.status_code == 302
     with client.session_transaction() as sess:
         assert "user_id" not in sess
-    mock_load.assert_not_called()
+    mock_context_load.assert_not_called()
 
 
 @pytest.mark.usefixtures("_fake_vclient_data")
-def test_fetch_global_data_matches_sequential_fetches(app) -> None:
-    """Verify the concurrent fetch builds the same context as calling each service in turn."""
-    # Given the services the global context reads, called one after another
-    with app.app_context():
-        company = companies_service().get("test-company-id")
-        users = users_service(on_behalf_of="test-user-id", company_id="test-company-id").list_all()
-        campaigns = campaigns_service(
-            on_behalf_of="test-user-id", company_id="test-company-id"
-        ).list_all()
-        characters = characters_service(
-            on_behalf_of="test-user-id", company_id="test-company-id"
-        ).list_all()
-
-        # When fetching global data
-        result = _fetch_global_data("test-company-id", "test-user-id")
-
-    # Then every field matches the sequential results
-    assert result.company == company
-    assert result.users == users
-    assert result.campaigns == campaigns
-    assert result.characters == characters
-    assert result.characters_by_campaign == {characters[0].campaign_id: characters}
-    assert result.pending_user_count == 0
-
-
-@pytest.mark.usefixtures("_fake_vclient_data")
-def test_fetch_global_data_sends_requests_concurrently(app, fake_vclient, mocker) -> None:
+def test_load_sends_requests_concurrently(app, fake_vclient, mocker, mock_cache_store) -> None:
     """Verify the independent fetches overlap instead of waiting on each other."""
     # Given a fake API where every response takes a moment and in-flight calls are counted
     router = fake_vclient._router
@@ -597,71 +382,9 @@ def test_fetch_global_data_sends_requests_concurrently(app, fake_vclient, mocker
 
     mocker.patch.object(router, "_finalize", side_effect=slow_finalize)
 
-    # When fetching global data without a pre-fetched company
+    # When loading a cold context
     with app.app_context():
-        _fetch_global_data("test-company-id", "test-user-id")
+        load("test-company-id", "test-user-id")
 
     # Then more than one request was in flight at once
     assert peak > 1
-
-
-def test_fetch_global_data_drops_characters_without_campaigns(app, fake_vclient) -> None:
-    """Verify characters fetched alongside campaigns are not exposed when there are none."""
-    # Given a company with no campaigns but a character the API would list
-    fake_vclient.set_response(Routes.COMPANIES_GET, model=CompanyFactory.build())
-    fake_vclient.set_response(Routes.USERS_LIST, items=[UserFactory.build(id="test-user-id")])
-    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[])
-    fake_vclient.set_response(Routes.CHARACTERS_LIST, items=[CharacterFactory.build()])
-
-    # When fetching global data
-    with app.app_context():
-        result = _fetch_global_data("test-company-id", "test-user-id")
-
-    # Then no characters are exposed
-    assert result.characters == []
-    assert result.characters_by_campaign == {}
-
-
-def test_fetch_global_data_ignores_character_error_without_campaigns(app, fake_vclient) -> None:
-    """Verify a failed character list does not fail a company that has no campaigns."""
-    # Given a company with no campaigns where listing characters fails
-    fake_vclient.set_response(Routes.COMPANIES_GET, model=CompanyFactory.build())
-    fake_vclient.set_response(Routes.USERS_LIST, items=[UserFactory.build(id="test-user-id")])
-    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[])
-    fake_vclient.set_error(Routes.CHARACTERS_LIST, status_code=403)
-
-    # When fetching global data
-    with app.app_context():
-        result = _fetch_global_data("test-company-id", "test-user-id")
-
-    # Then the context builds without characters
-    assert result.characters == []
-
-
-def test_fetch_global_data_raises_character_error_with_campaigns(app, fake_vclient) -> None:
-    """Verify a failed character list still fails when campaigns need those characters."""
-    # Given a company with a campaign where listing characters fails
-    fake_vclient.set_response(Routes.COMPANIES_GET, model=CompanyFactory.build())
-    fake_vclient.set_response(Routes.USERS_LIST, items=[UserFactory.build(id="test-user-id")])
-    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[CampaignFactory.build()])
-    fake_vclient.set_error(Routes.CHARACTERS_LIST, status_code=403)
-
-    # When/Then fetching global data raises the character error
-    with app.app_context(), pytest.raises(AuthorizationError):
-        _fetch_global_data("test-company-id", "test-user-id")
-
-
-def test_fetch_global_data_reuses_given_company(app, fake_vclient) -> None:
-    """Verify a pre-fetched company is used instead of requesting it again."""
-    # Given a pre-fetched company and an API whose company route would fail
-    company = CompanyFactory.build(id="test-company-id", name="Prefetched")
-    fake_vclient.set_error(Routes.COMPANIES_GET, status_code=500)
-    fake_vclient.set_response(Routes.USERS_LIST, items=[UserFactory.build(id="test-user-id")])
-    fake_vclient.set_response(Routes.CAMPAIGNS_LIST, items=[])
-
-    # When fetching global data with that company
-    with app.app_context():
-        result = _fetch_global_data("test-company-id", "test-user-id", company=company)
-
-    # Then the given company is in the context
-    assert result.company.name == "Prefetched"

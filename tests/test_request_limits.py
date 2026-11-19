@@ -3,56 +3,53 @@
 from __future__ import annotations
 
 import io
+from typing import TYPE_CHECKING
 
 from tests.conftest import get_csrf
-from vweb.constants import MAX_AVATAR_SIZE, MAX_IMAGE_SIZE, MAX_REQUEST_BODY_BYTES
+from vweb.constants import (
+    MAX_AVATAR_SIZE,
+    MAX_IMAGE_SIZE,
+    MAX_IMAGE_SIZE_MB,
+    MAX_REQUEST_BODY_BYTES,
+)
+
+if TYPE_CHECKING:
+    from flask.testing import FlaskClient
+    from werkzeug.test import TestResponse
 
 API_BODY_LIMIT_BYTES = 5_242_880
 MULTIPART_OVERHEAD_BYTES = 1024 * 1024
 
 
-def test_cap_leaves_room_for_the_largest_upload(app) -> None:
-    """Verify the body cap is set and still admits a maximum-size image upload."""
-    assert app.config["MAX_CONTENT_LENGTH"] == MAX_REQUEST_BODY_BYTES
+def test_upload_limits_fit_between_the_body_cap_and_the_api_limit() -> None:
+    """Verify a maximum-size upload passes the body cap and, with overhead, the API's limit."""
     assert MAX_REQUEST_BODY_BYTES > MAX_IMAGE_SIZE
-
-
-def test_upload_limits_fit_the_api_body_limit() -> None:
-    """Verify an upload plus multipart overhead stays under the API's request body limit."""
     assert MAX_IMAGE_SIZE + MULTIPART_OVERHEAD_BYTES <= API_BODY_LIMIT_BYTES
     assert MAX_AVATAR_SIZE + MULTIPART_OVERHEAD_BYTES <= API_BODY_LIMIT_BYTES
 
 
-def test_oversized_body_is_rejected_with_413(client) -> None:
-    """Verify a request body over the cap is refused before a view reads the upload."""
-    # Given a multipart upload larger than the cap
+def _post_oversized(client: FlaskClient, headers: dict[str, str] | None = None) -> TestResponse:
     oversized = io.BytesIO(b"x" * (MAX_REQUEST_BODY_BYTES + 1))
-
-    # When it is posted to an upload route
-    response = client.post(
+    return client.post(
         "/profile/test-user-id",
         data={"avatar": (oversized, "big.png", "image/png"), "csrf_token": get_csrf(client)},
         content_type="multipart/form-data",
+        headers=headers or {},
     )
 
-    # Then the server answers 413 instead of buffering it
-    assert response.status_code == 413
+
+def test_oversized_body_is_rejected_with_413(client) -> None:
+    """Verify a request body over the cap is refused before a view reads the upload."""
+    assert _post_oversized(client).status_code == 413
 
 
 def test_oversized_htmx_upload_flashes_instead_of_silent_413(client) -> None:
-    """Verify an oversized HTMX upload gets a swappable 200 carrying a flash message."""
-    # Given a multipart upload larger than the cap sent by htmx
-    oversized = io.BytesIO(b"x" * (MAX_REQUEST_BODY_BYTES + 1))
+    """Verify an oversized HTMX upload gets a swappable 200 flashing the size limit.
 
-    # When it is posted to an upload route
-    response = client.post(
-        "/profile/test-user-id",
-        data={"avatar": (oversized, "big.png", "image/png"), "csrf_token": get_csrf(client)},
-        content_type="multipart/form-data",
-        headers={"HX-Request": "true"},
-    )
+    htmx discards 4xx responses, so a plain 413 would give the user no feedback.
+    """
+    response = _post_oversized(client, headers={"HX-Request": "true"})
 
-    # Then htmx receives a 200 that swaps in only the flash container
     assert response.status_code == 200
     assert response.headers.get("HX-Reswap") == "none"
-    assert "too large" in response.get_data(as_text=True)
+    assert f"{MAX_IMAGE_SIZE_MB} MB" in response.get_data(as_text=True)

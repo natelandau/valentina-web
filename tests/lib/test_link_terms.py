@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from html.parser import HTMLParser
 from typing import TYPE_CHECKING
 
 import pytest
+from flask import url_for
 from markupsafe import Markup
 
 from vweb.api_client.testing import DictionaryTermFactory
@@ -13,6 +15,8 @@ from vweb.lib.jinja_filters import from_markdown, link_terms
 if TYPE_CHECKING:
     from collections.abc import Callable
     from unittest.mock import MagicMock
+
+    from vweb.api_client.models import DictionaryTerm
 
 
 @pytest.fixture
@@ -31,219 +35,168 @@ def set_terms(_mock_terms) -> Callable:
     return _set
 
 
-@pytest.mark.usefixtures("_mock_terms")
-class TestLinkTermsNoTerms:
-    """Tests for link_terms when no dictionary terms exist."""
+class _AnchorCollector(HTMLParser):
+    """Collect each anchor as a browser parser sees it: its attributes and its text."""
 
-    def test_returns_text_unchanged(self, app) -> None:
-        """Verify text passes through unmodified when there are no terms."""
-        with app.test_request_context():
-            result = link_terms("Some random text", "html")
+    def __init__(self) -> None:
+        super().__init__()
+        self.anchors: list[tuple[list[tuple[str, str | None]], str]] = []
+        self._open = False
 
-        assert result == "Some random text"
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "a":
+            self.anchors.append((attrs, ""))
+            self._open = True
 
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "a":
+            self._open = False
 
-class TestLinkTermsDefinitionHtml:
-    """Tests for HTML link generation for terms with definitions."""
-
-    def test_wraps_matching_term(self, app, set_terms) -> None:
-        """Verify a term with a definition is wrapped in an HTML link."""
-        # Given a term with a definition
-        term = DictionaryTermFactory.build(term="Celerity", definition="A vampire discipline.")
-        set_terms([term])
-
-        # When the filter processes text containing the term
-        with app.test_request_context():
-            result = link_terms("The vampire used Celerity to escape.", "html")
-
-        # Then the term is wrapped in an anchor tag
-        assert f">{term.term}<" not in result or "<a href=" in result
-        assert "link link-primary link-hover" in result
-        assert "Celerity" in result
-
-    def test_case_insensitive_match(self, app, set_terms) -> None:
-        """Verify matching is case-insensitive while preserving original casing."""
-        # Given a term
-        term = DictionaryTermFactory.build(term="Auspex", definition="Heightened senses.")
-        set_terms([term])
-
-        # When text contains the term in different casing
-        with app.test_request_context():
-            result = link_terms("She activated auspex.", "html")
-
-        # Then the match preserves the original casing
-        assert ">auspex<" in result
-        assert "<a href=" in result
-
-    def test_whole_word_only(self, app, set_terms) -> None:
-        """Verify terms are matched as whole words, not substrings."""
-        # Given a short term
-        term = DictionaryTermFactory.build(term="Art", definition="A creative skill.")
-        set_terms([term])
-
-        # When text contains the term as a substring of another word
-        with app.test_request_context():
-            result = link_terms("The artifact was old.", "html")
-
-        # Then the substring is not linked
-        assert "<a href=" not in result
-
-    def test_multiple_occurrences(self, app, set_terms) -> None:
-        """Verify all occurrences of a term are linked."""
-        # Given a term
-        term = DictionaryTermFactory.build(term="Blood", definition="Vital fluid.")
-        set_terms([term])
-
-        # When text contains the term twice
-        with app.test_request_context():
-            result = link_terms("Blood is thicker. More Blood.", "html")
-
-        # Then both occurrences are linked
-        assert result.count("<a href=") == 2
+    def handle_data(self, data: str) -> None:
+        if self._open:
+            attrs, text = self.anchors[-1]
+            self.anchors[-1] = (attrs, text + data)
 
 
-class TestLinkTermsSynonyms:
-    """Tests for synonym matching."""
-
-    def test_matches_synonym(self, app, set_terms) -> None:
-        """Verify synonyms are also linked to the term's definition page."""
-        # Given a term with a synonym
-        term = DictionaryTermFactory.build(
-            term="Fortitude", definition="Resilience.", synonyms=["Toughness"]
-        )
-        set_terms([term])
-
-        # When text contains the synonym
-        with app.test_request_context():
-            result = link_terms("Her Toughness was legendary.", "html")
-
-        # Then the synonym is linked
-        assert "<a href=" in result
-        assert ">Toughness<" in result
+def _anchors(html: str) -> list[tuple[list[tuple[str, str | None]], str]]:
+    collector = _AnchorCollector()
+    collector.feed(str(html))
+    return collector.anchors
 
 
-class TestLinkTermsExternalLink:
-    """Tests for terms with external links (no definition)."""
-
-    def test_wraps_with_external_link(self, app, set_terms) -> None:
-        """Verify a term with only a link uses the external URL."""
-        # Given a term with a link but no definition
-        term = DictionaryTermFactory.build(
-            term="Camarilla", definition=None, link="https://example.com/camarilla"
-        )
-        set_terms([term])
-
-        # When the filter processes matching text
-        with app.test_request_context():
-            result = link_terms("The Camarilla rules the city.", "html")
-
-        # Then the external link is used
-        assert 'href="https://example.com/camarilla"' in result
-        assert "link link-primary" in result
-
-    def test_definition_takes_priority_over_link(self, app, set_terms) -> None:
-        """Verify that when a term has both definition and link, definition wins."""
-        # Given a term with both definition and link
-        term = DictionaryTermFactory.build(
-            id="term-123",
-            term="Sabbat",
-            definition="A vampire sect.",
-            link="https://example.com/sabbat",
-        )
-        set_terms([term])
-
-        # When the filter processes matching text
-        with app.test_request_context():
-            result = link_terms("The Sabbat attacked.", "html")
-
-        # Then the internal definition link is used, not the external link
-        assert "term-123" in result
-        assert "https://example.com/sabbat" not in result
+def _links(html: str) -> list[tuple[str | None, str]]:
+    """Return (href, text) for every anchor in the html."""
+    return [(dict(attrs).get("href"), text) for attrs, text in _anchors(html)]
 
 
-class TestLinkTermsExcludes:
-    """Tests for the excludes parameter."""
-
-    def test_excludes_specified_terms(self, app, set_terms) -> None:
-        """Verify excluded terms are not linked."""
-        # Given two terms
-        term1 = DictionaryTermFactory.build(term="Brujah", definition="A clan.")
-        term2 = DictionaryTermFactory.build(term="Ventrue", definition="Another clan.")
-        set_terms([term1, term2])
-
-        # When one term is excluded
-        with app.test_request_context():
-            result = link_terms("Brujah vs Ventrue", "html", excludes=["Brujah"])
-
-        # Then only the non-excluded term is linked
-        assert result.count("<a href=") == 1
-        assert ">Ventrue<" in result
+def _detail(term: DictionaryTerm) -> str:
+    return url_for("dictionary.term_detail", term_id=term.id)
 
 
-class TestLinkTermsNoMatch:
-    """Tests for text that contains no matching terms."""
+_CELERITY = DictionaryTermFactory.build(id="t-cel", term="Celerity", definition="Speed.")
+_AUSPEX = DictionaryTermFactory.build(id="t-aus", term="Auspex", definition="Senses.")
+_BLOOD = DictionaryTermFactory.build(id="t-blood", term="Blood", definition="Vital fluid.")
+_FORTITUDE = DictionaryTermFactory.build(
+    id="t-fort", term="Fortitude", definition="Resilience.", synonyms=["Toughness"]
+)
+_CAMARILLA = DictionaryTermFactory.build(
+    term="Camarilla", definition=None, link="https://example.com/camarilla"
+)
+_SABBAT = DictionaryTermFactory.build(
+    id="t-sab", term="Sabbat", definition="A sect.", link="https://example.com/sabbat"
+)
+_ART = DictionaryTermFactory.build(term="Art", definition="A creative skill.")
+_GANGREL = DictionaryTermFactory.build(term="Gangrel", definition=None, link=None)
+_SCRIPT_LINK = DictionaryTermFactory.build(
+    term="Camarilla", definition=None, link="javascript:alert(1)"
+)
 
-    def test_no_definition_no_link(self, app, set_terms) -> None:
-        """Verify terms without definition or link are not wrapped."""
-        # Given a term with neither definition nor link
-        term = DictionaryTermFactory.build(term="Gangrel", definition=None, link=None)
-        set_terms([term])
 
-        # When the filter processes text containing the term
-        with app.test_request_context():
-            result = link_terms("The Gangrel howled.", "html")
+@pytest.mark.parametrize(
+    ("terms", "text", "expected"),
+    [
+        pytest.param([_CELERITY], "Used Celerity.", [(_CELERITY, "Celerity")], id="definition"),
+        pytest.param([_AUSPEX], "She used auspex.", [(_AUSPEX, "auspex")], id="case-insensitive"),
+        pytest.param(
+            [_BLOOD], "Blood is thick. More Blood.", [(_BLOOD, "Blood")] * 2, id="every-occurrence"
+        ),
+        pytest.param([_FORTITUDE], "Her Toughness.", [(_FORTITUDE, "Toughness")], id="synonym"),
+        pytest.param(
+            [_CAMARILLA],
+            "The Camarilla rules.",
+            [("https://example.com/camarilla", "Camarilla")],
+            id="external-link",
+        ),
+        pytest.param([_SABBAT], "The Sabbat came.", [(_SABBAT, "Sabbat")], id="definition-wins"),
+        pytest.param([_ART], "The artifact was old.", [], id="whole-word-only"),
+        pytest.param([_GANGREL], "The Gangrel howled.", [], id="no-definition-or-link"),
+        pytest.param([_SCRIPT_LINK], "The Camarilla rules.", [], id="non-http-link"),
+        pytest.param([], "Some random text", [], id="no-terms"),
+    ],
+)
+def test_html_links(app, set_terms, terms, text, expected) -> None:
+    """Verify which words become links and where each link points."""
+    set_terms(terms)
 
-        # Then no link is added
-        assert "<a href=" not in result
-        assert result == "The Gangrel howled."
+    with app.test_request_context():
+        result = link_terms(text, "html")
+        expected_links = [
+            (target if isinstance(target, str) else _detail(target), word)
+            for target, word in expected
+        ]
+
+    assert _links(result) == expected_links
+    if not expected:
+        assert str(result) == text
 
 
-class TestLinkTermsAutoescapeSafety:
-    """Tests ensuring link_terms html output is safe under autoescaping."""
+def test_excludes_specified_terms(app, set_terms) -> None:
+    """Verify excluded terms are not linked."""
+    brujah = DictionaryTermFactory.build(term="Brujah", definition="A clan.")
+    ventrue = DictionaryTermFactory.build(term="Ventrue", definition="Another clan.")
+    set_terms([brujah, ventrue])
 
-    def test_html_mode_returns_markup(self, app, set_terms) -> None:
-        """Verify html mode returns Markup so generated links survive autoescaping."""
-        # Given a term with a definition
-        term = DictionaryTermFactory.build(term="Celerity", definition="A discipline.")
-        set_terms([term])
+    with app.test_request_context():
+        result = link_terms("Brujah vs Ventrue", "html", excludes=["Brujah"])
 
-        # When the filter processes matching text
-        with app.test_request_context():
-            result = link_terms("Use Celerity now.", "html")
+    assert [text for _, text in _links(result)] == ["Ventrue"]
 
-        # Then the result is Markup, not a plain string
-        assert isinstance(result, Markup)
 
-    def test_html_mode_escapes_plain_input(self, app, set_terms) -> None:
+@pytest.mark.parametrize(
+    ("term", "expected"),
+    [
+        pytest.param(
+            DictionaryTermFactory.build(
+                term="Elysium", definition=None, link="https://example.com/elysium"
+            ),
+            "[Elysium](https://example.com/elysium)",
+            id="external-link",
+        ),
+        pytest.param(
+            DictionaryTermFactory.build(id="term-1", term="Elysium", definition="Neutral ground."),
+            "[Elysium](/dictionary/term/term-1)",
+            id="definition",
+        ),
+    ],
+)
+def test_markdown_links(app, set_terms, term, expected) -> None:
+    """Verify markdown mode wraps terms in markdown link syntax."""
+    set_terms([term])
+
+    with app.test_request_context():
+        result = link_terms("Meet at the Elysium.", "markdown")
+
+    assert expected in result
+
+
+class TestHtmlSafety:
+    """link_terms output is rendered unescaped, so it must never carry injected markup."""
+
+    def test_escapes_plain_input(self, app, set_terms) -> None:
         """Verify raw HTML in plain-string input is escaped before links are added."""
-        # Given a term and input containing an XSS payload
-        term = DictionaryTermFactory.build(term="Celerity", definition="A discipline.")
-        set_terms([term])
+        set_terms([_CELERITY])
 
-        # When the filter processes the payload
         with app.test_request_context():
             result = link_terms("<img src=x onerror=alert(1)> Celerity", "html")
 
-        # Then the payload is escaped while the term is still linked
+        # Markup so the generated anchors survive autoescaping
+        assert isinstance(result, Markup)
         assert "<img" not in result
         assert "&lt;img" in result
-        assert "<a href=" in result
+        assert len(_links(result)) == 1
 
-    def test_html_mode_preserves_markup_input(self, app, set_terms) -> None:
+    def test_preserves_markup_input(self, app, set_terms) -> None:
         """Verify already-safe Markup input (e.g. from from_markdown) is not re-escaped."""
-        # Given no terms and Markup input produced by from_markdown
-        set_terms([])
+        set_terms([_CELERITY])
 
-        # When the filter processes the Markup
         with app.test_request_context():
-            result = link_terms(from_markdown("**bold**"), "html")
+            result = link_terms(from_markdown("**bold** Celerity"), "html")
 
-        # Then the existing safe HTML is preserved
         assert "<strong>bold</strong>" in result
+        assert len(_links(result)) == 1
 
-    def test_html_mode_escapes_external_link_url(self, app, set_terms) -> None:
+    def test_escapes_external_link_url(self, app, set_terms) -> None:
         """Verify quotes in an external term link cannot break out of the href attribute."""
-        # Given a term whose external link contains a quote-escape payload
         term = DictionaryTermFactory.build(
             term="Camarilla",
             definition=None,
@@ -251,11 +204,9 @@ class TestLinkTermsAutoescapeSafety:
         )
         set_terms([term])
 
-        # When the filter processes matching text
         with app.test_request_context():
             result = link_terms("The Camarilla rules.", "html")
 
-        # Then the quote cannot terminate the href attribute
         assert "x' onmouseover=" not in result
 
     def test_synonym_inside_own_link_cannot_add_attributes(self, app, set_terms) -> None:
@@ -269,86 +220,28 @@ class TestLinkTermsAutoescapeSafety:
         )
         set_terms([term])
 
-        # When the filter processes text containing the term name
         with app.test_request_context():
             result = link_terms("See Aaaa here.", "html")
 
-        # Then the browser sees one anchor whose only attributes are href and class
-        anchors = _parse_start_tags(result, "a")
+        # Then the browser sees one anchor with no injected attributes
+        anchors = _anchors(result)
         assert len(anchors) == 1
-        assert {name for name, _ in anchors[0]} == {"href", "class"}
+        assert {name for name, _ in anchors[0][0]} <= {"href", "class"}
 
     def test_text_inside_existing_anchor_is_not_relinked(self, app, set_terms) -> None:
         """Verify terms are only linked in text outside existing anchors."""
-        # Given a term with a definition and input that already links the term
-        term = DictionaryTermFactory.build(term="Celerity", definition="Speed.")
-        set_terms([term])
+        set_terms([_CELERITY])
 
-        # When the filter processes markup containing an anchor around the term
         with app.test_request_context():
             result = link_terms(Markup('<a href="/x">Celerity</a> and Celerity'), "html")
 
-        # Then only the bare occurrence gains a new anchor
-        assert len(_parse_start_tags(result, "a")) == 2
-
-    def test_stored_non_http_link_is_not_rendered(self, app, set_terms) -> None:
-        """Verify a link stored by another API client is only rendered when it is http(s)."""
-        # Given a link-only term whose stored link uses a script scheme
-        term = DictionaryTermFactory.build(
-            term="Camarilla", definition=None, link="javascript:alert(1)"
-        )
-        set_terms([term])
-
-        # When the filter processes text containing the term
-        with app.test_request_context():
-            result = link_terms("The Camarilla rules.", "html")
-
-        # Then no anchor is created
-        assert _parse_start_tags(result, "a") == []
+        assert len(_anchors(result)) == 2
 
     def test_term_matching_entity_text_leaves_entity_intact(self, app, set_terms) -> None:
         """Verify a term spelled like an HTML entity name is not linked inside the entity."""
-        # Given a term named like the entity produced by escaping "&"
-        term = DictionaryTermFactory.build(term="amp", definition="Amplify.")
-        set_terms([term])
+        set_terms([DictionaryTermFactory.build(term="amp", definition="Amplify.")])
 
-        # When the filter processes text containing an ampersand
         with app.test_request_context():
             result = link_terms("R&D", "html")
 
-        # Then the escaped ampersand survives untouched
         assert str(result) == "R&amp;D"
-
-
-def _parse_start_tags(html: str, tag: str) -> list[list[tuple[str, str | None]]]:
-    """Return the attribute lists of every start tag named ``tag``, as a browser parser sees them."""
-    from html.parser import HTMLParser
-
-    found: list[list[tuple[str, str | None]]] = []
-
-    class _Collector(HTMLParser):
-        def handle_starttag(self, name: str, attrs: list[tuple[str, str | None]]) -> None:
-            if name == tag:
-                found.append(attrs)
-
-    _Collector().feed(str(html))
-    return found
-
-
-class TestLinkTermsMarkdown:
-    """Tests for markdown link generation."""
-
-    def test_wraps_with_markdown_link(self, app, set_terms) -> None:
-        """Verify markdown mode wraps terms with external links in markdown syntax."""
-        # Given a term with an external link but no definition
-        term = DictionaryTermFactory.build(
-            term="Elysium", definition=None, link="https://example.com/elysium"
-        )
-        set_terms([term])
-
-        # When using markdown mode
-        with app.test_request_context():
-            result = link_terms("Meet at the Elysium.", "markdown")
-
-        # Then the term is wrapped in markdown link syntax
-        assert "[Elysium](https://example.com/elysium)" in result

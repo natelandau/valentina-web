@@ -47,94 +47,50 @@ class TestCatalogAutoescape:
         assert "&lt;script&gt;" in html
 
 
-class TestFlashMessageIcons:
-    """Tests for flash toast icon rendering under autoescaping."""
+def test_flash_message_markup_not_escaped(app) -> None:
+    """Verify the flash toast's own markup is not autoescaped into visible text."""
+    # Given a flashed message in a request context
+    with app.test_request_context():
+        flash("Saved!", "success")
 
-    def test_flash_icon_renders_svg(self, app) -> None:
-        """Verify flash toast icons render as real SVG markup, not escaped text."""
-        # Given a flashed message in a request context
-        with app.test_request_context():
-            flash("Saved!", "success")
+        # When the flash container renders
+        html = vweb.catalog.render("shared.layout.FlashMessage")
 
-            # When the flash container renders
-            html = vweb.catalog.render("shared.layout.FlashMessage")
-
-        # Then the icon markup survives autoescaping
-        assert "<svg" in html
-        assert "&lt;svg" not in html
-
-
-class TestBuildFragmentUrl:
-    """Tests for build_fragment_url(endpoint, **kwargs)."""
-
-    def test_resolves_endpoint_and_appends_query_string(self, app) -> None:
-        """Verify the endpoint resolves to a URL and kwargs become a query string."""
-        # Given a registered blueprint endpoint
-        with app.test_request_context():
-            # When building a fragment URL with kwargs
-            url = build_fragment_url("static", filename="css/style.css", cache_buster="v1")
-
-        # Then the URL includes the endpoint path and query args
-        assert "/static/" in url
-        assert "cache_buster=v1" in url
-
-    def test_drops_empty_string_kwargs(self, app) -> None:
-        """Verify empty-string values are omitted from the query string."""
-        # Given an endpoint and a mix of filled and empty kwargs
-        with app.test_request_context():
-            # When building a fragment URL
-            url = build_fragment_url("static", filename="x.css", empty="", other="y")
-
-        # Then only non-empty values appear in the query string
-        assert "empty=" not in url
-        assert "other=y" in url
-
-    def test_drops_none_kwargs(self, app) -> None:
-        """Verify None values are omitted from the query string."""
-        with app.test_request_context():
-            # When building a URL with None kwargs
-            url = build_fragment_url("static", filename="x.css", maybe=None, keep="v")
-
-        # Then None values are omitted
-        assert "maybe=" not in url
-        assert "keep=v" in url
-
-    def test_coerces_int_kwargs(self, app) -> None:
-        """Verify integer values stringify in the query string."""
-        # Given an endpoint and an int kwarg
-        with app.test_request_context():
-            # When building a URL with an int value
-            url = build_fragment_url("static", filename="x.css", limit=50)
-
-        # Then the int appears as a string in the query
-        assert "limit=50" in url
-
-    def test_urlencodes_special_characters(self, app) -> None:
-        """Verify special characters in values are URL-encoded."""
-        # Given an endpoint and a kwarg value with a space
-        with app.test_request_context():
-            # When building a URL
-            url = build_fragment_url("static", filename="x.css", title="Hello World")
-
-        # Then the space is URL-encoded
-        assert "title=Hello+World" in url or "title=Hello%20World" in url
+    # Then no escaped markup leaks into the page
+    assert "Saved!" in html
+    assert "&lt;" not in html
 
 
 @pytest.mark.parametrize(
-    ("value", "expected"),
+    ("kwargs", "present", "absent"),
     [
-        (0, "badge-neutral"),
-        (1, "badge-neutral"),
-        (2, "badge-warning"),
-        (3, "badge-warning"),
-        (4, "badge-error"),
-        (5, "badge-error"),
+        ({"cache_buster": "v1"}, ["/static/", "cache_buster=v1"], []),
+        ({"empty": "", "other": "y"}, ["other=y"], ["empty="]),
+        ({"maybe": None, "keep": "v"}, ["keep=v"], ["maybe="]),
+        ({"limit": 50}, ["limit=50"], []),
+        ({"title": "Hello World"}, ["title=Hello+World"], []),
     ],
 )
-def test_threat_badge_class_thresholds(value, expected) -> None:
-    """Verify the danger/desperation severity-to-badge-color mapping."""
-    # Given a threat level, when mapping it, then the shared thresholds apply
-    assert threat_badge_class(value) == expected
+def test_build_fragment_url(app, kwargs, present, absent) -> None:
+    """Verify kwargs become an encoded query string, dropping empty and None values."""
+    with app.test_request_context():
+        url = build_fragment_url("static", filename="x.css", **kwargs)
+
+    for fragment in present:
+        assert fragment in url
+    for fragment in absent:
+        assert fragment not in url
+
+
+def test_threat_badge_class_thresholds() -> None:
+    """Verify danger levels group into three severity bands at 2 and 4."""
+    # Compare bands, not class names, so the colors can change freely
+    bands = [threat_badge_class(level) for level in range(6)]
+
+    assert bands[0] == bands[1]
+    assert bands[2] == bands[3]
+    assert bands[4] == bands[5]
+    assert len({bands[0], bands[2], bands[4]}) == 3
 
 
 @pytest.mark.parametrize(

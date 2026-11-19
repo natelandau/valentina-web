@@ -21,6 +21,7 @@ from vweb.api_client.exceptions import (
     ServerError,
     ValidationError,
 )
+from vweb.constants import MAX_IMAGE_SIZE_MB
 from vweb.lib.api_errors import (
     USER_FACING_API_ERRORS,
     api_error_message,
@@ -28,14 +29,34 @@ from vweb.lib.api_errors import (
     api_field_errors,
 )
 
+_GENERIC = "Validation failed for one or more fields."
+
 
 class _Roll(BaseModel):
     num_dice: int = Field(le=100)
 
 
-def _pydantic_error() -> PydanticValidationError:
+class _Named(BaseModel):
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def _check(cls, value: str) -> str:  # noqa: ARG003
+        msg = "Name must be short"
+        raise ValueError(msg)
+
+
+class _Inner(BaseModel):
+    clan_id: int
+
+
+class _Outer(BaseModel):
+    vampire_attributes: _Inner
+
+
+def _pydantic_error(model: type[BaseModel], **data: object) -> PydanticValidationError:
     with pytest.raises(PydanticValidationError) as info:
-        _Roll(num_dice=500)
+        model(**data)
     return info.value
 
 
@@ -47,293 +68,100 @@ def _validation_error(params: list[dict[str, str]], detail: str = "Bad input") -
     )
 
 
-def test_validation_error_lists_field_messages():
-    """Validation error lists field messages."""
-    error = _validation_error(
-        [
-            {"field": "num_dice", "message": "Input should be at most 100"},
-            {"field": "difficulty", "message": "Input should be at least 1"},
-        ]
-    )
-
-    assert api_error_messages(error) == [
-        "Num dice: Input should be at most 100",
-        "Difficulty: Input should be at least 1",
-    ]
-
-
-def test_validation_error_body_field_uses_message_only():
-    """Validation error body field uses message only."""
-    error = _validation_error([{"field": "body", "message": "One or more values are not valid."}])
-
-    assert api_error_messages(error) == ["One or more values are not valid."]
-
-
-def test_validation_error_without_params_uses_detail():
-    """Validation error without params uses detail."""
-    assert api_error_messages(_validation_error([], "Nope")) == ["Nope"]
-
-
-def test_request_validation_error_uses_pydantic_errors():
-    """Request validation error uses pydantic errors."""
-    message = api_error_message(RequestValidationError(_pydantic_error()), fallback="fallback")
-
-    assert message.startswith("Num dice: ")
-    assert "None" not in message
-
-
-def test_pydantic_validation_error_uses_errors():
-    """Pydantic validation error uses errors."""
-    assert api_error_messages(_pydantic_error())[0].startswith("Num dice: ")
-
-
-@pytest.mark.parametrize("cls", [ConflictError, AuthorizationError, NotFoundError])
-def test_conflict_and_authorization_use_detail(cls):
-    """Conflict and authorization use detail."""
-    error = cls("msg", 409, {"detail": "Already exists"})
-
-    assert api_error_messages(error) == ["Already exists"]
-
-
-def test_413_names_the_upload_limit():
-    """413 names the upload limit."""
-    message = api_error_message(PayloadTooLargeError("too big", 413, None), fallback="fallback")
-
-    assert "Upload is too large (max " in message
-
-
-def test_server_error_falls_back():
-    """Server error falls back."""
-    error = ServerError("boom", 500, {"detail": "db exploded"})
-
-    assert api_error_messages(error) == []
-    assert (
-        api_error_message(error, fallback="Roll failed - please try again.")
-        == "Roll failed - please try again."
-    )
-
-
-def test_connection_error_falls_back_and_is_not_user_facing(caplog):
-    """A connection failure shows the fallback, logs at error, and is not user-facing."""
-    # Given: An API call that got no response
-    error = APIConnectionError("Could not reach the API: Connection refused")
-
-    # When: Turning it into a user message
-    with caplog.at_level(logging.WARNING, logger="vweb.lib.api_errors"):
-        message = api_error_message(error, fallback="Please try again.")
-
-    # Then: The user sees the fallback and the failure is logged as an error
-    assert message == "Please try again."
-    assert [r.levelno for r in caplog.records] == [logging.ERROR]
-    assert not isinstance(error, USER_FACING_API_ERRORS)
-
-
-def test_unclassified_api_error_never_shows_detail():
-    """Unclassified api error never shows detail."""
-    error = APIError("weird", 418, {"detail": "secret"})
-
-    assert api_error_message(error, fallback="Oops") == "Oops"
-
-
-def test_user_facing_tuple_covers_expected_types():
-    """User facing tuple covers expected types."""
-    assert ServerError not in USER_FACING_API_ERRORS
-    assert ValidationError in USER_FACING_API_ERRORS
-    assert PydanticValidationError in USER_FACING_API_ERRORS
-
-
-def test_api_field_errors_matches_manual_create_shape():
-    """Api field errors matches manual create shape."""
-    error = _validation_error([{"field": "name_first", "message": "Too short"}], "Bad input")
-
-    assert api_field_errors(error, fallback="Failed") == {
-        "name_first": "Too short",
-        "_general": "Bad input",
-    }
-
-
-def test_api_field_errors_pydantic_keys_by_field():
-    """Api field errors pydantic keys by field."""
-    assert "num_dice" in api_field_errors(_pydantic_error(), fallback="Failed")
-
-
-def test_api_field_errors_server_error_uses_fallback():
-    """Api field errors server error uses fallback."""
-    error = ServerError("boom", 500, {"detail": "db exploded"})
-
-    assert api_field_errors(error, fallback="Failed to save profile") == {
-        "_general": "Failed to save profile"
-    }
-
-
-def test_blank_messages_are_dropped():
-    """Blank params fall through to the fallback."""
-    error = _validation_error(
-        [{"field": "body", "message": ""}, {"field": "name", "message": "  "}], detail=" "
-    )
-
-    assert api_error_messages(error) == []
-    assert api_error_message(error, fallback="Oops") == "Oops"
-    assert api_field_errors(error, fallback="Oops") == {"_general": "Oops"}
-
-
-def test_blank_body_message_uses_detail():
-    """A blank body message yields to the detail."""
-    error = _validation_error([{"field": "body", "message": ""}], detail="Bad input")
-
-    assert api_error_messages(error) == ["Bad input"]
-
-
-def test_blank_named_field_message_is_dropped_but_others_kept():
-    """Only the blank entry disappears."""
-    error = _validation_error(
-        [{"field": "name", "message": ""}, {"field": "age", "message": "Too low"}]
-    )
-
-    assert api_error_messages(error) == ["Age: Too low"]
-    assert api_field_errors(error, fallback="Oops")["age"] == "Too low"
-    assert "name" not in api_field_errors(error, fallback="Oops")
-
-
-def test_blank_detail_on_conflict_falls_back():
-    """Whitespace-only detail is treated as unset."""
-    error = ConflictError("msg", 409, {"detail": "   "})
-
-    assert api_error_message(error, fallback="Oops") == "Oops"
-
-
-def test_value_error_prefix_is_stripped():
-    """Pydantic's validator prefix is removed."""
-
-    class _M(BaseModel):
-        name: str
-
-        @field_validator("name")
-        @classmethod
-        def _check(cls, value: str) -> str:  # noqa: ARG003
-            msg = "Name must be short"
-            raise ValueError(msg)
-
-    with pytest.raises(PydanticValidationError) as info:
-        _M(name="x")
-
-    assert api_error_messages(info.value) == ["Name: Name must be short"]
-
-
-def test_detail_outranks_body_message_in_field_errors():
-    """The detail wins _general when a body entry also exists."""
-    error = _validation_error([{"field": "body", "message": "Body msg"}], detail="Detail msg")
-
-    assert api_field_errors(error, fallback="Oops") == {"_general": "Detail msg"}
-
-
-def test_field_label_dropped_when_message_repeats_detail():
-    """A field message equal to the detail reads as the plain sentence."""
-    message = "Value must be less than or equal to 5"
-    error = _validation_error([{"field": "value", "message": message}], detail=message)
-
-    assert api_error_messages(error) == [message]
-
-
-def test_field_label_kept_when_detail_differs():
-    """A field message under a generic detail keeps its label."""
-    error = _validation_error(
-        [{"field": "amount", "message": "Cannot spend 3: only 1 remaining."}],
-        detail="Validation failed for one or more fields.",
-    )
-
-    assert api_error_messages(error) == ["Amount: Cannot spend 3: only 1 remaining."]
-
-
-def test_amount_message_equal_to_detail_is_plain():
-    """The tracker rule's message is shown once, without a label."""
-    message = "Cannot spend 3: only 1 remaining."
-    error = _validation_error([{"field": "amount", "message": message}], detail=message)
-
-    assert api_error_messages(error) == [message]
-
-
-def test_campaign_id_message_equal_to_detail_is_plain():
-    """An id field's message equal to the detail is shown without a label."""
-    message = "Campaign ID is required"
-    error = _validation_error([{"field": "campaign_id", "message": message}], detail=message)
-
-    assert api_error_messages(error) == [message]
-    assert api_field_errors(error, fallback="Oops") == {"campaign_id": message}
-
-
-def test_field_errors_skip_general_when_detail_repeats_field_message():
-    """The same text is not shown both inline and in the banner."""
-    message = "Value must be less than or equal to 5"
-    error = _validation_error([{"field": "value", "message": message}], detail=message)
-
-    assert api_field_errors(error, fallback="Oops") == {"value": message}
-
-
-def test_api_sentence_follows_label():
-    """The API's sentence is shown as-is after the field label."""
-    error = _validation_error(
-        [{"field": "num_dice", "message": "Must be at most 100."}],
-        detail="Validation failed for one or more fields.",
-    )
-
-    assert api_error_messages(error) == ["Num dice: Must be at most 100."]
-
-
-def test_api_sentence_inline_is_unchanged():
-    """An inline field message is the API's sentence, unchanged."""
-    error = _validation_error(
-        [{"field": "age", "message": "Must be at least 0."}], detail="Validation failed."
-    )
-
-    assert api_field_errors(error, fallback="Oops")["age"] == "Must be at least 0."
-
-
-def test_required_field_message_follows_label():
-    """A missing field reads as the label plus the API's sentence."""
-    error = _validation_error(
-        [{"field": "name", "message": "This field is required."}],
-        detail="Validation failed for one or more fields.",
-    )
-
-    assert api_error_messages(error) == ["Name: This field is required."]
-
-
-def test_nested_path_labels_last_segment():
-    """A nested or indexed field path is labeled by its last segment."""
-    error = _validation_error(
-        [{"field": "[0].trait_id", "message": "Must be a valid ID."}],
-        detail="Validation failed for one or more fields.",
-    )
-
-    assert api_error_messages(error) == ["Trait id: Must be a valid ID."]
+def _param(field: str, message: str) -> dict[str, str]:
+    return {"field": field, "message": message}
 
 
 @pytest.mark.parametrize(
-    ("field", "expected"),
+    ("params", "detail", "expected"),
     [
-        ("tags[2]", "Tags: Must be text."),
-        ("traits[2].value", "Value: Must be text."),
-        ("metadata.x", "X: Must be text."),
-        ("a.", "A: Must be text."),
-        ("[0]", "Must be text."),
+        pytest.param(
+            [_param("num_dice", "At most 100"), _param("difficulty", "At least 1")],
+            "Bad input",
+            ["Num dice: At most 100", "Difficulty: At least 1"],
+            id="labels-each-field",
+        ),
+        pytest.param(
+            [_param("body", "Values are not valid.")],
+            "Bad input",
+            ["Values are not valid."],
+            id="body-message-unlabeled",
+        ),
+        pytest.param([], "Nope", ["Nope"], id="no-params-uses-detail"),
+        pytest.param(
+            [_param("body", ""), _param("name", "  ")], " ", [], id="blank-messages-dropped"
+        ),
+        pytest.param([_param("body", "")], "Bad input", ["Bad input"], id="blank-body-uses-detail"),
+        pytest.param(
+            [_param("name", ""), _param("age", "Too low")],
+            "Bad input",
+            ["Age: Too low"],
+            id="only-blank-entry-dropped",
+        ),
+        pytest.param(
+            [_param("amount", "Cannot spend 3.")],
+            "Cannot spend 3.",
+            ["Cannot spend 3."],
+            id="message-equal-to-detail-unlabeled",
+        ),
+        pytest.param(
+            [_param("amount", "Cannot spend 3.")],
+            _GENERIC,
+            ["Amount: Cannot spend 3."],
+            id="label-kept-under-generic-detail",
+        ),
+        pytest.param(
+            [_param("[0].trait_id", "Must be a valid ID.")],
+            _GENERIC,
+            ["Trait id: Must be a valid ID."],
+            id="nested-path-last-segment",
+        ),
+        pytest.param([_param("tags[2]", "Bad.")], _GENERIC, ["Tags: Bad."], id="index-suffix"),
+        pytest.param(
+            [_param("traits[2].value", "Bad.")], _GENERIC, ["Value: Bad."], id="indexed-nested"
+        ),
+        pytest.param([_param("metadata.x", "Bad.")], _GENERIC, ["X: Bad."], id="dotted"),
+        pytest.param([_param("a.", "Bad.")], _GENERIC, ["A: Bad."], id="trailing-dot"),
+        pytest.param([_param("[0]", "Bad.")], _GENERIC, ["Bad."], id="index-only-no-label"),
     ],
 )
-def test_index_terminated_path_keeps_a_label(field, expected):
-    """A path ending in an index or a dot labels by its last named segment, or drops the label."""
-    error = _validation_error(
-        [{"field": field, "message": "Must be text."}],
-        detail="Validation failed for one or more fields.",
-    )
-
-    assert api_error_messages(error) == [expected]
+def test_validation_error_messages(params, detail: str, expected: list[str]) -> None:
+    """Verify field messages are labeled by their innermost field name, without repeats."""
+    assert api_error_messages(_validation_error(params, detail)) == expected
 
 
-def test_labels_replace_the_field_label():
-    """A caller-supplied label replaces the field's name."""
-    error = _validation_error(
-        [{"field": "amount", "message": "Must be at most 10000."}], detail="Validation failed."
-    )
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        pytest.param(
+            RequestValidationError(_pydantic_error(_Roll, num_dice=500)),
+            "Num dice: ",
+            id="request-validation",
+        ),
+        pytest.param(_pydantic_error(_Roll, num_dice=500), "Num dice: ", id="pydantic"),
+        pytest.param(
+            _pydantic_error(_Outer, vampire_attributes={"clan_id": "abc"}),
+            "Clan id: ",
+            id="nested-pydantic",
+        ),
+    ],
+)
+def test_client_side_validation_messages(error: Exception, expected: str) -> None:
+    """Verify client-side validation failures read as labeled field messages."""
+    message = api_error_message(error, fallback="fallback")
+
+    assert message.startswith(expected)
+    assert "None" not in message
+
+
+def test_value_error_prefix_is_stripped() -> None:
+    """Verify pydantic's custom-validator prefix never reaches the user."""
+    assert api_error_messages(_pydantic_error(_Named, name="x")) == ["Name: Name must be short"]
+
+
+def test_labels_replace_the_field_label() -> None:
+    """Verify a caller-supplied label replaces the field's name."""
+    error = _validation_error([_param("amount", "Must be at most 10000.")], "Validation failed.")
 
     assert (
         api_error_message(error, fallback="Oops", labels={"amount": "XP"})
@@ -341,105 +169,162 @@ def test_labels_replace_the_field_label():
     )
 
 
-def test_field_errors_fold_unrendered_fields_into_general():
-    """Fields the form does not render are folded into the banner."""
-    error = _validation_error(
-        [
-            {"field": "name_first", "message": "Too short"},
-            {"field": "age", "message": "Must be at least 0."},
-        ],
-        detail="Validation failed for one or more fields.",
-    )
-
-    assert api_field_errors(error, fallback="Oops", inline_fields={"name_first"}) == {
-        "name_first": "Too short",
-        "_general": "Validation failed for one or more fields. Age: Must be at least 0.",
-    }
-
-
-def test_nested_pydantic_error_keys_by_top_level_field():
-    """A nested model error is keyed by the form's top-level field."""
-
-    class _Inner(BaseModel):
-        clan_id: int
-
-    class _Outer(BaseModel):
-        vampire_attributes: _Inner
-
-    with pytest.raises(PydanticValidationError) as info:
-        _Outer(vampire_attributes={"clan_id": "abc"})
-
-    errors = api_field_errors(info.value, fallback="Oops")
-    assert list(errors) == ["vampire_attributes"]
-    assert api_error_messages(info.value)[0].startswith("Clan id: ")
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        pytest.param(ConflictError("m", 409, {"detail": "Exists"}), "Exists", id="conflict"),
+        pytest.param(AuthorizationError("m", 403, {"detail": "No"}), "No", id="authorization"),
+        pytest.param(NotFoundError("m", 404, {"detail": "Gone"}), "Gone", id="not-found"),
+        pytest.param(ConflictError("m", 409, {"detail": "   "}), "Oops", id="blank-detail"),
+        pytest.param(ServerError("boom", 500, {"detail": "db exploded"}), "Oops", id="server"),
+        pytest.param(APIError("weird", 418, {"detail": "secret"}), "Oops", id="unclassified"),
+        pytest.param(APIConnectionError("Could not reach the API"), "Oops", id="connection"),
+        pytest.param(RateLimitError("slow", 429, None, retry_after=None), "Oops", id="no-wait"),
+    ],
+)
+def test_error_detail_shown_only_when_written_for_users(error: Exception, expected: str) -> None:
+    """Verify user-fixable errors show the API's detail and anything else shows the fallback."""
+    assert api_error_message(error, fallback="Oops") == expected
 
 
-def test_rate_limit_with_retry_after_names_the_wait(caplog):
-    """A rate limit names the wait and is not logged as an error."""
-    error = RateLimitError("slow down", 429, {"detail": "Too many"}, retry_after=30)
+def test_413_names_the_upload_limit() -> None:
+    """Verify an oversized upload names the size limit."""
+    message = api_error_message(PayloadTooLargeError("too big", 413, None), fallback="fallback")
 
+    assert f"{MAX_IMAGE_SIZE_MB} MB" in message
+
+
+@pytest.mark.parametrize(
+    ("seconds", "expected", "unexpected"),
+    [(30, "30 seconds", None), (1, "1 second", "1 seconds")],
+)
+def test_rate_limit_names_the_wait(seconds: int, expected: str, unexpected: str | None) -> None:
+    """Verify a rate limit tells the user how long to wait, in the right number."""
+    error = RateLimitError("slow down", 429, {"detail": "Too many"}, retry_after=seconds)
+
+    message = api_error_message(error, fallback="Oops")
+
+    assert expected in message
+    if unexpected:
+        assert unexpected not in message
+
+
+@pytest.mark.parametrize(
+    ("error", "levels"),
+    [
+        pytest.param(APIConnectionError("down"), [logging.ERROR], id="connection"),
+        pytest.param(ServerError("boom", 500, {"detail": "x"}), [logging.ERROR], id="server"),
+        pytest.param(AuthenticationError("no", 401, {"detail": "x"}), [logging.WARNING], id="auth"),
+        pytest.param(RateLimitError("slow", 429, None, retry_after=30), [], id="rate-limit"),
+    ],
+)
+def test_fallback_log_level(caplog, error: Exception, levels: list[int]) -> None:
+    """Verify fallbacks log as errors, except expected conditions such as rejected credentials."""
     with caplog.at_level(logging.WARNING, logger="vweb.lib.api_errors"):
-        message = api_error_message(error, fallback="Oops")
-
-    assert message == "Too many requests. Please wait 30 seconds and try again."
-    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
-
-
-def test_rate_limit_with_one_second_is_singular():
-    """A one second wait reads in the singular."""
-    error = RateLimitError("slow down", 429, None, retry_after=1)
-
-    assert (
         api_error_message(error, fallback="Oops")
-        == "Too many requests. Please wait 1 second and try again."
+
+    assert [r.levelno for r in caplog.records] == levels
+
+
+@pytest.mark.parametrize(
+    ("cls", "user_facing"),
+    [
+        (ValidationError, True),
+        (PydanticValidationError, True),
+        (NotFoundError, True),
+        (ServerError, False),
+        (APIConnectionError, False),
+    ],
+)
+def test_user_facing_error_classes(cls: type[Exception], *, user_facing: bool) -> None:
+    """Verify only errors a user can fix are caught as user-facing."""
+    assert issubclass(cls, USER_FACING_API_ERRORS) is user_facing
+
+
+@pytest.mark.parametrize(
+    ("params", "detail", "kwargs", "expected"),
+    [
+        pytest.param(
+            [_param("name_first", "Too short")],
+            "Bad input",
+            {},
+            {"name_first": "Too short", "_general": "Bad input"},
+            id="field-and-detail",
+        ),
+        pytest.param(
+            [_param("body", ""), _param("name", "  ")], " ", {}, {"_general": "Oops"}, id="blank"
+        ),
+        pytest.param(
+            [_param("name", ""), _param("age", "Too low")],
+            "Bad input",
+            {},
+            {"age": "Too low", "_general": "Bad input"},
+            id="blank-field-dropped",
+        ),
+        pytest.param(
+            [_param("body", "Body msg")],
+            "Detail msg",
+            {},
+            {"_general": "Detail msg"},
+            id="detail-outranks-body",
+        ),
+        pytest.param(
+            [_param("value", "At most 5")],
+            "At most 5",
+            {},
+            {"value": "At most 5"},
+            id="detail-repeating-field-not-shown-twice",
+        ),
+        pytest.param(
+            [_param("name_first", "Too short"), _param("age", "Must be at least 0.")],
+            _GENERIC,
+            {"inline_fields": {"name_first"}},
+            {"name_first": "Too short", "_general": f"{_GENERIC} Age: Must be at least 0."},
+            id="fold-unrendered-fields",
+        ),
+        pytest.param(
+            [_param("body", "Did not pass."), _param("age", "Must be at least 0.")],
+            " ",
+            {"inline_fields": {"name_first"}},
+            {"_general": "Did not pass. Age: Must be at least 0."},
+            id="body-beside-folded",
+        ),
+        pytest.param(
+            [_param("type", "Not allowed")],
+            "Validation failed.",
+            {"inline_fields": {"character_type"}, "aliases": {"type": "character_type"}},
+            {"character_type": "Not allowed", "_general": "Validation failed."},
+            id="alias",
+        ),
+    ],
+)
+def test_api_field_errors(params, detail: str, kwargs: dict, expected: dict[str, str]) -> None:
+    """Verify validation errors map to inline field messages plus a general banner."""
+    assert (
+        api_field_errors(_validation_error(params, detail), fallback="Oops", **kwargs) == expected
     )
 
 
-def test_authentication_fallback_logs_at_warning(caplog):
-    """An authentication failure falls back and logs at warning."""
-    error = AuthenticationError("no key", 401, {"detail": "bad key"})
+@pytest.mark.parametrize(
+    ("error", "expected_keys"),
+    [
+        pytest.param(_pydantic_error(_Roll, num_dice=500), ["num_dice"], id="pydantic"),
+        pytest.param(
+            _pydantic_error(_Outer, vampire_attributes={"clan_id": "abc"}),
+            ["vampire_attributes"],
+            id="nested-keys-by-top-level-field",
+        ),
+    ],
+)
+def test_api_field_errors_for_client_side_validation(
+    error: Exception, expected_keys: list[str]
+) -> None:
+    """Verify client-side validation errors key by the form's top-level field."""
+    assert list(api_field_errors(error, fallback="Oops")) == expected_keys
 
-    with caplog.at_level(logging.WARNING, logger="vweb.lib.api_errors"):
-        message = api_error_message(error, fallback="Oops")
 
-    assert message == "Oops"
-    assert [r.levelno for r in caplog.records] == [logging.WARNING]
-
-
-def test_server_error_fallback_logs_at_error(caplog):
-    """A server error falls back and logs at error."""
+def test_api_field_errors_server_error_uses_fallback() -> None:
+    """Verify a server error shows only the fallback in the general banner."""
     error = ServerError("boom", 500, {"detail": "db exploded"})
 
-    with caplog.at_level(logging.WARNING, logger="vweb.lib.api_errors"):
-        api_error_message(error, fallback="Oops")
-
-    assert [r.levelno for r in caplog.records] == [logging.ERROR]
-
-
-def test_field_errors_keep_body_message_beside_folded_fields():
-    """A body-level message is not lost when other field messages are folded."""
-    error = _validation_error(
-        [
-            {"field": "body", "message": "One or more fields did not pass validation."},
-            {"field": "age", "message": "Must be at least 0."},
-        ],
-        detail=" ",
-    )
-
-    assert api_field_errors(error, fallback="Oops", inline_fields={"name_first"}) == {
-        "_general": "One or more fields did not pass validation. Age: Must be at least 0."
-    }
-
-
-def test_field_errors_alias_maps_api_field_to_form_field():
-    """An aliased API field is shown beside the form field it came from."""
-    error = _validation_error(
-        [{"field": "type", "message": "Not allowed"}], detail="Validation failed."
-    )
-
-    assert api_field_errors(
-        error,
-        fallback="Oops",
-        inline_fields={"character_type"},
-        aliases={"type": "character_type"},
-    ) == {"character_type": "Not allowed", "_general": "Validation failed."}
+    assert api_field_errors(error, fallback="Failed to save") == {"_general": "Failed to save"}

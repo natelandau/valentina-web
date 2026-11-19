@@ -6,6 +6,9 @@ import pickle
 from http import HTTPStatus
 from unittest.mock import patch
 
+import pytest
+from flask_session.redis import RedisSessionInterface
+
 import vweb
 from vweb.app import create_app
 from vweb.config import RedisSettings, Settings
@@ -34,38 +37,20 @@ class TestTolerantRedisSerializer:
         # Then the original value returns
         assert result == {"a": [1, 2]}
 
-    def test_missing_module_is_a_miss(self) -> None:
-        """Verify an entry pickled from a module that no longer exists loads as None."""
-        # Given a value pickled from a module that is not installed
-        stored = _pickle_of_missing_module()
-
-        # When loading it
-        result = TolerantRedisSerializer().loads(stored)
-
-        # Then it reads as a cache miss instead of raising
-        assert result is None
-
-    def test_missing_attribute_is_a_miss(self) -> None:
-        """Verify an entry whose class was renamed or removed loads as None."""
-        # Given a value pickled from a class the module no longer defines
-        stored = b"!" + pickle.dumps(len).replace(b"len", b"zzz")
-
-        # When loading it
-        result = TolerantRedisSerializer().loads(stored)
-
-        # Then it reads as a cache miss instead of raising
-        assert result is None
-
-    def test_dropped_enum_value_is_a_miss(self) -> None:
-        """Verify an entry holding an enum value the enum no longer defines loads as None."""
-        # Given a value pickled from an enum member whose value no longer exists
-        stored = b"!" + pickle.dumps(HTTPStatus.OK).replace(b"K\xc8", b"K\x01")
-
-        # When loading it
-        result = TolerantRedisSerializer().loads(stored)
-
-        # Then it reads as a cache miss instead of raising
-        assert result is None
+    @pytest.mark.parametrize(
+        "stored",
+        [
+            pytest.param(_pickle_of_missing_module(), id="missing-module"),
+            pytest.param(b"!" + pickle.dumps(len).replace(b"len", b"zzz"), id="missing-attribute"),
+            pytest.param(
+                b"!" + pickle.dumps(HTTPStatus.OK).replace(b"K\xc8", b"K\x01"),
+                id="dropped-enum-value",
+            ),
+        ],
+    )
+    def test_unloadable_entry_is_a_miss(self, stored: bytes) -> None:
+        """Verify an entry pickled from code that no longer exists reads as a cache miss."""
+        assert TolerantRedisSerializer().loads(stored) is None
 
     def test_logs_the_unloadable_entry(self) -> None:
         """Verify an unloadable entry logs a warning that names the error."""
@@ -84,9 +69,7 @@ class TestTolerantRedisSerializer:
 class TestCacheConfig:
     """Tests for the cache settings create_app applies."""
 
-    def test_redis_cache_uses_tolerant_backend_and_versioned_prefix(
-        self, test_settings: Settings
-    ) -> None:
+    def test_redis_backs_cache_and_sessions(self, test_settings: Settings) -> None:
         """Verify Redis caching loads through the tolerant backend under a per-release prefix."""
         # Given settings with a Redis URL
         settings = test_settings.model_copy(
@@ -101,3 +84,5 @@ class TestCacheConfig:
         assert isinstance(backend, TolerantRedisCache)
         assert isinstance(backend.serializer, TolerantRedisSerializer)
         assert backend.key_prefix == f"vweb:{vweb.__version__}:"
+        # Sessions live server-side in the same Redis
+        assert isinstance(app.session_interface, RedisSessionInterface)

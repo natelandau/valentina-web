@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from vweb.app import create_app
 from vweb.config import RedisSettings
 
@@ -11,51 +13,35 @@ if TYPE_CHECKING:
     from vweb.config import Settings
 
 
-def test_development_session_cookie_includes_port(test_settings: Settings) -> None:
-    """Verify each development port gets its own session cookie."""
-    # Given development settings on a worktree port
-    settings = test_settings.model_copy(update={"port": 8091})
-
-    # When the app is built
-    app = create_app(settings_override=settings)
-
-    # Then the session cookie is named after the port
-    assert app.config["SESSION_COOKIE_NAME"] == "session_8091"
-
-
-def test_production_session_cookie_keeps_default_name(test_settings: Settings) -> None:
-    """Verify production keeps Flask's default session cookie name."""
-    # Given production settings with Redis configured; the client connects lazily, so none is made
+@pytest.mark.parametrize(
+    ("env", "force_https", "expected"),
+    [
+        # Browsers share cookies across ports, so each dev checkout needs its own name
+        pytest.param("development", False, "session_8091", id="dev-per-port"),
+        pytest.param("production", False, "session", id="prod-http"),
+        # Browsers accept __Host- cookies only when Secure, host-only, and Path=/
+        pytest.param("production", True, "__Host-session", id="prod-https"),
+    ],
+)
+def test_session_cookie_name(
+    test_settings: Settings,
+    env: str,
+    force_https: bool,  # noqa: FBT001
+    expected: str,
+) -> None:
+    """Verify the session cookie name per environment, and host-only scoping under HTTPS."""
+    # The Redis client connects lazily, so building the app opens no connection
     settings = test_settings.model_copy(
         update={
-            "env": "production",
-            "force_https": False,
-            "redis": RedisSettings(url="redis://127.0.0.1:6380/0"),
+            "env": env,
+            "port": 8091,
+            "force_https": force_https,
+            "redis": RedisSettings(url="redis://127.0.0.1:6380/0" if env == "production" else ""),
         }
     )
 
-    # When the app is built
     app = create_app(settings_override=settings)
 
-    # Then the session cookie keeps the default name
-    assert app.config["SESSION_COOKIE_NAME"] == "session"
-
-
-def test_https_production_session_cookie_uses_host_prefix(test_settings: Settings) -> None:
-    """Verify HTTPS production names the cookie with the __Host- prefix."""
-    # Given production settings served over HTTPS
-    settings = test_settings.model_copy(
-        update={
-            "env": "production",
-            "force_https": True,
-            "redis": RedisSettings(url="redis://127.0.0.1:6380/0"),
-        }
-    )
-
-    # When the app is built
-    app = create_app(settings_override=settings)
-
-    # Then browsers only accept the cookie as Secure, host-only, and Path=/
-    assert app.config["SESSION_COOKIE_NAME"] == "__Host-session"
-    assert app.config.get("SESSION_COOKIE_DOMAIN") in (None, False)
-    assert app.config["SESSION_COOKIE_PATH"] in (None, "/")
+    assert app.config["SESSION_COOKIE_NAME"] == expected
+    assert app.config.get("SESSION_COOKIE_DOMAIN") in {None, False}
+    assert app.config["SESSION_COOKIE_PATH"] in {None, "/"}

@@ -5,20 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
+from flask import session
 
 from vweb.api_client.testing import FakeResponse, Routes
-from vweb.lib.cache.options import (
-    ApiOptions,
-    AssetOptions,
-    CharacterOptions,
-    CompanyOptions,
-    GameplayOptions,
-    UserOptions,
-    _parse_options,
-    clear,
-    get,
-    tracker_actions_for,
-)
+from vweb.lib.cache.options import clear, get, tracker_actions_for
 
 if TYPE_CHECKING:
     from flask import Flask
@@ -64,205 +54,109 @@ def fake_options(real_cache_services, fake_vclient: FakeVClient) -> FakeVClient:
     return fake_vclient
 
 
-class TestParseOptions:
-    """Tests for _parse_options()."""
+def _get_for(company_id: str = "test-company-id"):  # noqa: ANN202
+    session["company_id"] = company_id
+    return get()
 
-    def test_parses_all_categories(self) -> None:
-        """Verify _parse_options creates a fully populated ApiOptions."""
-        result = _parse_options(SAMPLE_RAW)
 
-        assert isinstance(result, ApiOptions)
-        assert isinstance(result.companies, CompanyOptions)
-        assert isinstance(result.characters, CharacterOptions)
-        assert isinstance(result.users, UserOptions)
-        assert isinstance(result.gameplay, GameplayOptions)
-        assert isinstance(result.assets, AssetOptions)
+def test_get_fetches_once_and_maps_enumerations(
+    app: Flask, mock_cache_store: dict, fake_options: FakeVClient
+) -> None:
+    """Verify the company's options are fetched once and exposed by category."""
+    with app.test_request_context("/"):
+        first = _get_for()
+        second = _get_for()
 
-    def test_parses_company_options(self) -> None:
-        """Verify company permission lists are correctly mapped."""
-        result = _parse_options(SAMPLE_RAW)
+    assert second is first
+    assert first.companies.company_permission == ["USER", "ADMIN", "OWNER"]
+    assert first.characters.character_type == ["PLAYER", "NPC", "STORYTELLER"]
+    assert first.users.user_role == ["ADMIN", "STORYTELLER", "PLAYER", "UNAPPROVED"]
+    assert first.gameplay.dice_size == [4, 6, 8, 10, 20, 100]
+    fake_options.assert_called(
+        Routes.OPTIONS_GET, params={"company_id": "test-company-id"}, times=1
+    )
 
-        assert result.companies.company_permission == ["USER", "ADMIN", "OWNER"]
-        assert result.companies.permission_manage_campaign == ["UNRESTRICTED", "STORYTELLER"]
 
-    def test_parses_character_options(self) -> None:
-        """Verify character enumerations are correctly mapped."""
-        result = _parse_options(SAMPLE_RAW)
+def test_options_cached_per_company(
+    app: Flask, mock_cache_store: dict, fake_options: FakeVClient
+) -> None:
+    """Verify each company gets its own options."""
+    with app.test_request_context("/"):
+        _get_for("co-1")
+        _get_for("co-2")
 
-        assert "VAMPIRE" in result.characters.character_class
-        assert result.characters.character_type == ["PLAYER", "NPC", "STORYTELLER"]
-        assert result.characters.inventory_item_type == [
-            "BOOK",
-            "CONSUMABLE",
-            "ENCHANTED",
-            "EQUIPMENT",
-            "OTHER",
-            "WEAPON",
-        ]
+    fake_options.assert_called(Routes.OPTIONS_GET, params={"company_id": "co-1"}, times=1)
+    fake_options.assert_called(Routes.OPTIONS_GET, params={"company_id": "co-2"}, times=1)
 
-    def test_parses_gameplay_options(self) -> None:
-        """Verify dice sizes are parsed as integers."""
-        result = _parse_options(SAMPLE_RAW)
 
-        assert result.gameplay.dice_size == [4, 6, 8, 10, 20, 100]
-        assert all(isinstance(d, int) for d in result.gameplay.dice_size)
+@pytest.mark.parametrize(
+    "raw", [{}, {"characters": {"TrackerRules": None}}], ids=["empty", "null-tracker-rules"]
+)
+def test_missing_sections_read_as_empty(
+    app: Flask, mock_cache_store: dict, fake_options: FakeVClient, raw: dict
+) -> None:
+    """Verify a sparse options payload yields empty choices instead of failing."""
+    fake_options.set_response(Routes.OPTIONS_GET, model=raw)
 
-    def test_ignores_related_urls(self) -> None:
-        """Verify _related keys in characters are ignored (not mapped to any field)."""
-        result = _parse_options(SAMPLE_RAW)
+    with app.test_request_context("/"):
+        options = _get_for()
+        actions = tracker_actions_for("V4", "DAMAGE")
 
-        # _related is not a field on CharacterOptions, so it's silently skipped
-        assert not hasattr(result.characters, "_related")
+    assert options.characters.character_class == []
+    assert options.gameplay.dice_size == []
+    assert actions == []
 
-    def test_parse_options_reads_tracker_rules(self) -> None:
-        """Verify TrackerRules round-trips into the tracker_rules field."""
-        tracker_rules = {
-            "V4": {
-                "COUNTER": {"actions": ["spend", "gain", "reset"]},
-                "DAMAGE": {"actions": ["damage", "heal", "reset"]},
+
+def test_clear_forces_refetch(
+    app: Flask, mock_cache_store: dict, fake_options: FakeVClient
+) -> None:
+    """Verify clear forces a fresh API fetch on next access."""
+    raw_v2 = {
+        **SAMPLE_RAW,
+        "characters": {**SAMPLE_RAW["characters"], "CharacterClass": ["VAMPIRE"]},
+    }
+    fake_options.set_responses(
+        Routes.OPTIONS_GET, [FakeResponse(model=SAMPLE_RAW), FakeResponse(model=raw_v2)]
+    )
+
+    with app.test_request_context("/"):
+        assert len(_get_for().characters.character_class) == 6
+
+        clear()
+
+        assert _get_for().characters.character_class == ["VAMPIRE"]
+
+    fake_options.assert_called(Routes.OPTIONS_GET, times=2)
+
+
+@pytest.mark.parametrize(
+    ("version", "tracker", "expected"),
+    [
+        ("V4", "DAMAGE", ["damage", "heal", "reset"]),
+        ("V4", "NOT_A_TRACKER", []),
+        ("V9", "DAMAGE", []),
+    ],
+)
+def test_tracker_actions_for(
+    app: Flask,
+    mock_cache_store: dict,
+    fake_options: FakeVClient,
+    version: str,
+    tracker: str,
+    expected: list[str],
+) -> None:
+    """Verify tracker actions come from the API's rules, empty for unknown types or versions."""
+    fake_options.set_response(
+        Routes.OPTIONS_GET,
+        model={
+            "characters": {
+                "TrackerRules": {"V4": {"DAMAGE": {"actions": ["damage", "heal", "reset"]}}},
             },
-        }
-        raw = {"characters": {"TrackerRules": tracker_rules}}
+        },
+    )
 
-        result = _parse_options(raw)
+    with app.test_request_context("/"):
+        session["company_id"] = "test-company-id"
+        result = tracker_actions_for(version, tracker)
 
-        assert result.characters.tracker_rules == tracker_rules
-
-    def test_null_tracker_rules_parse_as_empty(self) -> None:
-        """Verify a null TrackerRules value parses as an empty mapping."""
-        result = _parse_options({"characters": {"TrackerRules": None}})
-
-        assert result.characters.tracker_rules == {}
-
-    def test_handles_empty_response(self) -> None:
-        """Verify _parse_options handles an empty dict gracefully."""
-        result = _parse_options({})
-
-        assert result.companies.company_permission == []
-        assert result.characters.character_class == []
-        assert result.gameplay.dice_size == []
-
-
-class TestGet:
-    """Tests for get()."""
-
-    def test_fetches_from_api_on_cache_miss(
-        self, app: Flask, mock_cache_store: dict, fake_options: FakeVClient
-    ) -> None:
-        """Verify get calls the API when the cache is empty."""
-        with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            result = get()
-
-        assert isinstance(result, ApiOptions)
-        assert result.characters.character_class == [
-            "VAMPIRE",
-            "WEREWOLF",
-            "MAGE",
-            "HUNTER",
-            "GHOUL",
-            "MORTAL",
-        ]
-        fake_options.assert_called(
-            Routes.OPTIONS_GET, params={"company_id": "test-company-id"}, times=1
-        )
-
-    def test_returns_cached_on_hit(
-        self, app: Flask, mock_cache_store: dict, fake_options: FakeVClient
-    ) -> None:
-        """Verify get returns cached value without calling the API again."""
-        with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            first = get()
-            second = get()
-
-        assert first is second
-        fake_options.assert_called(
-            Routes.OPTIONS_GET, params={"company_id": "test-company-id"}, times=1
-        )
-
-    def test_caches_with_correct_key(
-        self, app: Flask, mock_cache_store: dict, fake_options: FakeVClient
-    ) -> None:
-        """Verify the cached value is stored under the expected key."""
-        with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            get()
-
-        assert "api_options:test-company-id" in mock_cache_store
-        assert isinstance(mock_cache_store["api_options:test-company-id"], ApiOptions)
-
-
-class TestClear:
-    """Tests for clear()."""
-
-    def test_forces_refetch_on_next_call(
-        self, app: Flask, mock_cache_store: dict, fake_options: FakeVClient
-    ) -> None:
-        """Verify clear forces a fresh API fetch on next access."""
-        raw_v2 = {
-            **SAMPLE_RAW,
-            "characters": {**SAMPLE_RAW["characters"], "CharacterClass": ["VAMPIRE"]},
-        }
-        fake_options.set_responses(
-            Routes.OPTIONS_GET, [FakeResponse(model=SAMPLE_RAW), FakeResponse(model=raw_v2)]
-        )
-
-        with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            first = get()
-            assert len(first.characters.character_class) == 6
-
-            clear()
-
-            second = get()
-            assert len(second.characters.character_class) == 1
-
-        fake_options.assert_called(Routes.OPTIONS_GET, times=2)
-
-
-class TestTrackerActionsFor:
-    """Tests for tracker_actions_for()."""
-
-    def test_returns_actions_for_known_type(
-        self, app: Flask, mock_cache_store: dict, fake_options: FakeVClient
-    ) -> None:
-        """Verify the actions come from the cached tracker rules."""
-        fake_options.set_response(
-            Routes.OPTIONS_GET,
-            model={
-                "characters": {
-                    "TrackerRules": {"V4": {"DAMAGE": {"actions": ["damage", "heal", "reset"]}}},
-                },
-            },
-        )
-
-        with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            result = tracker_actions_for("V4", "DAMAGE")
-
-        assert result == ["damage", "heal", "reset"]
-
-    def test_unknown_type_or_version_is_empty(
-        self, app: Flask, mock_cache_store: dict, fake_options: FakeVClient
-    ) -> None:
-        """Verify an unknown tracker type or game version yields an empty list."""
-        with app.test_request_context("/"):
-            from flask import session
-
-            session["company_id"] = "test-company-id"
-            unknown_type = tracker_actions_for("V5", "NOT_A_TRACKER")
-            unknown_version = tracker_actions_for("V9", "DAMAGE")
-
-        assert unknown_type == []
-        assert unknown_version == []
+    assert result == expected

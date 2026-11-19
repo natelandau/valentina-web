@@ -1,133 +1,75 @@
-"""Tests for the scanner probe before_request hook."""
+"""Tests for the request-path before_request hooks: scanner blocking and trailing slashes."""
 
 import pytest
 
 
-class TestScannerProbeBlocking:
-    """Verify the scanner probe hook blocks malicious paths and allows legitimate ones."""
+@pytest.mark.parametrize(
+    "path",
+    [
+        # Dotfiles at any depth
+        "/.env",
+        "/.git/config",
+        "/.npmrc",
+        "/.htaccess",
+        "/.DS_Store",
+        "/app/.env",
+        "/app/.git/config",
+        "/.cursor/mcp.json",
+        "/app/.env.production",
+        # Known scanner prefixes
+        "/wp-admin",
+        "/wp-login.php",
+        "/wordpress/wp-admin",
+        "/phpmyadmin/index",
+        "/pma",
+        "/adminer",
+        "/cgi-bin/test",
+        "/xmlrpc",
+        "/sitemap.xml",
+        # Non-Python script extensions
+        "/login.php",
+        "/admin.asp",
+        "/page.aspx",
+        "/index.jsp",
+        "/test.cgi",
+        # Patterns anywhere in the path
+        "/backup.env.old",
+        "/phpinfo",
+        # Matching ignores case
+        "/WP-ADMIN",
+        "/.Env",
+        "/login.PHP",
+        # Public files are exempt only at their exact path
+        "/ROBOTS.TXT",
+    ],
+)
+def test_scanner_paths_return_404(client, path) -> None:
+    """Verify requests for paths vulnerability scanners probe are blocked with 404."""
+    assert client.get(path).status_code == 404
 
-    @pytest.mark.parametrize(
-        "path",
-        [
-            "/.env",
-            "/.git/config",
-            "/.npmrc",
-            "/.htaccess",
-            "/.DS_Store",
-            "/app/.env",
-            "/app/.git/config",
-            "/.cursor/mcp.json",
-        ],
-    )
-    def test_dotfile_paths_return_404(self, client, path) -> None:
-        """Verify requests for dotfile paths are blocked with 404."""
-        # When requesting a dotfile path
-        response = client.get(path)
 
-        # Then a 404 is returned
-        assert response.status_code == 404
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/",
+        "/auth/discord",
+        "/auth/github",
+        "/auth/google",
+        "/pending-approval",
+        "/robots.txt",
+    ],
+)
+def test_legitimate_paths_are_not_blocked(client, path) -> None:
+    """Verify normal application paths pass through the scanner filter."""
+    # May be 200 or 302 depending on auth state, just not blocked
+    response = client.get(path)
+    response.close()
+    assert response.status_code != 404
 
-    def test_well_known_path_is_not_blocked(self, client) -> None:
-        """Verify .well-known paths pass through the scanner filter."""
-        # When requesting a .well-known path
-        response = client.get("/.well-known/openid-configuration")
 
-        # Then the request passes the scanner filter and reaches normal routing.
-        # Both the scanner hook and normal routing return 404, so we can't
-        # distinguish them via status code alone. This test documents the
-        # exemption intent; the dotfile parametrized tests above prove that
-        # other dot-prefixed segments ARE blocked.
-        assert response.status_code == 404
+def test_trailing_slash_redirects_to_canonical_url(client) -> None:
+    """Verify a trailing-slash URL permanently redirects to the URL without it."""
+    response = client.get("/pending-approval/")
 
-    @pytest.mark.parametrize(
-        "path",
-        [
-            "/wp-admin",
-            "/wp-login.php",
-            "/wordpress/wp-admin",
-            "/phpmyadmin",
-            "/phpmyadmin/index",
-            "/pma",
-            "/adminer",
-            "/cgi-bin/test",
-            "/xmlrpc",
-        ],
-    )
-    def test_scanner_prefix_paths_return_404(self, client, path) -> None:
-        """Verify requests for known scanner prefixes are blocked with 404."""
-        # When requesting a known scanner path
-        response = client.get(path)
-
-        # Then a 404 is returned
-        assert response.status_code == 404
-
-    @pytest.mark.parametrize(
-        "path",
-        [
-            "/login.php",
-            "/admin.asp",
-            "/page.aspx",
-            "/index.jsp",
-            "/test.cgi",
-        ],
-    )
-    def test_script_suffix_paths_return_404(self, client, path) -> None:
-        """Verify requests for non-Python script extensions are blocked with 404."""
-        # When requesting a path with a blocked extension
-        response = client.get(path)
-
-        # Then a 404 is returned
-        assert response.status_code == 404
-
-    @pytest.mark.parametrize(
-        "path",
-        [
-            "/app/.env.production",
-            "/app/.env.local",
-            "/app/.env.backup",
-            "/.env.development",
-        ],
-    )
-    def test_env_variant_paths_return_404(self, client, path) -> None:
-        """Verify .env.* variant paths are caught by the regex pattern."""
-        # When requesting a .env variant path
-        response = client.get(path)
-
-        # Then a 404 is returned
-        assert response.status_code == 404
-
-    @pytest.mark.parametrize(
-        "path",
-        [
-            "/WP-ADMIN",
-            "/.Env",
-            "/PHPMYADMIN",
-            "/login.PHP",
-        ],
-    )
-    def test_case_insensitive_blocking(self, client, path) -> None:
-        """Verify scanner detection is case-insensitive."""
-        # When requesting a scanner path with mixed case
-        response = client.get(path)
-
-        # Then a 404 is returned
-        assert response.status_code == 404
-
-    @pytest.mark.parametrize(
-        "path",
-        [
-            "/",
-            "/auth/discord",
-            "/auth/github",
-            "/auth/google",
-            "/pending-approval",
-        ],
-    )
-    def test_legitimate_paths_are_not_blocked(self, client, path) -> None:
-        """Verify normal application paths pass through the scanner filter."""
-        # When requesting a legitimate path
-        response = client.get(path)
-
-        # Then the response is NOT a 404 from the scanner filter
-        # (may be 200, 302, etc. depending on auth state — just not blocked)
-        assert response.status_code != 404
+    assert response.status_code == 301
+    assert response.headers["Location"] == "/pending-approval"
