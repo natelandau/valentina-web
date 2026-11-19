@@ -20,7 +20,7 @@ uv run duty validate_constants company_id=<id>  # Check client constants against
 
 Do feature, fix, and refactor work in a worktree (`duty worktree branch=<name>`), not in the main checkout. It gives the work its own Redis database and dev server port, and keeps the main checkout on `main`.
 
-`duty ruff/format/ty/typos/test` and `duty precommit` run through gate-cache: a gate that already passed on the same files is skipped ("already passed on tree ..."). A skip is a valid pass. Force a rerun with `GATE_CACHE_DISABLE=1`.
+`duty ruff/format/ty/typos/test` and `duty precommit` run through gate-cache: a gate that already passed on the same files is skipped ("already passed on tree ..." or, for the path-scoped test gates, "already passed on paths ..."). A skip is a valid pass. Run checks only through these duties, never the bare tool, so runs share the cache. Set `GATE_CACHE_DISABLE=1` only when the user asks or when an input git cannot see changed (an ignored file, a tool version). Run `gate-cache --skill` before adding or changing a gate in `duties.py`.
 
 ## Stack
 

@@ -83,7 +83,9 @@ def strip_ansi(text: str) -> str:
     return ansi_chars.sub("", text).replace("[", r"\[")
 
 
-def gated(name: str, cmd: list[str], paths: tuple[str, ...] = ()) -> list[str]:
+def gated(
+    name: str, cmd: list[str], paths: tuple[str, ...] = (), junit: str | None = None
+) -> list[str]:
     """Wrap a gate command in gate-cache so it skips on a tree where it already passed.
 
     Args:
@@ -91,12 +93,15 @@ def gated(name: str, cmd: list[str], paths: tuple[str, ...] = ()) -> list[str]:
         cmd (list[str]): Command to run.
         paths (tuple[str, ...]): Git pathspecs the gate reads. A change outside them
             does not rerun the gate. Empty keys the gate on the whole tree.
+        junit (str | None): JUnit XML report the command writes, recorded per test when
+            gate-cache stats are on.
 
     Returns:
         list[str]: The command prefixed with the gate-cache invocation.
     """
     path_args = [arg for path in paths for arg in ("--path", path)]
-    return ["gate-cache", "--name", name, *path_args, "--", *cmd]
+    junit_args = ["--junit", junit] if junit else []
+    return ["gate-cache", "--name", name, *path_args, *junit_args, "--", *cmd]
 
 
 def compose(*args: str) -> list[str]:
@@ -217,7 +222,7 @@ def update(ctx: Context) -> None:
     ctx.run(["npm", "update", "--save"], title="update npm packages")
 
 
-_SHARED_TEST_INPUTS = ("pyproject.toml", "uv.lock")
+_SHARED_TEST_INPUTS = ("duties.py", "pyproject.toml", "uv.lock")
 # scope: (pytest targets, gate-cache pathspecs). Web code calls the API client, so the
 # web gate watches all of src/. The client tests also load the root test support files.
 # The web and client targets match the test matrix in .github/workflows/reusable-tests.yml.
@@ -268,6 +273,7 @@ def test(ctx: Context, *cli_args: str, scope: str = "all") -> None:  # noqa: PT0
         msg = f"Unknown test scope {scope!r}, expected one of: {', '.join(TEST_SCOPES)}"
         raise ValueError(msg)
     targets, paths = TEST_SCOPES[scope]
+    junit = f".cache/junit-{scope}.xml"
     cmd = [
         "pytest",
         *targets,
@@ -279,13 +285,14 @@ def test(ctx: Context, *cli_args: str, scope: str = "all") -> None:  # noqa: PT0
         "--cov-config=pyproject.toml",
         "--cov-report=xml",
         "--cov-report=term",
+        f"--junitxml={junit}",
         # Filtered runs and single scopes cover only part of src/, so only a full run is held to the floor
         *([f"--cov-fail-under={COVERAGE_FLOOR}"] if scope == "all" and not cli_args else []),
         *cli_args,
     ]
     # A marker covers the name, not the arguments, so a filtered pass must not skip the full suite
     ctx.run(
-        cmd if cli_args else gated(f"test-{scope}", cmd, paths),
+        cmd if cli_args else gated(f"test-{scope}", cmd, paths, junit=junit),
         title=pyprefix(f"Running {scope} tests"),
         capture=CI,
     )
