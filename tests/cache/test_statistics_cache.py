@@ -44,6 +44,29 @@ def test_fetches_scope_statistics_once(
     )
 
 
+@pytest.mark.parametrize(
+    "second_viewer",
+    [
+        pytest.param({"user_id": "user-1", "company_id": "comp-2"}, id="other company"),
+        pytest.param({"user_id": "user-2", "company_id": "comp-1"}, id="other user"),
+    ],
+)
+def test_cached_statistics_not_shared_across_viewers(
+    app, mock_cache_store, fake_vclient: FakeVClient, second_viewer: dict[str, str]
+) -> None:
+    """Verify a second viewer gets their own API fetch, so the API's permission check runs."""
+    fake_vclient.set_response(Routes.CAMPAIGNS_STATISTICS, model=RollStatisticsFactory.build())
+
+    with app.test_request_context():
+        seed_session(user_id="user-1", company_id="comp-1")
+        get("campaign", "scope-1")
+    with app.test_request_context():
+        seed_session(**second_viewer)
+        get("campaign", "scope-1")
+
+    assert len(fake_vclient.requests_for(Routes.CAMPAIGNS_STATISTICS)) == 2
+
+
 def test_unknown_scope_type_raises(app) -> None:
     """Verify an unknown scope_type raises ValueError."""
     with app.test_request_context(), pytest.raises(ValueError, match="scope_type"):
