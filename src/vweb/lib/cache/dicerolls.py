@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from flask import g, session
+from flask import g
 
 from vweb.constants import CACHE_DICEROLLS_TTL
 from vweb.lib import api_services
@@ -83,8 +83,8 @@ def recent(
     Returns:
         Display-ready rows in the API's newest-first order.
     """
-    company_id = session["company_id"]
-    requesting_user_id = session["user_id"]
+    company_id = api_services.session_company_id()
+    requesting_user_id = api_services.session_user_id()
     key = _cache_key(
         company_id=company_id,
         requesting_user_id=requesting_user_id,

@@ -6,7 +6,6 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from flask import session
 from loguru import logger
 
 from vweb.api_client import (
@@ -19,6 +18,7 @@ from vweb.api_client import (
 from vweb.api_client.exceptions import APIError
 from vweb.constants import CACHE_GLOBAL_CONTEXT_TIMESTAMP_TTL
 from vweb.extensions import cache
+from vweb.lib import api_services
 from vweb.lib.cache import base
 
 if TYPE_CHECKING:
@@ -199,4 +199,4 @@ def clear_current() -> None:
     request with ``company_id`` and ``user_id`` in the session; pass explicit
     ids to :func:`clear` outside that context (e.g. auth flows).
     """
-    clear(session["company_id"], session["user_id"])
+    clear(api_services.session_company_id(), api_services.session_user_id())

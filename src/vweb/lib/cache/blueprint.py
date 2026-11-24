@@ -11,8 +11,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
-from flask import session
-
 from vweb.constants import CACHE_BLUEPRINT_TTL
 from vweb.lib import api_services
 from vweb.lib.cache import base
@@ -28,15 +26,15 @@ _STRATEGY = base.PureTTL(ttl=CACHE_BLUEPRINT_TTL)
 
 
 def _traits_key() -> str:
-    return f"{_CACHE_BLUEPRINT_ALL_TRAITS_PREFIX}{session['company_id']}"
+    return f"{_CACHE_BLUEPRINT_ALL_TRAITS_PREFIX}{api_services.session_company_id()}"
 
 
 def _sections_key() -> str:
-    return f"{_CACHE_BLUEPRINT_ALL_SHEET_SECTIONS_PREFIX}{session['company_id']}"
+    return f"{_CACHE_BLUEPRINT_ALL_SHEET_SECTIONS_PREFIX}{api_services.session_company_id()}"
 
 
 def _concepts_key() -> str:
-    return f"{_CACHE_BLUEPRINT_ALL_CONCEPTS_PREFIX}{session['company_id']}"
+    return f"{_CACHE_BLUEPRINT_ALL_CONCEPTS_PREFIX}{api_services.session_company_id()}"
 
 
 def traits() -> dict[str, Trait]:
