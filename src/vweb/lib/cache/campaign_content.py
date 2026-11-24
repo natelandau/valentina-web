@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from flask import g, session
+from flask import g
 
 from vweb.constants import CACHE_CAMPAIGN_CONTENT_TTL
 from vweb.lib import api_services
@@ -44,7 +44,7 @@ def _chapters_key(company_id: str, book_id: str) -> str:
 
 def books(campaign_id: str) -> list[CampaignBook]:
     """Return a campaign's books sorted by number, from a lazy per-campaign cache."""
-    company_id = session["company_id"]
+    company_id = api_services.session_company_id()
 
     def fetch() -> list[CampaignBook]:
         result = api_services.books(campaign_id).list_all()
@@ -60,7 +60,7 @@ def chapters(campaign_id: str, book_id: str) -> list[CampaignChapter]:
         campaign_id: The campaign the book belongs to (required to scope the API call).
         book_id: The book whose chapters to return.
     """
-    company_id = session["company_id"]
+    company_id = api_services.session_company_id()
 
     def fetch() -> list[CampaignChapter]:
         result = api_services.chapters(campaign_id, book_id).list_all()

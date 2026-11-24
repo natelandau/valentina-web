@@ -47,32 +47,44 @@ class NoRequestScopeError(RuntimeError):
     """Raised when a request-scoped service is built without a signed-in user or company."""
 
 
-def _company_id() -> str:
+def session_company_id() -> str:
+    """Return the session's company id so request-scoped services and caches share one scope.
+
+    Raises:
+        NoRequestScopeError: If the session has no selected company.
+    """
     company_id = session.get("company_id")
     if not company_id:
-        msg = "No company in the session; request-scoped API services need a selected company"
+        msg = (
+            "No company in the session; request-scoped API calls and caches need a selected company"
+        )
         raise NoRequestScopeError(msg)
     return company_id
 
 
-def _user_id() -> str:
+def session_user_id() -> str:
+    """Return the session's signed-in user id, the On-Behalf-Of user for API calls.
+
+    Raises:
+        NoRequestScopeError: If the session has no signed-in user.
+    """
     # The before-request hook resolves g.requesting_user from this same id, so it is the
     # On-Behalf-Of user in every request, including paths the hook skips.
     user_id = session.get("user_id")
     if not user_id:
-        msg = "No signed-in user in the session; request-scoped API services need one"
+        msg = "No signed-in user in the session; request-scoped API calls and caches need one"
         raise NoRequestScopeError(msg)
     return user_id
 
 
 def users() -> UsersService:
     """Return the users service acting as the signed-in user in the session's company."""
-    return users_service(on_behalf_of=_user_id(), company_id=_company_id())
+    return users_service(on_behalf_of=session_user_id(), company_id=session_company_id())
 
 
 def campaigns() -> CampaignsService:
     """Return the campaigns service acting as the signed-in user in the session's company."""
-    return campaigns_service(on_behalf_of=_user_id(), company_id=_company_id())
+    return campaigns_service(on_behalf_of=session_user_id(), company_id=session_company_id())
 
 
 def books(campaign_id: str) -> BooksService:
@@ -81,7 +93,9 @@ def books(campaign_id: str) -> BooksService:
     Args:
         campaign_id: The campaign whose books the service manages.
     """
-    return books_service(campaign_id=campaign_id, on_behalf_of=_user_id(), company_id=_company_id())
+    return books_service(
+        campaign_id=campaign_id, on_behalf_of=session_user_id(), company_id=session_company_id()
+    )
 
 
 def chapters(campaign_id: str, book_id: str) -> ChaptersService:
@@ -94,14 +108,14 @@ def chapters(campaign_id: str, book_id: str) -> ChaptersService:
     return chapters_service(
         campaign_id=campaign_id,
         book_id=book_id,
-        on_behalf_of=_user_id(),
-        company_id=_company_id(),
+        on_behalf_of=session_user_id(),
+        company_id=session_company_id(),
     )
 
 
 def characters() -> CharactersService:
     """Return the characters service acting as the signed-in user in the session's company."""
-    return characters_service(on_behalf_of=_user_id(), company_id=_company_id())
+    return characters_service(on_behalf_of=session_user_id(), company_id=session_company_id())
 
 
 def character_traits(character_id: str) -> CharacterTraitsService:
@@ -111,18 +125,20 @@ def character_traits(character_id: str) -> CharacterTraitsService:
         character_id: The character whose traits the service manages.
     """
     return character_traits_service(
-        character_id=character_id, on_behalf_of=_user_id(), company_id=_company_id()
+        character_id=character_id, on_behalf_of=session_user_id(), company_id=session_company_id()
     )
 
 
 def dicerolls() -> DicerollService:
     """Return the dice-roll service acting as the signed-in user in the session's company."""
-    return dicerolls_service(on_behalf_of=_user_id(), company_id=_company_id())
+    return dicerolls_service(on_behalf_of=session_user_id(), company_id=session_company_id())
 
 
 def character_autogen() -> CharacterAutogenService:
     """Return the character autogen service acting as the signed-in user."""
-    return character_autogen_service(on_behalf_of=_user_id(), company_id=_company_id())
+    return character_autogen_service(
+        on_behalf_of=session_user_id(), company_id=session_company_id()
+    )
 
 
 def character_blueprint() -> CharacterBlueprintService:
@@ -130,7 +146,7 @@ def character_blueprint() -> CharacterBlueprintService:
 
     Blueprint data is company-wide, so it is fetched the same way for every viewer.
     """
-    return character_blueprint_service(company_id=_company_id())
+    return character_blueprint_service(company_id=session_company_id())
 
 
 def dictionary() -> DictionaryService:
@@ -138,7 +154,7 @@ def dictionary() -> DictionaryService:
 
     Dictionary terms are company-wide, so they are fetched the same way for every viewer.
     """
-    return dictionary_service(company_id=_company_id())
+    return dictionary_service(company_id=session_company_id())
 
 
 def options() -> OptionsService:
@@ -147,4 +163,4 @@ def options() -> OptionsService:
     Options also load on pages that render before the user is approved, so they must not
     depend on the user.
     """
-    return options_service(company_id=_company_id())
+    return options_service(company_id=session_company_id())

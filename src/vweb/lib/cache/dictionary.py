@@ -10,8 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
-from flask import session
-
 from vweb.constants import CACHE_DICTIONARY_TTL
 from vweb.lib import api_services
 from vweb.lib.cache import base
@@ -26,7 +24,7 @@ _STRATEGY = base.PureTTL(ttl=CACHE_DICTIONARY_TTL)
 
 
 def _key() -> str:
-    return f"{_CACHE_DICTIONARY_PREFIX}{session['company_id']}"
+    return f"{_CACHE_DICTIONARY_PREFIX}{api_services.session_company_id()}"
 
 
 @dataclass(frozen=True)

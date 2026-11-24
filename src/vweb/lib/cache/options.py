@@ -11,8 +11,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Final
 
-from flask import session
-
 from vweb.constants import CACHE_OPTIONS_TTL
 from vweb.lib import api_services
 from vweb.lib.cache import base
@@ -22,7 +20,7 @@ _STRATEGY = base.PureTTL(ttl=CACHE_OPTIONS_TTL)
 
 
 def _key() -> str:
-    return f"{_CACHE_OPTIONS_PREFIX}{session['company_id']}"
+    return f"{_CACHE_OPTIONS_PREFIX}{api_services.session_company_id()}"
 
 
 @dataclass(frozen=True)
